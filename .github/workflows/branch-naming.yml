@@ -15,6 +15,12 @@ jobs:
         run: |
           BRANCH_NAME="${{ github.head_ref }}"
           
+          # Allow main and develop branches
+          if [[ "$BRANCH_NAME" == "main" || "$BRANCH_NAME" == "develop" ]]; then
+            echo "✅ Branch name '$BRANCH_NAME' is a protected branch and is allowed."
+            exit 0
+          fi
+
           # Allowed patterns
           if [[ "$BRANCH_NAME" =~ ^(feat|fix|docs|refactor|test|chore)/[a-z0-9-]+$ ]]; then
             echo "✅ Branch name '$BRANCH_NAME' follows convention"

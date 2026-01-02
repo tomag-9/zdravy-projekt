@@ -25,7 +25,7 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "9901:8000"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.dev
       POSTGRES_DB: ${POSTGRES_DB:-zdravy_projekt_dev}
@@ -49,9 +49,9 @@ services:
       - ./frontend:/app
       - /app/node_modules
     ports:
-      - "3000:3000"
+      - "9900:3000"
     environment:
-      VITE_API_URL: http://localhost:8000/api
+      VITE_API_URL: http://localhost:9901/api
     depends_on:
       - backend
     stdin_open: true
