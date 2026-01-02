@@ -64,7 +64,7 @@ jobs:
 
   backend-tests:
     name: Backend Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: docker-runner-zdravy-projekt
     
     services:
       postgres:
@@ -119,7 +119,7 @@ jobs:
 
   frontend-tests:
     name: Frontend Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: docker-runner-zdravy-projekt
 
     steps:
       - name: Checkout code
@@ -150,7 +150,7 @@ jobs:
 
   docker-build:
     name: Docker Build Test
-    runs-on: ubuntu-latest
+    runs-on: docker-runner-zdravy-projekt
     needs: [backend-lint, frontend-lint, backend-tests, frontend-tests]
 
     steps:
