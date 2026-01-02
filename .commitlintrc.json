@@ -34,7 +34,8 @@
         "api",
         "tests",
         "config",
-        "deps"
+        "deps",
+        "init"
       ]
     ],
     "subject-empty": [2, "never"],
