@@ -1,5 +1,4 @@
 {
-  "extends": ["@commitlint/config-conventional"],
   "rules": {
     "type-enum": [
       2,
@@ -18,33 +17,17 @@
         "revert"
       ]
     ],
-    "type-case": [2, "always", "lower-case"],
+    "type-case": [0],
     "type-empty": [2, "never"],
-    "scope-case": [2, "always", "lower-case"],
-    "scope-enum": [
-      2,
-      "always",
-      [
-        "backend",
-        "frontend",
-        "ci",
-        "docker",
-        "docs",
-        "auth",
-        "api",
-        "tests",
-        "config",
-        "deps",
-        "init"
-      ]
-    ],
+    "scope-case": [0],
+    "scope-empty": [0],
     "subject-empty": [2, "never"],
-    "subject-case": [2, "always", "lower-case"],
-    "subject-full-stop": [2, "never", "."],
-    "subject-max-length": [2, "always", 50],
-    "header-max-length": [2, "always", 72],
-    "body-leading-blank": [2, "always"],
-    "body-max-line-length": [2, "always", 72],
-    "footer-leading-blank": [2, "always"]
+    "subject-case": [0],
+    "subject-full-stop": [0],
+    "subject-max-length": [0],
+    "header-max-length": [0],
+    "body-leading-blank": [0],
+    "body-max-line-length": [0],
+    "footer-leading-blank": [0]
   }
 }

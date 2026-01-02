@@ -12,11 +12,6 @@
     "@commitlint/config-conventional": "^18.4.3",
     "husky": "^8.0.3"
   },
-  "commitlint": {
-    "extends": [
-      "@commitlint/config-conventional"
-    ]
-  },
   "repository": {
     "type": "git",
     "url": "https://github.com/your-org/zdravy-projekt.git"
