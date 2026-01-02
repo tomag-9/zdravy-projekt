@@ -1,0 +1,44 @@
+name: Branch Naming Convention
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, reopened, synchronize]
+
+jobs:
+  check-branch-name:
+    name: Validate Branch Name
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check branch name
+        run: |
+          BRANCH_NAME="${{ github.head_ref }}"
+          
+          # Allowed patterns
+          if [[ "$BRANCH_NAME" =~ ^(feat|fix|docs|refactor|test|chore)/[a-z0-9-]+$ ]]; then
+            echo "✅ Branch name '$BRANCH_NAME' follows convention"
+            exit 0
+          else
+            echo "❌ Branch name '$BRANCH_NAME' does NOT follow convention"
+            echo ""
+            echo "Branch names must follow the pattern:"
+            echo "  <type>/<description>"
+            echo ""
+            echo "Valid types:"
+            echo "  - feat/     (new feature)"
+            echo "  - fix/      (bug fix)"
+            echo "  - docs/     (documentation)"
+            echo "  - refactor/ (code refactoring)"
+            echo "  - test/     (tests)"
+            echo "  - chore/    (maintenance)"
+            echo ""
+            echo "Examples:"
+            echo "  ✅ feat/user-authentication"
+            echo "  ✅ fix/navbar-responsive-issue"
+            echo "  ✅ docs/update-readme"
+            echo ""
+            echo "Your branch: $BRANCH_NAME"
+            echo "❌ Must use lowercase letters, numbers, and hyphens only"
+            exit 1
+          fi
