@@ -1,0 +1,51 @@
+# <type>(<scope>): <subject>
+# │      │         │
+# │      │         └─⫸ Stručný popis v imperatíve (max 50 znakov)
+# │      │
+# │      └─⫸ Scope: backend|frontend|ci|docker|docs (voliteľné)
+# │
+# └─⫸ Type: feat|fix|docs|style|refactor|test|chore|perf|ci|build|revert
+#
+# [Voliteľné telo commitu - vyčerpávajúci popis zmeny]
+# - Prečo bola zmena potrebná?
+# - Čo sa zmenilo?
+# - Aké sú dôsledky?
+#
+# [Voliteľná päta]
+# Fixes: #123
+# Closes: #456
+# Breaking Change: popis breaking change
+# Co-authored-by: Meno <email@example.com>
+
+# ────────────────────────────────────────────────────────────────
+# TYPES:
+# feat:     Nová funkcionalita
+# fix:      Oprava chyby
+# docs:     Zmeny v dokumentácii
+# style:    Formátovanie, chýbajúce bodkočiarky, atď (nie CSS)
+# refactor: Refaktoring kódu bez zmeny funkcionality
+# test:     Pridanie alebo úprava testov
+# chore:    Údržba, aktualizácia závislostí, build skripty
+# perf:     Zlepšenie výkonu
+# ci:       Zmeny v CI/CD pipeline
+# build:    Zmeny v build systéme alebo závislostiach
+# revert:   Vrátenie predchádzajúceho commitu
+#
+# SCOPE (príklady):
+# backend:  Django, Python, API, databáza
+# frontend: React, TypeScript, UI komponenty
+# ci:       GitHub Actions, workflows
+# docker:   Docker, docker-compose
+# docs:     Dokumentácia, README
+# auth:     Autentifikácia, autorizácia
+# api:      REST API endpointy
+#
+# PRAVIDLÁ:
+# - Subject v imperatíve ("add" nie "added" alebo "adds")
+# - Subject začína malým písmenom (okrem vlastných mien)
+# - Bez bodky na konci subject
+# - Subject max 50 znakov
+# - Oddeľ subject od tela prázdnym riadkom
+# - Telo max 72 znakov na riadok
+# - Vysvetli ČO a PREČO, nie AKO
+# ────────────────────────────────────────────────────────────────

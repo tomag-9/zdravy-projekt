@@ -1,0 +1,32 @@
+{
+  "name": "zdravy-projekt",
+  "version": "1.0.0",
+  "description": "Full-stack zdravy projekt application with Django and React",
+  "private": true,
+  "scripts": {
+    "commitlint": "commitlint --edit",
+    "prepare": "command -v husky >/dev/null 2>&1 && husky install || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^18.4.3",
+    "@commitlint/config-conventional": "^18.4.3",
+    "husky": "^8.0.3"
+  },
+  "commitlint": {
+    "extends": [
+      "@commitlint/config-conventional"
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/zdravy-projekt.git"
+  },
+  "keywords": [
+    "django",
+    "react",
+    "docker",
+    "typescript"
+  ],
+  "author": "Tomáš Magula",
+  "license": "MIT"
+}
