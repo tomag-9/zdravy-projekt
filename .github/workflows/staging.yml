@@ -8,7 +8,7 @@ on:
 jobs:
   build-and-push:
     name: Build and Push Docker Images
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, builder]
     
     steps:
       - name: Checkout code
@@ -47,20 +47,31 @@ jobs:
 
   deploy-staging:
     name: Deploy to Staging Server
-    runs-on: [self-hosted, staging]
+    runs-on: [self-hosted, builder]
     needs: build-and-push
     environment:
       name: staging
       url: https://zb.tomag.xyz
 
     steps:
-      - name: Pull and deploy prebuilt images
-        working-directory: /opt/zdravy-projekt
+      - name: Checkout compose files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            docker-compose.staging.yml
+            nginx/staging.conf
+          sparse-checkout-cone-mode: false
+
+      - name: Deploy via remote Docker context
+        env:
+          DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
+          DOCKER_CERT_PATH: ${{ secrets.STAGING_DOCKER_CERT }}
+          DOCKER_TLS_VERIFY: "1"
         run: |
-          echo "🔄 Pulling latest images from registry..."
+          echo "🔄 Pulling latest images on staging server..."
           docker compose -f docker-compose.staging.yml pull
 
-          echo "🚀 Starting services..."
+          echo "🚀 Starting services on staging server..."
           docker compose -f docker-compose.staging.yml up -d --remove-orphans
 
           echo "⏳ Waiting for services to be healthy..."
@@ -68,11 +79,20 @@ jobs:
 
   migrate:
     name: Run Database Migrations
-    runs-on: [self-hosted, staging]
+    runs-on: [self-hosted, builder]
     needs: deploy-staging
     steps:
-      - name: Run migrations and cleanup
-        working-directory: /opt/zdravy-projekt
+      - name: Checkout compose files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: docker-compose.staging.yml
+          sparse-checkout-cone-mode: false
+
+      - name: Run migrations on remote server
+        env:
+          DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
+          DOCKER_CERT_PATH: ${{ secrets.STAGING_DOCKER_CERT }}
+          DOCKER_TLS_VERIFY: "1"
         run: |
           echo "📊 Running database migrations..."
           docker compose -f docker-compose.staging.yml exec -T backend python manage.py migrate --noinput
