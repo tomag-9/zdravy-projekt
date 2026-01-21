@@ -62,10 +62,22 @@ jobs:
             nginx/staging.conf
           sparse-checkout-cone-mode: false
 
+      - name: Setup Docker certificates
+        run: |
+          mkdir -p /home/runner/.docker
+          echo "${{ secrets.STAGING_DOCKER_CA }}" | base64 -d > /home/runner/.docker/ca.pem
+          echo "${{ secrets.STAGING_DOCKER_CERT }}" | base64 -d > /home/runner/.docker/cert.pem
+          echo "${{ secrets.STAGING_DOCKER_KEY }}" | base64 -d > /home/runner/.docker/key.pem
+          chmod 600 /home/runner/.docker/{ca,cert,key}.pem
+
+      - name: Create .env.staging from JSON secret
+        run: |
+          echo "${{ secrets.STAGING_ENV_JSON }}" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env.staging
+
       - name: Deploy via remote Docker context
         env:
           DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
-          DOCKER_CERT_PATH: ${{ secrets.STAGING_DOCKER_CERT }}
+          DOCKER_CERT_PATH: /home/runner/.docker
           DOCKER_TLS_VERIFY: "1"
         run: |
           echo "🔄 Pulling latest images on staging server..."
@@ -88,10 +100,22 @@ jobs:
           sparse-checkout: docker-compose.staging.yml
           sparse-checkout-cone-mode: false
 
+      - name: Setup Docker certificates
+        run: |
+          mkdir -p /home/runner/.docker
+          echo "${{ secrets.STAGING_DOCKER_CA }}" | base64 -d > /home/runner/.docker/ca.pem
+          echo "${{ secrets.STAGING_DOCKER_CERT }}" | base64 -d > /home/runner/.docker/cert.pem
+          echo "${{ secrets.STAGING_DOCKER_KEY }}" | base64 -d > /home/runner/.docker/key.pem
+          chmod 600 /home/runner/.docker/{ca,cert,key}.pem
+
+      - name: Create .env.staging from JSON secret
+        run: |
+          echo "${{ secrets.STAGING_ENV_JSON }}" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env.staging
+
       - name: Run migrations on remote server
         env:
           DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
-          DOCKER_CERT_PATH: ${{ secrets.STAGING_DOCKER_CERT }}
+          DOCKER_CERT_PATH: /home/runner/.docker
           DOCKER_TLS_VERIFY: "1"
         run: |
           echo "📊 Running database migrations..."
