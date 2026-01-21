@@ -17,7 +17,7 @@ services:
     restart: unless-stopped
 
   backend:
-    image: ${REGISTRY_URL}/zdravy-projekt-backend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -39,7 +39,7 @@ services:
       retries: 3
 
   frontend:
-    image: ${REGISTRY_URL}/zdravy-projekt-frontend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:staging
     environment:
       VITE_API_URL: ${VITE_API_URL}
     restart: unless-stopped
