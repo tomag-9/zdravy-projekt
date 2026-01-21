@@ -14,6 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - show workspace
+        run: |
+          pwd
+          ls -la
+          ls -la backend/ || echo "backend dir not found"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
