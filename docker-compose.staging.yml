@@ -17,9 +17,7 @@ services:
     restart: unless-stopped
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/zdravy-projekt-backend:staging
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -41,9 +39,7 @@ services:
       retries: 3
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: ${REGISTRY_URL}/zdravy-projekt-frontend:staging
     environment:
       VITE_API_URL: ${VITE_API_URL}
     restart: unless-stopped
@@ -51,12 +47,9 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "2010:80"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
-      - ./certbot/conf:/etc/letsencrypt
-      - ./certbot/www:/var/www/certbot
+      - ./nginx/staging.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - backend
       - frontend

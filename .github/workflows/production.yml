@@ -5,234 +5,62 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag (default: latest)'
+        required: false
+        default: 'latest'
+
 jobs:
   build-and-push:
     name: Build and Push Docker Images
     runs-on: ubuntu-latest
-    if: secrets.REGISTRY_URL != ''
-    
+    if: github.event_name == 'push'
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        if: secrets.REGISTRY_URL != ''
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           registry: ${{ secrets.REGISTRY_URL }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push backend image
+      - name: Build & push backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
           tags: |
             ${{ secrets.REGISTRY_URL }}/zdravy-projekt-backend:latest
-            ${{ secrets.REGISTRY_URL }}/zdravy-projekt-backend:prod-${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.REGISTRY_URL }}/zdravy-projekt-backend:prod-cache
-          cache-to: type=registry,ref=${{ secrets.REGISTRY_URL }}/zdravy-projekt-backend:prod-cache,mode=max
+            ${{ secrets.REGISTRY_URL }}/zdravy-projekt-backend:${{ github.sha }}
 
-      - name: Build and push frontend image
+      - name: Build & push frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
           tags: |
             ${{ secrets.REGISTRY_URL }}/zdravy-projekt-frontend:latest
-            ${{ secrets.REGISTRY_URL }}/zdravy-projekt-frontend:prod-${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.REGISTRY_URL }}/zdravy-projekt-frontend:prod-cache
-          cache-to: type=registry,ref=${{ secrets.REGISTRY_URL }}/zdravy-projekt-frontend:prod-cache,mode=max
-
-  approval:
-    name: Manual Approval Required
-    runs-on: ubuntu-latest
-    needs: build-and-push
-    if: !cancelled()
-    environment:
-      name: production-approval
-    
-    steps:
-      - name: Wait for approval
-        run: |
-          echo "⏳ Waiting for manual approval to deploy to production..."
-          echo "✅ Approval granted!"
+            ${{ secrets.REGISTRY_URL }}/zdravy-projekt-frontend:${{ github.sha }}
 
   deploy-production:
-    name: Deploy to Production Server
-    runs-on: ubuntu-latest
-    needs: approval
-    if: secrets.PROD_HOST != '' && secrets.PROD_SSH_KEY != ''
+    name: Manual Deploy to Production
+    runs-on: [self-hosted, production]
+    if: github.event_name == 'workflow_dispatch'
     environment:
       name: production
       url: https://${{ secrets.PROD_HOST }}
 
     steps:
-      - name: Create deployment backup
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/zdravy-projekt
-            echo "💾 Creating backup..."
-            BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
-            mkdir -p $BACKUP_DIR
-            docker compose -f docker-compose.prod.yml exec -T backend python manage.py dumpdata --natural-foreign --natural-primary -e contenttypes -e auth.Permission > $BACKUP_DIR/db_backup.json || echo "Backup warning: may not have completed fully"
-
-      - name: Deploy to production server
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/zdravy-projekt
-            echo "🔄 Pulling latest images..."
-            docker compose -f docker-compose.prod.yml pull
-            
-            echo "🚀 Starting services with zero-downtime..."
-            docker compose -f docker-compose.prod.yml up -d --no-deps --build
-            
-            echo "⏳ Waiting for services to be healthy..."
-            sleep 15
-
-  migrate:
-    name: Run Database Migrations
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    if: !cancelled() && secrets.PROD_HOST != ''
-
-    steps:
-      - name: Run migrations on production
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/zdravy-projekt
-            echo "📊 Running database migrations..."
-            docker compose -f docker-compose.prod.yml exec -T backend python manage.py migrate --noinput
-            
-            echo "🗑️ Cleaning up old images..."
-            docker system prune -f
-
-  healthcheck:
-    name: Production Health Check
-    runs-on: ubuntu-latest
-    needs: migrate
-    if: !cancelled() && secrets.PROD_HOST != ''
-
-    steps:
-      - name: Wait for services to stabilize
-        run: sleep 30
-
-      - name: Check backend health
-        run: |
-          echo "🏥 Checking backend health..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.PROD_HOST }}/api/health/ || echo "000")
-          if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Backend health check failed with status: $RESPONSE"
-            exit 1
-          fi
-          echo "✅ Backend is healthy"
-
-      - name: Check frontend
-        run: |
-          echo "🏥 Checking frontend..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://${{ secrets.PROD_HOST }}/ || echo "000")
-          if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Frontend health check failed with status: $RESPONSE"
-            exit 1
-          fi
-          echo "✅ Frontend is healthy"
-
-      - name: Check SSL certificate
-        run: |
-          echo "🔒 Checking SSL certificate..."
-          echo | openssl s_client -servername ${{ secrets.PROD_HOST }} -connect ${{ secrets.PROD_HOST }}:443 2>/dev/null | openssl x509 -noout -dates
-
-  smoke-tests:
-    name: Production Smoke Tests
-    runs-on: ubuntu-latest
-    needs: healthcheck
-    if: !cancelled() && secrets.PROD_HOST != ''
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Playwright
-        run: |
-          npm install -D @playwright/test
-          npx playwright install --with-deps chromium
-
-      - name: Run smoke tests
+      - name: Deploy selected version
+        working-directory: /opt/zdravy-projekt
         env:
-          BASE_URL: https://${{ secrets.PROD_HOST }}
+          TAG: ${{ inputs.image_tag }}
         run: |
-          cat > smoke.spec.ts << 'EOF'
-          import { test, expect } from '@playwright/test';
-          
-          test('homepage loads', async ({ page }) => {
-            await page.goto(process.env.BASE_URL || 'http://localhost');
-            await expect(page).toHaveTitle(/Zdravy Projekt/i);
-          });
-          
-          test('API responds', async ({ request }) => {
-            const response = await request.get(`${process.env.BASE_URL}/api/health/`);
-            expect(response.ok()).toBeTruthy();
-          });
-          EOF
-          
-          npx playwright test smoke.spec.ts
+          echo "🚀 Deploying image tag: $TAG"
 
-  rollback:
-    name: Rollback on Failure
-    runs-on: ubuntu-latest
-    needs: [healthcheck, smoke-tests]
-    if: failure()
-
-    steps:
-      - name: Rollback deployment
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.PROD_HOST }}
-          username: ${{ secrets.PROD_USER }}
-          key: ${{ secrets.PROD_SSH_KEY }}
-          script: |
-            cd /opt/zdravy-projekt
-            echo "⚠️ Deployment failed, rolling back..."
-            docker compose -f docker-compose.prod.yml down
-            docker compose -f docker-compose.prod.yml up -d
-            echo "🔄 Rollback complete"
-
-  notify:
-    name: Notify Deployment Status
-    runs-on: ubuntu-latest
-    needs: [deploy-production, migrate, healthcheck, smoke-tests]
-    if: always()
-
-    steps:
-      - name: Check deployment status
-        run: |
-          if [ "${{ needs.smoke-tests.result }}" == "success" ]; then
-            echo "✅ Production deployment successful!"
-            echo "🌐 Environment: https://${{ secrets.PROD_HOST }}"
-            echo "📊 Commit: ${{ github.sha }}"
-            echo "👤 Deployed by: ${{ github.actor }}"
-          else
-            echo "❌ Production deployment failed"
-            exit 1
-          fi
+          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.prod.yml up -d --remove-orphans
