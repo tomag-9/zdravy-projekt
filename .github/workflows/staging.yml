@@ -14,6 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Debug - show workspace structure
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Workspace: ${{ github.workspace }}"
+          echo "Listing root:"
+          ls -la
+          echo "Backend directory:"
+          ls -la backend/ || echo "backend/ not found"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -26,7 +35,7 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: ${{ github.workspace }}/backend
           push: true
           tags: |
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging
@@ -37,7 +46,7 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend
+          context: ${{ github.workspace }}/frontend
           push: true
           tags: |
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging
