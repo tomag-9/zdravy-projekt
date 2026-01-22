@@ -89,11 +89,15 @@ jobs:
       - name: Install jq
         run: |
           if ! command -v jq &> /dev/null; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq jq
+            mkdir -p ~/.local/bin
+            curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 -o ~/.local/bin/jq
+            chmod +x ~/.local/bin/jq
+            export PATH="$HOME/.local/bin:$PATH"
           fi
 
       - name: Create .env.staging from JSON secret
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           echo "${{ secrets.STAGING_ENV_JSON }}" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env.staging
 
       - name: Deploy via remote Docker context
@@ -133,11 +137,15 @@ jobs:
       - name: Install jq
         run: |
           if ! command -v jq &> /dev/null; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq jq
+            mkdir -p ~/.local/bin
+            curl -sL https://github.com/jqlang/jq/releases/download/jq-1.7.1/jq-linux-amd64 -o ~/.local/bin/jq
+            chmod +x ~/.local/bin/jq
+            export PATH="$HOME/.local/bin:$PATH"
           fi
 
       - name: Create .env.staging from JSON secret
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           echo "${{ secrets.STAGING_ENV_JSON }}" | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env.staging
 
       - name: Run migrations on remote server
