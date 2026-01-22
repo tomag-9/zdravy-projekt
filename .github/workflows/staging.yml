@@ -14,7 +14,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          sparse-checkout: false
+          clean: true
+
+      - name: Disable sparse checkout
+        run: |
+          git sparse-checkout disable || true
+          git checkout .
 
       - name: Debug - show workspace structure
         run: |
