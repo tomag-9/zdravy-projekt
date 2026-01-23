@@ -129,6 +129,24 @@ const Settings = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Dev Tools */}
+                <div className="mt-8 pt-8 border-t border-slate-200">
+                    <h3 className="text-lg font-bold text-slate-800 mb-4">Vývojárske nástroje</h3>
+                    <button
+                        onClick={() => {
+                            if (confirm('Naozaj chcete prepísať všetky dáta testovacími dátami?')) {
+                                import('../lib/seeder').then(m => m.seedDevData());
+                            }
+                        }}
+                        className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors"
+                    >
+                        Injektovať testovacie dáta
+                    </button>
+                    <p className="text-xs text-slate-500 mt-2">
+                        Toto vymaže lokálne dáta a naplní aplikáciu testovacími objednávkami (minulosť, prítomnosť, budúcnosť).
+                    </p>
+                </div>
             </div>
         </div>
     );

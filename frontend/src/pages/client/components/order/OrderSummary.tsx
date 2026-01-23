@@ -2,6 +2,8 @@ import { FileCheck, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useApp } from '../../context/AppContext';
+import { DailyOrder, CategoryData } from '../../services/OrderService';
+import { getSlovakPlural } from '../../lib/utils';
 
 interface OrderSummaryProps {
     onSubmit: () => void;
@@ -10,24 +12,22 @@ interface OrderSummaryProps {
 const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
     const { currentOrder, activeMeals, selectedDate } = useApp();
 
-    const getMealTotal = (mealKey: string) => {
-        // @ts-ignore
+    const getMealTotal = (mealKey: keyof DailyOrder) => {
         if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-        // @ts-ignore
-        return Object.values(currentOrder[mealKey]).reduce((acc, cat: any) => {
-            const counts = cat?.menuCounts || {};
-            const catTotal = Object.values(counts).reduce((sum: any, val: any) => sum + val, 0);
-            return (acc as number) + (catTotal as number);
+
+        return Object.values(currentOrder[mealKey]).reduce((acc: number, cat: CategoryData) => {
+            const counts = cat.menuCounts || {};
+            const catTotal = Object.values(counts).reduce((sum: number, val: number) => sum + val, 0);
+            return acc + catTotal;
         }, 0);
     };
 
-    const getDietTotal = (mealKey: string) => {
-        // @ts-ignore
+    const getDietTotal = (mealKey: keyof DailyOrder) => {
         if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-        // @ts-ignore
-        return Object.values(currentOrder[mealKey]).reduce((acc, cat: any) => {
-            if (!cat?.diets) return acc;
-            return (acc as number) + (Object.values((cat as any).diets) as any[]).reduce((dAcc: any, d: any) => dAcc + d, 0);
+
+        return Object.values(currentOrder[mealKey]).reduce((acc: number, cat: CategoryData) => {
+            if (!cat.diets) return acc;
+            return acc + Object.values(cat.diets).reduce((dAcc: number, d: number) => dAcc + d, 0);
         }, 0);
     };
 
@@ -39,11 +39,10 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
     const breakfastDiets = getDietTotal('breakfast');
     const olovrantDiets = getDietTotal('olovrant');
 
-    // @ts-ignore
     const totalPortions = lunchTotal + breakfastTotal + olovrantTotal;
 
     // Simple validation logic (overflow is already prevented by UI, but good to check)
-    const isValid = (totalPortions as number) > 0;
+    const isValid = totalPortions > 0;
 
     return (
         <Card className="mt-8 border-indigo-100 shadow-md bg-white">
@@ -63,8 +62,8 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-600">Obedy</span>
                             <div className="text-right">
-                                <span className="font-bold text-slate-900">{lunchTotal as number}</span>
-                                {lunchDiets as number > 0 && <span className="text-xs text-slate-500 block">({lunchDiets as number} diét)</span>}
+                                <span className="font-bold text-slate-900">{lunchTotal}</span>
+                                {lunchDiets > 0 && <span className="text-xs text-slate-500 block">({lunchDiets} {getSlovakPlural(lunchDiets, 'diéta', 'diéty', 'diét')})</span>}
                             </div>
                         </div>
                     )}
@@ -73,8 +72,8 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-600">Raňajky</span>
                             <div className="text-right">
-                                <span className="font-bold text-slate-900">{breakfastTotal as number}</span>
-                                {breakfastDiets as number > 0 && <span className="text-xs text-slate-500 block">({breakfastDiets as number} diét)</span>}
+                                <span className="font-bold text-slate-900">{breakfastTotal}</span>
+                                {breakfastDiets > 0 && <span className="text-xs text-slate-500 block">({breakfastDiets} {getSlovakPlural(breakfastDiets, 'diéta', 'diéty', 'diét')})</span>}
                             </div>
                         </div>
                     )}
@@ -83,15 +82,15 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
                         <div className="flex justify-between items-center text-sm">
                             <span className="text-slate-600">Olovranty</span>
                             <div className="text-right">
-                                <span className="font-bold text-slate-900">{olovrantTotal as number}</span>
-                                {olovrantDiets as number > 0 && <span className="text-xs text-slate-500 block">({olovrantDiets as number} diét)</span>}
+                                <span className="font-bold text-slate-900">{olovrantTotal}</span>
+                                {olovrantDiets > 0 && <span className="text-xs text-slate-500 block">({olovrantDiets} {getSlovakPlural(olovrantDiets, 'diéta', 'diéty', 'diét')})</span>}
                             </div>
                         </div>
                     )}
 
                     <div className="flex justify-between items-center pt-3 border-t border-slate-100">
                         <span className="font-bold text-slate-800">Spolu porcií</span>
-                        <span className="font-bold text-2xl text-indigo-600">{totalPortions as number}</span>
+                        <span className="font-bold text-2xl text-indigo-600">{totalPortions}</span>
                     </div>
                 </div>
 

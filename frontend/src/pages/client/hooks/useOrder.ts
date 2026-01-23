@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import OrderService from '../services/OrderService';
+import OrderService, { DailyOrder } from '../services/OrderService';
 import { CATEGORIES, DIETS } from '../config/constants';
 
 // Helper for safe localStorage parsing
@@ -21,8 +21,8 @@ export const useOrder = () => {
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
 
     const [settings, setSettings] = useState(() => safeParse('appSettings', {
-        copyBreakfastFromPrevLunch: false,
-        copyOlovrantFromLunch: false,
+        copyBreakfastFromPrevLunch: true,
+        copyOlovrantFromLunch: true,
         applyDefaultLunch: false
     }));
 
@@ -30,9 +30,9 @@ export const useOrder = () => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [prevDayLunches, setPrevDayLunches] = useState(0);
 
-    const [activeMeals, setActiveMeals] = useState(() => safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false }));
+    const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false }));
 
-    const [currentOrder, setCurrentOrder] = useState<any>(() => {
+    const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
         // Use Factory for initial state
         const initial = {
             breakfast: OrderService.createEmptyMeal(),
@@ -74,8 +74,7 @@ export const useOrder = () => {
         };
 
         const newActive = safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false });
-        // @ts-ignore
-        let newOrder = safeParse(`order_${selectedDate}`, emptyOrder);
+        const newOrder = safeParse(`order_${selectedDate}`, emptyOrder) as DailyOrder;
 
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
@@ -84,7 +83,7 @@ export const useOrder = () => {
     // Copy Logic - Olovrant from Lunch
     useEffect(() => {
         if (settings.copyOlovrantFromLunch && activeMeals.olovrant) {
-            setCurrentOrder((prev: any) => ({
+            setCurrentOrder((prev) => ({
                 ...prev,
                 olovrant: JSON.parse(JSON.stringify(prev.lunch))
             }));
@@ -101,7 +100,7 @@ export const useOrder = () => {
             if (prevOrderSaved) {
                 const prevOrder = JSON.parse(prevOrderSaved);
                 if (prevOrder.lunch) {
-                    setCurrentOrder((prev: any) => ({
+                    setCurrentOrder((prev) => ({
                         ...prev,
                         breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
                     }));
@@ -120,24 +119,23 @@ export const useOrder = () => {
     };
 
     const toggleMeal = (mealKey: string) => {
-        // @ts-ignore
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
 
-    const updateMenuCount = (mealKey: string, category: string, menuType: string, count: number) => {
-        setCurrentOrder((prev: any) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
+    const updateMenuCount = (mealKey: keyof DailyOrder, category: string, menuType: string, count: number) => {
+        setCurrentOrder((prev: DailyOrder) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
     };
 
-    const updateDiet = (mealKey: string, category: string, diet: string, count: number) => {
-        setCurrentOrder((prev: any) => OrderService.updateDiet(prev, mealKey, category, diet, count));
+    const updateDiet = (mealKey: keyof DailyOrder, category: string, diet: string, count: number) => {
+        setCurrentOrder((prev: DailyOrder) => OrderService.updateDiet(prev, mealKey, category, diet, count));
     };
 
     const updateSettings = (key: string, value: any) => {
         setSettings((prev: any) => ({ ...prev, [key]: value }));
     };
 
-    const clearMeal = (mealKey: string) => {
-        setCurrentOrder((prev: any) => ({
+    const clearMeal = (mealKey: keyof DailyOrder) => {
+        setCurrentOrder((prev) => ({
             ...prev,
             [mealKey]: OrderService.createEmptyMeal()
         }));

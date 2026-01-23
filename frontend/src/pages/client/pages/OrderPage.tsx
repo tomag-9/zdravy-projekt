@@ -8,6 +8,7 @@ import DietSelector from '../components/order/DietSelector';
 import OrderSummary from '../components/order/OrderSummary';
 import { Coffee, Utensils, Apple, Check, Trash2, ArrowLeft } from 'lucide-react';
 import { Switch } from '../components/ui/Switch';
+import { DailyOrder } from '../services/OrderService';
 
 const OrderPage = () => {
     const [searchParams] = useSearchParams();
@@ -19,7 +20,7 @@ const OrderPage = () => {
         clearMeal, getAvailableDiets
     } = useApp();
 
-    const [activeDietModal, setActiveDietModal] = useState<{ meal: string, category: string } | null>(null);
+    const [activeDietModal, setActiveDietModal] = useState<{ meal: keyof DailyOrder, category: string } | null>(null);
     const [showToast, setShowToast] = useState(false);
     const [dataChangedState, setDataChangedState] = useState({
         breakfast: false,
@@ -64,11 +65,8 @@ const OrderPage = () => {
         };
 
         setDataChangedState({
-            // @ts-ignore
             breakfast: currentData.breakfast !== initialDataRef.current.breakfast,
-            // @ts-ignore
             lunch: currentData.lunch !== initialDataRef.current.lunch,
-            // @ts-ignore
             olovrant: currentData.olovrant !== initialDataRef.current.olovrant
         });
     }, [currentOrder, selectedDate]);
@@ -82,7 +80,7 @@ const OrderPage = () => {
         }
     }, [dataChangedState, settings.copyBreakfastFromPrevLunch, settings.copyOlovrantFromLunch, updateSettings]);
 
-    const meals = [
+    const meals: { key: keyof DailyOrder; label: string; icon: any }[] = [
         { key: 'breakfast', label: 'Raňajky', icon: Coffee },
         { key: 'lunch', label: 'Obed', icon: Utensils },
         { key: 'olovrant', label: 'Olovrant', icon: Apple }
@@ -94,7 +92,7 @@ const OrderPage = () => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
-    const resetMealData = (mealKey: string) => {
+    const resetMealData = (mealKey: keyof DailyOrder) => {
         initialDataRef.current = {
             breakfast: mealKey === 'breakfast' ? JSON.stringify(currentOrder.breakfast) : initialDataRef.current?.breakfast as string,
             lunch: mealKey === 'lunch' ? JSON.stringify(currentOrder.lunch) : initialDataRef.current?.lunch as string,
@@ -229,18 +227,16 @@ const OrderPage = () => {
                             key={key}
                             title={label}
                             icon={icon}
-                            // @ts-ignore
                             isActive={activeMeals[key]}
                             onToggle={() => toggleMeal(key)}
                             copyAction={handleCopyTrigger(key)}
                         >
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {CATEGORIES.filter(category => enabledCategories.includes(category)).map(category => {
-                                    // @ts-ignore
                                     const data = currentOrder[key]?.[category];
                                     if (!data) return null;
 
-                                    const dietCount = Object.values(data.diets || {}).reduce((a: any, b: any) => a + b, 0);
+                                    const dietCount = Object.values(data.diets || {}).reduce((a: number, b: number) => a + b, 0);
                                     const availableDiets = getAvailableDiets(category);
 
                                     return (
@@ -250,7 +246,7 @@ const OrderPage = () => {
                                             menuCounts={data.menuCounts}
                                             onMenuCountChange={(menuType, val) => updateMenuCount(key, category, menuType, val)}
                                             hasDietsEnabled={availableDiets.length > 0}
-                                            dietCount={dietCount as number}
+                                            dietCount={dietCount}
                                             onOpenDiets={() => setActiveDietModal({ meal: key, category })}
                                         />
                                     );
@@ -269,9 +265,7 @@ const OrderPage = () => {
                     onClose={() => setActiveDietModal(null)}
                     categoryLabel={activeDietModal.category}
                     enabledDiets={getAvailableDiets(activeDietModal.category)}
-                    // @ts-ignore
                     diets={currentOrder[activeDietModal.meal][activeDietModal.category].diets}
-                    // @ts-ignore
                     maxPortions={currentOrder[activeDietModal.meal][activeDietModal.category].menuCounts?.['A'] || 0}
                     onUpdateDiet={(diet, count) => updateDiet(activeDietModal.meal, activeDietModal.category, diet, count)}
                 />

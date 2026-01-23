@@ -10,15 +10,23 @@ interface DaySelectorProps {
 const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
     const dateObj = new Date(selectedDate);
 
+    const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+
     const handlePrev = () => {
         const newDate = new Date(dateObj);
         newDate.setDate(newDate.getDate() - 1);
+        while (isWeekend(newDate)) {
+            newDate.setDate(newDate.getDate() - 1);
+        }
         onChange(newDate.toISOString().split('T')[0]);
     };
 
     const handleNext = () => {
         const newDate = new Date(dateObj);
         newDate.setDate(newDate.getDate() + 1);
+        while (isWeekend(newDate)) {
+            newDate.setDate(newDate.getDate() + 1);
+        }
         onChange(newDate.toISOString().split('T')[0]);
     };
 
