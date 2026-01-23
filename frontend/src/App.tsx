@@ -1,20 +1,29 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppProvider } from './pages/client/context/AppContext';
+import HomePage from './pages/client/pages/HomePage';
+import OrderPage from './pages/client/pages/OrderPage';
+import Settings from './pages/client/pages/Settings';
+
 export default function App() {
   return (
-    <div className="min-h-screen bg-gray-100">
-      <header className="bg-white shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900">Zdravý Projekt</h1>
-        </div>
-      </header>
-      <main>
-        <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-          <div className="px-4 py-6 sm:px-0">
-            <div className="border-4 border-dashed border-gray-200 rounded-lg h-96 flex items-center justify-center">
-              <p className="text-gray-500">Welcome to Zdravý Projekt</p>
+    <AppProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Navigate to="/home" replace />} />
+          <Route path="/home" element={<HomePage />} />
+          <Route path="/order" element={
+            <div className="min-h-screen bg-slate-50">
+              <OrderPage />
             </div>
-          </div>
-        </div>
-      </main>
-    </div>
+          } />
+          <Route path="/settings" element={
+            <div className="min-h-screen bg-slate-50">
+              <Settings />
+            </div>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </AppProvider>
   );
 }
+
