@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, Calendar, UtensilsCrossed, History, Clock } from 'lucide-react';
+import { useApp } from "../context/AppContext";
 import OrderSummaryModal from '../components/order/OrderSummaryModal';
 
 import { CategoryData } from '../services/OrderService';
@@ -16,6 +17,7 @@ const HomePage = () => {
     const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
+    const { logout } = useApp(); // Assuming useApp exposes logout from AuthContext, wait, check AppContext
 
     useEffect(() => {
         // Load all orders from localStorage
@@ -98,11 +100,19 @@ const HomePage = () => {
                         <h1 className="text-3xl font-bold text-slate-900 mb-1">Objednávky jedál</h1>
                         <p className="text-slate-600">Vitajte späť! Tu je prehľad vašich objednávok.</p>
                     </div>
-                    <Link to="/settings">
-                        <button className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
-                            Nastavenia
+                    <div className="flex gap-4">
+                        <Link to="/settings">
+                            <button className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
+                                Nastavenia
+                            </button>
+                        </Link>
+                        <button 
+                            onClick={logout}
+                            className="text-sm font-medium text-red-500 hover:text-red-700 transition-colors"
+                        >
+                            Odhlásiť sa
                         </button>
-                    </Link>
+                    </div>
                 </div>
 
                 {/* New Order Button - Redesigned */}

@@ -167,14 +167,25 @@ export const useOrder = () => {
         setCurrentOrder(orderWithStatus);
 
         try {
-            await fetch('http://localhost:8000/api/orders/', {
+            const token = localStorage.getItem("access_token");
+            const response = await fetch('http://localhost:8000/api/orders/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ date, status: 'submitted', data: payload })
             });
+            if (!response.ok) {
+                const text = await response.text();
+                console.error(`API Error: ${response.status} ${response.statusText}`, text);
+                throw new Error(text);
+            }
             console.log('Order submitted to API');
+            return true;
         } catch (e) {
             console.error('Failed to submit order to API', e);
+            throw e;
         }
     };
 
@@ -191,9 +202,13 @@ export const useOrder = () => {
 
         try {
             // Soft delete by setting status to draft and empty data
+            const token = localStorage.getItem("access_token");
             await fetch('http://localhost:8000/api/orders/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({ date, status: 'draft', data: empty })
             });
             console.log('Order deleted/reset on API');
