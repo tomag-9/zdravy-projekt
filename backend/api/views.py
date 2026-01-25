@@ -4,6 +4,7 @@ from rest_framework.response import Response
 
 from .models import DailyOrder
 from .serializers import DailyOrderSerializer
+from .serializers_user import UserProfileSerializer
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -31,3 +32,28 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             return Response(
                 {"data": {}}, status=status.HTTP_200_OK
             )  # Return empty struct if not found
+
+
+class UserProfileViewSet(viewsets.ViewSet):
+    """
+    ViewSet for user profile management.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=["get", "patch"], url_path="profile")
+    def profile(self, request):
+        """Get or update current user's profile"""
+        if request.method == "GET":
+            serializer = UserProfileSerializer(request.user)
+            return Response(serializer.data)
+        
+        elif request.method == "PATCH":
+            serializer = UserProfileSerializer(
+                request.user, 
+                data=request.data, 
+                partial=True
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

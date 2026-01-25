@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/auth';
 import HomePage from './pages/client/pages/HomePage';
 import OrderPage from './pages/client/pages/OrderPage';
 import Settings from './pages/client/pages/Settings';
+import ProfilePage from './pages/client/pages/ProfilePage';
 import LoginPage from './pages/LoginPage';
 
 const ProtectedRoute = () => {
@@ -22,6 +23,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/" element={<Navigate to="/home" replace />} />
               <Route path="/home" element={<HomePage />} />
+              <Route path="/profile" element={<ProfilePage />} />
               <Route path="/order" element={
                 <div className="min-h-screen bg-slate-50">
                   <OrderPage />

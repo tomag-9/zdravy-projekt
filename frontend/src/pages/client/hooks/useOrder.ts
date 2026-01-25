@@ -167,7 +167,7 @@ export const useOrder = () => {
         setCurrentOrder(orderWithStatus);
 
         try {
-            const token = localStorage.getItem("access_token");
+            const token = sessionStorage.getItem("access_token");
             const response = await fetch('http://localhost:8000/api/orders/', {
                 method: 'POST',
                 headers: { 
@@ -202,7 +202,7 @@ export const useOrder = () => {
 
         try {
             // Soft delete by setting status to draft and empty data
-            const token = localStorage.getItem("access_token");
+            const token = sessionStorage.getItem("access_token");
             await fetch('http://localhost:8000/api/orders/', {
                 method: 'POST',
                 headers: { 
