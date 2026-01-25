@@ -25,7 +25,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     # Local apps
-    'api',
+    "api",
 ]
 
 MIDDLEWARE = [
@@ -74,7 +74,8 @@ DATABASES = {
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
+        "NAME": "django.contrib.auth.password_validation."
+        "UserAttributeSimilarityValidator",
     },
     {
         "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",

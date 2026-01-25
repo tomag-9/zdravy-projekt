@@ -2,8 +2,8 @@
 Factory Boy factories for test data generation.
 """
 
-import factory
-from factory.django import DjangoModelFactory
+# import factory
+# from factory.django import DjangoModelFactory
 
 # Example factory
 # class UserFactory(DjangoModelFactory):

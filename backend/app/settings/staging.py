@@ -2,7 +2,9 @@
 Staging settings - mirror production as closely as possible.
 """
 
-from .base import *
+import os
+
+from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
