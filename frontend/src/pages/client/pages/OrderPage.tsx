@@ -8,7 +8,8 @@ import DietSelector from '../components/order/DietSelector';
 import OrderSummary from '../components/order/OrderSummary';
 import { Coffee, Utensils, Apple, Check, Trash2, ArrowLeft } from 'lucide-react';
 import { Switch } from '../components/ui/Switch';
-import { DailyOrder } from '../services/OrderService';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
+import OrderService, { DailyOrder } from '../services/OrderService';
 
 const OrderPage = () => {
     const [searchParams] = useSearchParams();
@@ -17,16 +18,43 @@ const OrderPage = () => {
         activeMeals, toggleMeal,
         currentOrder, updateMenuCount, updateDiet,
         enabledCategories, settings, updateSettings,
-        clearMeal, getAvailableDiets
+        clearMeal, getAvailableDiets, submitOrder
     } = useApp();
 
-    const [activeDietModal, setActiveDietModal] = useState<{ meal: keyof DailyOrder, category: string } | null>(null);
+    const [activeDietModal, setActiveDietModal] = useState<{ meal: 'breakfast' | 'lunch' | 'olovrant', category: string } | null>(null);
     const [showToast, setShowToast] = useState(false);
+    const [showUnsavedModal, setShowUnsavedModal] = useState(false);
+    const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
     const [dataChangedState, setDataChangedState] = useState({
         breakfast: false,
         lunch: false,
         olovrant: false
     });
+
+    // Simple navigation blocking for internal links
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            const link = (e.target as Element).closest('a');
+            const button = (e.target as Element).closest('button');
+            const isSubmit = button && button.innerText.includes('Odoslať');
+
+            // Allow if submitted recently or clean state (simplified check)
+            if (!link || isSubmit) return;
+
+            // Check if order is draft/dirty
+            if (currentOrder.status !== 'submitted') {
+                const href = link.getAttribute('href');
+                if (href && !href.startsWith('#')) {
+                    e.preventDefault();
+                    setPendingNavigation(href);
+                    setShowUnsavedModal(true);
+                }
+            }
+        };
+
+        document.addEventListener('click', handleClick, true);
+        return () => document.removeEventListener('click', handleClick, true);
+    }, [currentOrder.status]);
 
     const initialDataRef = useRef<{ breakfast: string, lunch: string, olovrant: string } | null>(null);
     const dateKeyRef = useRef(selectedDate);
@@ -80,16 +108,22 @@ const OrderPage = () => {
         }
     }, [dataChangedState, settings.copyBreakfastFromPrevLunch, settings.copyOlovrantFromLunch, updateSettings]);
 
-    const meals: { key: keyof DailyOrder; label: string; icon: any }[] = [
+    const meals: { key: keyof DailyOrder; label: string; icon: React.ElementType }[] = [
         { key: 'breakfast', label: 'Raňajky', icon: Coffee },
         { key: 'lunch', label: 'Obed', icon: Utensils },
         { key: 'olovrant', label: 'Olovrant', icon: Apple }
     ];
 
-    const handleSubmit = () => {
-        setShowToast(true);
-        setTimeout(() => setShowToast(false), 3000);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+    const handleSubmit = async () => {
+        try {
+            await submitOrder(selectedDate);
+            setShowToast(true);
+            setTimeout(() => setShowToast(false), 3000);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        } catch (e) {
+            console.error(e);
+            alert('Nepodarilo sa odoslať objednávku.');
+        }
     };
 
     const resetMealData = (mealKey: keyof DailyOrder) => {
@@ -119,6 +153,7 @@ const OrderPage = () => {
                                     setDataChangedState(prev => ({ ...prev, breakfast: false }));
                                     setTimeout(() => {
                                         initialDataRef.current = {
+                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                             ...((initialDataRef.current) as any),
                                             breakfast: JSON.stringify(currentOrder.breakfast)
                                         };
@@ -210,11 +245,6 @@ const OrderPage = () => {
                             <p className="text-sm sm:text-base text-slate-500">Správa denného menu a diét</p>
                         </div>
                     </div>
-                    <Link to="/settings">
-                        <button className="inline-flex items-center px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm self-start">
-                            ⚙️ Nastavenia
-                        </button>
-                    </Link>
                 </div>
             </div>
 
@@ -222,38 +252,52 @@ const OrderPage = () => {
                 <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} />
 
                 <div className="space-y-6">
-                    {meals.map(({ key, label, icon }) => (
-                        <MealCard
-                            key={key}
-                            title={label}
-                            icon={icon}
-                            isActive={activeMeals[key]}
-                            onToggle={() => toggleMeal(key)}
-                            copyAction={handleCopyTrigger(key)}
-                        >
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {CATEGORIES.filter(category => enabledCategories.includes(category)).map(category => {
-                                    const data = currentOrder[key]?.[category];
-                                    if (!data) return null;
+                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                    {(meals as { key: 'breakfast' | 'lunch' | 'olovrant'; label: string; icon: any }[]).map(({ key, label, icon }) => {
+                        // Check deadline - assuming OrderService is available
+                        const isEditable = OrderService.checkDeadline(selectedDate, key);
 
-                                    const dietCount = Object.values(data.diets || {}).reduce((a: number, b: number) => a + b, 0);
-                                    const availableDiets = getAvailableDiets(category);
+                        return (
+                            <MealCard
+                                key={key}
+                                title={label}
+                                icon={icon}
+                                isActive={activeMeals[key]}
+                                onToggle={() => isEditable && toggleMeal(key)} // Block toggle if not editable
+                                copyAction={isEditable ? handleCopyTrigger(key) : null} // Hide copy if not editable
+                                className={!isEditable ? 'opacity-60 pointer-events-none grayscale' : ''} // Visual feedback
+                            >
+                                {!isEditable && (
+                                    <div className="mb-4 bg-amber-50 text-amber-800 px-3 py-2 rounded-lg text-sm flex items-center gap-2 border border-amber-100">
+                                        <span className="font-bold">Termín uplynul</span>
+                                        <span>- Objednávka pre toto jedlo na zvolený deň už bola uzavretá.</span>
+                                    </div>
+                                )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {CATEGORIES.filter(category => enabledCategories.includes(category)).map(category => {
+                                        const data = currentOrder[key]?.[category];
+                                        if (!data) return null;
 
-                                    return (
-                                        <CategoryRow
-                                            key={category}
-                                            label={category}
-                                            menuCounts={data.menuCounts}
-                                            onMenuCountChange={(menuType, val) => updateMenuCount(key, category, menuType, val)}
-                                            hasDietsEnabled={availableDiets.length > 0}
-                                            dietCount={dietCount}
-                                            onOpenDiets={() => setActiveDietModal({ meal: key, category })}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        </MealCard>
-                    ))}
+                                        const dietCount = (Object.values(data.diets || {}) as number[]).reduce((a: number, b: number) => a + b, 0);
+                                        const availableDiets = getAvailableDiets(category);
+
+                                        return (
+                                            <CategoryRow
+                                                key={category}
+                                                label={category}
+                                                menuCounts={data.menuCounts}
+                                                onMenuCountChange={(menuType, val) => isEditable && updateMenuCount(key, category, menuType, val)}
+                                                hasDietsEnabled={availableDiets.length > 0}
+                                                dietCount={dietCount}
+                                                onOpenDiets={() => isEditable && setActiveDietModal({ meal: key, category })}
+                                                disabled={!isEditable} // Assuming CategoryRow supports disabled prop, if not we add it
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </MealCard>
+                        )
+                    })}
                 </div>
 
                 <OrderSummary onSubmit={handleSubmit} />
@@ -265,9 +309,9 @@ const OrderPage = () => {
                     onClose={() => setActiveDietModal(null)}
                     categoryLabel={activeDietModal.category}
                     enabledDiets={getAvailableDiets(activeDietModal.category)}
-                    diets={currentOrder[activeDietModal.meal][activeDietModal.category].diets}
-                    maxPortions={currentOrder[activeDietModal.meal][activeDietModal.category].menuCounts?.['A'] || 0}
-                    onUpdateDiet={(diet, count) => updateDiet(activeDietModal.meal, activeDietModal.category, diet, count)}
+                    diets={currentOrder[activeDietModal.meal as 'breakfast' | 'lunch' | 'olovrant'][activeDietModal.category].diets}
+                    maxPortions={currentOrder[activeDietModal.meal as 'breakfast' | 'lunch' | 'olovrant'][activeDietModal.category].menuCounts?.['A'] || 0}
+                    onUpdateDiet={(diet, count) => updateDiet(activeDietModal.meal as 'breakfast' | 'lunch' | 'olovrant', activeDietModal.category, diet, count)}
                 />
             )}
 
@@ -277,6 +321,21 @@ const OrderPage = () => {
                     <span className="font-medium text-sm">Objednávka bola úspešne uložená.</span>
                 </div>
             )}
+
+            <ConfirmationModal
+                isOpen={showUnsavedModal}
+                onClose={() => setShowUnsavedModal(false)}
+                onConfirm={() => {
+                    if (pendingNavigation) {
+                        window.location.href = pendingNavigation;
+                    }
+                }}
+                title="Neuložené zmeny"
+                description="Máte rozpracovanú objednávku. Naozaj chcete odísť? Vaše zmeny ostanú iba ako koncept."
+                confirmText="Odísť"
+                cancelText="Zostať"
+                variant="warning"
+            />
         </div>
     );
 };

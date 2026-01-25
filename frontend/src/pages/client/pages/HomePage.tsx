@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Plus, Calendar, UtensilsCrossed, History, Clock } from 'lucide-react';
 import OrderSummaryModal from '../components/order/OrderSummaryModal';
 
+import { CategoryData } from '../services/OrderService';
+
 interface OrderSummary {
     date: string;
     totalPortions: number;
@@ -12,6 +14,7 @@ interface OrderSummary {
 const HomePage = () => {
     const [orders, setOrders] = useState<OrderSummary[]>([]);
     const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
 
     useEffect(() => {
@@ -24,14 +27,19 @@ const HomePage = () => {
                 try {
                     const data = JSON.parse(localStorage.getItem(key) || '{}');
 
+                    // Filter out drafts - only show submitted orders
+                    if (data.status !== 'submitted') continue;
+
                     let total = 0;
                     const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
 
                     ['breakfast', 'lunch', 'olovrant'].forEach(meal => {
                         if (data[meal]) {
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
                             Object.values(data[meal]).forEach((cat: any) => {
-                                const menuCounts = cat.menuCounts || {};
-                                const count = Object.values(menuCounts).reduce((a: any, b: any) => a + b, 0) as number;
+                                const c = cat as CategoryData;
+                                const menuCounts = c.menuCounts || {};
+                                const count = (Object.values(menuCounts) as number[]).reduce((a, b) => a + b, 0);
                                 total += count;
                                 // @ts-expect-error indexing
                                 counts[meal] += count;

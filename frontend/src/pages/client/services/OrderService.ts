@@ -18,6 +18,7 @@ export interface MealData {
 }
 
 export interface DailyOrder {
+    status?: 'draft' | 'submitted';
     breakfast: MealData;
     lunch: MealData;
     olovrant: MealData;
@@ -26,16 +27,16 @@ export interface DailyOrder {
 class OrderService {
     static createEmptyCategory(categoryName: string): CategoryData {
         const availableMenus = GROUP_CONFIG[categoryName] || ['A'];
-        const menuCounts = availableMenus.reduce((acc: any, menu: string) => ({ ...acc, [menu]: 0 }), {});
+        const menuCounts = availableMenus.reduce((acc, menu) => ({ ...acc, [menu]: 0 }), {} as MenuCounts);
 
         return {
             menuCounts,
-            diets: DIETS.reduce((acc: any, diet: string) => ({ ...acc, [diet]: 0 }), {})
+            diets: DIETS.reduce((acc, diet) => ({ ...acc, [diet]: 0 }), {} as DietCounts)
         };
     }
 
     static createEmptyMeal(): MealData {
-        return CATEGORIES.reduce((acc: any, cat: string) => ({ ...acc, [cat]: this.createEmptyCategory(cat) }), {});
+        return CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat]: this.createEmptyCategory(cat) }), {} as MealData);
     }
 
     static getAvailableDiets(categoryName: string, enabledDiets: string[]): string[] {
@@ -48,7 +49,7 @@ class OrderService {
         return enabledDiets;
     }
 
-    static updateMenuCount(currentOrder: DailyOrder, mealKey: keyof DailyOrder, category: string, menuType: string, count: number): DailyOrder {
+    static updateMenuCount(currentOrder: DailyOrder, mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number): DailyOrder {
         const newCount = Math.max(0, count);
         const categoryData = currentOrder[mealKey][category];
 
@@ -59,7 +60,7 @@ class OrderService {
 
         const newDiets = { ...categoryData.diets };
         if (menuType === 'A') {
-            const totalDiets = Object.values(newDiets).reduce((a: number, b: number) => a + b, 0);
+            const totalDiets = (Object.values(newDiets) as number[]).reduce((a: number, b: number) => a + b, 0);
             if (newCount < totalDiets) {
                 let diff = totalDiets - newCount;
                 for (const diet of DIETS) {
@@ -82,14 +83,14 @@ class OrderService {
         };
     }
 
-    static updateDiet(currentOrder: DailyOrder, mealKey: keyof DailyOrder, category: string, diet: string, count: number): DailyOrder {
+    static updateDiet(currentOrder: DailyOrder, mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number): DailyOrder {
         const categoryData = currentOrder[mealKey][category];
         const menuACount = categoryData.menuCounts?.['A'] || 0;
 
         const newCount = Math.max(0, count);
         const totalOtherDiets = Object.entries(categoryData.diets)
             .filter(([d]) => d !== diet)
-            .reduce((sum, [, c]) => sum + c, 0);
+            .reduce((sum, [, c]) => sum + (c as number), 0);
 
         if (totalOtherDiets + newCount > menuACount) return currentOrder;
 
@@ -126,6 +127,7 @@ class OrderService {
             return Array.isArray(data) ? data : schema;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const result: any = { ...schema };
         Object.keys(schema).forEach(key => {
             if (key in data) {

@@ -4,6 +4,7 @@ import { CATEGORIES, DIETS } from '../config/constants';
 
 // Helper for safe localStorage parsing
 // Now using OrderService.enforceStructure
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const safeParse = (key: string, fallback: any) => {
     try {
         const saved = localStorage.getItem(key);
@@ -34,7 +35,8 @@ export const useOrder = () => {
 
     const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
         // Use Factory for initial state
-        const initial = {
+        const initial: DailyOrder = {
+            status: 'draft',
             breakfast: OrderService.createEmptyMeal(),
             lunch: OrderService.createEmptyMeal(),
             olovrant: OrderService.createEmptyMeal()
@@ -122,19 +124,20 @@ export const useOrder = () => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
 
-    const updateMenuCount = (mealKey: keyof DailyOrder, category: string, menuType: string, count: number) => {
-        setCurrentOrder((prev: DailyOrder) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
+    const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
+        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
     };
 
-    const updateDiet = (mealKey: keyof DailyOrder, category: string, diet: string, count: number) => {
-        setCurrentOrder((prev: DailyOrder) => OrderService.updateDiet(prev, mealKey, category, diet, count));
+    const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
+        setCurrentOrder((prev) => OrderService.updateDiet(prev, mealKey, category, diet, count));
     };
 
-    const updateSettings = (key: string, value: any) => {
+    const updateSettings = (key: string, value: boolean) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         setSettings((prev: any) => ({ ...prev, [key]: value }));
     };
 
-    const clearMeal = (mealKey: keyof DailyOrder) => {
+    const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
         setCurrentOrder((prev) => ({
             ...prev,
             [mealKey]: OrderService.createEmptyMeal()
@@ -142,6 +145,62 @@ export const useOrder = () => {
     };
 
     const getAvailableDiets = (categoryName: string) => OrderService.getAvailableDiets(categoryName, enabledDiets);
+
+    const submitOrder = async (date: string) => {
+        // Prepare payload - only active meals
+        const payload = {
+            breakfast: activeMeals.breakfast ? currentOrder.breakfast : OrderService.createEmptyMeal(),
+            lunch: activeMeals.lunch ? currentOrder.lunch : OrderService.createEmptyMeal(),
+            olovrant: activeMeals.olovrant ? currentOrder.olovrant : OrderService.createEmptyMeal(),
+        };
+
+        const orderWithStatus: DailyOrder = {
+            ...currentOrder,
+            ...payload,
+            status: 'submitted'
+        };
+
+        // Update local state first
+        setCurrentOrder(orderWithStatus);
+
+        // Update local state first
+        setCurrentOrder(orderWithStatus);
+
+        try {
+            await fetch('http://localhost:8000/api/orders/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, status: 'submitted', data: payload })
+            });
+            console.log('Order submitted to API');
+        } catch (e) {
+            console.error('Failed to submit order to API', e);
+        }
+    };
+
+    const deleteOrder = async (date: string) => {
+        // Clear local state
+        const empty: DailyOrder = {
+            status: 'draft',
+            breakfast: OrderService.createEmptyMeal(),
+            lunch: OrderService.createEmptyMeal(),
+            olovrant: OrderService.createEmptyMeal()
+        };
+        setCurrentOrder(empty);
+        setActiveMeals({ breakfast: false, lunch: false, olovrant: false });
+
+        try {
+            // Soft delete by setting status to draft and empty data
+            await fetch('http://localhost:8000/api/orders/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date, status: 'draft', data: empty })
+            });
+            console.log('Order deleted/reset on API');
+        } catch (e) {
+            console.error('Failed to delete order on API', e);
+        }
+    };
 
     return {
         enabledDiets, toggleDiet,
@@ -152,6 +211,7 @@ export const useOrder = () => {
         updateMenuCount, updateDiet,
         getAvailableDiets,
         prevDayLunches,
-        clearMeal
+        clearMeal,
+        submitOrder, deleteOrder
     };
 };

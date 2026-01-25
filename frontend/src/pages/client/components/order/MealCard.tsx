@@ -18,10 +18,11 @@ const MealCard = ({
     onToggle,
     copyAction,
     children,
-    icon: Icon
-}: MealCardProps) => {
+    icon: Icon,
+    className
+}: MealCardProps & { className?: string }) => {
     return (
-        <Card className={cn("transition-all duration-300", isActive ? "ring-2 ring-indigo-500/10 shadow-md" : "opacity-90")}>
+        <Card className={cn("transition-all duration-300", isActive ? "ring-2 ring-indigo-500/10 shadow-md" : "opacity-90", className)}>
             <CardHeader className="flex flex-row items-center justify-between py-3">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2 rounded-lg transition-colors", isActive ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500")}>

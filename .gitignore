@@ -81,3 +81,7 @@ logs/
 # MD
 agents.md
 .agent/
+
+scripts/
+.venv/
+venv/

@@ -10,9 +10,13 @@ interface MenuCounterProps {
     dietCount: number;
 }
 
-const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount }: MenuCounterProps) => {
+const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount }: MenuCounterProps & { disabled?: boolean }) => {
+    // Determine if disabled implicitly via props from parent (onChange check) or explicitly if we passed it (we didn't yet, but let's handle it)
+    // Actually, we modified onChange in parent to be no-op. But visual disabled state is nice.
+    // Let's assume we want to add visual disabled state.
+
     return (
-        <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+        <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 opacity-100 group-disabled:opacity-50">
             <div className="flex items-center gap-2">
                 <span className="font-medium text-slate-600 w-16">Menu {type}</span>
                 {type === 'A' && onOpenDiets && (
@@ -32,7 +36,7 @@ const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount }: MenuCoun
                     size="icon"
                     className="w-8 h-8 rounded-full border-slate-300 hover:bg-white hover:border-indigo-300 hover:text-indigo-600"
                     onClick={() => onChange(count - 1)}
-                    disabled={count <= 0}
+                    disabled={count <= 0} // We rely on parent blocking calls for general disable, but we can add better props later if needed
                 >
                     <Minus className="w-4 h-4" />
                 </Button>
@@ -64,6 +68,7 @@ interface CategoryRowProps {
     dietCount: number;
     onOpenDiets: () => void;
     hasDietsEnabled: boolean;
+    disabled?: boolean;
 }
 
 const CategoryRow = ({
@@ -72,7 +77,8 @@ const CategoryRow = ({
     onMenuCountChange,
     dietCount,
     onOpenDiets,
-    hasDietsEnabled
+    hasDietsEnabled,
+    disabled
 }: CategoryRowProps) => {
     // Determine which menus to show based on the keys in menuCounts
     const menus = Object.keys(menuCounts || {});
@@ -94,8 +100,8 @@ const CategoryRow = ({
                         key={menuType}
                         type={menuType}
                         count={menuCounts[menuType]}
-                        onChange={(val) => onMenuCountChange(menuType, val)}
-                        onOpenDiets={hasDietsEnabled && menuType === 'A' ? onOpenDiets : null}
+                        onChange={(val) => !disabled && onMenuCountChange(menuType, val)}
+                        onOpenDiets={hasDietsEnabled && menuType === 'A' && !disabled ? onOpenDiets : null}
                         dietCount={dietCount}
                     />
                 ))}

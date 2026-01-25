@@ -1,26 +1,31 @@
-import { X, FileCheck, AlertCircle, Edit } from 'lucide-react';
+import { X, FileCheck, AlertCircle, Edit, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useApp } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
-import OrderService from '../../services/OrderService';
+import OrderService, { DailyOrder } from '../../services/OrderService';
+
+import ConfirmationModal from '../ui/ConfirmationModal';
+import { useState } from 'react';
 
 interface OrderSummaryModalProps {
     isOpen: boolean;
     onClose: () => void;
     orderDate: string;
-    orderData: any;
+    orderData: DailyOrder;
 }
 
 const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData }: OrderSummaryModalProps) => {
     const navigate = useNavigate();
-    const { setSelectedDate } = useApp();
+    const { setSelectedDate, deleteOrder } = useApp();
+    const [deleteConfirmation, setDeleteConfirmation] = useState(false);
 
     if (!isOpen || !orderData) return null;
 
     const isEditable = (mealKey: string) => OrderService.checkDeadline(orderDate, mealKey);
 
     const getMealSummary = (mealKey: string) => {
-        const mealData = orderData[mealKey];
+        const key = mealKey as 'breakfast' | 'lunch' | 'olovrant';
+        const mealData = orderData[key];
         if (!mealData) return null;
 
         let total = 0;
@@ -28,7 +33,7 @@ const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData }: OrderSumma
 
         Object.keys(mealData).forEach(cat => {
             const counts = mealData[cat].menuCounts || {};
-            const catTotal = Object.values(counts).reduce((a: any, b: any) => a + b, 0) as number;
+            const catTotal = (Object.values(counts) as number[]).reduce((a, b) => a + b, 0);
             if (catTotal > 0) {
                 total += catTotal;
                 details.push(`${cat}: ${catTotal}`);
@@ -154,18 +159,40 @@ const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData }: OrderSumma
                             Zavrieť
                         </Button>
                         {(isEditable('breakfast') || isEditable('lunch') || isEditable('olovrant')) && (
-                            <Button
-                                className="flex-1 gap-2 shadow-indigo-200"
-                                onClick={handleEdit}
-                            >
-                                <Edit className="w-4 h-4" />
-                                Upraviť
-                            </Button>
+                            <>
+                                <Button
+                                    className="flex-1 gap-2 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 border shadow-sm"
+                                    onClick={() => setDeleteConfirmation(true)}
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    Vymazať
+                                </Button>
+                                <Button
+                                    className="flex-1 gap-2 shadow-indigo-200"
+                                    onClick={handleEdit}
+                                >
+                                    <Edit className="w-4 h-4" />
+                                    Upraviť
+                                </Button>
+                            </>
                         )}
                     </div>
                 </div>
             </div>
-        </div>
+
+            <ConfirmationModal
+                isOpen={deleteConfirmation}
+                onClose={() => setDeleteConfirmation(false)}
+                onConfirm={() => {
+                    deleteOrder(orderDate);
+                    onClose();
+                }}
+                title="Vymazať objednávku"
+                description="Naozaj chcete vymazať celú objednávku pre tento deň? Táto akcia je nevratná."
+                confirmText="Vymazať"
+                variant="danger"
+            />
+        </div >
     );
 };
 
