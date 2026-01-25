@@ -1,0 +1,8 @@
+[flake8]
+max-line-length = 88
+extend-ignore = E203
+exclude = .git,__pycache__,docs/source/conf.py,old,build,dist,.venv,migrations
+ignore = F401
+per-file-ignores =
+    # Imported keywords in settings files
+    app/settings/*.py:F403,F405

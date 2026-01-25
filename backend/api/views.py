@@ -1,6 +1,7 @@
-from rest_framework import viewsets, permissions, status
-from rest_framework.response import Response
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.response import Response
+
 from .models import DailyOrder
 from .serializers import DailyOrderSerializer
 
@@ -14,11 +15,14 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         # Check against AnonymousUser explicitly just in case
         if self.request.user and self.request.user.is_authenticated:
             return self.request.user
-            
+
         # Fallback for demo: get or create 'demo' user
         from django.contrib.auth.models import User
+
         # Using get_or_create to avoid race conditions or IntegrityErrors
-        user, _ = User.objects.get_or_create(username='demo', defaults={'email': 'demo@example.com'})
+        user, _ = User.objects.get_or_create(
+            username="demo", defaults={"email": "demo@example.com"}
+        )
         return user
 
     def get_queryset(self):
