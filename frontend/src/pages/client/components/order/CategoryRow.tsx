@@ -1,6 +1,6 @@
 import { Minus, Plus, Utensils } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../../lib/utils';
 
 interface MenuCounterProps {
     type: string;

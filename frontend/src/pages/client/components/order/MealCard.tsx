@@ -1,6 +1,6 @@
 import { Info } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../../lib/utils';
 import { ReactNode, ComponentType } from 'react';
 
 interface MealCardProps {

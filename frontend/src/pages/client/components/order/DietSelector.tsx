@@ -1,7 +1,7 @@
 import { X, Check } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { cn } from '../../lib/utils';
+import { cn } from '../../../../lib/utils';
 
 interface DietSelectorProps {
     isOpen: boolean;

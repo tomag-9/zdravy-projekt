@@ -3,7 +3,7 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useApp } from '../../context/AppContext';
 import { DailyOrder, CategoryData } from '../../services/OrderService';
-import { getSlovakPlural } from '../../lib/utils';
+import { getSlovakPlural } from '../../../../lib/utils';
 
 interface OrderSummaryProps {
     onSubmit: () => void;
