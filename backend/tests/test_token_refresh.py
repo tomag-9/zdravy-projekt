@@ -11,7 +11,7 @@ class TestTokenRefresh:
     def test_refresh_token_success(self, api_client):
         """Valid refresh token returns new access token"""
         # Create user and get tokens
-        user = User.objects.create_user("testuser", "test@example.com", "testpass")
+        User.objects.create_user("testuser", "test@example.com", "testpass")
 
         # Get initial token pair
         auth_url = reverse("token_obtain_pair")
@@ -40,7 +40,7 @@ class TestTokenRefresh:
     def test_access_token_works_after_refresh(self, api_client):
         """New access token from refresh works for authenticated requests"""
         # Create user and get tokens
-        user = User.objects.create_user("testuser", "test@example.com", "testpass")
+        User.objects.create_user("testuser", "test@example.com", "testpass")
 
         # Get initial tokens
         auth_url = reverse("token_obtain_pair")

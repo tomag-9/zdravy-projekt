@@ -89,3 +89,4 @@ venv/
 
 #sh
 rebuild-dev.sh
+check-all.sh
