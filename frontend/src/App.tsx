@@ -14,9 +14,9 @@ const ProtectedRoute = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppProvider>
-        <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             
@@ -36,9 +36,9 @@ export default function App() {
               } />
             </Route>
           </Routes>
-        </BrowserRouter>
-      </AppProvider>
-    </AuthProvider>
+        </AppProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

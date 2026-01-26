@@ -7,8 +7,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'date_joined', 'groups']
-        read_only_fields = ['id', 'username', 'date_joined']
+        fields = [
+            "id",
+            "username",
+            "email",
+            "first_name",
+            "last_name",
+            "date_joined",
+            "groups",
+        ]
+        read_only_fields = ["id", "username", "date_joined"]
 
     def get_groups(self, obj):
         return [group.name for group in obj.groups.all()]

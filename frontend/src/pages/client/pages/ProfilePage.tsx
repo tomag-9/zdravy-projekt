@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, User, Mail, Shield, Calendar, Save } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
@@ -15,7 +15,7 @@ interface UserProfile {
 }
 
 const ProfilePage = () => {
-    const { token } = useAuth();
+    const { apiFetch } = useAuth();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -27,17 +27,9 @@ const ProfilePage = () => {
         email: ''
     });
 
-    useEffect(() => {
-        fetchProfile();
-    }, []);
-
-    const fetchProfile = async () => {
+    const fetchProfile = useCallback(async () => {
         try {
-            const response = await fetch(`${API_URL}/user/profile/`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await apiFetch(`${API_URL}/user/profile/`);
             
             if (response.ok) {
                 const data = await response.json();
@@ -53,7 +45,11 @@ const ProfilePage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [apiFetch]);
+
+    useEffect(() => {
+        fetchProfile();
+    }, [fetchProfile]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -61,11 +57,10 @@ const ProfilePage = () => {
         setMessage(null);
 
         try {
-            const response = await fetch(`${API_URL}/user/profile/`, {
+            const response = await apiFetch(`${API_URL}/user/profile/`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(formData)
             });

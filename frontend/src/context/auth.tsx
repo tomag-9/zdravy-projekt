@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -14,6 +15,7 @@ interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
+  apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,12 +23,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(sessionStorage.getItem("access_token"));
-  const [refreshTokenValue, setRefreshTokenValue] = useState<string | null>(sessionStorage.getItem("refresh_token"));
+  const navigate = useNavigate();
+
+  // Logout function
+  const logout = useCallback(() => {
+    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem("refresh_token");
+    setToken(null);
+    setUser(null);
+    navigate('/login');
+  }, [navigate]);
 
   // Refresh access token using refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
     const refresh = sessionStorage.getItem("refresh_token");
-    if (!refresh) return false;
+    if (!refresh) {
+        logout();
+        return false;
+    }
 
     try {
       const response = await fetch(`${API_URL}/token/refresh/`, {
@@ -39,9 +53,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
         sessionStorage.setItem("access_token", data.access);
         setToken(data.access);
+        // If the backend rotates refresh tokens, update it here
+        if (data.refresh) {
+            sessionStorage.setItem("refresh_token", data.refresh);
+        }
         return true;
       } else {
-        // Refresh token is invalid, logout
         logout();
         return false;
       }
@@ -50,7 +67,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       logout();
       return false;
     }
-  }, []);
+  }, [logout]);
+
+  // Custom fetch wrapper that handles auth headers and token refresh
+  const apiFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const currentToken = sessionStorage.getItem("access_token");
+    const headers = new Headers(init?.headers);
+    
+    if (currentToken) {
+        headers.set('Authorization', `Bearer ${currentToken}`);
+    }
+
+    const config = { ...init, headers };
+    
+    // First attempt
+    let response = await fetch(input, config);
+
+    // If unauthorized, try to refresh and retry
+    if (response.status === 401) {
+        const refreshed = await refreshToken();
+        if (refreshed) {
+             const newToken = sessionStorage.getItem("access_token");
+             headers.set('Authorization', `Bearer ${newToken}`);
+             response = await fetch(input, { ...init, headers });
+        }
+    }
+    return response;
+  }, [refreshToken]);
 
   useEffect(() => {
     // Determine initial auth state
@@ -74,54 +117,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.setItem("access_token", accessToken);
     sessionStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
-    setRefreshTokenValue(refreshTokenStr);
     setUser({ username: "User" });
   };
 
-  const logout = () => {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("refresh_token");
-    setToken(null);
-    setRefreshTokenValue(null);
-    setUser(null);
-    window.location.href = '/login';
-  };
-
-  // Add an interceptor-like effect to check for 401s and auto-refresh
-  useEffect(() => {
-    const originalFetch = window.fetch;
-    window.fetch = async (...args) => {
-        const response = await originalFetch(...args);
-        
-        // If 401 and we have a refresh token, try to refresh
-        if (response.status === 401 && refreshTokenValue) {
-            const refreshed = await refreshToken();
-            if (refreshed) {
-                // Retry the original request with new token
-                const [url, options] = args;
-                const newOptions = {
-                    ...options,
-                    headers: {
-                        ...(options as RequestInit)?.headers,
-                        'Authorization': `Bearer ${sessionStorage.getItem("access_token")}`
-                    }
-                };
-                return originalFetch(url, newOptions);
-            }
-        }
-        
-        return response;
-    };
-    return () => { window.fetch = originalFetch; };
-  }, [refreshTokenValue, refreshToken]);
-
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, refreshToken }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, refreshToken, apiFetch }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

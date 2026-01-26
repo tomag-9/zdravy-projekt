@@ -6,20 +6,28 @@ import pytest
 from rest_framework.test import APIClient
 from django.contrib.auth.models import User
 
+
 @pytest.fixture
 def api_client():
     """API client fixture."""
     return APIClient()
 
+
 @pytest.fixture
 def user(db):
     """Create a test user."""
-    return User.objects.create_user(username='testuser', password='testpassword', email='test@example.com')
+    return User.objects.create_user(
+        username="testuser", password="testpassword", email="test@example.com"
+    )
+
 
 @pytest.fixture
 def other_user(db):
     """Create another test user."""
-    return User.objects.create_user(username='otheruser', password='otherpassword', email='other@example.com')
+    return User.objects.create_user(
+        username="otheruser", password="otherpassword", email="other@example.com"
+    )
+
 
 @pytest.fixture
 def authenticated_client(api_client, user):

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/auth";
 import { useNavigate } from "react-router-dom";
 
@@ -8,8 +8,14 @@ const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,14 +31,21 @@ const LoginPage: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error("Login failed");
+        if (response.status === 401 || response.status === 403) {
+            setError("Nesprávne meno alebo heslo");
+        } else if (response.status >= 500) {
+            setError("Chyba servera. Skúste to prosím znova neskôr.");
+        } else {
+            setError("Prihlásenie zlyhalo. Skúste to prosím znova.");
+        }
+        return;
       }
 
       const data = await response.json();
       login(data.access, data.refresh);
       navigate("/"); // Redirect to dashboard/home after login
     } catch (err) {
-      setError("Nesprávne meno alebo heslo");
+      setError("Nepodarilo sa pripojiť k serveru. Skontrolujte pripojenie na internet.");
     }
   };
 

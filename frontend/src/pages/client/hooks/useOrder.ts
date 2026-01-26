@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import OrderService, { DailyOrder } from '../services/OrderService';
 import { CATEGORIES, DIETS } from '../config/constants';
+import { useAuth } from '../../../context/auth';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 // Helper for safe localStorage parsing
 // Now using OrderService.enforceStructure
@@ -17,6 +20,7 @@ const safeParse = (key: string, fallback: any) => {
 };
 
 export const useOrder = () => {
+    const { apiFetch } = useAuth();
     // Settings
     const [enabledDiets, setEnabledDiets] = useState<string[]>(() => safeParse('enabledDiets', [...DIETS]));
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
@@ -163,22 +167,18 @@ export const useOrder = () => {
         // Update local state first
         setCurrentOrder(orderWithStatus);
 
-        // Update local state first
-        setCurrentOrder(orderWithStatus);
-
         try {
-            const token = sessionStorage.getItem("access_token");
-            const response = await fetch('http://localhost:8000/api/orders/', {
+            const response = await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ date, status: 'submitted', data: payload })
             });
+
             if (!response.ok) {
                 const text = await response.text();
-                console.error(`API Error: ${response.status} ${response.statusText}`, text);
+                // console.error(`API Error: ${response.status} ${response.statusText}`, text);
                 throw new Error(text);
             }
             console.log('Order submitted to API');
@@ -202,12 +202,10 @@ export const useOrder = () => {
 
         try {
             // Soft delete by setting status to draft and empty data
-            const token = sessionStorage.getItem("access_token");
-            await fetch('http://localhost:8000/api/orders/', {
+            await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ date, status: 'draft', data: empty })
             });
