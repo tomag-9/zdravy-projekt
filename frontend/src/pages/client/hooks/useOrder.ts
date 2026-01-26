@@ -170,7 +170,7 @@ export const useOrder = () => {
         try {
             const response = await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ date, status: 'submitted', data: payload })
@@ -178,7 +178,6 @@ export const useOrder = () => {
 
             if (!response.ok) {
                 const text = await response.text();
-                // console.error(`API Error: ${response.status} ${response.statusText}`, text);
                 throw new Error(text);
             }
             console.log('Order submitted to API');
@@ -204,7 +203,7 @@ export const useOrder = () => {
             // Soft delete by setting status to draft and empty data
             await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
-                headers: { 
+                headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ date, status: 'draft', data: empty })

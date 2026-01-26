@@ -17,7 +17,7 @@ const HomePage = () => {
     const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
-    const { logout } = useApp(); // Assuming useApp exposes logout from AuthContext, wait, check AppContext
+    const { logout } = useApp();
 
     useEffect(() => {
         // Load all orders from localStorage

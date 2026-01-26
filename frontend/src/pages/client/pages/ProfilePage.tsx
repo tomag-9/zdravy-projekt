@@ -39,9 +39,12 @@ const ProfilePage = () => {
                     last_name: data.last_name || '',
                     email: data.email || ''
                 });
+            } else {
+                setMessage({ type: 'error', text: 'Nepodarilo sa načítať profil' });
             }
         } catch (error) {
             console.error('Failed to fetch profile:', error);
+            setMessage({ type: 'error', text: 'Chyba pri načítaní profilu' });
         } finally {
             setLoading(false);
         }
@@ -93,6 +96,18 @@ const ProfilePage = () => {
                 <div className="text-center">
                     <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
                     <p className="text-slate-600">Načítavam profil...</p>
+                </div>
+            </div>
+        );
+
+    }
+
+    if (!profile) {
+        return (
+             <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
+                <div className="text-center">
+                    <p className="text-red-600 mb-4">{message?.text || 'Nepodarilo sa načítať profil.'}</p>
+                    <Link to="/home" className="text-indigo-600 hover:underline">Späť na domovskú stránku</Link>
                 </div>
             </div>
         );

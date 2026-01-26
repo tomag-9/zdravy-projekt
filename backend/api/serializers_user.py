@@ -4,6 +4,7 @@ from rest_framework import serializers
 
 class UserProfileSerializer(serializers.ModelSerializer):
     groups = serializers.SerializerMethodField()
+    email = serializers.EmailField(required=True)
 
     class Meta:
         model = User

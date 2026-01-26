@@ -16,27 +16,29 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppProvider>
+
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             
             <Route element={<ProtectedRoute />}>
-              <Route path="/" element={<Navigate to="/home" replace />} />
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route path="/order" element={
-                <div className="min-h-screen bg-slate-50">
-                  <OrderPage />
-                </div>
-              } />
-              <Route path="/settings" element={
-                <div className="min-h-screen bg-slate-50">
-                  <Settings />
-                </div>
-              } />
+              <AppProvider> 
+                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/order" element={
+                  <div className="min-h-screen bg-slate-50">
+                    <OrderPage />
+                  </div>
+                } />
+                <Route path="/settings" element={
+                  <div className="min-h-screen bg-slate-50">
+                    <Settings />
+                  </div>
+                } />
+              </AppProvider>
             </Route>
           </Routes>
-        </AppProvider>
+
       </AuthProvider>
     </BrowserRouter>
   );

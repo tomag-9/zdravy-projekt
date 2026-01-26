@@ -23,6 +23,11 @@ class Command(BaseCommand):
             admin_group = Group.objects.get(name="Admin")
             admin_user.groups.add(admin_group)
             self.stdout.write(self.style.SUCCESS('Created superuser "admin"'))
+            self.stdout.write(
+                self.style.WARNING(
+                    "SECURITY WARNING: Created default 'admin' user with weak password. CHANGE IN PRODUCTION!"
+                )
+            )
         except IntegrityError:
             self.stdout.write('Superuser "admin" already exists')
         except Exception as e:
@@ -36,6 +41,11 @@ class Command(BaseCommand):
             client_group = Group.objects.get(name="Client")
             client_user.groups.add(client_group)
             self.stdout.write(self.style.SUCCESS('Created user "client"'))
+            self.stdout.write(
+                self.style.WARNING(
+                    "SECURITY WARNING: Created default 'client' user with weak password. CHANGE IN PRODUCTION!"
+                )
+            )
         except IntegrityError:
             self.stdout.write('User "client" already exists')
         except Exception as e:

@@ -42,6 +42,12 @@ const LoginPage: React.FC = () => {
       }
 
       const data = await response.json();
+      
+      if (!data.access || !data.refresh) {
+        setError("Prihlásenie zlyhalo. Neplatná odpoveď servera.");
+        return;
+      }
+
       login(data.access, data.refresh);
       navigate("/"); // Redirect to dashboard/home after login
     } catch (err) {

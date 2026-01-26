@@ -6,6 +6,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 interface User {
   username: string;
   email?: string;
+  first_name?: string;
+  last_name?: string;
+  groups?: string[];
 }
 
 interface AuthContextType {
@@ -16,6 +19,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
   apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+  fetchUserProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -95,12 +99,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return response;
   }, [refreshToken]);
 
+  const fetchUserProfile = useCallback(async () => {
+    try {
+        const response = await apiFetch(`${API_URL}/user/profile/`);
+        if (response.ok) {
+            const userData = await response.json();
+            setUser(userData);
+        }
+    } catch (e) {
+        console.error("Failed to fetch user profile", e);
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     // Determine initial auth state
     const storedToken = sessionStorage.getItem("access_token");
     if (storedToken) {
       setToken(storedToken);
-      setUser({ username: "User" }); 
+      fetchUserProfile();
     }
 
     // Set up token refresh interval (every 4 minutes, tokens expire in 5 minutes)
@@ -111,17 +127,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 4 * 60 * 1000); // 4 minutes
 
     return () => clearInterval(refreshInterval);
-  }, [refreshToken]);
+  }, [refreshToken, fetchUserProfile]);
 
   const login = (accessToken: string, refreshTokenStr: string) => {
     sessionStorage.setItem("access_token", accessToken);
     sessionStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
-    setUser({ username: "User" });
+    fetchUserProfile();
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, refreshToken, apiFetch }}>
+    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, refreshToken, apiFetch, fetchUserProfile }}>
       {children}
     </AuthContext.Provider>
   );
