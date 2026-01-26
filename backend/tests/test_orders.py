@@ -1,7 +1,9 @@
+from datetime import date
+
 import pytest
 from django.urls import reverse
 from rest_framework import status
-from datetime import date
+
 from api.models import DailyOrder
 
 
