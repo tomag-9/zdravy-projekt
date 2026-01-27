@@ -81,7 +81,12 @@ logs/
 # MD
 agents.md
 .agent/
+*.txt
 
 scripts/
 .venv/
 venv/
+
+#sh
+rebuild-dev.sh
+check-all.sh

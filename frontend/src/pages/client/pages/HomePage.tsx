@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Calendar, UtensilsCrossed, History, Clock } from 'lucide-react';
+import { Plus, Calendar, UtensilsCrossed, History, Clock, Settings, LogOut, User } from 'lucide-react';
+import { useApp } from "../context/AppContext";
 import OrderSummaryModal from '../components/order/OrderSummaryModal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 import { CategoryData } from '../services/OrderService';
 
@@ -16,6 +18,8 @@ const HomePage = () => {
     const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
+    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+    const { logout } = useApp();
 
     useEffect(() => {
         // Load all orders from localStorage
@@ -91,18 +95,35 @@ const HomePage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
-            <div className="max-w-6xl mx-auto p-6">
+            <div className="max-w-6xl mx-auto p-4 md:p-6">
                 {/* Header */}
-                <div className="mb-8 pt-4 flex justify-between items-end">
+                <div className="mb-6 md:mb-8 pt-2 md:pt-4 flex justify-between items-center">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-900 mb-1">Objednávky jedál</h1>
-                        <p className="text-slate-600">Vitajte späť! Tu je prehľad vašich objednávok.</p>
+                        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                            Zdravý Projekt
+                        </h1>
                     </div>
-                    <Link to="/settings">
-                        <button className="text-sm font-medium text-slate-500 hover:text-indigo-600 transition-colors">
-                            Nastavenia
+                    <div className="flex gap-2 md:gap-3">
+                        <Link to="/profile">
+                            <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
+                                <User className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
+                                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">Profil</span>
+                            </button>
+                        </Link>
+                        <Link to="/settings">
+                            <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
+                                <Settings className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
+                                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">Nastavenia</span>
+                            </button>
+                        </Link>
+                        <button 
+                            onClick={() => setShowLogoutConfirmation(true)}
+                            className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-red-200 rounded-xl hover:border-red-300 hover:bg-red-50 transition-all shadow-sm hover:shadow-md group"
+                        >
+                            <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600 transition-colors" />
+                            <span className="hidden md:inline text-sm font-medium text-red-600 group-hover:text-red-700 transition-colors">Odhlásiť sa</span>
                         </button>
-                    </Link>
+                    </div>
                 </div>
 
                 {/* New Order Button - Redesigned */}
@@ -214,6 +235,17 @@ const HomePage = () => {
                     onClose={() => setSelectedOrder(null)}
                     orderDate={selectedOrder?.date || ''}
                     orderData={orderData}
+                />
+
+                <ConfirmationModal
+                    isOpen={showLogoutConfirmation}
+                    onClose={() => setShowLogoutConfirmation(false)}
+                    onConfirm={logout}
+                    title="Odhlásenie"
+                    description="Naozaj sa chcete odhlásiť z aplikácie?"
+                    confirmText="Odhlásiť sa"
+                    cancelText="Zrušiť"
+                    variant="danger"
                 />
             </div>
         </div>

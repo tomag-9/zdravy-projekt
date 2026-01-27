@@ -3,8 +3,9 @@ import { createContext, useContext, ReactNode } from 'react';
 import { useOrder } from '../hooks/useOrder';
 import { CATEGORIES, DIETS, GROUP_CONFIG } from '../config/constants';
 
+import { useAuth } from "../../../context/auth"
 // Define the type for the context value based on what useOrder returns
-type OrderContextType = ReturnType<typeof useOrder>;
+type OrderContextType = ReturnType<typeof useOrder> & { logout: () => void };
 
 const AppContext = createContext<OrderContextType | null>(null);
 
@@ -19,9 +20,10 @@ export { CATEGORIES, DIETS, GROUP_CONFIG };
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
     const orderState = useOrder();
+    const { logout } = useAuth();
 
     return (
-        <AppContext.Provider value={orderState}>
+        <AppContext.Provider value={{ ...orderState, logout }}>
             {children}
         </AppContext.Provider>
     );

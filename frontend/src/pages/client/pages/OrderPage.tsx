@@ -232,7 +232,7 @@ const OrderPage = () => {
 
     return (
         <div className="p-4 md:p-0 pb-24">
-            <div className="max-w-6xl mx-auto mb-8 pt-4">
+            <div className="max-w-6xl mx-auto mb-6 md:mb-8 pt-2 md:pt-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex items-center gap-4">
                         <Link to="/home">
@@ -241,8 +241,8 @@ const OrderPage = () => {
                             </button>
                         </Link>
                         <div>
-                            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">Objednávka jedál</h1>
-                            <p className="text-sm sm:text-base text-slate-500">Správa denného menu a diét</p>
+                            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">Objednávka jedál</h1>
+                            <p className="hidden sm:block text-sm md:text-base text-slate-500">Správa denného menu a diét</p>
                         </div>
                     </div>
                 </div>

@@ -4,33 +4,20 @@ from rest_framework.response import Response
 
 from .models import DailyOrder
 from .serializers import DailyOrderSerializer
+from .serializers_user import UserProfileSerializer
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
     serializer_class = DailyOrderSerializer
-    # TEMPORARY: AllowAny for demo purposes until Auth is implemented
-    permission_classes = [permissions.AllowAny]
-
-    def get_user(self):
-        # Check against AnonymousUser explicitly just in case
-        if self.request.user and self.request.user.is_authenticated:
-            return self.request.user
-
-        # Fallback for demo: get or create 'demo' user
-        from django.contrib.auth.models import User
-
-        # Using get_or_create to avoid race conditions or IntegrityErrors
-        user, _ = User.objects.get_or_create(
-            username="demo", defaults={"email": "demo@example.com"}
-        )
-        return user
+    # Authenticated users only
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return DailyOrder.objects.filter(user=self.get_user())
+        return DailyOrder.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
         # The serializer.save() will call create() which enables update_or_create logic
-        serializer.save(user=self.get_user())
+        serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request, date=None):
@@ -42,3 +29,27 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             return Response(
                 {"data": {}}, status=status.HTTP_200_OK
             )  # Return empty struct if not found
+
+
+class UserProfileViewSet(viewsets.ViewSet):
+    """
+    ViewSet for user profile management.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    @action(detail=False, methods=["get", "patch"], url_path="profile")
+    def profile(self, request):
+        """Get or update current user's profile"""
+        if request.method == "GET":
+            serializer = UserProfileSerializer(request.user)
+            return Response(serializer.data)
+
+        elif request.method == "PATCH":
+            serializer = UserProfileSerializer(
+                request.user, data=request.data, partial=True
+            )
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
