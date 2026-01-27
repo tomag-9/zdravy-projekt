@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Plus, Calendar, UtensilsCrossed, History, Clock, Settings, LogOut, User } from 'lucide-react';
 import { useApp } from "../context/AppContext";
 import OrderSummaryModal from '../components/order/OrderSummaryModal';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 import { CategoryData } from '../services/OrderService';
 
@@ -17,6 +18,7 @@ const HomePage = () => {
     const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
+    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
     const { logout } = useApp();
 
     useEffect(() => {
@@ -115,7 +117,7 @@ const HomePage = () => {
                             </button>
                         </Link>
                         <button 
-                            onClick={logout}
+                            onClick={() => setShowLogoutConfirmation(true)}
                             className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-red-200 rounded-xl hover:border-red-300 hover:bg-red-50 transition-all shadow-sm hover:shadow-md group"
                         >
                             <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600 transition-colors" />
@@ -233,6 +235,17 @@ const HomePage = () => {
                     onClose={() => setSelectedOrder(null)}
                     orderDate={selectedOrder?.date || ''}
                     orderData={orderData}
+                />
+
+                <ConfirmationModal
+                    isOpen={showLogoutConfirmation}
+                    onClose={() => setShowLogoutConfirmation(false)}
+                    onConfirm={logout}
+                    title="Odhlásenie"
+                    description="Naozaj sa chcete odhlásiť z aplikácie?"
+                    confirmText="Odhlásiť sa"
+                    cancelText="Zrušiť"
+                    variant="danger"
                 />
             </div>
         </div>
