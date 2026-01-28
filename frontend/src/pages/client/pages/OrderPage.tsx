@@ -72,6 +72,8 @@ const OrderPage = () => {
         if (dateKeyRef.current !== selectedDate) {
             dateKeyRef.current = selectedDate;
             initialDataRef.current = null;
+            ignoreDataChangeRef.current = false;
+            prevDayLunchDataRef.current = null;
             setDataChangedState({
                 breakfast: false,
                 lunch: false,

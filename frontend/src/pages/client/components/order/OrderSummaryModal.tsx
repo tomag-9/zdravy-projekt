@@ -186,6 +186,9 @@ const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData, onDelete }: 
                 onClose={() => setDeleteConfirmation(false)}
                 onConfirm={() => {
                     deleteOrder(orderDate);
+                    // Remove persisted data for the specific orderDate
+                    localStorage.removeItem(`order_${orderDate}`);
+                    localStorage.removeItem(`activeMeals_${orderDate}`);
                     if (onDelete) onDelete();
                     onClose();
                 }}

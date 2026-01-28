@@ -5,7 +5,7 @@ import OrderPage from './OrderPage';
 import { AppProvider } from '../context/AppContext';
 import { MemoryRouter } from 'react-router-dom';
 import OrderService from '../services/OrderService';
-
+import React from 'react';
 // Mock Auth Context
 vi.mock('../../../context/auth', () => ({
     useAuth: vi.fn(() => ({

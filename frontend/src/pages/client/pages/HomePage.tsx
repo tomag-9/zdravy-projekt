@@ -240,6 +240,7 @@ const HomePage = () => {
                             // Local updates are handled within OrderSummaryModal -> deleteOrder (context) 
                             // But we need to update the HomePage specific list state:
                             localStorage.removeItem(`order_${selectedOrder.date}`);
+                            localStorage.removeItem(`activeMeals_${selectedOrder.date}`);
                             setOrders(prev => prev.filter(o => o.date !== selectedOrder.date));
                             setSelectedOrder(null);
                         }
