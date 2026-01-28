@@ -36,7 +36,7 @@ const OrderPage = () => {
         const handleClick = (e: MouseEvent) => {
             const link = (e.target as Element).closest('a');
             const button = (e.target as Element).closest('button');
-            const isSubmit = button && button.innerText.includes('Odoslať');
+            const isSubmit = button && (button.innerText || '').includes('Odoslať');
 
             // Allow if submitted recently or clean state (simplified check)
             if (!link || isSubmit) return;
@@ -58,6 +58,8 @@ const OrderPage = () => {
 
     const initialDataRef = useRef<{ breakfast: string, lunch: string, olovrant: string } | null>(null);
     const dateKeyRef = useRef(selectedDate);
+    const ignoreDataChangeRef = useRef(false);
+    const prevDayLunchDataRef = useRef<string | null>(null);
 
     useEffect(() => {
         const dateFromUrl = searchParams.get('date');
@@ -92,12 +94,54 @@ const OrderPage = () => {
             olovrant: JSON.stringify(currentOrder.olovrant)
         };
 
-        setDataChangedState({
-            breakfast: currentData.breakfast !== initialDataRef.current.breakfast,
-            lunch: currentData.lunch !== initialDataRef.current.lunch,
-            olovrant: currentData.olovrant !== initialDataRef.current.olovrant
-        });
-    }, [currentOrder, selectedDate]);
+        // If ignoring change (during copy init), check if sync completed
+        if (ignoreDataChangeRef.current) {
+            let syncComplete = true;
+
+            // Check Olovrant Sync
+            if (settings.copyOlovrantFromLunch) {
+                if (currentData.olovrant !== currentData.lunch) {
+                    syncComplete = false;
+                } else {
+                    setDataChangedState(prev => ({ ...prev, olovrant: false }));
+                }
+            }
+
+            // Check Breakfast Sync
+            if (settings.copyBreakfastFromPrevLunch) {
+                // We compare current breakfast against what we expect (prevDayLunchDataRef)
+                if (prevDayLunchDataRef.current && currentData.breakfast !== prevDayLunchDataRef.current) {
+                    syncComplete = false;
+                } else if (prevDayLunchDataRef.current) {
+                    setDataChangedState(prev => ({ ...prev, breakfast: false }));
+                }
+            }
+            
+            if (syncComplete) {
+                ignoreDataChangeRef.current = false;
+            }
+            
+            // While ignoring, we don't want to calculate standard diffs for the copying fields
+            // but we SHOULD calculate normal diffs for non-copying fields.
+            // For simplicity, we just partial update above and avoid the full diff block below if ignoring.
+            // However, we must ensure other fields update.
+            const initialData = initialDataRef.current || { breakfast: '', lunch: '', olovrant: '' };
+             
+             setDataChangedState(prev => ({
+                breakfast: settings.copyBreakfastFromPrevLunch ? prev.breakfast : (currentData.breakfast !== initialData.breakfast),
+                lunch: currentData.lunch !== initialData.lunch,
+                olovrant: settings.copyOlovrantFromLunch ? prev.olovrant : (currentData.olovrant !== initialData.olovrant)
+            }));
+
+        } else {
+             const initialData = initialDataRef.current || { breakfast: '', lunch: '', olovrant: '' };
+             setDataChangedState({
+                breakfast: currentData.breakfast !== initialData.breakfast,
+                lunch: currentData.lunch !== initialData.lunch,
+                olovrant: currentData.olovrant !== initialData.olovrant
+            });
+        }
+    }, [currentOrder, selectedDate, settings.copyOlovrantFromLunch, settings.copyBreakfastFromPrevLunch]);
 
     useEffect(() => {
         if (dataChangedState.breakfast && settings.copyBreakfastFromPrevLunch) {
@@ -150,14 +194,35 @@ const OrderPage = () => {
                                     clearMeal('breakfast');
                                     resetMealData('breakfast');
                                 } else {
+                                    // ENABLE COPY
+                                    ignoreDataChangeRef.current = true;
                                     setDataChangedState(prev => ({ ...prev, breakfast: false }));
-                                    setTimeout(() => {
-                                        initialDataRef.current = {
-                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                            ...((initialDataRef.current) as any),
-                                            breakfast: JSON.stringify(currentOrder.breakfast)
-                                        };
-                                    }, 100);
+
+                                    // Calculate what we expect to receive (Previous Day Lunch)
+                                    // This mirrors the logic in useOrder
+                                    const prevDate = new Date(selectedDate);
+                                    prevDate.setDate(prevDate.getDate() - 1);
+                                    const prevDateStr = prevDate.toISOString().split('T')[0];
+                                    const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
+                                    
+                                    let expectedData = JSON.stringify(OrderService.createEmptyMeal());
+                                    if (prevOrderSaved) {
+                                        try {
+                                            const prevOrder = JSON.parse(prevOrderSaved);
+                                            if (prevOrder.lunch) {
+                                                expectedData = JSON.stringify(prevOrder.lunch);
+                                            }
+                                        } catch (e) { console.error(e); }
+                                    }
+
+                                    prevDayLunchDataRef.current = expectedData;
+                                    
+                                    // Update expectation
+                                    initialDataRef.current = {
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        ...((initialDataRef.current) as any),
+                                        breakfast: expectedData
+                                    };
                                 }
                             }}
                             className="scale-90"
@@ -208,6 +273,18 @@ const OrderPage = () => {
                                 if (!val) {
                                     clearMeal('olovrant');
                                     resetMealData('olovrant');
+                                } else {
+                                    // ENABLE COPY
+                                    ignoreDataChangeRef.current = true;
+                                    setDataChangedState(prev => ({ ...prev, olovrant: false }));
+                                    
+                                    // We expect the new state to be currentOrder.lunch
+                                    // We update initialDataRef to this EXPECTED state immediately
+                                    initialDataRef.current = {
+                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                        ...((initialDataRef.current) as any),
+                                        olovrant: JSON.stringify(currentOrder.lunch)
+                                    };
                                 }
                             }}
                             className="scale-90"
@@ -262,17 +339,17 @@ const OrderPage = () => {
                                 key={key}
                                 title={label}
                                 icon={icon}
-                                isActive={activeMeals[key]}
+                                isActive={isEditable && activeMeals[key]}
                                 onToggle={() => isEditable && toggleMeal(key)} // Block toggle if not editable
                                 copyAction={isEditable ? handleCopyTrigger(key) : null} // Hide copy if not editable
-                                className={!isEditable ? 'opacity-60 pointer-events-none grayscale' : ''} // Visual feedback
-                            >
-                                {!isEditable && (
-                                    <div className="mb-4 bg-amber-50 text-amber-800 px-3 py-2 rounded-lg text-sm flex items-center gap-2 border border-amber-100">
+                                className={!isEditable ? 'opacity-75' : ''} // Visual feedback
+                                statusMessage={!isEditable ? (
+                                    <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100 flex items-center gap-2 inline-flex mb-2">
                                         <span className="font-bold">Termín uplynul</span>
-                                        <span>- Objednávka pre toto jedlo na zvolený deň už bola uzavretá.</span>
+                                        <span>- Objednávka uzavretá</span>
                                     </div>
-                                )}
+                                ) : null}
+                            >
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {CATEGORIES.filter(category => enabledCategories.includes(category)).map(category => {
                                         const data = currentOrder[key]?.[category];
@@ -300,7 +377,15 @@ const OrderPage = () => {
                     })}
                 </div>
 
-                <OrderSummary onSubmit={handleSubmit} />
+                <OrderSummary
+                    onSubmit={handleSubmit}
+                    disabled={
+                        !OrderService.checkDeadline(selectedDate, 'breakfast') &&
+                        !OrderService.checkDeadline(selectedDate, 'lunch') &&
+                        !OrderService.checkDeadline(selectedDate, 'olovrant')
+                    }
+                    disabledMessage="Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+                />
             </div>
 
             {activeDietModal && (

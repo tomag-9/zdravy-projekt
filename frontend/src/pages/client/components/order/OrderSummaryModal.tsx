@@ -12,9 +12,10 @@ interface OrderSummaryModalProps {
     onClose: () => void;
     orderDate: string;
     orderData: DailyOrder;
+    onDelete?: () => void;
 }
 
-const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData }: OrderSummaryModalProps) => {
+const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData, onDelete }: OrderSummaryModalProps) => {
     const navigate = useNavigate();
     const { setSelectedDate, deleteOrder } = useApp();
     const [deleteConfirmation, setDeleteConfirmation] = useState(false);
@@ -185,6 +186,7 @@ const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData }: OrderSumma
                 onClose={() => setDeleteConfirmation(false)}
                 onConfirm={() => {
                     deleteOrder(orderDate);
+                    if (onDelete) onDelete();
                     onClose();
                 }}
                 title="Vymazať objednávku"
