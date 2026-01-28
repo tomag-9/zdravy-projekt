@@ -7,9 +7,11 @@ import { getSlovakPlural } from '../../../../lib/utils';
 
 interface OrderSummaryProps {
     onSubmit: () => void;
+    disabled?: boolean;
+    disabledMessage?: string;
 }
 
-const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
+const OrderSummary = ({ onSubmit, disabled, disabledMessage }: OrderSummaryProps) => {
     const { currentOrder, activeMeals, selectedDate } = useApp();
 
     const getMealTotal = (mealKey: keyof DailyOrder) => {
@@ -43,6 +45,7 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
 
     // Simple validation logic (overflow is already prevented by UI, but good to check)
     const isValid = totalPortions > 0;
+    const isButtonDisabled = disabled || !isValid;
 
     return (
         <Card className="mt-8 border-indigo-100 shadow-md bg-white">
@@ -96,13 +99,20 @@ const OrderSummary = ({ onSubmit }: OrderSummaryProps) => {
 
                 <Button
                     className="w-full h-12 text-lg shadow-indigo-200"
-                    disabled={!isValid}
+                    disabled={isButtonDisabled}
                     onClick={onSubmit}
                 >
                     Odoslať objednávku
                 </Button>
 
-                {!isValid && activeMeals.lunch && (
+                {disabled && disabledMessage && (
+                    <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
+                        <AlertCircle className="w-4 h-4 text-amber-600" />
+                        <span>{disabledMessage}</span>
+                    </div>
+                )}
+
+                {!isButtonDisabled && !isValid && activeMeals.lunch && (
                     <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
                         <AlertCircle className="w-4 h-4" />
                         Zadajte aspoň jednu porciu.

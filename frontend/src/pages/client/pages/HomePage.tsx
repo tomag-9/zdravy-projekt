@@ -235,6 +235,14 @@ const HomePage = () => {
                     onClose={() => setSelectedOrder(null)}
                     orderDate={selectedOrder?.date || ''}
                     orderData={orderData}
+                    onDelete={() => {
+                        if (selectedOrder) {
+                            // Local updates are handled within OrderSummaryModal -> deleteOrder (context) 
+                            // We just need to update the HomePage specific list state:
+                            setOrders(prev => prev.filter(o => o.date !== selectedOrder.date));
+                            setSelectedOrder(null);
+                        }
+                    }}
                 />
 
                 <ConfirmationModal

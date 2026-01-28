@@ -189,15 +189,24 @@ export const useOrder = () => {
     };
 
     const deleteOrder = async (date: string) => {
-        // Clear local state
         const empty: DailyOrder = {
             status: 'draft',
             breakfast: OrderService.createEmptyMeal(),
             lunch: OrderService.createEmptyMeal(),
             olovrant: OrderService.createEmptyMeal()
         };
-        setCurrentOrder(empty);
-        setActiveMeals({ breakfast: false, lunch: false, olovrant: false });
+
+        // If we are deleting the currently viewed order, update state
+        if (date === selectedDate) {
+            setCurrentOrder(empty);
+            setActiveMeals({ breakfast: false, lunch: false, olovrant: false });
+            // local storage updates via useEffect
+        } else {
+            // If deleting another day (e.g. from history), manually clear its local storage
+            // so it doesn't persist as "submitted" or "dirty"
+            localStorage.removeItem(`order_${date}`);
+            localStorage.removeItem(`activeMeals_${date}`);
+        }
 
         try {
             // Soft delete by setting status to draft and empty data

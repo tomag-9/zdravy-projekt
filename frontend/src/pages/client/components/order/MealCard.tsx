@@ -8,6 +8,7 @@ interface MealCardProps {
     isActive: boolean;
     onToggle: () => void;
     copyAction?: ReactNode | null;
+    statusMessage?: ReactNode | null;
     children: ReactNode;
     icon: ComponentType<{ className?: string }>;
 }
@@ -17,6 +18,7 @@ const MealCard = ({
     isActive,
     onToggle,
     copyAction,
+    statusMessage,
     children,
     icon: Icon,
     className
@@ -42,6 +44,12 @@ const MealCard = ({
                     <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-100 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                 </label>
             </CardHeader>
+
+            {statusMessage && (
+                <div className="px-4 pb-2">
+                    {statusMessage}
+                </div>
+            )}
 
             {isActive && (
                 <div className="animate-in fade-in slide-in-from-top-2 duration-200">
