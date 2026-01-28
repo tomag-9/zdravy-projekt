@@ -5,14 +5,14 @@ import OrderPage from './OrderPage';
 import { AppProvider } from '../context/AppContext';
 import { MemoryRouter } from 'react-router-dom';
 import OrderService from '../services/OrderService';
-import React from 'react';
+import { ReactNode } from 'react';
 // Mock Auth Context
 vi.mock('../../../context/auth', () => ({
     useAuth: vi.fn(() => ({
         logout: vi.fn(),
         apiFetch: vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve([]) })
     })),
-    AuthProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>
+    AuthProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>
 }));
 
 // Mock OrderService with implementation that allows actual data structure usage
