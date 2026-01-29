@@ -3,7 +3,7 @@ import OrderService, { DailyOrder } from '../services/OrderService';
 import { CATEGORIES, DIETS } from '../config/constants';
 import { useAuth } from '../../../context/auth';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Helper for safe localStorage parsing
 // Now using OrderService.enforceStructure
