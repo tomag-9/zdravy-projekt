@@ -10,8 +10,13 @@ DEBUG = False
 
 ALLOWED_HOSTS = [
     "zp.tomag.xyz",
-    os.environ.get("STAGING_HOST"),
+    "backend",
+    "localhost",
+    "127.0.0.1",
+    "192.168.0.14",
+    os.environ.get("STAGING_HOST", ""),
 ]
+ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]  # Remove empty strings
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
@@ -20,8 +25,13 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # Security settings
+# Trust X-Forwarded-Proto header from nginx/Cloudflare
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = True
+
+# Don't force SSL redirect - nginx/Cloudflare handles this
+# Internal health checks and direct backend access would fail with redirect
+SECURE_SSL_REDIRECT = False
+
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
