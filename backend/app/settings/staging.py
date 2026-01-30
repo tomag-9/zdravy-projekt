@@ -9,7 +9,8 @@ from .base import *  # noqa: F401, F403
 DEBUG = False
 
 ALLOWED_HOSTS = [
-    os.environ.get("STAGING_HOST", "staging.example.com"),
+    "zp.tomag.xyz",
+    os.environ.get("STAGING_HOST"),
 ]
 
 # CORS settings
