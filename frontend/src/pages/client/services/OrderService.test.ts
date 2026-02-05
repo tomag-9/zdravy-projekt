@@ -173,8 +173,8 @@ describe('OrderService', () => {
 
             it('should skip empty days', () => {
                 const history = [
-                    createMockOrder('2025-01-01', true),  // Wednesday
-                    createMockOrder('2025-01-02', false), // Thursday (empty)
+                    createMockOrder('2025-01-01', true),
+                    createMockOrder('2025-01-02', false),
                 ];
                 // Target Friday
                 const result = OrderService.findLastNonZeroDay(history, '2025-01-03');

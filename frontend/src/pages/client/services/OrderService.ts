@@ -174,11 +174,11 @@ class OrderService {
         return JSON.parse(JSON.stringify(source));
     }
 
-    static isMealEmpty(meal: MealData): boolean {
+    static isMealEmpty(meal?: MealData | null): boolean {
         if (!meal) return true;
         for (const catKey in meal) {
             const categoryData = meal[catKey];
-            if (!categoryData.menuCounts) continue;
+            if (!categoryData || !categoryData.menuCounts) continue;
             const total = Object.values(categoryData.menuCounts).reduce((acc: number, val: number) => acc + val, 0);
             if (total > 0) return false;
         }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import OrderService, { DailyOrder } from '../services/OrderService';
+import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { CATEGORIES, DIETS } from '../config/constants';
 import { useAuth } from '../../../context/auth';
 
@@ -93,53 +93,81 @@ export const useOrder = () => {
         setTouchedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
-    }, [selectedDate, settings.copyBreakfastFromPrevLunch]);
+    }, [selectedDate]);
 
     // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)
     useEffect(() => {
         if (!currentOrder) return;
 
-        // Check which meals are active but empty and untouched
+        // Check for specific meals that need copying
+        // We do this check first to avoid expensive history lookup if not needed
+        const mealsToCopy: (keyof DailyOrder)[] = [];
         (['breakfast', 'lunch', 'olovrant'] as const).forEach(mealKey => {
             if (activeMeals[mealKey] && !touchedMeals.has(mealKey)) {
-                // It is open, but we haven't touched it. 
-                // Check if it's empty. if so, try to fill it.
                 if (OrderService.isMealEmpty(currentOrder[mealKey])) {
-
-                    if (currentOrder.status === 'submitted') return;
-
-                    const history: (DailyOrder & { date: string })[] = [];
-                    const curr = new Date(selectedDate);
-                    for (let i = 0; i < 30; i++) {
-                        curr.setDate(curr.getDate() - 1);
-                        const dStr = curr.toISOString().split('T')[0];
-                        const raw = localStorage.getItem(`order_${dStr}`);
-                        if (raw) {
-                            try {
-                                const p = JSON.parse(raw);
-                                p.date = dStr;
-                                history.push(p);
-                            } catch (e) { console.error(e); }
-                        }
-                    }
-
-                    const template = OrderService.findLastNonZeroDay(history, selectedDate);
-                    if (template && !OrderService.isMealEmpty(template[mealKey])) {
-                        console.log(`Lazy copying ${mealKey} from ${(template as unknown as { date: string }).date}`);
-                        setCurrentOrder(prev => ({
-                            ...prev,
-                            [mealKey]: JSON.parse(JSON.stringify(template[mealKey]))
-                        }));
-
-                        setTouchedMeals(prev => {
-                            const n = new Set(prev);
-                            n.add(mealKey);
-                            return n;
-                        });
+                    if (currentOrder.status !== 'submitted') {
+                        mealsToCopy.push(mealKey);
                     }
                 }
             }
         });
+
+        if (mealsToCopy.length === 0) return;
+
+        // Perform History Lookup (Optimized - outside loop)
+        const history: (DailyOrder & { date: string })[] = [];
+        // Use loop to avoid mutation of single Date object
+        for (let i = 1; i <= 30; i++) {
+            const curr = new Date(selectedDate);
+            curr.setDate(curr.getDate() - i);
+            const dStr = curr.toISOString().split('T')[0];
+            const raw = localStorage.getItem(`order_${dStr}`);
+            if (raw) {
+                try {
+                    const p = JSON.parse(raw);
+                    // Safe cast since we assign it
+                    (p as DailyOrder & { date: string }).date = dStr;
+                    history.push(p as DailyOrder & { date: string });
+                } catch (e) {
+                    console.error('Failed to parse stored order for date', dStr, e);
+                    // Clean up malformed data
+                    localStorage.removeItem(`order_${dStr}`);
+                }
+            }
+        }
+
+        const template = OrderService.findLastNonZeroDay(history, selectedDate);
+        if (template) {
+            let hasUpdates = false;
+            const updatesObj: Partial<DailyOrder> = {};
+            const newTouched = new Set(touchedMeals);
+
+            mealsToCopy.forEach(mealKey => {
+                // Check if key corresponds to a meal property (DailyOrder has 'status' which is string)
+                if (mealKey === 'status') return;
+
+                const mealData = template[mealKey] as MealData;
+                if (mealData && !OrderService.isMealEmpty(mealData)) {
+                    if (import.meta.env.DEV) {
+                        console.log(`Lazy copying ${mealKey} from ${(template as unknown as { date: string }).date}`);
+                    }
+                    updatesObj[mealKey] = JSON.parse(JSON.stringify(mealData));
+                    newTouched.add(mealKey);
+                    hasUpdates = true;
+                }
+            });
+
+            if (hasUpdates) {
+                setCurrentOrder(prev => ({ ...prev, ...updatesObj }));
+                setTouchedMeals(newTouched);
+            }
+        }
+
+        // We use functional updates or separate logic to avoid dependency cycle.
+        // But strictly here, since we depend on `currentOrder` to CHECK emptiness, 
+        // and then SET `currentOrder` if empty, it will naturally re-run.
+        // The re-run will find it NOT empty, and thus stabilize.
+        // To be safe against "React Hook useEffect has missing dependencies", we include them.
     }, [activeMeals, selectedDate, currentOrder, touchedMeals]);
 
     // Copy Logic - Olovrant from Lunch
@@ -150,6 +178,12 @@ export const useOrder = () => {
                 ...prev,
                 olovrant: JSON.parse(JSON.stringify(prev.lunch))
             }));
+            // Mark olovrant as touched so it won't be auto-overwritten later
+            setTouchedMeals(prev => {
+                const next = new Set(prev);
+                next.add('olovrant');
+                return next;
+            });
         }
     }, [currentOrder.lunch, settings.copyOlovrantFromLunch, activeMeals.olovrant, touchedMeals]);
 
@@ -162,13 +196,21 @@ export const useOrder = () => {
             const prevDateStr = prevDate.toISOString().split('T')[0];
             const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
             if (prevOrderSaved) {
-                const prevOrder = JSON.parse(prevOrderSaved);
-                if (prevOrder.lunch) {
-                    setCurrentOrder((prev) => ({
-                        ...prev,
-                        breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
-                    }));
-                }
+                try {
+                    const prevOrder = JSON.parse(prevOrderSaved);
+                    if (prevOrder.lunch) {
+                        setCurrentOrder((prev) => ({
+                            ...prev,
+                            breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
+                        }));
+                        // Mark as touched
+                        setTouchedMeals(prev => {
+                            const n = new Set(prev);
+                            n.add('breakfast');
+                            return n;
+                        });
+                    }
+                } catch (e) { console.error(e); }
             }
         }
     }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
