@@ -82,9 +82,10 @@ export const useOrder = () => {
         };
 
         // On new date, if no local storage, default to all closed
-        let newActive = safeParse(`activeMeals_${selectedDate}`, null);
+        const defaultActive = { breakfast: false, lunch: false, olovrant: false };
+        let newActive = safeParse(`activeMeals_${selectedDate}`, defaultActive);
         if (!newActive) {
-            newActive = { breakfast: false, lunch: false, olovrant: false };
+            newActive = defaultActive;
         }
 
         const newOrder = safeParse(`order_${selectedDate}`, emptyOrder) as DailyOrder;
