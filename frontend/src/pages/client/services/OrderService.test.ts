@@ -125,4 +125,145 @@ describe('OrderService', () => {
             expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(false);
         });
     });
+
+    describe('Copying Logic', () => {
+        const createMockOrder = (date: string, hasFood: boolean): DailyOrder & { date: string } => {
+            const order = {
+                date,
+                status: 'draft',
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            } as DailyOrder & { date: string };
+
+            if (hasFood) {
+                order.lunch = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 1).lunch;
+            }
+            return order;
+        };
+
+        describe('isMealEmpty', () => {
+            it('should return true for empty meal', () => {
+                const emptyMeal = OrderService.createEmptyMeal();
+                expect(OrderService.isMealEmpty(emptyMeal)).toBe(true);
+            });
+
+            it('should return false if menu count > 0', () => {
+                const order = OrderService.updateMenuCount(
+                    { breakfast: OrderService.createEmptyMeal(), lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() },
+                    'lunch', 'Škôlka', 'A', 1
+                );
+                expect(OrderService.isMealEmpty(order.lunch)).toBe(false);
+            });
+        });
+
+        describe('findLastNonZeroDay', () => {
+            it('should return null if history is empty', () => {
+                expect(OrderService.findLastNonZeroDay([], '2025-01-01')).toBeNull();
+            });
+
+            it('should return previous day if it has food', () => {
+                const history = [
+                    createMockOrder('2025-01-01', true)
+                ];
+                const result = OrderService.findLastNonZeroDay(history, '2025-01-02');
+                expect(result).not.toBeNull();
+                expect((result as DailyOrder & { date: string }).date).toBe('2025-01-01');
+            });
+
+            it('should skip empty days', () => {
+                const history = [
+                    createMockOrder('2025-01-01', true),  // Wednesday
+                    createMockOrder('2025-01-02', false), // Thursday (empty)
+                ];
+                // Target Friday
+                const result = OrderService.findLastNonZeroDay(history, '2025-01-03');
+                expect(result).not.toBeNull();
+                expect((result as DailyOrder & { date: string }).date).toBe('2025-01-01');
+            });
+
+            it('should ignore days strictly after current date', () => {
+                // Even if we have future data, we look backwards
+                const history = [
+                    createMockOrder('2025-01-01', true),
+                    createMockOrder('2025-01-03', true)
+                ];
+                const result = OrderService.findLastNonZeroDay(history, '2025-01-02');
+                expect(result).not.toBeNull();
+                expect((result as DailyOrder & { date: string }).date).toBe('2025-01-01');
+            });
+        });
+
+        describe('mergeOrders', () => {
+            it('should copy everything if current is empty and untouched', () => {
+                const current = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(),
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                const source = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(), // Modified below
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                // Add food to source lunch
+                source.lunch = OrderService.updateMenuCount({ ...current }, 'lunch', 'Škôlka', 'A', 5).lunch;
+
+                const result = OrderService.mergeOrders(current, source, new Set());
+
+                expect(result.lunch['Škôlka'].menuCounts['A']).toBe(5);
+            });
+
+            it('should NOT copy to touched meals', () => {
+                const current = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(),
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                // User explicitly set lunch to 0 (conceptually), so it is "touched"
+                const touched = new Set(['lunch']);
+
+                const source = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(),
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                // Source has 5 lunches
+                source.lunch = OrderService.updateMenuCount({ ...current }, 'lunch', 'Škôlka', 'A', 5).lunch;
+
+                const result = OrderService.mergeOrders(current, source, touched);
+
+                // Should stay 0 because it was touched
+                expect(result.lunch['Škôlka'].menuCounts['A']).toBe(0);
+            });
+
+            it('should copy one meal but keep another if touched', () => {
+                // User ordered Breakfast (touched), but left Lunch empty (untouched)
+                const current = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(),
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                // Current Breakfast has 2 items
+                current.breakfast = OrderService.updateMenuCount({ ...current }, 'breakfast', 'Škôlka', 'A', 2).breakfast;
+                const touched = new Set(['breakfast']);
+
+                const source = {
+                    breakfast: OrderService.createEmptyMeal(),
+                    lunch: OrderService.createEmptyMeal(),
+                    olovrant: OrderService.createEmptyMeal()
+                };
+                // Source has 5 lunches and 5 breakfasts
+                source.breakfast = OrderService.updateMenuCount({ ...source }, 'breakfast', 'Škôlka', 'A', 5).breakfast;
+                source.lunch = OrderService.updateMenuCount({ ...source }, 'lunch', 'Škôlka', 'A', 5).lunch;
+
+                const result = OrderService.mergeOrders(current, source, touched);
+
+                // Breakfast should remain 2 (user input preferred over source 5)
+                expect(result.breakfast['Škôlka'].menuCounts['A']).toBe(2);
+                // Lunch should become 5 (copied from source)
+                expect(result.lunch['Škôlka'].menuCounts['A']).toBe(5);
+            });
+        });
+    });
 });

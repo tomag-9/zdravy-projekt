@@ -31,6 +31,8 @@ export const useOrder = () => {
         applyDefaultLunch: false
     }));
 
+    const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
+
     // State
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [prevDayLunches, setPrevDayLunches] = useState(0);
@@ -79,26 +81,81 @@ export const useOrder = () => {
             olovrant: OrderService.createEmptyMeal()
         };
 
-        const newActive = safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false });
+        // On new date, if no local storage, default to all closed
+        let newActive = safeParse(`activeMeals_${selectedDate}`, null);
+        if (!newActive) {
+            newActive = { breakfast: false, lunch: false, olovrant: false };
+        }
+
         const newOrder = safeParse(`order_${selectedDate}`, emptyOrder) as DailyOrder;
 
+        setTouchedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
     }, [selectedDate, settings.copyBreakfastFromPrevLunch]);
 
+    // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)
+    useEffect(() => {
+        if (!currentOrder) return;
+
+        // Check which meals are active but empty and untouched
+        (['breakfast', 'lunch', 'olovrant'] as const).forEach(mealKey => {
+            if (activeMeals[mealKey] && !touchedMeals.has(mealKey)) {
+                // It is open, but we haven't touched it. 
+                // Check if it's empty. if so, try to fill it.
+                if (OrderService.isMealEmpty(currentOrder[mealKey])) {
+
+                    if (currentOrder.status === 'submitted') return;
+
+                    const history: (DailyOrder & { date: string })[] = [];
+                    const curr = new Date(selectedDate);
+                    for (let i = 0; i < 30; i++) {
+                        curr.setDate(curr.getDate() - 1);
+                        const dStr = curr.toISOString().split('T')[0];
+                        const raw = localStorage.getItem(`order_${dStr}`);
+                        if (raw) {
+                            try {
+                                const p = JSON.parse(raw);
+                                p.date = dStr;
+                                history.push(p);
+                            } catch (e) { console.error(e); }
+                        }
+                    }
+
+                    const template = OrderService.findLastNonZeroDay(history, selectedDate);
+                    if (template && !OrderService.isMealEmpty(template[mealKey])) {
+                        console.log(`Lazy copying ${mealKey} from ${(template as unknown as { date: string }).date}`);
+                        setCurrentOrder(prev => ({
+                            ...prev,
+                            [mealKey]: JSON.parse(JSON.stringify(template[mealKey]))
+                        }));
+
+                        setTouchedMeals(prev => {
+                            const n = new Set(prev);
+                            n.add(mealKey);
+                            return n;
+                        });
+                    }
+                }
+            }
+        });
+    }, [activeMeals, selectedDate, currentOrder, touchedMeals]);
+
     // Copy Logic - Olovrant from Lunch
     useEffect(() => {
-        if (settings.copyOlovrantFromLunch && activeMeals.olovrant) {
+        if (settings.copyOlovrantFromLunch && activeMeals.olovrant && !touchedMeals.has('olovrant')) {
+            // Only auto-copy if user hasn't touched olovrant explicitly
             setCurrentOrder((prev) => ({
                 ...prev,
                 olovrant: JSON.parse(JSON.stringify(prev.lunch))
             }));
         }
-    }, [currentOrder.lunch, settings.copyOlovrantFromLunch, activeMeals.olovrant]);
+    }, [currentOrder.lunch, settings.copyOlovrantFromLunch, activeMeals.olovrant, touchedMeals]);
 
     // Copy Logic - Breakfast from Prev Lunch
     useEffect(() => {
-        if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast) {
+        if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast && !touchedMeals.has('breakfast')) {
+            // Only auto-copy if user hasn't touched breakfast
             const prevDate = new Date(selectedDate);
             prevDate.setDate(prevDate.getDate() - 1);
             const prevDateStr = prevDate.toISOString().split('T')[0];
@@ -113,7 +170,7 @@ export const useOrder = () => {
                 }
             }
         }
-    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate]);
+    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
 
     // Actions
     const toggleDiet = (diet: string) => {
@@ -129,10 +186,20 @@ export const useOrder = () => {
     };
 
     const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
         setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
     };
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
         setCurrentOrder((prev) => OrderService.updateDiet(prev, mealKey, category, diet, count));
     };
 
@@ -142,6 +209,11 @@ export const useOrder = () => {
     };
 
     const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
         setCurrentOrder((prev) => ({
             ...prev,
             [mealKey]: OrderService.createEmptyMeal()

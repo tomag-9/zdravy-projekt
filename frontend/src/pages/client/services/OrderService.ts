@@ -170,6 +170,61 @@ class OrderService {
             return currentTime < deadline;
         }
     }
+    static fastCopy<T>(source: T): T {
+        return JSON.parse(JSON.stringify(source));
+    }
+
+    static isMealEmpty(meal: MealData): boolean {
+        if (!meal) return true;
+        for (const catKey in meal) {
+            const categoryData = meal[catKey];
+            if (!categoryData.menuCounts) continue;
+            const total = Object.values(categoryData.menuCounts).reduce((acc: number, val: number) => acc + val, 0);
+            if (total > 0) return false;
+        }
+        return true;
+    }
+
+    static findLastNonZeroDay(history: (DailyOrder & { date: string })[], currentDateStr: string): DailyOrder | null {
+        // 1. Filter out future dates (and current date)
+        // 2. Sort descending
+        const validHistory = history
+            .filter(o => o.date < currentDateStr)
+            .sort((a, b) => b.date.localeCompare(a.date));
+
+        for (const order of validHistory) {
+            // Check if any meal has content
+            const hasContent = !this.isMealEmpty(order.breakfast) ||
+                !this.isMealEmpty(order.lunch) ||
+                !this.isMealEmpty(order.olovrant);
+
+            if (hasContent) {
+                return order;
+            }
+        }
+        return null;
+    }
+
+    static mergeOrders(current: DailyOrder, source: DailyOrder, touchedMeals: Set<string>): DailyOrder {
+        const result = this.fastCopy(current); // Start with current state
+
+        (['breakfast', 'lunch', 'olovrant'] as const).forEach(mealKey => {
+            // If user hasn't touched this meal, we can overwrite it
+            if (!touchedMeals.has(mealKey)) {
+                // Only copy if source has data, OR if we want to aggressively copy "emptiness"
+                // The requirement says: "If intervention ... edit only lunch ... remaining meals are copied"
+                // This implies overwriting with source is the default behavior for untouched fields.
+
+                // However, we must be careful. If source is empty, do we overwrite current?
+                // Yes, if we want to replicate the "previous day" exactly.
+                // But usually current starts empty anyway.
+
+                result[mealKey] = this.fastCopy(source[mealKey]);
+            }
+        });
+
+        return result;
+    }
 }
 
 export default OrderService;
