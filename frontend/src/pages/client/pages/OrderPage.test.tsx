@@ -37,7 +37,11 @@ vi.mock('../services/OrderService', async (importOriginal) => {
             updateMenuCount: originalDefault.updateMenuCount,
             updateDiet: originalDefault.updateDiet,
             enforceStructure: originalDefault.enforceStructure,
-            calculatePrevDayLunches: originalDefault.calculatePrevDayLunches
+            calculatePrevDayLunches: originalDefault.calculatePrevDayLunches,
+            isMealEmpty: originalDefault.isMealEmpty,
+            findLastNonZeroDay: originalDefault.findLastNonZeroDay,
+            mergeOrders: originalDefault.mergeOrders,
+            fastCopy: originalDefault.fastCopy
         }
     };
 });
