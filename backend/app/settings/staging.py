@@ -50,3 +50,6 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+
+# Local apps for staging
+INSTALLED_APPS += ['core']

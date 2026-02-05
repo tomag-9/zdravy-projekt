@@ -22,4 +22,5 @@ EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 # Additional debugging tools
 INSTALLED_APPS += [
     'django_extensions',
+    'core',
 ]
