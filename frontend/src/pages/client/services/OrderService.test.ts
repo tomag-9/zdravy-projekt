@@ -42,7 +42,7 @@ describe('OrderService', () => {
             const updatedOrder = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 3);
 
             const newDiets = updatedOrder.lunch['Škôlka'].diets;
-            const totalDiets = Object.values(newDiets).reduce((a: number, b: number) => a + b, 0);
+            const totalDiets = (Object.values(newDiets) as number[]).reduce((a: number, b: number) => a + b, 0);
 
             expect(totalDiets).toBe(3);
         });
@@ -98,7 +98,8 @@ describe('OrderService', () => {
             today.setHours(2, 59, 0, 0);
             vi.setSystemTime(today);
             const dateStr = today.toISOString().split('T')[0];
-            expect(OrderService.checkDeadline(dateStr, 'breakfast')).toBe(true);
+            // Must pass deadlines matching test conditions
+            expect(OrderService.checkDeadline(dateStr, 'breakfast', { breakfast: '03:00', lunch: '03:00', olovrant: '03:00' })).toBe(true);
         });
 
         it('should block breakfast after 3:00 today', () => {
@@ -106,7 +107,7 @@ describe('OrderService', () => {
             today.setHours(3, 1, 0, 0);
             vi.setSystemTime(today);
             const dateStr = today.toISOString().split('T')[0];
-            expect(OrderService.checkDeadline(dateStr, 'breakfast')).toBe(false);
+            expect(OrderService.checkDeadline(dateStr, 'breakfast', { breakfast: '03:00', lunch: '03:00', olovrant: '03:00' })).toBe(false);
         });
 
         it('should allow lunch before 7:30 today', () => {
@@ -114,7 +115,7 @@ describe('OrderService', () => {
             today.setHours(7, 29, 0, 0);
             vi.setSystemTime(today);
             const dateStr = today.toISOString().split('T')[0];
-            expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(true);
+            expect(OrderService.checkDeadline(dateStr, 'lunch', { breakfast: '07:30', lunch: '07:30', olovrant: '07:30' })).toBe(true);
         });
 
         it('should block lunch after 7:30 today', () => {
@@ -122,7 +123,7 @@ describe('OrderService', () => {
             today.setHours(7, 31, 0, 0);
             vi.setSystemTime(today);
             const dateStr = today.toISOString().split('T')[0];
-            expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(false);
+            expect(OrderService.checkDeadline(dateStr, 'lunch', { breakfast: '07:30', lunch: '07:30', olovrant: '07:30' })).toBe(false);
         });
     });
 
