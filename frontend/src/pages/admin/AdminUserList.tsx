@@ -12,7 +12,7 @@ interface AdUser {
     is_staff: boolean;
 }
 
-const UserList: React.FC = () => {
+const AdminUserList: React.FC = () => {
     const { apiFetch } = useAuth();
     const [users, setUsers] = useState<AdUser[]>([]);
     const [loading, setLoading] = useState(true);
@@ -23,9 +23,8 @@ const UserList: React.FC = () => {
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/users/`);
             if (res.ok) {
                 const data = await res.json();
-                // Handle pagination if present, otherwise assume array
                 const list = Array.isArray(data) ? data : data.results || [];
-                setUsers(list);
+                setUsers(list); // Show ALL users
             } else {
                 console.error("Failed to fetch users");
             }
@@ -50,12 +49,9 @@ const UserList: React.FC = () => {
         <div className="space-y-6 animate-in fade-in duration-500">
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-3xl font-bold text-gray-900">Správa používateľov</h2>
-                    <p className="text-gray-500 mt-1">Spravujte používateľov a viditeľnosť menu/jedál</p>
+                    <h2 className="text-3xl font-bold text-gray-900">Správa účtov</h2>
+                    <p className="text-gray-500 mt-1">Spravujte používateľov, ich osobné údaje a role.</p>
                 </div>
-                {/* <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">
-                    + Add New User
-                </button> */}
             </div>
 
             {/* Search */}
@@ -77,7 +73,6 @@ const UserList: React.FC = () => {
                         <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                             <tr>
                                 <th className="px-6 py-4">Používateľ</th>
-                                <th className="px-6 py-4">Stav</th>
                                 <th className="px-6 py-4">Rola</th>
                                 <th className="px-6 py-4 text-right">Akcie</th>
                             </tr>
@@ -85,11 +80,11 @@ const UserList: React.FC = () => {
                         <tbody className="divide-y divide-gray-100">
                             {loading ? (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-8 text-center text-gray-400">Načítavam používateľov...</td>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-gray-400">Načítavam...</td>
                                 </tr>
                             ) : filteredUsers.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-6 py-8 text-center text-gray-400">Žiadni používatelia</td>
+                                    <td colSpan={3} className="px-6 py-8 text-center text-gray-400">Žiadni používatelia</td>
                                 </tr>
                             ) : (
                                 filteredUsers.map(user => (
@@ -106,11 +101,6 @@ const UserList: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${user.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {user.is_active ? 'Aktívny' : 'Neaktívny'}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
                                             {user.is_staff ? (
                                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
                                                     Admin
@@ -123,10 +113,10 @@ const UserList: React.FC = () => {
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <Link
-                                                to={`/admin/users/${user.id}`}
+                                                to={`/admin/roles/${user.id}`}
                                                 className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
                                             >
-                                                Upraviť nastavenia
+                                                Meniť rolu / Údaje
                                             </Link>
                                         </td>
                                     </tr>
@@ -140,4 +130,4 @@ const UserList: React.FC = () => {
     );
 };
 
-export default UserList;
+export default AdminUserList;

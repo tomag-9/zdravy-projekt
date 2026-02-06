@@ -19,7 +19,8 @@ const OrderPage = () => {
         currentOrder, updateMenuCount, updateDiet,
         enabledCategories, settings, updateSettings,
         clearMeal, getAvailableDiets, submitOrder,
-        adminVisibleMeals, adminVisibleMenus
+        adminVisibleMeals, adminVisibleMenus,
+        areDietsForced
     } = useApp();
 
     const [activeDietModal, setActiveDietModal] = useState<{ meal: 'breakfast' | 'lunch' | 'olovrant', category: string } | null>(null);
@@ -372,9 +373,11 @@ const OrderPage = () => {
                                                 onMenuCountChange={(menuType, val) => isEditable && updateMenuCount(key, category, menuType, val)}
                                                 hasDietsEnabled={availableDiets.length > 0}
                                                 dietCount={dietCount}
-                                                onOpenDiets={() => isEditable && setActiveDietModal({ meal: key, category })}
+                                                onOpenDiets={() => !areDietsForced && isEditable && setActiveDietModal({ meal: key, category })}
                                                 disabled={!isEditable}
                                                 visibleMenus={adminVisibleMenus}
+                                                areDietsForced={areDietsForced}
+                                                forcedDietNames={areDietsForced ? availableDiets : []}
                                             />
                                         );
                                     })}

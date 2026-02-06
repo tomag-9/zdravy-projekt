@@ -7,9 +7,12 @@ import Settings from './pages/client/pages/Settings';
 import ProfilePage from './pages/client/pages/ProfilePage';
 import LoginPage from './pages/LoginPage';
 import AdminLayout from './pages/admin/AdminLayout';
-import UserList from './pages/admin/UserList';
 import DietManager from './pages/admin/DietManager';
-import UserDetail from './pages/admin/UserDetail';
+import ClientList from './pages/admin/ClientList';
+import ClientDetail from './pages/admin/ClientDetail';
+import AdminUserList from './pages/admin/AdminUserList';
+import AdminUserDetail from './pages/admin/AdminUserDetail';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 const ProtectedRoute = () => {
   const { isAuthenticated, user } = useAuth();
@@ -61,9 +64,12 @@ export default function App() {
             
             {/* Admin Routes */}
             <Route path="/admin" element={<AdminRoute />}>
-                 <Route index element={<Navigate to="users" replace />} />
-                 <Route path="users" element={<UserList />} />
-                 <Route path="users/:id" element={<UserDetail />} />
+                 <Route index element={<Navigate to="dashboard" replace />} />
+                 <Route path="dashboard" element={<AdminDashboard />} />
+                 <Route path="clients" element={<ClientList />} />
+                 <Route path="clients/:id" element={<ClientDetail />} />
+                 <Route path="roles" element={<AdminUserList />} />
+                 <Route path="roles/:id" element={<AdminUserDetail />} />
                  <Route path="diets" element={<DietManager />} />
             </Route>
 

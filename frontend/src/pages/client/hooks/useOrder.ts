@@ -228,14 +228,7 @@ export const useOrder = () => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
 
-    const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
-        setTouchedMeals(prev => {
-            const next = new Set(prev);
-            next.add(mealKey);
-            return next;
-        });
-        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
-    };
+
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
         setTouchedMeals(prev => {
@@ -360,6 +353,38 @@ export const useOrder = () => {
         return standard.filter(d => adminVisibleDiets.includes(d));
     };
 
+    const areDietsForced = !!(user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0);
+
+    // Enhanced updateMenuCount to handle forced diets
+    const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
+
+        setCurrentOrder((prev) => {
+            let nextOrder = OrderService.updateMenuCount(prev, mealKey, category, menuType, count);
+
+            // If diets are forced, sync them
+            if (areDietsForced) {
+                const availableForCategory = getAvailableDiets(category);
+                // Calculate total menu count for this category
+                const mealData = nextOrder[mealKey][category];
+                if (mealData) {
+                    const totalMenus = Object.values(mealData.menuCounts || {}).reduce((a: number, b: number) => a + b, 0);
+
+                    // Update ALL forced diets to match total count
+                    // We assume forced diets applies to ALL meals in that category
+                    availableForCategory.forEach(diet => {
+                        nextOrder = OrderService.updateDiet(nextOrder, mealKey, category, diet, totalMenus);
+                    });
+                }
+            }
+            return nextOrder;
+        });
+    };
+
     return {
         enabledDiets, toggleDiet,
         enabledCategories, toggleCategory,
@@ -372,6 +397,7 @@ export const useOrder = () => {
         clearMeal,
         submitOrder, deleteOrder,
         adminVisibleMenus,
-        adminVisibleMeals
+        adminVisibleMeals,
+        areDietsForced
     };
 };

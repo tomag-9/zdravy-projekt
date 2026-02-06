@@ -18,7 +18,22 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return DailyOrder.objects.filter(user=self.request.user)
+        queryset = DailyOrder.objects.all()
+        user = self.request.user
+
+        if user.is_staff:
+             user_id = self.request.query_params.get('user_id')
+             if user_id:
+                 queryset = queryset.filter(user_id=user_id)
+             # If no user_id provided, maybe return all? Or just empty? 
+             # Let's default to returning their own if any, or all if requested.
+             # But usually admin wants explicit list.
+             # If filtered by nothing, return nothing or all? 
+             # Returning all might be huge. Let's return all but expect filter.
+        else:
+            queryset = queryset.filter(user=user)
+            
+        return queryset
 
     def perform_create(self, serializer):
         if self.request.user.is_staff:
@@ -83,3 +98,82 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by("username")
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+class AdminSummaryViewSet(viewsets.ViewSet):
+    """
+    Admin ViewSet for Dashboard Summaries.
+    """
+    permission_classes = [permissions.IsAdminUser]
+
+    @action(detail=False, methods=["get"], url_path="daily-stats")
+    def daily_stats(self, request):
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response({"error": "Date parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        orders = DailyOrder.objects.filter(date=date_str)
+        
+        # Structure:
+        # meals: {
+        #   "breakfast": { "CategoryName": { "menus": {"A": 10}, "diets": {"Gluten": 1}, "total": 10 } }
+        # }
+        stats = {
+            "total_orders": 0,
+            "status_breakdown": {"draft": 0, "submitted": 0},
+            "meals": {
+                "breakfast": {},
+                "lunch": {},
+                "olovrant": {}
+            }
+        }
+
+        for order in orders:
+            stats["total_orders"] += 1
+            stats["status_breakdown"][order.status] = stats["status_breakdown"].get(order.status, 0) + 1
+            
+            data = order.data or {}
+            
+            # Helper to aggregate a specific meal type (breakfast/lunch/olovrant)
+            def aggregate_meal(meal_key):
+                if meal_key not in data or not data[meal_key]:
+                    return
+                
+                meal_data = data[meal_key]
+                # iterate over categories in this meal
+                # e.g. meal_data = { "Dospelý (SŠ)": { "menuCounts": {"A":1}, "diets": {} } }
+                
+                for category, details in meal_data.items():
+                    if not details: 
+                        continue
+                    
+                    # Ensure category dict exists in stats
+                    if category not in stats["meals"][meal_key]:
+                        stats["meals"][meal_key][category] = {
+                            "menus": {},
+                            "diets": {},
+                            "total": 0
+                        }
+                    
+                    cat_stats = stats["meals"][meal_key][category]
+
+                    # Aggregate Menus
+                    menu_counts = details.get("menuCounts", {})
+                    for menu_type, count in menu_counts.items():
+                        count = int(count or 0)
+                        if count > 0:
+                            cat_stats["menus"][menu_type] = cat_stats["menus"].get(menu_type, 0) + count
+                            cat_stats["total"] += count
+
+                    # Aggregate Diets
+                    diets = details.get("diets", {})
+                    for diet_name, count in diets.items():
+                        count = int(count or 0)
+                        if count > 0:
+                            cat_stats["diets"][diet_name] = cat_stats["diets"].get(diet_name, 0) + count
+
+            aggregate_meal("breakfast")
+            aggregate_meal("lunch")
+            aggregate_meal("olovrant")
+
+        return Response(stats)
