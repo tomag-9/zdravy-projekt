@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
-import { CATEGORIES, DIETS } from '../config/constants';
+import { CATEGORIES } from '../config/constants';
 import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -22,7 +22,7 @@ const safeParse = (key: string, fallback: any) => {
 export const useOrder = () => {
     const { apiFetch, user } = useAuth();
     // Settings
-    const [enabledDiets, setEnabledDiets] = useState<string[]>(() => safeParse('enabledDiets', [...DIETS]));
+
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
 
     const [settings, setSettings] = useState(() => safeParse('appSettings', {
@@ -67,7 +67,7 @@ export const useOrder = () => {
     }, [selectedDate]);
 
     // Persistence
-    useEffect(() => { localStorage.setItem('enabledDiets', JSON.stringify(enabledDiets)); }, [enabledDiets]);
+
     useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => { localStorage.setItem(`order_${selectedDate}`, JSON.stringify(currentOrder)); }, [currentOrder, selectedDate]);
@@ -94,6 +94,73 @@ export const useOrder = () => {
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
     }, [selectedDate]);
+
+    // Sync & Autosave Logic
+    // Debounce timer ref
+    // Fetch Order from API
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadOrder = async () => {
+            try {
+                const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/`);
+                if (response.ok) {
+                    // API returns { id, status, data: { breakfast... } }
+                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder };
+
+                    if (serverOrder && serverOrder.data && Object.keys(serverOrder.data).length > 0) {
+                        // Server has data
+                        if (isMounted) {
+                            // Merge mechanism could be complex, for now Server Authority wins
+                            const merged = OrderService.enforceStructure(serverOrder.data, OrderService.createEmptyOrder());
+                            merged.status = serverOrder.status; // Ensure status is synced
+                            setCurrentOrder(merged);
+
+                            // Update active meals based on content
+                            setActiveMeals(prevActive => {
+                                const newActive = { ...prevActive };
+                                if (!OrderService.isMealEmpty(merged.breakfast)) newActive.breakfast = true;
+                                if (!OrderService.isMealEmpty(merged.lunch)) newActive.lunch = true;
+                                if (!OrderService.isMealEmpty(merged.olovrant)) newActive.olovrant = true;
+                                return newActive;
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch order", e);
+            }
+        };
+
+        if (user) {
+            loadOrder();
+        }
+
+        return () => { isMounted = false; };
+    }, [selectedDate, apiFetch, user]); // Depend on selectedDate
+
+    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', lunch: '10:00', olovrant: '10:00' });
+
+    // Fetch Global Settings
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/global-settings/`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setGlobalDeadlines(data);
+                }
+            } catch (e) {
+                console.error("Failed to fetch global settings", e);
+            }
+        };
+        if (user) fetchSettings();
+    }, [apiFetch, user]);
+
+    // Autosave Logic REMOVED
+    // We do NOT save drafts to backend anymore. 
+    // Local persistence via localStorage (already implemented above) handles "draft" state robustness against refresh.
+
 
     // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)
     useEffect(() => {
@@ -216,9 +283,7 @@ export const useOrder = () => {
     }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
 
     // Actions
-    const toggleDiet = (diet: string) => {
-        setEnabledDiets(prev => prev.includes(diet) ? prev.filter(d => d !== diet) : [...prev, diet]);
-    };
+
 
     const toggleCategory = (category: string) => {
         setEnabledCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
@@ -344,16 +409,14 @@ export const useOrder = () => {
     const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ? (user.settings.visible_diets as any[]).map(d => d.name)
-        : DIETS;
+        : [];
 
     // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
     const getAvailableDiets = (categoryName: string) => {
-        const standard = OrderService.getAvailableDiets(categoryName, enabledDiets);
-        // Intersect with admin allowed diets
-        return standard.filter(d => adminVisibleDiets.includes(d));
+        return OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
     };
 
-    const areDietsForced = !!(user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0);
+
 
     // Enhanced updateMenuCount to handle forced diets
     const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
@@ -362,31 +425,10 @@ export const useOrder = () => {
             next.add(mealKey);
             return next;
         });
-
-        setCurrentOrder((prev) => {
-            let nextOrder = OrderService.updateMenuCount(prev, mealKey, category, menuType, count);
-
-            // If diets are forced, sync them
-            if (areDietsForced) {
-                const availableForCategory = getAvailableDiets(category);
-                // Calculate total menu count for this category
-                const mealData = nextOrder[mealKey][category];
-                if (mealData) {
-                    const totalMenus = Object.values(mealData.menuCounts || {}).reduce((a: number, b: number) => a + b, 0);
-
-                    // Update ALL forced diets to match total count
-                    // We assume forced diets applies to ALL meals in that category
-                    availableForCategory.forEach(diet => {
-                        nextOrder = OrderService.updateDiet(nextOrder, mealKey, category, diet, totalMenus);
-                    });
-                }
-            }
-            return nextOrder;
-        });
+        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
     };
 
     return {
-        enabledDiets, toggleDiet,
         enabledCategories, toggleCategory,
         settings, updateSettings,
         selectedDate, setSelectedDate,
@@ -398,6 +440,6 @@ export const useOrder = () => {
         submitOrder, deleteOrder,
         adminVisibleMenus,
         adminVisibleMeals,
-        areDietsForced
+        globalDeadlines,
     };
 };

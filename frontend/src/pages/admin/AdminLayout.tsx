@@ -6,6 +6,7 @@ const AdminLayout: React.FC = () => {
     const { logout } = useAuth();
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+    const [showLogoutModal, setShowLogoutModal] = React.useState(false);
 
     const isActive = (path: string) => location.pathname.startsWith(path);
 
@@ -104,10 +105,21 @@ const AdminLayout: React.FC = () => {
                         <span className="mr-3">🥗</span>
                         Správa diét
                     </Link>
+                    <Link
+                        to="/admin/settings"
+                        className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                            isActive('/admin/settings')
+                                ? 'bg-gray-100 text-gray-900 font-medium translate-x-1'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                    >
+                        <span className="mr-3">⚙️</span>
+                        Systém
+                    </Link>
                 </nav>
                 <div className="p-4 border-t border-gray-100">
                     <button
-                        onClick={logout}
+                        onClick={() => setShowLogoutModal(true)}
                         className="w-full flex items-center justify-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                     >
                         Odhlásiť sa
@@ -121,6 +133,31 @@ const AdminLayout: React.FC = () => {
                     <Outlet />
                 </div>
             </main>
+
+            {/* Logout Confirmation Modal */}
+            <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 transition-opacity ${showLogoutModal ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                <div className={`bg-white rounded-2xl shadow-xl w-full max-w-md p-6 transform transition-all ${showLogoutModal ? 'scale-100 translate-y-0' : 'scale-95 translate-y-4'}`}>
+                    <h3 className="text-xl font-bold text-gray-900 mb-2">Naozaj sa chcete odhlásiť?</h3>
+                    <p className="text-gray-500 mb-6">Budete presmerovaný na prihlasovaciu obrazovku.</p>
+                    <div className="flex gap-3 justify-end">
+                        <button 
+                            onClick={() => setShowLogoutModal(false)}
+                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+                        >
+                            Zrušiť
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setShowLogoutModal(false);
+                                logout();
+                            }}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-sm"
+                        >
+                            Odhlásiť sa
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

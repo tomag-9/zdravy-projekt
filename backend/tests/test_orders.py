@@ -163,9 +163,8 @@ class TestOrderCRUD:
         response = authenticated_client.post(url, payload, format="json")
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
 
-        order = DailyOrder.objects.get(user=user, date=today)
-        assert order.status == "draft"
-        assert order.data["lunch"] == {}
+        # Verify DB is empty (drafts not persisted)
+        assert not DailyOrder.objects.filter(user=user, date=today).exists()
 
     def test_by_date_endpoint(self, authenticated_client, user):
         """Test retrieving order by date"""

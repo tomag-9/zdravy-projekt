@@ -6,7 +6,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from .models import DailyOrder
+from api.models import DailyOrder
 
 
 class DailyOrderAPITest(TestCase):
@@ -24,6 +24,8 @@ class DailyOrderAPITest(TestCase):
         response = self.client.post(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(DailyOrder.objects.count(), 1)
+        # Status check removed or checked as default
+        self.assertEqual(DailyOrder.objects.get().status, "submitted")
         self.assertEqual(
             DailyOrder.objects.get().data["breakfast"]["menuCounts"]["A"], 1
         )
@@ -53,6 +55,7 @@ class DailyOrderAPITest(TestCase):
         url = reverse("dailyorder-by-date", args=[self.today])
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Check raw data, or specific field. The view returns serializer.data
         self.assertEqual(response.data["data"]["key"], "value")
 
     def test_get_by_date_empty(self):

@@ -1,18 +1,25 @@
+from datetime import date
+
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
+
 from api.models import DailyOrder
-from datetime import date
+
 
 class AdminSummaryTest(APITestCase):
     def setUp(self):
         # Create Admin
-        self.admin = User.objects.create_user(username="admin", password="password", is_staff=True)
+        self.admin = User.objects.create_user(
+            username="admin", password="password", is_staff=True
+        )
         # Create Client
-        self.client_user = User.objects.create_user(username="client", password="password", is_staff=False)
-        
+        self.client_user = User.objects.create_user(
+            username="client", password="password", is_staff=False
+        )
+
         self.today = date.today().isoformat()
-        
+
         # Create complex Detailed Order 1
         DailyOrder.objects.create(
             user=self.client_user,
@@ -20,39 +27,36 @@ class AdminSummaryTest(APITestCase):
             status="submitted",
             data={
                 "breakfast": {
-                    "Dospelý (SŠ)": { "menuCounts": {"A": 2}, "diets": {"Bez lepku": 1} }
+                    "Dospelý (SŠ)": {"menuCounts": {"A": 2}, "diets": {"Bez lepku": 1}}
                 },
                 "lunch": {
-                    "ZŠ 1.stupeň": { "menuCounts": {"A": 5, "B": 2}, "diets": {} },
-                    "Dospelý (SŠ)": { "menuCounts": {"A": 1}, "diets": {"Bez laktózy": 1} }
+                    "ZŠ 1.stupeň": {"menuCounts": {"A": 5, "B": 2}, "diets": {}},
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 1},
+                        "diets": {"Bez laktózy": 1},
+                    },
                 },
-                "olovrant": {
-                    "Jasle": { "menuCounts": {"A": 3}, "diets": {} }
-                }
-            }
+                "olovrant": {"Jasle": {"menuCounts": {"A": 3}, "diets": {}}},
+            },
         )
-        
+
         # Create second client/order
         self.client2 = User.objects.create_user(username="client2", password="password")
         DailyOrder.objects.create(
             user=self.client2,
             date=self.today,
             status="draft",
-            data={
-                "lunch": {
-                    "ZŠ 1.stupeň": { "menuCounts": {"A": 3}, "diets": {} }
-                }
-            }
+            data={"lunch": {"ZŠ 1.stupeň": {"menuCounts": {"A": 3}, "diets": {}}}},
         )
 
     def test_admin_can_access_summary(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(f"/api/admin/summary/daily-stats/?date={self.today}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        
+
         data = response.json()
         self.assertEqual(data["total_orders"], 2)
-        
+
         # Check Breakfast - Dospelý
         # Expecting: 2xA, 1x Gluten
         bf_stats = data["meals"]["breakfast"]["Dospelý (SŠ)"]

@@ -19,8 +19,7 @@ const OrderPage = () => {
         currentOrder, updateMenuCount, updateDiet,
         enabledCategories, settings, updateSettings,
         clearMeal, getAvailableDiets, submitOrder,
-        adminVisibleMeals, adminVisibleMenus,
-        areDietsForced
+        adminVisibleMeals, adminVisibleMenus, globalDeadlines
     } = useApp();
 
     const [activeDietModal, setActiveDietModal] = useState<{ meal: 'breakfast' | 'lunch' | 'olovrant', category: string } | null>(null);
@@ -339,7 +338,7 @@ const OrderPage = () => {
                         const { key: rawKey, label, icon } = mealItem;
                         const key = rawKey as 'breakfast' | 'lunch' | 'olovrant';
                         // Check deadline - assuming OrderService is available
-                        const isEditable = OrderService.checkDeadline(selectedDate, key);
+                        const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
 
                         return (
                             <MealCard
@@ -373,11 +372,9 @@ const OrderPage = () => {
                                                 onMenuCountChange={(menuType, val) => isEditable && updateMenuCount(key, category, menuType, val)}
                                                 hasDietsEnabled={availableDiets.length > 0}
                                                 dietCount={dietCount}
-                                                onOpenDiets={() => !areDietsForced && isEditable && setActiveDietModal({ meal: key, category })}
+                                                onOpenDiets={() => isEditable && setActiveDietModal({ meal: key, category })}
                                                 disabled={!isEditable}
                                                 visibleMenus={adminVisibleMenus}
-                                                areDietsForced={areDietsForced}
-                                                forcedDietNames={areDietsForced ? availableDiets : []}
                                             />
                                         );
                                     })}
@@ -390,9 +387,9 @@ const OrderPage = () => {
                 <OrderSummary
                     onSubmit={handleSubmit}
                     disabled={
-                        !OrderService.checkDeadline(selectedDate, 'breakfast') &&
-                        !OrderService.checkDeadline(selectedDate, 'lunch') &&
-                        !OrderService.checkDeadline(selectedDate, 'olovrant')
+                        !OrderService.checkDeadline(selectedDate, 'breakfast', globalDeadlines) &&
+                        !OrderService.checkDeadline(selectedDate, 'lunch', globalDeadlines) &&
+                        !OrderService.checkDeadline(selectedDate, 'olovrant', globalDeadlines)
                     }
                     disabledMessage="Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
                 />

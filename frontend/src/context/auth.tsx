@@ -104,9 +104,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              headers.set('Authorization', `Bearer ${newToken}`);
              response = await fetch(input, { ...init, headers });
         }
+    } else if (response.status === 403) {
+        // Forbidden - token might be valid but user inactive or permissions changed
+        // Or token is blacklisted. Safer to logout.
+        logout();
     }
     return response;
-  }, [refreshToken]);
+  }, [logout, refreshToken]);
 
   const fetchUserProfile = useCallback(async () => {
     try {

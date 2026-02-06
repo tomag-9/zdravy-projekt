@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider } from './pages/client/context/AppContext';
 import { AuthProvider, useAuth } from './context/auth';
+import { ToastProvider } from './context/ToastContext';
 import HomePage from './pages/client/pages/HomePage';
 import OrderPage from './pages/client/pages/OrderPage';
 import Settings from './pages/client/pages/Settings';
@@ -13,6 +14,7 @@ import ClientDetail from './pages/admin/ClientDetail';
 import AdminUserList from './pages/admin/AdminUserList';
 import AdminUserDetail from './pages/admin/AdminUserDetail';
 import AdminDashboard from './pages/admin/AdminDashboard';
+import SystemSettings from './pages/admin/SystemSettings';
 
 const ProtectedRoute = () => {
   const { isAuthenticated, user } = useAuth();
@@ -59,6 +61,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             
@@ -71,6 +74,7 @@ export default function App() {
                  <Route path="roles" element={<AdminUserList />} />
                  <Route path="roles/:id" element={<AdminUserDetail />} />
                  <Route path="diets" element={<DietManager />} />
+                 <Route path="settings" element={<SystemSettings />} />
             </Route>
 
             {/* Client Routes */}
@@ -90,6 +94,7 @@ export default function App() {
               } />
             </Route>
           </Routes>
+        </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
   );

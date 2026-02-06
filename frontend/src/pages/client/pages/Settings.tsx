@@ -1,9 +1,9 @@
-import { useApp, DIETS, CATEGORIES } from '../context/AppContext';
+import { useApp, CATEGORIES } from '../context/AppContext';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
 const Settings = () => {
-    const { enabledDiets, toggleDiet, enabledCategories, toggleCategory, settings, updateSettings } = useApp();
+    const { enabledCategories, toggleCategory, settings, updateSettings } = useApp();
 
     return (
         <div className="min-h-screen bg-slate-50 p-4 md:p-8">
@@ -47,38 +47,6 @@ const Settings = () => {
                                             className="sr-only peer"
                                             checked={enabledCategories.includes(category)}
                                             onChange={() => toggleCategory(category)}
-                                        />
-                                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                                    </div>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Diets Section */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div className="p-6 border-b border-slate-100 bg-slate-50/50">
-                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                                <span>🩺</span> Povolené diéty
-                            </h3>
-                            <p className="text-sm text-slate-500 mt-1">Vyberte diéty, ktoré sa majú zobrazovať.</p>
-                        </div>
-                        <div className="p-6 grid grid-cols-1 gap-2 max-h-96 overflow-y-auto">
-                            {DIETS.map(diet => (
-                                <label
-                                    key={diet}
-                                    className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${enabledDiets.includes(diet)
-                                        ? 'border-indigo-200 bg-indigo-50/50 text-indigo-900'
-                                        : 'border-slate-100 hover:border-slate-200 text-slate-600'
-                                        }`}
-                                >
-                                    <span className="font-medium text-sm">{diet}</span>
-                                    <div className="relative inline-flex items-center cursor-pointer">
-                                        <input
-                                            type="checkbox"
-                                            className="sr-only peer"
-                                            checked={enabledDiets.includes(diet)}
-                                            onChange={() => toggleDiet(diet)}
                                         />
                                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                                     </div>
@@ -130,23 +98,6 @@ const Settings = () => {
                     </div>
                 </div>
 
-                {/* Dev Tools */}
-                <div className="mt-8 pt-8 border-t border-slate-200">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">Vývojárske nástroje</h3>
-                    <button
-                        onClick={() => {
-                            if (confirm('Naozaj chcete prepísať všetky dáta testovacími dátami?')) {
-                                import('../lib/seeder').then(m => m.seedDevData());
-                            }
-                        }}
-                        className="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm font-medium hover:bg-slate-900 transition-colors"
-                    >
-                        Injektovať testovacie dáta
-                    </button>
-                    <p className="text-xs text-slate-500 mt-2">
-                        Toto vymaže lokálne dáta a naplní aplikáciu testovacími objednávkami (minulosť, prítomnosť, budúcnosť).
-                    </p>
-                </div>
             </div>
         </div>
     );

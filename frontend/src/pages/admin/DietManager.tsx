@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../context/auth';
+import { useToast } from '../../context/ToastContext';
 
 interface Diet {
     id: number;
@@ -10,6 +11,7 @@ interface Diet {
 
 const DietManager: React.FC = () => {
     const { apiFetch } = useAuth();
+    const { success, error } = useToast();
     const [diets, setDiets] = useState<Diet[]>([]);
     const [newDietName, setNewDietName] = useState('');
 
@@ -42,11 +44,13 @@ const DietManager: React.FC = () => {
             if (res.ok) {
                 setNewDietName('');
                 fetchDiets();
+                success('Diéta bola úspešne pridaná');
             } else {
-                alert('Failed to create diet');
+                error('Nepodarilo sa vytvoriť diétu (možno už existuje)');
             }
         } catch (e) {
             console.error(e);
+            error('Chyba pri vytváraní diéty');
         }
     };
 

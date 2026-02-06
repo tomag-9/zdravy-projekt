@@ -39,6 +39,15 @@ class OrderService {
         return CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat]: this.createEmptyCategory(cat) }), {} as MealData);
     }
 
+    static createEmptyOrder(): DailyOrder {
+        return {
+            status: 'draft',
+            breakfast: this.createEmptyMeal(),
+            lunch: this.createEmptyMeal(),
+            olovrant: this.createEmptyMeal()
+        };
+    }
+
     static getAvailableDiets(categoryName: string, enabledDiets: string[]): string[] {
         const availableMenus = GROUP_CONFIG[categoryName] || [];
         const hasMenuV = availableMenus.includes('V');
@@ -143,7 +152,7 @@ class OrderService {
     }
 
     // Deadline logic
-    static checkDeadline(dateStr: string, mealKey: string): boolean {
+    static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, lunch: string, olovrant: string }): boolean {
         // const orderDate = new Date(dateStr); // unused
         const now = new Date();
         const todayStr = now.toISOString().split('T')[0];
@@ -155,20 +164,23 @@ class OrderService {
         if (dateStr < todayStr) return false;
 
         // Today: specific deadlines
-        // Breakfast: 3:00 AM
-        // Lunch/Olovrant: 7:30 AM
+        if (!deadlines) return false; // Fail safe if no deadlines loaded? Or default?
+        // Let's default to reasonable times if missing, e.g. 10:00
+        const defaultTime = "10:00";
+
+        let deadlineStr = defaultTime;
+        if (mealKey === 'breakfast') deadlineStr = deadlines.breakfast || defaultTime;
+        if (mealKey === 'lunch') deadlineStr = deadlines.lunch || defaultTime;
+        if (mealKey === 'olovrant') deadlineStr = deadlines.olovrant || defaultTime;
+
+        const [h, m] = deadlineStr.split(':').map(Number);
+        const deadlineMinutes = h * 60 + m;
 
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
         const currentTime = currentHour * 60 + currentMinute;
 
-        if (mealKey === 'breakfast') {
-            const deadline = 3 * 60; // 3:00
-            return currentTime < deadline;
-        } else {
-            const deadline = 7 * 60 + 30; // 7:30
-            return currentTime < deadline;
-        }
+        return currentTime < deadlineMinutes;
     }
     static fastCopy<T>(source: T): T {
         return JSON.parse(JSON.stringify(source));

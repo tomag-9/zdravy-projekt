@@ -8,6 +8,7 @@ from .views import (
     AdminUserViewSet,
     DailyOrderViewSet,
     DietViewSet,
+    GlobalSettingsViewSet,
     UserProfileViewSet,
 )
 
@@ -17,6 +18,11 @@ router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/summary", AdminSummaryViewSet, basename="adminsummary")
+router.register(
+    r"admin/global-settings",
+    GlobalSettingsViewSet,
+    basename="global-settings",
+)
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -10,7 +10,7 @@ interface MenuCounterProps {
     dietCount: number;
 }
 
-const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, forcedDietNames }: MenuCounterProps & { disabled?: boolean, forcedDietNames?: string[] }) => {
+const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount }: MenuCounterProps & { disabled?: boolean }) => {
     // Determine if disabled implicitly via props from parent (onChange check) or explicitly if we passed it (we didn't yet, but let's handle it)
     // Actually, we modified onChange in parent to be no-op. But visual disabled state is nice.
     // Let's assume we want to add visual disabled state.
@@ -19,27 +19,14 @@ const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, forcedDiet
         <div className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0 opacity-100 group-disabled:opacity-50">
             <div className="flex items-center gap-2">
                 <span className="font-medium text-slate-600 w-16">Menu {type}</span>
-                {type === 'A' && (
-                    <>
-                        {onOpenDiets && (
-                            <button
-                                onClick={onOpenDiets}
-                                className="text-xs text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-800 transition-colors bg-indigo-50 px-2 py-1 rounded-md"
-                            >
-                                <Utensils className="w-3 h-3" />
-                                {dietCount > 0 ? `${dietCount} diét` : 'Diéty'}
-                            </button>
-                        )}
-                        {forcedDietNames && forcedDietNames.length > 0 && count > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                                {forcedDietNames.map(d => (
-                                     <span key={d} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded border border-red-200">
-                                        {d}
-                                     </span>
-                                ))}
-                            </div>
-                        )}
-                    </>
+                {type === 'A' && onOpenDiets && (
+                    <button
+                        onClick={onOpenDiets}
+                        className="text-xs text-indigo-600 font-medium flex items-center gap-1 hover:text-indigo-800 transition-colors bg-indigo-50 px-2 py-1 rounded-md"
+                    >
+                        <Utensils className="w-3 h-3" />
+                        {dietCount > 0 ? `${dietCount} diét` : 'Diéty'}
+                    </button>
                 )}
             </div>
 
@@ -83,8 +70,6 @@ interface CategoryRowProps {
     hasDietsEnabled: boolean;
     disabled?: boolean;
     visibleMenus?: string[];
-    areDietsForced?: boolean;
-    forcedDietNames?: string[];
 }
 
 const CategoryRow = ({
@@ -95,9 +80,7 @@ const CategoryRow = ({
     onOpenDiets,
     hasDietsEnabled,
     disabled,
-    visibleMenus,
-    areDietsForced,
-    forcedDietNames
+    visibleMenus
 }: CategoryRowProps) => {
     // Determine which menus to show based on the keys in menuCounts
     let menus = Object.keys(menuCounts || {});
@@ -126,7 +109,6 @@ const CategoryRow = ({
                         onChange={(val) => !disabled && onMenuCountChange(menuType, val)}
                         onOpenDiets={hasDietsEnabled && menuType === 'A' && !disabled ? onOpenDiets : null}
                         dietCount={dietCount}
-                        forcedDietNames={areDietsForced && menuType === 'A' ? forcedDietNames : undefined}
                     />
                 ))}
             </div>

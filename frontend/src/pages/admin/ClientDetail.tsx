@@ -25,10 +25,10 @@ interface AdminUser {
 }
 
 interface OrderData {
-    lunch?: string;
+    lunch?: unknown;
     soup?: string;
-    breakfast?: string;
-    olovrant?: boolean | string;
+    breakfast?: unknown;
+    olovrant?: unknown;
 }
 
 interface DailyOrder {
@@ -59,7 +59,9 @@ const ClientDetail: React.FC = () => {
 
     // Dashboard State
     const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
+
     const [ordersLoading, setOrdersLoading] = useState(false);
+    const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
     const fetchUser = useCallback(async () => {
         try {
@@ -230,60 +232,151 @@ const ClientDetail: React.FC = () => {
                                     <tr>
                                         <th className="px-6 py-4">Dátum</th>
                                         <th className="px-6 py-4">Status</th>
-                                        <th className="px-6 py-4">Obed</th>
-                                        <th className="px-6 py-4">Polievka</th>
-                                        <th className="px-6 py-4">Raňajky/Olovrant</th>
+                                        <th className="px-6 py-4">Súhrn</th>
+                                        <th className="px-6 py-4 w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-gray-100">
-                                    {recentOrders.map(order => (
-                                        <tr key={order.id} className="hover:bg-gray-50">
-                                            <td className="px-6 py-4 font-medium text-gray-900">{order.date}</td>
-                                            <td className="px-6 py-4">
-                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                    order.status === 'submitted' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
-                                                }`}>
-                                                    {order.status === 'submitted' ? 'Potvrdené' : 'Rozpracované'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                {(() => {
-                                                    const lunchData = order.data.lunch;
-                                                    if (!lunchData) return '-';
-                                                    // Handle legacy string format or new object format
-                                                    if (typeof lunchData === 'string') return <span className="font-bold text-blue-600">Menu {lunchData}</span>;
-                                                    
-                                                    // Aggregate from object
-                                                    const counts: Record<string, number> = {};
-                                                    Object.values(lunchData).forEach((cat: any) => {
-                                                        if (cat.menuCounts) {
-                                                            Object.entries(cat.menuCounts).forEach(([menu, count]) => {
-                                                                counts[menu] = (counts[menu] || 0) + Number(count);
-                                                            });
-                                                        }
-                                                    });
-                                                    
-                                                    const summary = Object.entries(counts)
-                                                        .filter(([_, c]) => c > 0)
-                                                        .map(([m, c]) => `${c}x ${m}`)
-                                                        .join(', ');
-                                                        
-                                                    return summary ? <span className="font-bold text-blue-600">{summary}</span> : '-';
-                                                })()}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                 {/* Soup logic - assuming it might be gone or aggregated? For now check if 'soup' exists in root or ignore */}
-                                                 {typeof order.data.soup === 'string' ? order.data.soup : '-'}
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                 <div className="flex space-x-2">
-                                                    {order.data.breakfast && <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">R</span>}
-                                                    {order.data.olovrant && <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded">O</span>}
-                                                    {!order.data.breakfast && !order.data.olovrant && '-'}
-                                                 </div>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {recentOrders.map(order => {
+                                        // Calculate Summary
+                                        const summaries: string[] = [];
+                                        
+                                        // Lunch
+                                        let lunchCount = 0;
+                                        const lunchData = order.data.lunch;
+                                        if (lunchData && typeof lunchData === 'object') {
+                                            Object.values(lunchData).forEach((cat: unknown) => {
+                                                const category = cat as { menuCounts?: Record<string, number> };
+                                                if (category?.menuCounts) {
+                                                    lunchCount += Object.values(category.menuCounts).reduce((a, b) => a + Number(b), 0);
+                                                }
+                                            });
+                                        } else if (typeof lunchData === 'string') {
+                                            lunchCount = 1; // Legacy assumption
+                                        }
+                                        if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
+
+                                        // Breakfast
+                                        let breakfastCount = 0;
+                                        const breakfastData = order.data.breakfast;
+                                        if (breakfastData && typeof breakfastData === 'object') {
+                                            Object.values(breakfastData).forEach((cat: unknown) => {
+                                                const category = cat as { menuCounts?: Record<string, number> };
+                                                if (category?.menuCounts) {
+                                                    breakfastCount += Object.values(category.menuCounts).reduce((a, b) => a + Number(b), 0);
+                                                }
+                                            });
+                                        } else if (typeof breakfastData === 'string' && breakfastData) {
+                                             breakfastCount = 1; 
+                                        } else if (breakfastData === 'true' || breakfastData === true) {
+                                            breakfastCount = 1; 
+                                        }
+                                        if (breakfastCount > 0) summaries.push(`${breakfastCount}x Raňajky`);
+
+                                        // Olovrant
+                                        let olovrantCount = 0;
+                                        const olovrantData = order.data.olovrant;
+                                        if (olovrantData && typeof olovrantData === 'object') {
+                                             Object.values(olovrantData).forEach((cat: unknown) => {
+                                                const category = cat as { menuCounts?: Record<string, number> };
+                                                if (category?.menuCounts) {
+                                                    olovrantCount += Object.values(category.menuCounts).reduce((a, b) => a + Number(b), 0);
+                                                }
+                                            });
+                                        } else if (olovrantData) {
+                                            olovrantCount = 1;
+                                        }
+                                        if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
+                                        
+                                        const summaryText = summaries.length > 0 ? summaries.join(', ') : '-';
+                                        const isExpanded = expandedOrderId === order.id;
+
+                                        return (
+                                            <React.Fragment key={order.id}>
+                                                <tr 
+                                                    className={`hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-gray-50' : ''}`}
+                                                    onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                                                >
+                                                    <td className="px-6 py-4 font-medium text-gray-900">{order.date}</td>
+                                                    <td className="px-6 py-4">
+                                                            {/* Status column removed or simplified since all are submitted/confirmed */}
+                                                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                                                Potvrdené
+                                                            </span>
+                                                        </td>
+                                                    <td className="px-6 py-4 font-bold text-gray-700">
+                                                        {summaryText}
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                         <span className="text-gray-400 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                                                    </td>
+                                                </tr>
+                                                {isExpanded && (
+                                                    <tr className="bg-gray-50/50">
+                                                        <td colSpan={4} className="px-6 py-4 border-t border-gray-100 shadow-inner">
+                                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+                                                                {/* Helper to render meal section */}
+                                                                {[
+                                                                    { title: 'Obed', data: order.data.lunch },
+                                                                    { title: 'Raňajky', data: order.data.breakfast },
+                                                                    { title: 'Olovrant', data: order.data.olovrant }
+                                                                ].map(({ title, data }) => (
+                                                                    <div key={title}>
+                                                                        <div className="font-semibold text-gray-900 mb-2 border-b border-gray-200 pb-1">{title}</div>
+                                                                        {(() => {
+                                                                            if (!data) return <span className="text-gray-400">-</span>;
+                                                                            if (typeof data === 'string') return <span>{data === 'true' ? 'Áno' : data}</span>;
+                                                                            if (data === true) return <span>Áno</span>;
+
+                                                                            // Object data
+                                                                            const items: JSX.Element[] = [];
+                                                                            Object.entries(data).forEach(([catName, catData]) => {
+                                                                                // Skip internal keys if any (like soup sometimes in old structure?) and check for standard structure
+                                                                                if (!catData || typeof catData !== 'object') return;
+                                                                                
+                                                                                const category = catData as { menuCounts?: Record<string, number>, dietCounts?: Record<string, number> };
+                                                                                const menuCounts = category.menuCounts || {};
+                                                                                const dietCounts = category.dietCounts || {};
+
+                                                                                const totalPortions = Object.values(menuCounts).reduce((a, b) => a + Number(b), 0);
+                                                                                const totalDiets = Object.values(dietCounts).reduce((a, b) => a + Number(b), 0);
+                                                                                
+                                                                                // Only show if there are portions
+                                                                                if (Number(totalPortions) > 0) {
+                                                                                     items.push(
+                                                                                        <div key={catName} className="flex flex-col mb-1 border-b border-gray-50 last:border-0 pb-1">
+                                                                                            <div className="flex justify-between items-baseline">
+                                                                                                <span className="font-medium text-gray-800">{String(totalPortions)}x {catName}</span>
+                                                                                            </div>
+                                                                                            {Number(totalDiets) > 0 && (
+                                                                                                <div className="text-xs text-indigo-600 pl-2">
+                                                                                                    • {String(totalDiets)}x Diéta
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                     );
+                                                                                }
+                                                                            });
+                                                                            
+                                                                            return items.length ? <div className="space-y-1">{items}</div> : <span className="text-gray-400">-</span>;
+                                                                        })()}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            
+                                                            {/* Soup Section separate if needed, or included? */}
+                                                            {order.data.soup && typeof order.data.soup === 'string' && (
+                                                                <div className="mt-4 pt-2 border-t border-gray-100">
+                                                                     <span className="font-semibold text-gray-900 mr-2">Polievka:</span>
+                                                                     <span>{order.data.soup}</span>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         )}
