@@ -43,6 +43,21 @@ class TestOrderPermissions:
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data.get("results", response.data)) == 0
 
+    def test_admin_restriction(self, authenticated_client, user):
+        """Admin/Staff user cannot create orders"""
+        user.is_staff = True
+        user.save()
+
+        url = reverse("dailyorder-list")
+        today = date.today()
+        payload = {
+            "date": str(today),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1}}},
+        }
+        response = authenticated_client.post(url, payload, format="json")
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
 
 @pytest.mark.django_db
 class TestOrderCRUD:

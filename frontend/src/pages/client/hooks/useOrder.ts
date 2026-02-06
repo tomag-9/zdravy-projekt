@@ -20,7 +20,7 @@ const safeParse = (key: string, fallback: any) => {
 };
 
 export const useOrder = () => {
-    const { apiFetch } = useAuth();
+    const { apiFetch, user } = useAuth();
     // Settings
     const [enabledDiets, setEnabledDiets] = useState<string[]>(() => safeParse('enabledDiets', [...DIETS]));
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
@@ -263,7 +263,7 @@ export const useOrder = () => {
         }));
     };
 
-    const getAvailableDiets = (categoryName: string) => OrderService.getAvailableDiets(categoryName, enabledDiets);
+
 
     const submitOrder = async (date: string) => {
         // Prepare payload - only active meals
@@ -338,6 +338,28 @@ export const useOrder = () => {
         }
     };
 
+    // Admin Constraints
+    const adminVisibleMenus = user?.settings?.visible_menus && user.settings.visible_menus.length > 0
+        ? user.settings.visible_menus
+        : ['A', 'B', 'C', 'V'];
+
+    const adminVisibleMeals = user?.settings?.visible_meals && user.settings.visible_meals.length > 0
+        ? user.settings.visible_meals
+        : ['breakfast', 'lunch', 'olovrant'];
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? (user.settings.visible_diets as any[]).map(d => d.name)
+        : DIETS;
+
+    // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
+    const getAvailableDiets = (categoryName: string) => {
+        const standard = OrderService.getAvailableDiets(categoryName, enabledDiets);
+        // Intersect with admin allowed diets
+        return standard.filter(d => adminVisibleDiets.includes(d));
+    };
+
     return {
         enabledDiets, toggleDiet,
         enabledCategories, toggleCategory,
@@ -348,6 +370,8 @@ export const useOrder = () => {
         getAvailableDiets,
         prevDayLunches,
         clearMeal,
-        submitOrder, deleteOrder
+        submitOrder, deleteOrder,
+        adminVisibleMenus,
+        adminVisibleMeals
     };
 };

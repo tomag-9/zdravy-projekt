@@ -18,7 +18,8 @@ const OrderPage = () => {
         activeMeals, toggleMeal,
         currentOrder, updateMenuCount, updateDiet,
         enabledCategories, settings, updateSettings,
-        clearMeal, getAvailableDiets, submitOrder
+        clearMeal, getAvailableDiets, submitOrder,
+        adminVisibleMeals, adminVisibleMenus
     } = useApp();
 
     const [activeDietModal, setActiveDietModal] = useState<{ meal: 'breakfast' | 'lunch' | 'olovrant', category: string } | null>(null);
@@ -154,11 +155,13 @@ const OrderPage = () => {
         }
     }, [dataChangedState, settings.copyBreakfastFromPrevLunch, settings.copyOlovrantFromLunch, updateSettings]);
 
-    const meals: { key: keyof DailyOrder; label: string; icon: React.ElementType }[] = [
+    const meals: { key: keyof DailyOrder; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
         { key: 'breakfast', label: 'Raňajky', icon: Coffee },
         { key: 'lunch', label: 'Obed', icon: Utensils },
         { key: 'olovrant', label: 'Olovrant', icon: Apple }
     ];
+
+    const visibleMealsList = meals.filter(m => adminVisibleMeals.includes(m.key));
 
     const handleSubmit = async () => {
         try {
@@ -331,8 +334,9 @@ const OrderPage = () => {
                 <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} />
 
                 <div className="space-y-6">
-                    {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-                    {(meals as { key: 'breakfast' | 'lunch' | 'olovrant'; label: string; icon: any }[]).map(({ key, label, icon }) => {
+                    {visibleMealsList.map((mealItem) => {
+                        const { key: rawKey, label, icon } = mealItem;
+                        const key = rawKey as 'breakfast' | 'lunch' | 'olovrant';
                         // Check deadline - assuming OrderService is available
                         const isEditable = OrderService.checkDeadline(selectedDate, key);
 
@@ -369,7 +373,8 @@ const OrderPage = () => {
                                                 hasDietsEnabled={availableDiets.length > 0}
                                                 dietCount={dietCount}
                                                 onOpenDiets={() => isEditable && setActiveDietModal({ meal: key, category })}
-                                                disabled={!isEditable} // Assuming CategoryRow supports disabled prop, if not we add it
+                                                disabled={!isEditable}
+                                                visibleMenus={adminVisibleMenus}
                                             />
                                         );
                                     })}

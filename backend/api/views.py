@@ -1,10 +1,15 @@
+from django.contrib.auth.models import User
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from .models import DailyOrder
+from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
-from .serializers_user import UserProfileSerializer
+from .serializers_user import (
+    AdminUserSerializer,
+    DietSerializer,
+    UserProfileSerializer,
+)
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -16,6 +21,10 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         return DailyOrder.objects.filter(user=self.request.user)
 
     def perform_create(self, serializer):
+        if self.request.user.is_staff:
+            from rest_framework.exceptions import PermissionDenied
+
+            raise PermissionDenied("Administrators cannot place orders.")
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
 
@@ -53,3 +62,24 @@ class UserProfileViewSet(viewsets.ViewSet):
                 serializer.save()
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class DietViewSet(viewsets.ModelViewSet):
+    queryset = Diet.objects.all()
+    serializer_class = DietSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["create", "update", "partial_update", "destroy"]:
+            return [permissions.IsAdminUser()]
+        return super().get_permissions()
+
+
+class AdminUserViewSet(viewsets.ModelViewSet):
+    """
+    Admin ViewSet for managing users and their settings.
+    """
+
+    queryset = User.objects.all().order_by("username")
+    serializer_class = AdminUserSerializer
+    permission_classes = [permissions.IsAdminUser]
