@@ -334,12 +334,12 @@ const ClientDetail: React.FC = () => {
                                                                                 // Skip internal keys if any (like soup sometimes in old structure?) and check for standard structure
                                                                                 if (!catData || typeof catData !== 'object') return;
                                                                                 
-                                                                                const category = catData as { menuCounts?: Record<string, number>, dietCounts?: Record<string, number> };
+                                                                                const category = catData as { menuCounts?: Record<string, number>, diets?: Record<string, number> };
                                                                                 const menuCounts = category.menuCounts || {};
-                                                                                const dietCounts = category.dietCounts || {};
+                                                                                const diets = category.diets || {};
 
                                                                                 const totalPortions = Object.values(menuCounts).reduce((a, b) => a + Number(b), 0);
-                                                                                const totalDiets = Object.values(dietCounts).reduce((a, b) => a + Number(b), 0);
+                                                                                const totalDiets = Object.values(diets).reduce((a, b) => a + Number(b), 0);
                                                                                 
                                                                                 // Only show if there are portions
                                                                                 if (Number(totalPortions) > 0) {

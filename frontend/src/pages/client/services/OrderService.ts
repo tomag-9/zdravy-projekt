@@ -164,8 +164,15 @@ class OrderService {
         if (dateStr < todayStr) return false;
 
         // Today: specific deadlines
-        if (!deadlines) return false; // Fail safe if no deadlines loaded? Or default?
-        // Let's default to reasonable times if missing, e.g. 10:00
+        if (!deadlines) {
+            // Default deadlines if not loaded yet
+            deadlines = {
+                breakfast: "10:00",
+                lunch: "10:00",
+                olovrant: "10:00"
+            };
+        }
+
         const defaultTime = "10:00";
 
         let deadlineStr = defaultTime;

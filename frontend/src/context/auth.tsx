@@ -105,12 +105,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              response = await fetch(input, { ...init, headers });
         }
     } else if (response.status === 403) {
-        // Forbidden - token might be valid but user inactive or permissions changed
-        // Or token is blacklisted. Safer to logout.
-        logout();
+        // Forbidden - we do NOT logout automatically anymore
+        // because 403 can happen for valid users accessing admin endpoints (e.g. accidentally)
+        // Checks should happen at the call site.
+        console.warn('Access Forbidden (403)');
     }
     return response;
-  }, [logout, refreshToken]);
+  }, [refreshToken]);
 
   const fetchUserProfile = useCallback(async () => {
     try {

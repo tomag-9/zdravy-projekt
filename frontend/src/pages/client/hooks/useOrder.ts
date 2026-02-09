@@ -148,7 +148,13 @@ export const useOrder = () => {
                 const res = await apiFetch(`${API_URL}/admin/global-settings/`);
                 if (res.ok) {
                     const data = await res.json();
-                    setGlobalDeadlines(data);
+                    // Map backend fields (deadline_*) to expected state structure
+                    const mapped = {
+                        breakfast: data.deadline_breakfast || data.breakfast || '10:00',
+                        lunch: data.deadline_lunch || data.lunch || '10:00',
+                        olovrant: data.deadline_olovrant || data.olovrant || '10:00',
+                    };
+                    setGlobalDeadlines(mapped);
                 }
             } catch (e) {
                 console.error("Failed to fetch global settings", e);

@@ -25,11 +25,10 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             user_id = self.request.query_params.get("user_id")
             if user_id:
                 queryset = queryset.filter(user_id=user_id)
-            # If no user_id provided, maybe return all? Or just empty?
-            # Let's default to returning their own if any, or all if requested.
-            # But usually admin wants explicit list.
-            # If filtered by nothing, return nothing or all?
-            # Returning all might be huge. Let's return all but expect filter.
+            else:
+                # If no user_id is provided, return only the staff user's own orders
+                # to prevent returning ALL orders by default (which breaks by_date logic).
+                queryset = queryset.filter(user=user)
         else:
             queryset = queryset.filter(user=user)
 
@@ -190,7 +189,12 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
     Singleton-like behavior: always returns the first instance.
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    def get_permissions(self):
+        # Allow authenticated users to list (read) settings
+        if self.action == "list":
+            return [permissions.IsAuthenticated()]
+        # Require admin for creation/updates
+        return [permissions.IsAdminUser()]
 
     def list(self, request):
         from .models import GlobalSettings
