@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { CATEGORIES } from '../config/constants';
 import { useAuth } from '../../../context/auth';
@@ -35,6 +35,9 @@ export const useOrder = () => {
 
     // State
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    // Ref mirrors selectedDate synchronously so persistence effects never write
+    // the previous day's currentOrder under the new date key (race condition fix)
+    const selectedDateRef = useRef(selectedDate);
     const [prevDayLunches, setPrevDayLunches] = useState(0);
 
     const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false }));
@@ -49,6 +52,11 @@ export const useOrder = () => {
         };
         return safeParse(`order_${selectedDate}`, initial);
     });
+
+    // Keep ref in sync — runs before other effects that depend on selectedDate
+    useEffect(() => {
+        selectedDateRef.current = selectedDate;
+    }, [selectedDate]);
 
     // Load prev day lunches
     useEffect(() => {
@@ -67,11 +75,15 @@ export const useOrder = () => {
     }, [selectedDate]);
 
     // Persistence
-
+    // NOTE: order/activeMeals persistence intentionally does NOT include selectedDate
+    // as a dependency — only currentOrder/activeMeals changes trigger a write.
+    // selectedDateRef ensures we always write under the correct (new) date key
+    // without the race condition where the new selectedDate fires the effect with
+    // the old currentOrder value (which would corrupt the new date's localStorage entry).
     useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
-    useEffect(() => { localStorage.setItem(`order_${selectedDate}`, JSON.stringify(currentOrder)); }, [currentOrder, selectedDate]);
-    useEffect(() => { localStorage.setItem(`activeMeals_${selectedDate}`, JSON.stringify(activeMeals)); }, [activeMeals, selectedDate]);
+    useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
+    useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {
@@ -334,15 +346,6 @@ export const useOrder = () => {
             olovrant: activeMeals.olovrant ? currentOrder.olovrant : OrderService.createEmptyMeal(),
         };
 
-        const orderWithStatus: DailyOrder = {
-            ...currentOrder,
-            ...payload,
-            status: 'submitted'
-        };
-
-        // Update local state first
-        setCurrentOrder(orderWithStatus);
-
         try {
             const response = await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
@@ -356,6 +359,15 @@ export const useOrder = () => {
                 const text = await response.text();
                 throw new Error(text);
             }
+
+            // Only update local state AFTER successful API call
+            const orderWithStatus: DailyOrder = {
+                ...currentOrder,
+                ...payload,
+                status: 'submitted'
+            };
+            setCurrentOrder(orderWithStatus);
+
             console.log('Order submitted to API');
             return true;
         } catch (e) {
