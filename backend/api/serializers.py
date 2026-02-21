@@ -6,8 +6,8 @@ from .models import DailyOrder
 class DailyOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyOrder
-        fields = ["id", "date", "status", "data", "updated_at"]
-        read_only_fields = ["id", "updated_at"]
+        fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
+        read_only_fields = ["id", "is_auto", "updated_at"]
 
     def create(self, validated_data):
         # User is passed via serializer.save(user=...) in views.py
