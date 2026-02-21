@@ -199,15 +199,32 @@ def _next_workdays(start: datetime.date, count: int = 5) -> list[datetime.date]:
 
 
 def _order_total(data: dict) -> tuple[int, dict]:
-    """Return (total_portions, {meal: count}) for the order data dict."""
+    """
+    Return (total_portions, {meal: count}) for the order data dict.
+
+    Supports both storage shapes:
+    - Flat:            {"lunch": {"menuCounts": {"A": 5}}}
+    - Category-nested: {"lunch": {"Dospelý": {"menuCounts": {"A": 5}}}}
+    """
     meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
     total = 0
     for meal_key in ("breakfast", "lunch", "olovrant"):
-        meal = data.get(meal_key, {})
-        for _cat, details in meal.items():
-            for count in (details.get("menuCounts") or {}).values():
-                meal_count[meal_key] += int(count or 0)
-                total += int(count or 0)
+        meal = data.get(meal_key, {}) or {}
+        if "menuCounts" in meal:
+            # Flat shape
+            for count in (meal.get("menuCounts") or {}).values():
+                c = int(count or 0)
+                meal_count[meal_key] += c
+                total += c
+        else:
+            # Category-nested shape
+            for _cat, details in meal.items():
+                if not isinstance(details, dict):
+                    continue
+                for count in (details.get("menuCounts") or {}).values():
+                    c = int(count or 0)
+                    meal_count[meal_key] += c
+                    total += c
     return total, meal_count
 
 
@@ -230,9 +247,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
 
         existing = {
             o.date: o
-            for o in DailyOrder.objects.filter(
-                user=request.user, date__in=workdays
-            )
+            for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
 
         result = []

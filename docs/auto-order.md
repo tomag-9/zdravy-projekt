@@ -194,21 +194,21 @@ Nahradí „Aktuálne objednávky". Zdroj dát: `/api/orders/planned/`.
 
 ### Docker infraštruktúra
 
-Nové services v `docker-compose.dev.yml` (a prod/staging):
+Services pridané do **všetkých troch** compose súborov (`docker-compose.dev.yml`, `docker-compose.staging.yml`, `docker-compose.prod.yml`):
 
 ```yaml
 redis:
   image: redis:7-alpine
 
 celery:
-  build: ./backend
+  build: ./backend # dev  |  uses pre‑built image in staging/prod
   command: celery -A app worker -l info
   depends_on: [db, redis]
 
 celery-beat:
   build: ./backend
   command: celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
-  depends_on: [db, redis]
+  depends_on: [db, redis, backend]
 ```
 
 ---
@@ -219,18 +219,20 @@ celery-beat:
 | ----------------------------------- | ----------- | ---------------------------------------- |
 | `GlobalSettings` (deadlines)        | ✅ Existuje | `deadline_breakfast/lunch/olovrant` v DB |
 | `ClientSettings.visible_meals`      | ✅ Existuje | JSON pole na modeli                      |
-| `DailyOrder` model                  | ✅ Existuje | Treba pridať `is_auto` pole              |
+| `DailyOrder` model                  | ✅ Hotovo   | Pole `is_auto` pridané                   |
 | DaySelector preskakuje víkendy      | ✅ Existuje | Funguje správne                          |
-| Migrácia `is_auto`                  | ❌ Chýba    |                                          |
-| Service funkcia `apply_auto_orders` | ❌ Chýba    |                                          |
-| Management command                  | ❌ Chýba    |                                          |
-| Celery + Redis setup                | ❌ Chýba    |                                          |
-| Celery Beat dynamický schedule      | ❌ Chýba    |                                          |
-| API endpoint `/orders/planned/`     | ❌ Chýba    |                                          |
-| HomePage – sekcia „Plánované"       | ❌ Chýba    |                                          |
-| UI badge auto / prázdna objednávka  | ❌ Chýba    |                                          |
-| Default dátum = prvý pracovný deň   | ❌ Chýba    |                                          |
-| Testy                               | ❌ Chýba    |                                          |
+| Migrácia `is_auto`                  | ✅ Hotovo   | `0006_dailyorder_is_auto.py`             |
+| Service funkcia `apply_auto_orders` | ✅ Hotovo   | `api/services.py`, N+1 optimalizovaná    |
+| Management command                  | ✅ Hotovo   | `apply_auto_orders --date YYYY-MM-DD`    |
+| Celery + Redis setup                | ✅ Hotovo   | `app/celery.py`, `api/tasks.py`          |
+| Celery Beat dynamický schedule      | ✅ Hotovo   | `django_celery_beat`, konfig v settings  |
+| Docker services (dev/staging/prod)  | ✅ Hotovo   | redis + celery + celery-beat vo všet. 3  |
+| API endpoint `/orders/planned/`     | ✅ Hotovo   | `PlannedOrdersViewSet`                   |
+| Admin trigger endpoint              | ✅ Hotovo   | `POST /api/admin/trigger-auto-orders/`   |
+| HomePage – sekcia „Plánované"       | ✅ Hotovo   | 5 pracovných dní, PlannedCard            |
+| UI badge auto / prázdna objednávka  | ✅ Hotovo   | Bot ikona, BanIcon, farebné badge        |
+| Default dátum = prvý pracovný deň   | ✅ Hotovo   | `firstWorkday()` helper                  |
+| Testy                               | ✅ Hotovo   | 77 testov prechádza, vrátane flat-shape  |
 
 ---
 

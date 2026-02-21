@@ -23,7 +23,9 @@ class Command(BaseCommand):
             try:
                 target_date = datetime.date.fromisoformat(date_str)
             except ValueError:
-                self.stderr.write(self.style.ERROR(f"Invalid date: {date_str}. Use YYYY-MM-DD."))
+                self.stderr.write(
+                    self.style.ERROR(f"Invalid date: {date_str}. Use YYYY-MM-DD.")
+                )
                 return
 
         result = apply_auto_orders(target_date)

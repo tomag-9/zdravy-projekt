@@ -42,7 +42,7 @@ EMPTY_DATA: dict = {
 }
 
 # A Monday so we have full predictability for workday arithmetic
-MONDAY = datetime.date(2025, 1, 6)   # confirmed Monday
+MONDAY = datetime.date(2025, 1, 6)  # confirmed Monday
 TUESDAY = datetime.date(2025, 1, 7)
 FRIDAY = datetime.date(2025, 1, 10)
 SATURDAY = datetime.date(2025, 1, 11)
@@ -104,6 +104,26 @@ class TestIsOrderEmpty:
         data = {
             "breakfast": {"Dospelý": {"menuCounts": {"A": 0}}},
             "lunch": {"Dospelý": {"menuCounts": {"B": 1}}},
+        }
+        assert _is_order_empty(data) is False
+
+    # --- Flat shape (meal -> menuCounts directly, without a category level) ---
+
+    def test_flat_shape_not_empty(self):
+        data = {"lunch": {"menuCounts": {"A": 1}}}
+        assert _is_order_empty(data) is False
+
+    def test_flat_shape_zero_counts_is_empty(self):
+        data = {
+            "lunch": {"menuCounts": {"A": 0}},
+            "breakfast": {"menuCounts": {"B": 0}},
+        }
+        assert _is_order_empty(data) is True
+
+    def test_flat_shape_mixed_meals(self):
+        data = {
+            "breakfast": {"menuCounts": {"A": 0}},
+            "lunch": {"menuCounts": {"B": 3}},
         }
         assert _is_order_empty(data) is False
 
@@ -303,7 +323,9 @@ class TestApplyAutoOrders:
         u1 = User.objects.create_user(username="u1", password="pw")
         u2 = User.objects.create_user(username="u2", password="pw")
 
-        DailyOrder.objects.create(user=u1, date=MONDAY, status="submitted", data=NON_EMPTY_DATA)
+        DailyOrder.objects.create(
+            user=u1, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
         # u2 has no history
 
         result = apply_auto_orders(target_date=TUESDAY)
@@ -451,4 +473,6 @@ class TestAdminTriggerAutoOrders:
 
         assert response.status_code == status.HTTP_200_OK
         assert "c1" in response.data["created"]
-        assert DailyOrder.objects.filter(user=client_user, date=TUESDAY, is_auto=True).exists()
+        assert DailyOrder.objects.filter(
+            user=client_user, date=TUESDAY, is_auto=True
+        ).exists()
