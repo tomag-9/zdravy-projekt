@@ -12,17 +12,18 @@ interface OrderSummaryModalProps {
     onClose: () => void;
     orderDate: string;
     orderData: DailyOrder;
+    globalDeadlines: { breakfast: string; lunch: string; olovrant: string };
     onDelete?: () => void;
 }
 
-const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData, onDelete }: OrderSummaryModalProps) => {
+const OrderSummaryModal = ({ isOpen, onClose, orderDate, orderData, globalDeadlines, onDelete }: OrderSummaryModalProps) => {
     const navigate = useNavigate();
     const { setSelectedDate, deleteOrder } = useApp();
     const [deleteConfirmation, setDeleteConfirmation] = useState(false);
 
     if (!isOpen || !orderData) return null;
 
-    const isEditable = (mealKey: string) => OrderService.checkDeadline(orderDate, mealKey);
+    const isEditable = (mealKey: string) => OrderService.checkDeadline(orderDate, mealKey, globalDeadlines);
 
     const getMealSummary = (mealKey: string) => {
         const key = mealKey as 'breakfast' | 'lunch' | 'olovrant';

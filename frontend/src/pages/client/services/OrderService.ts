@@ -163,15 +163,8 @@ class OrderService {
         // Past dates are never editable
         if (dateStr < todayStr) return false;
 
-        // Today: specific deadlines
-        if (!deadlines) {
-            // Default deadlines if not loaded yet
-            deadlines = {
-                breakfast: "10:00",
-                lunch: "10:00",
-                olovrant: "10:00"
-            };
-        }
+        // Today: specific deadlines. If not loaded yet, be conservative and block edits.
+        if (!deadlines) return false;
 
         const defaultTime = "10:00";
 

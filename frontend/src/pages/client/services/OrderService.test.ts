@@ -125,6 +125,14 @@ describe('OrderService', () => {
             const dateStr = today.toISOString().split('T')[0];
             expect(OrderService.checkDeadline(dateStr, 'lunch', { breakfast: '07:30', lunch: '07:30', olovrant: '07:30' })).toBe(false);
         });
+
+        it('should block today when deadlines are not provided', () => {
+            const today = new Date();
+            today.setHours(9, 0, 0, 0);
+            vi.setSystemTime(today);
+            const dateStr = today.toISOString().split('T')[0];
+            expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(false);
+        });
     });
 
     describe('Copying Logic', () => {

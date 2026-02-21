@@ -19,7 +19,7 @@ const HomePage = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [orderData, setOrderData] = useState<any>(null);
     const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
-    const { logout } = useApp();
+    const { logout, globalDeadlines } = useApp();
 
     useEffect(() => {
         // Load all orders from localStorage
@@ -235,6 +235,7 @@ const HomePage = () => {
                     onClose={() => setSelectedOrder(null)}
                     orderDate={selectedOrder?.date || ''}
                     orderData={orderData}
+                    globalDeadlines={globalDeadlines}
                     onDelete={() => {
                         if (selectedOrder) {
                             // Local updates are handled within OrderSummaryModal -> deleteOrder (context) 

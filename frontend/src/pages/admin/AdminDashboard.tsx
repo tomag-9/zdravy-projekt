@@ -149,7 +149,16 @@ const AdminDashboard: React.FC = () => {
                                 <span className="text-2xl font-bold text-green-600">{stats.status_breakdown?.submitted || 0}</span>
                              </div>
                              <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden">
-                                <div className="bg-green-500 h-full" style={{ width: `${(stats.status_breakdown?.submitted / stats.total_orders) * 100}%`}}></div>
+                                <div
+                                    className="bg-green-500 h-full"
+                                    style={{
+                                        width: `${
+                                            stats.total_orders
+                                                ? ((stats.status_breakdown?.submitted || 0) / stats.total_orders) * 100
+                                                : 0
+                                        }%`
+                                    }}
+                                ></div>
                              </div>
                         </div>
                          <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm flex flex-col justify-center">
