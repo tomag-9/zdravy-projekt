@@ -11,15 +11,20 @@ import {
   User,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useAuth } from "../../../context/auth";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 
 import { CategoryData } from "../services/OrderService";
 
+const API_URL = import.meta.env.VITE_API_URL || "/api";
+
 interface OrderSummary {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data: any; // full meal data for the detail modal
 }
 
 const HomePage = () => {
@@ -29,27 +34,37 @@ const HomePage = () => {
   const [orderData, setOrderData] = useState<any>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const { logout, globalDeadlines } = useApp();
+  const { apiFetch, user } = useAuth();
 
+  // Fetch submitted orders from the server so they survive logout/re-login.
+  // We also seed localStorage for each order so OrderPage's initial render is
+  // fast (it reads from localStorage before its own API call completes).
   useEffect(() => {
-    // Load all orders from localStorage
-    const loadedOrders: OrderSummary[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith("order_")) {
-        const date = key.replace("order_", "");
-        try {
-          const data = JSON.parse(localStorage.getItem(key) || "{}");
+    if (!user) return;
 
-          // Filter out drafts - only show submitted orders
-          if (data.status !== "submitted") continue;
+    const fetchOrders = async () => {
+      try {
+        const response = await apiFetch(`${API_URL}/orders/`);
+        if (!response.ok) return;
+        const json = await response.json();
+        // DRF returns paginated shape { count, results: [...] } — extract the array
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const serverOrders = (
+          Array.isArray(json) ? json : (json.results ?? [])
+        ) as any[];
 
+        const loadedOrders: OrderSummary[] = [];
+
+        serverOrders.forEach((orderRecord) => {
+          if (orderRecord.status !== "submitted") return;
+          const mealData = orderRecord.data || {};
           let total = 0;
           const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
 
           ["breakfast", "lunch", "olovrant"].forEach((meal) => {
-            if (data[meal]) {
+            if (mealData[meal]) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              Object.values(data[meal]).forEach((cat: any) => {
+              Object.values(mealData[meal]).forEach((cat: any) => {
                 const c = cat as CategoryData;
                 const menuCounts = c.menuCounts || {};
                 const count = (Object.values(menuCounts) as number[]).reduce(
@@ -57,37 +72,43 @@ const HomePage = () => {
                   0,
                 );
                 total += count;
-                // @ts-expect-error indexing
-                counts[meal] += count;
+                counts[meal as keyof typeof counts] += count;
               });
             }
           });
 
           if (total > 0) {
             loadedOrders.push({
-              date,
+              date: orderRecord.date,
               totalPortions: total,
               mealCount: counts,
+              data: mealData,
             });
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
 
-    // Sort by date descending
-    loadedOrders.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
-    setOrders(loadedOrders);
-  }, []);
+            // Seed localStorage so OrderPage loads instantly on navigation
+            if (!localStorage.getItem(`order_${orderRecord.date}`)) {
+              localStorage.setItem(
+                `order_${orderRecord.date}`,
+                JSON.stringify({ ...mealData, status: "submitted" }),
+              );
+            }
+          }
+        });
+
+        loadedOrders.sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+        );
+        setOrders(loadedOrders);
+      } catch (e) {
+        console.error("Failed to fetch orders from API", e);
+      }
+    };
+
+    fetchOrders();
+  }, [user, apiFetch]);
 
   const openSummary = (order: OrderSummary) => {
-    const data = JSON.parse(
-      localStorage.getItem(`order_${order.date}`) || "{}",
-    );
-    setOrderData(data);
+    setOrderData(order.data);
     setSelectedOrder(order);
   };
 
