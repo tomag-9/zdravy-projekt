@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
-import { CATEGORIES, DIETS } from '../config/constants';
+import { CATEGORIES } from '../config/constants';
 import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -20,9 +20,9 @@ const safeParse = (key: string, fallback: any) => {
 };
 
 export const useOrder = () => {
-    const { apiFetch } = useAuth();
+    const { apiFetch, user } = useAuth();
     // Settings
-    const [enabledDiets, setEnabledDiets] = useState<string[]>(() => safeParse('enabledDiets', [...DIETS]));
+
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
 
     const [settings, setSettings] = useState(() => safeParse('appSettings', {
@@ -67,7 +67,7 @@ export const useOrder = () => {
     }, [selectedDate]);
 
     // Persistence
-    useEffect(() => { localStorage.setItem('enabledDiets', JSON.stringify(enabledDiets)); }, [enabledDiets]);
+
     useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => { localStorage.setItem(`order_${selectedDate}`, JSON.stringify(currentOrder)); }, [currentOrder, selectedDate]);
@@ -94,6 +94,76 @@ export const useOrder = () => {
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
     }, [selectedDate]);
+
+    // Fetch Order from API (server authority; merges into local state)
+    useEffect(() => {
+        let isMounted = true;
+
+        const loadOrder = async () => {
+            try {
+                const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/`);
+                if (response.ok) {
+                    // API returns { id, status, data: { breakfast... } }
+                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder };
+
+                    if (serverOrder && serverOrder.data && Object.keys(serverOrder.data).length > 0) {
+                        // Server has data
+                        if (isMounted) {
+                            // Merge mechanism could be complex, for now Server Authority wins
+                            const merged = OrderService.enforceStructure(serverOrder.data, OrderService.createEmptyOrder());
+                            merged.status = serverOrder.status; // Ensure status is synced
+                            setCurrentOrder(merged);
+
+                            // Update active meals based on content
+                            setActiveMeals(prevActive => {
+                                const newActive = { ...prevActive };
+                                if (!OrderService.isMealEmpty(merged.breakfast)) newActive.breakfast = true;
+                                if (!OrderService.isMealEmpty(merged.lunch)) newActive.lunch = true;
+                                if (!OrderService.isMealEmpty(merged.olovrant)) newActive.olovrant = true;
+                                return newActive;
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch order", e);
+            }
+        };
+
+        if (user) {
+            loadOrder();
+        }
+
+        return () => { isMounted = false; };
+    }, [selectedDate, apiFetch, user]); // Depend on selectedDate
+
+    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', lunch: '10:00', olovrant: '10:00' });
+
+    // Fetch Global Settings
+    useEffect(() => {
+        const fetchSettings = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/global-settings/`);
+                if (res.ok) {
+                    const data = await res.json();
+                    // Map backend fields (deadline_*) to expected state structure
+                    const mapped = {
+                        breakfast: data.deadline_breakfast || data.breakfast || '10:00',
+                        lunch: data.deadline_lunch || data.lunch || '10:00',
+                        olovrant: data.deadline_olovrant || data.olovrant || '10:00',
+                    };
+                    setGlobalDeadlines(mapped);
+                }
+            } catch (e) {
+                console.error("Failed to fetch global settings", e);
+            }
+        };
+        if (user) fetchSettings();
+    }, [apiFetch, user]);
+
+    // Order persistence: no autosave/debounce writes draft orders to the backend.
+    // Draft state is kept only in localStorage (see safeParse logic above) to survive page refreshes.
+
 
     // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)
     useEffect(() => {
@@ -216,9 +286,7 @@ export const useOrder = () => {
     }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
 
     // Actions
-    const toggleDiet = (diet: string) => {
-        setEnabledDiets(prev => prev.includes(diet) ? prev.filter(d => d !== diet) : [...prev, diet]);
-    };
+
 
     const toggleCategory = (category: string) => {
         setEnabledCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
@@ -228,14 +296,7 @@ export const useOrder = () => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
 
-    const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
-        setTouchedMeals(prev => {
-            const next = new Set(prev);
-            next.add(mealKey);
-            return next;
-        });
-        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
-    };
+
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
         setTouchedMeals(prev => {
@@ -263,7 +324,7 @@ export const useOrder = () => {
         }));
     };
 
-    const getAvailableDiets = (categoryName: string) => OrderService.getAvailableDiets(categoryName, enabledDiets);
+
 
     const submitOrder = async (date: string) => {
         // Prepare payload - only active meals
@@ -338,8 +399,43 @@ export const useOrder = () => {
         }
     };
 
+    // Admin Constraints
+    // Fall back to defaults only when the setting is null/undefined;
+    // an explicitly empty array means "show none".
+    const adminVisibleMenusSetting = user?.settings?.visible_menus;
+    const adminVisibleMenus = adminVisibleMenusSetting == null
+        ? ['A', 'B', 'C', 'V']
+        : adminVisibleMenusSetting;
+
+    const adminVisibleMealsSetting = user?.settings?.visible_meals;
+    const adminVisibleMeals = adminVisibleMealsSetting == null
+        ? ['breakfast', 'lunch', 'olovrant']
+        : adminVisibleMealsSetting;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ? (user.settings.visible_diets as any[]).map(d => d.name)
+        : [];
+
+    // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
+    const getAvailableDiets = (categoryName: string) => {
+        return OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
+    };
+
+
+
+    // Enhanced updateMenuCount to handle forced diets
+    const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
+        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
+    };
+
     return {
-        enabledDiets, toggleDiet,
         enabledCategories, toggleCategory,
         settings, updateSettings,
         selectedDate, setSelectedDate,
@@ -348,6 +444,9 @@ export const useOrder = () => {
         getAvailableDiets,
         prevDayLunches,
         clearMeal,
-        submitOrder, deleteOrder
+        submitOrder, deleteOrder,
+        adminVisibleMenus,
+        adminVisibleMeals,
+        globalDeadlines,
     };
 };

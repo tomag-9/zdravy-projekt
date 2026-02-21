@@ -69,6 +69,7 @@ interface CategoryRowProps {
     onOpenDiets: () => void;
     hasDietsEnabled: boolean;
     disabled?: boolean;
+    visibleMenus?: string[];
 }
 
 const CategoryRow = ({
@@ -78,10 +79,15 @@ const CategoryRow = ({
     dietCount,
     onOpenDiets,
     hasDietsEnabled,
-    disabled
+    disabled,
+    visibleMenus
 }: CategoryRowProps) => {
     // Determine which menus to show based on the keys in menuCounts
-    const menus = Object.keys(menuCounts || {});
+    let menus = Object.keys(menuCounts || {});
+
+    if (visibleMenus && visibleMenus.length > 0) {
+        menus = menus.filter(m => visibleMenus.includes(m));
+    }
 
     // Sort menus to ensure A is first, then B, C, V...
     menus.sort((a, b) => {

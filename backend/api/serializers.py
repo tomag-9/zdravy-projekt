@@ -12,15 +12,33 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         # User is passed via serializer.save(user=...) in views.py
         user = validated_data.get("user") or self.context["request"].user
-        # Ensure we don't duplicate (though UniqueValidator/unique_together handles
-        # this DB side)
-        # We want update_or_create behavior usually for "save order"
+        input_status = validated_data.get("status", "submitted")
+
+        # If status is passed as 'draft', we treat it as a deletion request
+        # because we do not persist drafts.
+        if input_status == "draft":
+            DailyOrder.objects.filter(user=user, date=validated_data["date"]).delete()
+            # Return an unsaved instance for the response
+            return DailyOrder(
+                user=user, date=validated_data["date"], status="draft", data={}
+            )
+
+        status_val = "submitted"  # Always confirmed
+
         order, created = DailyOrder.objects.update_or_create(
             user=user,
             date=validated_data["date"],
             defaults={
                 "data": validated_data.get("data", {}),
-                "status": validated_data.get("status", "draft"),
+                "status": status_val,
             },
         )
         return order
+
+
+class GlobalSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        from .models import GlobalSettings
+
+        model = GlobalSettings
+        fields = ["deadline_breakfast", "deadline_lunch", "deadline_olovrant"]
