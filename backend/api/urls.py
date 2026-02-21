@@ -4,15 +4,20 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .health import health_check
 from .views import (
+    AdminAutoOrderViewSet,
     AdminSummaryViewSet,
     AdminUserViewSet,
     DailyOrderViewSet,
     DietViewSet,
     GlobalSettingsViewSet,
+    PlannedOrdersViewSet,
     UserProfileViewSet,
 )
 
 router = DefaultRouter()
+# NOTE: orders/planned MUST be registered before orders to avoid the
+# generic `orders/<pk>` pattern matching "planned" as a PK.
+router.register(r"orders/planned", PlannedOrdersViewSet, basename="planned-orders")
 router.register(r"orders", DailyOrderViewSet, basename="dailyorder")
 router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
@@ -22,6 +27,11 @@ router.register(
     r"admin/global-settings",
     GlobalSettingsViewSet,
     basename="global-settings",
+)
+router.register(
+    r"admin/trigger-auto-orders",
+    AdminAutoOrderViewSet,
+    basename="trigger-auto-orders",
 )
 
 urlpatterns = [

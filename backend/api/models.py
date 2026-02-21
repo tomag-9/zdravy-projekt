@@ -12,6 +12,9 @@ class DailyOrder(models.Model):
     # or we can remove it. Let's start by defaulting to submitted and ignoring draft.
     status = models.CharField(max_length=20, default="submitted")
     data = models.JSONField(default=dict)
+    is_auto = models.BooleanField(
+        default=False, help_text="True if this order was auto-generated after deadline"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -252,12 +252,12 @@ describe("OrderPage Logic & Triggers", () => {
     ).toBeVisible();
   });
 
-  it("Submit button logic (enabled/disabled based on portions)", () => {
-    // Active meals, but 0 portions -> disabled
+  it("Submit button is enabled with 0 portions (zero order = Manuálna nulová)", () => {
+    // Deadline not passed, but 0 portions → still enabled (intentional empty/null order)
     (OrderService.checkDeadline as Mock).mockReturnValue(true);
     renderPage();
     const submitBtn = screen.getByText("Odoslať objednávku").closest("button");
-    expect(submitBtn).toBeDisabled();
+    expect(submitBtn).not.toBeDisabled();
     // Deadline msg not present
     expect(
       screen.queryByText(

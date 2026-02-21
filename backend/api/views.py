@@ -1,4 +1,7 @@
+import datetime
+
 from django.contrib.auth.models import User
+from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -6,6 +9,7 @@ from rest_framework.response import Response
 from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
 from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSerializer
+from .services import _is_order_empty, _last_non_empty_order
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -177,6 +181,169 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                     cat_stats["diets"][diet_name] = (
                         cat_stats["diets"].get(diet_name, 0) + count
                     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _next_workdays(start: datetime.date, count: int = 5) -> list[datetime.date]:
+    """Return the next `count` Mon-Fri dates starting from (and including) start."""
+    days = []
+    d = start
+    while len(days) < count:
+        if d.weekday() < 5:  # Mon-Fri
+            days.append(d)
+        d += datetime.timedelta(days=1)
+    return days
+
+
+def _order_total(data: dict) -> tuple[int, dict]:
+    """
+    Return (total_portions, {meal: count}) for the order data dict.
+
+    Supports both storage shapes:
+    - Flat:            {"lunch": {"menuCounts": {"A": 5}}}
+    - Category-nested: {"lunch": {"Dospelý": {"menuCounts": {"A": 5}}}}
+    """
+    meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
+    total = 0
+    for meal_key in ("breakfast", "lunch", "olovrant"):
+        meal = data.get(meal_key, {}) or {}
+        if "menuCounts" in meal:
+            # Flat shape
+            for count in (meal.get("menuCounts") or {}).values():
+                c = int(count or 0)
+                meal_count[meal_key] += c
+                total += c
+        else:
+            # Category-nested shape
+            for _cat, details in meal.items():
+                if not isinstance(details, dict):
+                    continue
+                for count in (details.get("menuCounts") or {}).values():
+                    c = int(count or 0)
+                    meal_count[meal_key] += c
+                    total += c
+    return total, meal_count
+
+
+# ---------------------------------------------------------------------------
+# Planned orders endpoint
+# ---------------------------------------------------------------------------
+
+
+class PlannedOrdersViewSet(viewsets.ViewSet):
+    """
+    Returns the 5 upcoming workdays with order status for the logged-in client.
+    GET /api/orders/planned/
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def list(self, request):
+        today = timezone.localdate()
+        workdays = _next_workdays(today, 5)
+
+        existing = {
+            o.date: o
+            for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
+        }
+
+        # Single historical query — avoids N+1 when multiple days have no order.
+        # The planned-week cascade (existing dict) is checked first in-memory;
+        # this serves as the fallback for every unset day.
+        historical_template = _last_non_empty_order(request.user, workdays[0])
+
+        def _template_for_day(day):
+            """
+            Find the most recent non-empty order before `day`.
+            Checks orders already placed in the planned week first (cascade
+            forward), then falls back to the pre-fetched historical template.
+            No additional DB queries are made here.
+            """
+            for prev_day in reversed([d for d in workdays if d < day]):
+                prev = existing.get(prev_day)
+                if prev and not _is_order_empty(prev.data or {}):
+                    return prev
+            return historical_template
+
+        result = []
+        for day in workdays:
+            order = existing.get(day)
+            if order:
+                total, meal_count = _order_total(order.data or {})
+                result.append(
+                    {
+                        "date": str(day),
+                        "exists": True,
+                        "is_auto": order.is_auto,
+                        "is_empty": total == 0,
+                        "totalPortions": total,
+                        "mealCount": meal_count,
+                        "predictedTotal": 0,
+                        "predictedMealCount": {
+                            "breakfast": 0,
+                            "lunch": 0,
+                            "olovrant": 0,
+                        },
+                    }
+                )
+            else:
+                tmpl = _template_for_day(day)
+                if tmpl:
+                    predicted_total, predicted_meal_count = _order_total(
+                        tmpl.data or {}
+                    )
+                else:
+                    predicted_total = 0
+                    predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
+                result.append(
+                    {
+                        "date": str(day),
+                        "exists": False,
+                        "is_auto": None,
+                        "is_empty": None,
+                        "totalPortions": 0,
+                        "mealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
+                        "predictedTotal": predicted_total,
+                        "predictedMealCount": predicted_meal_count,
+                    }
+                )
+
+        return Response(result)
+
+
+# ---------------------------------------------------------------------------
+# Admin: manual trigger
+# ---------------------------------------------------------------------------
+
+
+class AdminAutoOrderViewSet(viewsets.ViewSet):
+    """
+    Admin endpoint to manually trigger auto-order for a given date.
+    POST /api/admin/trigger-auto-orders/  { "date": "YYYY-MM-DD" }  (date optional)
+    """
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def create(self, request):
+        date_str = request.data.get("date")
+        target_date = None
+        if date_str:
+            try:
+                target_date = datetime.date.fromisoformat(date_str)
+            except ValueError:
+                return Response(
+                    {"error": "Invalid date format. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        from .services import apply_auto_orders
+
+        result = apply_auto_orders(target_date)
+        return Response(result, status=status.HTTP_200_OK)
 
 
 class GlobalSettingsViewSet(viewsets.ViewSet):
