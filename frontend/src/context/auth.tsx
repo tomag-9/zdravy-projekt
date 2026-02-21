@@ -1,7 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+} from "react";
 import { useNavigate } from "react-router-dom";
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 interface User {
   username: string;
@@ -23,6 +29,7 @@ export interface UserSettings {
 interface AuthContextType {
   user: User | null;
   token: string | null;
+  isLoading: boolean;
   login: (token: string, refresh: string) => void;
   logout: () => void;
   isAuthenticated: boolean;
@@ -33,9 +40,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(sessionStorage.getItem("access_token"));
+  const [token, setToken] = useState<string | null>(
+    sessionStorage.getItem("access_token"),
+  );
+  // True while the initial profile fetch is in-flight (prevents route flicker)
+  const [isLoading, setIsLoading] = useState<boolean>(
+    !!sessionStorage.getItem("access_token"),
+  );
   const navigate = useNavigate();
 
   // Logout function
@@ -44,22 +59,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem("refresh_token");
     setToken(null);
     setUser(null);
-    navigate('/login');
+    navigate("/login");
   }, [navigate]);
 
   // Refresh access token using refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
     const refresh = sessionStorage.getItem("refresh_token");
     if (!refresh) {
-        logout();
-        return false;
+      logout();
+      return false;
     }
 
     try {
       const response = await fetch(`${API_URL}/token/refresh/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refresh })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh }),
       });
 
       if (response.ok) {
@@ -68,7 +83,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(data.access);
         // If the backend rotates refresh tokens, update it here
         if (data.refresh) {
-            sessionStorage.setItem("refresh_token", data.refresh);
+          sessionStorage.setItem("refresh_token", data.refresh);
         }
         return true;
       } else {
@@ -76,52 +91,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return false;
       }
     } catch (error) {
-      console.error('Token refresh failed:', error);
+      console.error("Token refresh failed:", error);
       logout();
       return false;
     }
   }, [logout]);
 
   // Custom fetch wrapper that handles auth headers and token refresh
-  const apiFetch = useCallback(async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const currentToken = sessionStorage.getItem("access_token");
-    const headers = new Headers(init?.headers);
-    
-    if (currentToken) {
-        headers.set('Authorization', `Bearer ${currentToken}`);
-    }
+  const apiFetch = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const currentToken = sessionStorage.getItem("access_token");
+      const headers = new Headers(init?.headers);
 
-    const config = { ...init, headers };
-    
-    // First attempt
-    let response = await fetch(input, config);
+      if (currentToken) {
+        headers.set("Authorization", `Bearer ${currentToken}`);
+      }
 
-    // If unauthorized, try to refresh and retry
-    if (response.status === 401) {
+      const config = { ...init, headers };
+
+      // First attempt
+      let response = await fetch(input, config);
+
+      // If unauthorized, try to refresh and retry
+      if (response.status === 401) {
         const refreshed = await refreshToken();
         if (refreshed) {
-             const newToken = sessionStorage.getItem("access_token");
-             headers.set('Authorization', `Bearer ${newToken}`);
-             response = await fetch(input, { ...init, headers });
+          const newToken = sessionStorage.getItem("access_token");
+          headers.set("Authorization", `Bearer ${newToken}`);
+          response = await fetch(input, { ...init, headers });
         }
-    } else if (response.status === 403) {
+      } else if (response.status === 403) {
         // Forbidden - we do NOT logout automatically anymore
         // because 403 can happen for valid users accessing admin endpoints (e.g. accidentally)
         // Checks should happen at the call site.
-        console.warn('Access Forbidden (403)');
-    }
-    return response;
-  }, [refreshToken]);
+        console.warn("Access Forbidden (403)");
+      }
+      return response;
+    },
+    [refreshToken],
+  );
 
   const fetchUserProfile = useCallback(async () => {
     try {
-        const response = await apiFetch(`${API_URL}/user/profile/`);
-        if (response.ok) {
-            const userData = await response.json();
-            setUser(userData);
-        }
+      const response = await apiFetch(`${API_URL}/user/profile/`);
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      }
     } catch (e) {
-        console.error("Failed to fetch user profile", e);
+      console.error("Failed to fetch user profile", e);
+    } finally {
+      setIsLoading(false);
     }
   }, [apiFetch]);
 
@@ -134,11 +154,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // Set up token refresh interval (every 4 minutes, tokens expire in 5 minutes)
-    const refreshInterval = setInterval(() => {
-      if (sessionStorage.getItem("refresh_token")) {
-        refreshToken();
-      }
-    }, 4 * 60 * 1000); // 4 minutes
+    const refreshInterval = setInterval(
+      () => {
+        if (sessionStorage.getItem("refresh_token")) {
+          refreshToken();
+        }
+      },
+      4 * 60 * 1000,
+    ); // 4 minutes
 
     return () => clearInterval(refreshInterval);
   }, [refreshToken, fetchUserProfile]);
@@ -147,11 +170,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.setItem("access_token", accessToken);
     sessionStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
+    setIsLoading(true);
     fetchUserProfile();
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token, refreshToken, apiFetch, fetchUserProfile }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        token,
+        isLoading,
+        login,
+        logout,
+        isAuthenticated: !!token,
+        refreshToken,
+        apiFetch,
+        fetchUserProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

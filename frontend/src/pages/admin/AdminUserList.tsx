@@ -116,7 +116,7 @@ const AdminUserList: React.FC = () => {
         { method: "DELETE" },
       );
       if (res.ok || res.status === 204) {
-        success(`Účet „${deleteTarget.username}" bol vymazaný.`);
+        success(`Účet „${deleteTarget.username}” bol vymazaný.`);
         setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
         setDeleteTarget(null);
       } else {
@@ -341,7 +341,7 @@ const AdminUserList: React.FC = () => {
                 </label>
                 <input
                   type="password"
-                  placeholder="Nechajte prázdne pre dočasné heslo"
+                  placeholder="Voliteľné; ak ho necháte prázdne, heslo bude potrebné nastaviť neskôr"
                   value={createForm.password}
                   onChange={(e) =>
                     setCreateForm((f) => ({ ...f, password: e.target.value }))

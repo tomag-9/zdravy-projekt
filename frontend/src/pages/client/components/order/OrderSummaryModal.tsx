@@ -127,7 +127,7 @@ const OrderSummaryModal = ({
                   {!isEditable("breakfast") && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-amber-600/80">
                       <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline (3:00)</span>
+                      <span>Po deadline ({globalDeadlines.breakfast})</span>
                     </div>
                   )}
                 </div>
@@ -147,7 +147,7 @@ const OrderSummaryModal = ({
                   {!isEditable("lunch") && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600/80">
                       <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline (7:30)</span>
+                      <span>Po deadline ({globalDeadlines.lunch})</span>
                     </div>
                   )}
                 </div>
@@ -167,7 +167,7 @@ const OrderSummaryModal = ({
                   {!isEditable("olovrant") && (
                     <div className="mt-2 flex items-center gap-1 text-xs text-purple-600/80">
                       <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline (7:30)</span>
+                      <span>Po deadline ({globalDeadlines.olovrant})</span>
                     </div>
                   )}
                 </div>

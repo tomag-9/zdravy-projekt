@@ -400,13 +400,17 @@ export const useOrder = () => {
     };
 
     // Admin Constraints
-    const adminVisibleMenus = user?.settings?.visible_menus && user.settings.visible_menus.length > 0
-        ? user.settings.visible_menus
-        : ['A', 'B', 'C', 'V'];
+    // Fall back to defaults only when the setting is null/undefined;
+    // an explicitly empty array means "show none".
+    const adminVisibleMenusSetting = user?.settings?.visible_menus;
+    const adminVisibleMenus = adminVisibleMenusSetting == null
+        ? ['A', 'B', 'C', 'V']
+        : adminVisibleMenusSetting;
 
-    const adminVisibleMeals = user?.settings?.visible_meals && user.settings.visible_meals.length > 0
-        ? user.settings.visible_meals
-        : ['breakfast', 'lunch', 'olovrant'];
+    const adminVisibleMealsSetting = user?.settings?.visible_meals;
+    const adminVisibleMeals = adminVisibleMealsSetting == null
+        ? ['breakfast', 'lunch', 'olovrant']
+        : adminVisibleMealsSetting;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
