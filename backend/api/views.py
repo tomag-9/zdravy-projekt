@@ -279,13 +279,19 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
                         "totalPortions": total,
                         "mealCount": meal_count,
                         "predictedTotal": 0,
-                        "predictedMealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
+                        "predictedMealCount": {
+                            "breakfast": 0,
+                            "lunch": 0,
+                            "olovrant": 0,
+                        },
                     }
                 )
             else:
                 tmpl = _template_for_day(day)
                 if tmpl:
-                    predicted_total, predicted_meal_count = _order_total(tmpl.data or {})
+                    predicted_total, predicted_meal_count = _order_total(
+                        tmpl.data or {}
+                    )
                 else:
                     predicted_total = 0
                     predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
