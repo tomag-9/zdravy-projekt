@@ -17,9 +17,12 @@ import {
 import { Switch } from "../components/ui/Switch";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
+import { useToast } from "../../../context/ToastContext";
 
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
+  const toast = useToast();
+
   const {
     selectedDate,
     setSelectedDate,
@@ -223,12 +226,13 @@ const OrderPage = () => {
   const handleSubmit = async () => {
     try {
       await submitOrder(selectedDate);
+      toast.success("Objednávka bola úspešne odoslaná!");
       setShowToast(true);
       setTimeout(() => setShowToast(false), 3000);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       console.error(e);
-      alert("Nepodarilo sa odoslať objednávku.");
+      toast.error("Nepodarilo sa odoslať objednávku. Skúste to znova.");
     }
   };
 

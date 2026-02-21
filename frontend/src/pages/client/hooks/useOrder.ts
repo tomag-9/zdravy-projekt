@@ -334,15 +334,6 @@ export const useOrder = () => {
             olovrant: activeMeals.olovrant ? currentOrder.olovrant : OrderService.createEmptyMeal(),
         };
 
-        const orderWithStatus: DailyOrder = {
-            ...currentOrder,
-            ...payload,
-            status: 'submitted'
-        };
-
-        // Update local state first
-        setCurrentOrder(orderWithStatus);
-
         try {
             const response = await apiFetch(`${API_URL}/orders/`, {
                 method: 'POST',
@@ -356,6 +347,15 @@ export const useOrder = () => {
                 const text = await response.text();
                 throw new Error(text);
             }
+
+            // Only update local state AFTER successful API call
+            const orderWithStatus: DailyOrder = {
+                ...currentOrder,
+                ...payload,
+                status: 'submitted'
+            };
+            setCurrentOrder(orderWithStatus);
+
             console.log('Order submitted to API');
             return true;
         } catch (e) {

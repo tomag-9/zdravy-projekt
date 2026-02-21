@@ -30,15 +30,34 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (token: string, refresh: string) => void;
+  login: (token: string, refresh: string) => Promise<User | null>;
   logout: () => void;
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
   apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  fetchUserProfile: () => Promise<void>;
+  fetchUserProfile: () => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** Remove all per-user order data from localStorage so a newly logged-in
+ *  user never sees data that belonged to the previous session. */
+function clearOrderLocalStorage() {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (
+      key &&
+      (key.startsWith("order_") ||
+        key.startsWith("activeMeals_") ||
+        key === "enabledCategories" ||
+        key === "appSettings")
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((k) => localStorage.removeItem(k));
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -57,6 +76,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const logout = useCallback(() => {
     sessionStorage.removeItem("access_token");
     sessionStorage.removeItem("refresh_token");
+    // Also clear localStorage in case anything was stored there
+    localStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    // Clear per-user order data so next user starts fresh
+    clearOrderLocalStorage();
     setToken(null);
     setUser(null);
     navigate("/login");
@@ -107,7 +131,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         headers.set("Authorization", `Bearer ${currentToken}`);
       }
 
-      const config = { ...init, headers };
+      // Prevent browser from caching API responses (no custom headers → no CORS preflight)
+      const config = { ...init, headers, cache: "no-store" as RequestCache };
 
       // First attempt
       let response = await fetch(input, config);
@@ -131,15 +156,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     [refreshToken],
   );
 
-  const fetchUserProfile = useCallback(async () => {
+  const fetchUserProfile = useCallback(async (): Promise<User | null> => {
     try {
       const response = await apiFetch(`${API_URL}/user/profile/`);
       if (response.ok) {
-        const userData = await response.json();
+        const userData: User = await response.json();
         setUser(userData);
+        return userData;
       }
+      return null;
     } catch (e) {
       console.error("Failed to fetch user profile", e);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -166,12 +194,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => clearInterval(refreshInterval);
   }, [refreshToken, fetchUserProfile]);
 
-  const login = (accessToken: string, refreshTokenStr: string) => {
+  const login = async (
+    accessToken: string,
+    refreshTokenStr: string,
+  ): Promise<User | null> => {
+    // Wipe previous user's local order data before loading the new user's profile
+    clearOrderLocalStorage();
     sessionStorage.setItem("access_token", accessToken);
     sessionStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
     setIsLoading(true);
-    fetchUserProfile();
+    // Await profile so callers can navigate based on role (e.g. is_staff)
+    const userData = await fetchUserProfile();
+    return userData;
   };
 
   return (
