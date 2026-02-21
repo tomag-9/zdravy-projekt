@@ -59,6 +59,9 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
 class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
+    password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, style={"input_type": "password"}
+    )
 
     class Meta:
         model = User
@@ -71,7 +74,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_active",
             "is_staff",
             "settings",
+            "password",
         ]
+
+    def create(self, validated_data):
+        password = validated_data.pop("password", None)
+        user = User(**validated_data)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password()
+        user.save()
+        return user
 
     def get_settings(self, obj):
         if hasattr(obj, "settings"):

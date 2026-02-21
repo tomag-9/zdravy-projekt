@@ -26,7 +26,6 @@ const ClientList: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.results || [];
-        // FILTER: Only keep clients (is_staff === false)
         setUsers(list.filter((u: AdUser) => u.is_staff === false));
       } else {
         console.error("Failed to fetch users");
@@ -127,7 +126,11 @@ const ClientList: React.FC = () => {
                     </td>
                     <td className="px-6 py-4">
                       <span
-                        className={`px-2 py-1 rounded-full text-xs font-medium ${user.is_active ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          user.is_active
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
                       >
                         {user.is_active ? "Aktívny" : "Neaktívny"}
                       </span>
@@ -135,7 +138,7 @@ const ClientList: React.FC = () => {
                     <td className="px-6 py-4 text-right">
                       <Link
                         to={`/admin/clients/${user.id}`}
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+                        className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
                       >
                         Nastaviť Menu/Diéty
                       </Link>

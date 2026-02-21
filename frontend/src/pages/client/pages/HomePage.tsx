@@ -1,264 +1,322 @@
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, Calendar, UtensilsCrossed, History, Clock, Settings, LogOut, User } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import {
+  Plus,
+  Calendar,
+  UtensilsCrossed,
+  History,
+  Clock,
+  Settings,
+  LogOut,
+  User,
+} from "lucide-react";
 import { useApp } from "../context/AppContext";
-import OrderSummaryModal from '../components/order/OrderSummaryModal';
-import ConfirmationModal from '../components/ui/ConfirmationModal';
+import OrderSummaryModal from "../components/order/OrderSummaryModal";
+import ConfirmationModal from "../components/ui/ConfirmationModal";
 
-import { CategoryData } from '../services/OrderService';
+import { CategoryData } from "../services/OrderService";
 
 interface OrderSummary {
-    date: string;
-    totalPortions: number;
-    mealCount: { breakfast: number; lunch: number; olovrant: number };
+  date: string;
+  totalPortions: number;
+  mealCount: { breakfast: number; lunch: number; olovrant: number };
 }
 
 const HomePage = () => {
-    const [orders, setOrders] = useState<OrderSummary[]>([]);
-    const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const [orderData, setOrderData] = useState<any>(null);
-    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
-    const { logout, globalDeadlines } = useApp();
+  const [orders, setOrders] = useState<OrderSummary[]>([]);
+  const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [orderData, setOrderData] = useState<any>(null);
+  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const { logout, globalDeadlines } = useApp();
 
-    useEffect(() => {
-        // Load all orders from localStorage
-        const loadedOrders: OrderSummary[] = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('order_')) {
-                const date = key.replace('order_', '');
-                try {
-                    const data = JSON.parse(localStorage.getItem(key) || '{}');
+  useEffect(() => {
+    // Load all orders from localStorage
+    const loadedOrders: OrderSummary[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("order_")) {
+        const date = key.replace("order_", "");
+        try {
+          const data = JSON.parse(localStorage.getItem(key) || "{}");
 
-                    // Filter out drafts - only show submitted orders
-                    if (data.status !== 'submitted') continue;
+          // Filter out drafts - only show submitted orders
+          if (data.status !== "submitted") continue;
 
-                    let total = 0;
-                    const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
+          let total = 0;
+          const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
 
-                    ['breakfast', 'lunch', 'olovrant'].forEach(meal => {
-                        if (data[meal]) {
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            Object.values(data[meal]).forEach((cat: any) => {
-                                const c = cat as CategoryData;
-                                const menuCounts = c.menuCounts || {};
-                                const count = (Object.values(menuCounts) as number[]).reduce((a, b) => a + b, 0);
-                                total += count;
-                                // @ts-expect-error indexing
-                                counts[meal] += count;
-                            });
-                        }
-                    });
-
-                    if (total > 0) {
-                        loadedOrders.push({
-                            date,
-                            totalPortions: total,
-                            mealCount: counts
-                        });
-                    }
-                } catch (e) { console.error(e); }
+          ["breakfast", "lunch", "olovrant"].forEach((meal) => {
+            if (data[meal]) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              Object.values(data[meal]).forEach((cat: any) => {
+                const c = cat as CategoryData;
+                const menuCounts = c.menuCounts || {};
+                const count = (Object.values(menuCounts) as number[]).reduce(
+                  (a, b) => a + b,
+                  0,
+                );
+                total += count;
+                // @ts-expect-error indexing
+                counts[meal] += count;
+              });
             }
+          });
+
+          if (total > 0) {
+            loadedOrders.push({
+              date,
+              totalPortions: total,
+              mealCount: counts,
+            });
+          }
+        } catch (e) {
+          console.error(e);
         }
+      }
+    }
 
-        // Sort by date descending
-        loadedOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setOrders(loadedOrders);
-    }, []);
-
-    const openSummary = (order: OrderSummary) => {
-        const data = JSON.parse(localStorage.getItem(`order_${order.date}`) || '{}');
-        setOrderData(data);
-        setSelectedOrder(order);
-    };
-
-    const formatDate = (dateString: string) => {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('sk-SK', {
-            weekday: 'short',
-            day: 'numeric',
-            month: 'long'
-        });
-    };
-
-    const getStatus = (date: string) => {
-        const today = new Date().toISOString().split('T')[0];
-        if (date > today) return { label: 'Budúca', color: 'bg-blue-100 text-blue-700' };
-        if (date === today) return { label: 'Dnes', color: 'bg-green-100 text-green-700' };
-        return { label: 'Vybavená', color: 'bg-slate-100 text-slate-600' };
-    };
-
-    const today = new Date().toISOString().split('T')[0];
-    const activeOrders = orders.filter(o => o.date >= today);
-    const historyOrders = orders.filter(o => o.date < today).slice(0, 5); // Last 5
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
-            <div className="max-w-6xl mx-auto p-4 md:p-6">
-                {/* Header */}
-                <div className="mb-6 md:mb-8 pt-2 md:pt-4 flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                            Zdravý Projekt
-                        </h1>
-                    </div>
-                    <div className="flex gap-2 md:gap-3">
-                        <Link to="/profile">
-                            <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
-                                <User className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
-                                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">Profil</span>
-                            </button>
-                        </Link>
-                        <Link to="/settings">
-                            <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
-                                <Settings className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
-                                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">Nastavenia</span>
-                            </button>
-                        </Link>
-                        <button 
-                            onClick={() => setShowLogoutConfirmation(true)}
-                            className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-red-200 rounded-xl hover:border-red-300 hover:bg-red-50 transition-all shadow-sm hover:shadow-md group"
-                        >
-                            <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600 transition-colors" />
-                            <span className="hidden md:inline text-sm font-medium text-red-600 group-hover:text-red-700 transition-colors">Odhlásiť sa</span>
-                        </button>
-                    </div>
-                </div>
-
-                {/* New Order Button - Redesigned */}
-                <Link to={`/order?date=${today}`} className="group relative block mb-10">
-                    <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
-                    <button className="relative w-full bg-white hover:bg-slate-50 border border-indigo-100 rounded-2xl p-6 flex items-center justify-between shadow-xl shadow-indigo-100/50 transition-all duration-300 group-hover:-translate-y-1">
-                        <div className="flex items-center gap-5">
-                            <div className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform duration-300">
-                                <Plus className="w-8 h-8" />
-                            </div>
-                            <div className="text-left">
-                                <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">Nová objednávka</h3>
-                                <p className="text-slate-500">Objednajte si jedlo na dnešok alebo nasledujúce dni</p>
-                            </div>
-                        </div>
-                        <div className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold px-4 py-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
-                            Prejsť na objednávku
-                            →
-                        </div>
-                    </button>
-                </Link>
-
-                {/* Active Orders Section */}
-                {activeOrders.length > 0 && (
-                    <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
-                        <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                            <Clock className="w-5 h-5 text-indigo-600" />
-                            Aktuálne objednávky
-                        </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {activeOrders.map((order) => {
-                                const status = getStatus(order.date);
-                                return (
-                                    <div
-                                        key={order.date}
-                                        onClick={() => openSummary(order)}
-                                        className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 cursor-pointer transition-all duration-200 group"
-                                    >
-                                        <div className="flex justify-between items-start mb-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className="bg-indigo-50 p-2.5 rounded-lg group-hover:bg-indigo-100 transition-colors">
-                                                    <Calendar className="w-5 h-5 text-indigo-600" />
-                                                </div>
-                                                <div>
-                                                    <h3 className="font-bold text-slate-900">{formatDate(order.date)}</h3>
-                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}>
-                                                        {status.label}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div className="text-2xl font-bold text-slate-900">
-                                                {order.totalPortions}
-                                                <span className="text-xs font-normal text-slate-500 ml-1">ks</span>
-                                            </div>
-                                        </div>
-                                        <div className="flex gap-2 mt-2">
-                                            {order.mealCount.breakfast > 0 && <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">Raňajky: {order.mealCount.breakfast}</span>}
-                                            {order.mealCount.lunch > 0 && <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">Obed: {order.mealCount.lunch}</span>}
-                                            {order.mealCount.olovrant > 0 && <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">Olovrant: {order.mealCount.olovrant}</span>}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-
-                {/* History Orders Section */}
-                <div className="animate-in slide-in-from-bottom-10 duration-700">
-                    <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                        <History className="w-5 h-5 text-slate-500" />
-                        História (Posledných 5)
-                    </h2>
-                    {historyOrders.length === 0 ? (
-                        <div className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-                            <UtensilsCrossed className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                            <p className="text-slate-500">História je prázdna</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-3">
-                            {historyOrders.map((order) => (
-                                <div
-                                    key={order.date}
-                                    onClick={() => openSummary(order)}
-                                    className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
-                                >
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-slate-400">
-                                            <Calendar className="w-5 h-5" />
-                                        </div>
-                                        <div>
-                                            <span className="block font-medium text-slate-700">{formatDate(order.date)}</span>
-                                            <span className="text-xs text-slate-400">Vybavená objednávka</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-4">
-                                        <div className="text-right">
-                                            <span className="block font-bold text-slate-900">{order.totalPortions} porcií</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-
-                <OrderSummaryModal
-                    isOpen={!!selectedOrder}
-                    onClose={() => setSelectedOrder(null)}
-                    orderDate={selectedOrder?.date || ''}
-                    orderData={orderData}
-                    globalDeadlines={globalDeadlines}
-                    onDelete={() => {
-                        if (selectedOrder) {
-                            // Local updates are handled within OrderSummaryModal -> deleteOrder (context) 
-                            // We just need to update the HomePage specific list state:
-                            setOrders(prev => prev.filter(o => o.date !== selectedOrder.date));
-                            setSelectedOrder(null);
-                        }
-                    }}
-                />
-
-                <ConfirmationModal
-                    isOpen={showLogoutConfirmation}
-                    onClose={() => setShowLogoutConfirmation(false)}
-                    onConfirm={logout}
-                    title="Odhlásenie"
-                    description="Naozaj sa chcete odhlásiť z aplikácie?"
-                    confirmText="Odhlásiť sa"
-                    cancelText="Zrušiť"
-                    variant="danger"
-                />
-            </div>
-        </div>
+    // Sort by date descending
+    loadedOrders.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
+    setOrders(loadedOrders);
+  }, []);
+
+  const openSummary = (order: OrderSummary) => {
+    const data = JSON.parse(
+      localStorage.getItem(`order_${order.date}`) || "{}",
+    );
+    setOrderData(data);
+    setSelectedOrder(order);
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("sk-SK", {
+      weekday: "short",
+      day: "numeric",
+      month: "long",
+    });
+  };
+
+  const getStatus = (date: string) => {
+    const today = new Date().toISOString().split("T")[0];
+    if (date > today)
+      return { label: "Budúca", color: "bg-blue-100 text-blue-700" };
+    if (date === today)
+      return { label: "Dnes", color: "bg-green-100 text-green-700" };
+    return { label: "Vybavená", color: "bg-slate-100 text-slate-600" };
+  };
+
+  const today = new Date().toISOString().split("T")[0];
+  const activeOrders = orders.filter((o) => o.date >= today);
+  const historyOrders = orders.filter((o) => o.date < today).slice(0, 5); // Last 5
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
+      <div className="max-w-6xl mx-auto p-4 md:p-6">
+        {/* Header */}
+        <div className="mb-6 md:mb-8 pt-2 md:pt-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+              Zdravý Projekt
+            </h1>
+          </div>
+          <div className="flex gap-2 md:gap-3">
+            <Link to="/profile">
+              <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
+                <User className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
+                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">
+                  Profil
+                </span>
+              </button>
+            </Link>
+            <Link to="/settings">
+              <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
+                <Settings className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
+                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">
+                  Nastavenia
+                </span>
+              </button>
+            </Link>
+            <button
+              onClick={() => setShowLogoutConfirmation(true)}
+              className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-red-200 rounded-xl hover:border-red-300 hover:bg-red-50 transition-all shadow-sm hover:shadow-md group"
+            >
+              <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600 transition-colors" />
+              <span className="hidden md:inline text-sm font-medium text-red-600 group-hover:text-red-700 transition-colors">
+                Odhlásiť sa
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* New Order Button - Redesigned */}
+        <Link
+          to={`/order?date=${today}`}
+          className="group relative block mb-10"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+          <button className="relative w-full bg-white hover:bg-slate-50 border border-indigo-100 rounded-2xl p-6 flex items-center justify-between shadow-xl shadow-indigo-100/50 transition-all duration-300 group-hover:-translate-y-1">
+            <div className="flex items-center gap-5">
+              <div className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform duration-300">
+                <Plus className="w-8 h-8" />
+              </div>
+              <div className="text-left">
+                <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
+                  Nová objednávka
+                </h3>
+                <p className="text-slate-500">
+                  Objednajte si jedlo na dnešok alebo nasledujúce dni
+                </p>
+              </div>
+            </div>
+            <div className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold px-4 py-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
+              Prejsť na objednávku →
+            </div>
+          </button>
+        </Link>
+
+        {/* Active Orders Section */}
+        {activeOrders.length > 0 && (
+          <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-indigo-600" />
+              Aktuálne objednávky
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {activeOrders.map((order) => {
+                const status = getStatus(order.date);
+                return (
+                  <div
+                    key={order.date}
+                    onClick={() => openSummary(order)}
+                    className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 cursor-pointer transition-all duration-200 group"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-indigo-50 p-2.5 rounded-lg group-hover:bg-indigo-100 transition-colors">
+                          <Calendar className="w-5 h-5 text-indigo-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900">
+                            {formatDate(order.date)}
+                          </h3>
+                          <span
+                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}
+                          >
+                            {status.label}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-2xl font-bold text-slate-900">
+                        {order.totalPortions}
+                        <span className="text-xs font-normal text-slate-500 ml-1">
+                          ks
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      {order.mealCount.breakfast > 0 && (
+                        <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
+                          Raňajky: {order.mealCount.breakfast}
+                        </span>
+                      )}
+                      {order.mealCount.lunch > 0 && (
+                        <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
+                          Obed: {order.mealCount.lunch}
+                        </span>
+                      )}
+                      {order.mealCount.olovrant > 0 && (
+                        <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
+                          Olovrant: {order.mealCount.olovrant}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* History Orders Section */}
+        <div className="animate-in slide-in-from-bottom-10 duration-700">
+          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <History className="w-5 h-5 text-slate-500" />
+            História (Posledných 5)
+          </h2>
+          {historyOrders.length === 0 ? (
+            <div className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+              <UtensilsCrossed className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-slate-500">História je prázdna</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {historyOrders.map((order) => (
+                <div
+                  key={order.date}
+                  onClick={() => openSummary(order)}
+                  className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="text-slate-400">
+                      <Calendar className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="block font-medium text-slate-700">
+                        {formatDate(order.date)}
+                      </span>
+                      <span className="text-xs text-slate-400">
+                        Vybavená objednávka
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <span className="block font-bold text-slate-900">
+                        {order.totalPortions} porcií
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <OrderSummaryModal
+          isOpen={!!selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          orderDate={selectedOrder?.date || ""}
+          orderData={orderData}
+          globalDeadlines={globalDeadlines}
+          onDelete={() => {
+            if (selectedOrder) {
+              // Local updates are handled within OrderSummaryModal -> deleteOrder (context)
+              // We just need to update the HomePage specific list state:
+              setOrders((prev) =>
+                prev.filter((o) => o.date !== selectedOrder.date),
+              );
+              setSelectedOrder(null);
+            }
+          }}
+        />
+
+        <ConfirmationModal
+          isOpen={showLogoutConfirmation}
+          onClose={() => setShowLogoutConfirmation(false)}
+          onConfirm={logout}
+          title="Odhlásenie"
+          description="Naozaj sa chcete odhlásiť z aplikácie?"
+          confirmText="Odhlásiť sa"
+          cancelText="Zrušiť"
+          variant="danger"
+        />
+      </div>
+    </div>
+  );
 };
 
 export default HomePage;
