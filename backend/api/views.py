@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
 from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSerializer
+from .services import _is_order_empty, _last_non_empty_order
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -250,6 +251,20 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
 
+        def _template_for_day(day):
+            """
+            Find the most recent non-empty order before `day`.
+            Checks orders already placed in the planned week first (cascade
+            forward), then falls back to historical orders.
+            """
+            # Check planned-week orders earlier than this day (newest first)
+            for prev_day in reversed([d for d in workdays if d < day]):
+                prev = existing.get(prev_day)
+                if prev and not _is_order_empty(prev.data or {}):
+                    return prev
+            # Fallback: last historical order before this day
+            return _last_non_empty_order(request.user, day)
+
         result = []
         for day in workdays:
             order = existing.get(day)
@@ -263,9 +278,17 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
                         "is_empty": total == 0,
                         "totalPortions": total,
                         "mealCount": meal_count,
+                        "predictedTotal": 0,
+                        "predictedMealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
                     }
                 )
             else:
+                tmpl = _template_for_day(day)
+                if tmpl:
+                    predicted_total, predicted_meal_count = _order_total(tmpl.data or {})
+                else:
+                    predicted_total = 0
+                    predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
                 result.append(
                     {
                         "date": str(day),
@@ -274,6 +297,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
                         "is_empty": None,
                         "totalPortions": 0,
                         "mealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
+                        "predictedTotal": predicted_total,
+                        "predictedMealCount": predicted_meal_count,
                     }
                 )
 

@@ -1,138 +1,206 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Plus,
   Calendar,
   UtensilsCrossed,
   History,
-  Clock,
   Settings,
   LogOut,
   User,
+  Bot,
+  XCircle,
+  CalendarDays,
+  PenLine,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 
-import { CategoryData } from "../services/OrderService";
-
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
-interface OrderSummary {
+// Shape returned by GET /api/orders/planned/
+interface PlannedDay {
+  date: string;
+  exists: boolean;
+  is_auto: boolean | null;
+  is_empty: boolean | null;
+  totalPortions: number;
+  mealCount: { breakfast: number; lunch: number; olovrant: number };
+  predictedTotal: number;
+  predictedMealCount: { breakfast: number; lunch: number; olovrant: number };
+}
+
+// Past submitted orders for the history strip
+interface HistoryOrder {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any; // full meal data for the detail modal
+  data: any;
+}
+
+/** First workday strictly after today (Mon–Fri). */
+function firstNextWorkday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
 }
 
 const HomePage = () => {
-  const [orders, setOrders] = useState<OrderSummary[]>([]);
-  const [selectedOrder, setSelectedOrder] = useState<OrderSummary | null>(null);
+  const [plannedDays, setPlannedDays] = useState<PlannedDay[]>([]);
+  const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [orderData, setOrderData] = useState<any>(null);
+  const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
+  const navigate = useNavigate();
 
-  // Fetch submitted orders from the server so they survive logout/re-login.
-  // We also seed localStorage for each order so OrderPage's initial render is
-  // fast (it reads from localStorage before its own API call completes).
+  const firstWorkday = firstNextWorkday();
+
+  // ── Planned orders (5 next workdays) ──────────────────────────────────────
   useEffect(() => {
     if (!user) return;
+    apiFetch(`${API_URL}/orders/planned/`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setPlannedDays)
+      .catch(console.error);
+  }, [user, apiFetch]);
 
-    const fetchOrders = async () => {
+  // ── History (past submitted orders) ───────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    const fetchHistory = async () => {
       try {
-        const response = await apiFetch(`${API_URL}/orders/`);
-        if (!response.ok) return;
-        const json = await response.json();
-        // DRF returns paginated shape { count, results: [...] } — extract the array
+        const r = await apiFetch(`${API_URL}/orders/`);
+        if (!r.ok) return;
+        const json = await r.json();
+        // DRF may return paginated { count, results } or plain array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const serverOrders = (
-          Array.isArray(json) ? json : (json.results ?? [])
-        ) as any[];
+        const items: any[] = Array.isArray(json) ? json : (json.results ?? []);
+        const today = new Date().toISOString().split("T")[0];
+        const history: HistoryOrder[] = [];
 
-        const loadedOrders: OrderSummary[] = [];
-
-        serverOrders.forEach((orderRecord) => {
-          if (orderRecord.status !== "submitted") return;
-          const mealData = orderRecord.data || {};
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        items.forEach((rec: any) => {
+          if (rec.status !== "submitted" || rec.date >= today) return;
+          const mealData = rec.data || {};
           let total = 0;
           const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
-
           ["breakfast", "lunch", "olovrant"].forEach((meal) => {
-            if (mealData[meal]) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              Object.values(mealData[meal]).forEach((cat: any) => {
-                const c = cat as CategoryData;
-                const menuCounts = c.menuCounts || {};
-                const count = (Object.values(menuCounts) as number[]).reduce(
-                  (a, b) => a + b,
-                  0,
-                );
-                total += count;
-                counts[meal as keyof typeof counts] += count;
-              });
-            }
+            if (!mealData[meal]) return;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            Object.values(mealData[meal]).forEach((cat: any) => {
+              const menuCounts = cat?.menuCounts || {};
+              const c = (Object.values(menuCounts) as number[]).reduce(
+                (a, b) => a + b,
+                0,
+              );
+              total += c;
+              counts[meal as keyof typeof counts] += c;
+            });
           });
-
           if (total > 0) {
-            loadedOrders.push({
-              date: orderRecord.date,
+            history.push({
+              date: rec.date,
               totalPortions: total,
               mealCount: counts,
               data: mealData,
             });
-
-            // Seed localStorage so OrderPage loads instantly on navigation
-            if (!localStorage.getItem(`order_${orderRecord.date}`)) {
+            // Seed localStorage for fast OrderPage initial render
+            if (!localStorage.getItem(`order_${rec.date}`)) {
               localStorage.setItem(
-                `order_${orderRecord.date}`,
+                `order_${rec.date}`,
                 JSON.stringify({ ...mealData, status: "submitted" }),
               );
             }
           }
         });
 
-        loadedOrders.sort(
+        history.sort(
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
-        setOrders(loadedOrders);
+        setHistoryOrders(history.slice(0, 5));
       } catch (e) {
-        console.error("Failed to fetch orders from API", e);
+        console.error("Failed to fetch order history", e);
       }
     };
-
-    fetchOrders();
+    fetchHistory();
   }, [user, apiFetch]);
 
-  const openSummary = (order: OrderSummary) => {
-    setOrderData(order.data);
-    setSelectedOrder(order);
+  // ── Open detail modal for a day that has an existing order ────────────────
+  const openDayModal = async (date: string) => {
+    try {
+      const r = await apiFetch(`${API_URL}/orders/by-date/${date}/`);
+      if (r.ok) {
+        const rec = await r.json();
+        setModalOrderData(rec.data || {});
+      } else {
+        setModalOrderData({});
+      }
+    } catch {
+      setModalOrderData({});
+    }
+    setSelectedDate(date);
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("sk-SK", {
+  const handlePlannedCardClick = (day: PlannedDay) => {
+    if (!day.exists) {
+      // No order yet → go directly to the order page for that day
+      navigate(`/order?date=${day.date}`);
+    } else {
+      // Has an order → show summary modal
+      openDayModal(day.date);
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("sk-SK", {
       weekday: "short",
       day: "numeric",
       month: "long",
     });
   };
 
-  const getStatus = (date: string) => {
-    const today = new Date().toISOString().split("T")[0];
-    if (date > today)
-      return { label: "Budúca", color: "bg-blue-100 text-blue-700" };
-    if (date === today)
-      return { label: "Dnes", color: "bg-green-100 text-green-700" };
-    return { label: "Vybavená", color: "bg-slate-100 text-slate-600" };
+  // ── Badge helpers ──────────────────────────────────────────────────────────
+  const PlannedBadge = ({ day }: { day: PlannedDay }) => {
+    if (!day.exists) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
+          <Bot className="w-3 h-3" />
+          Automatická
+        </span>
+      );
+    }
+    if (day.is_empty) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
+          <XCircle className="w-3 h-3" />
+          Manuálna – nulová
+        </span>
+      );
+    }
+    if (day.is_auto) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
+          <Bot className="w-3 h-3" />
+          Automatická
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+        <PenLine className="w-3 h-3" />
+        Manuálna
+      </span>
+    );
   };
-
-  const today = new Date().toISOString().split("T")[0];
-  const activeOrders = orders.filter((o) => o.date >= today);
-  const historyOrders = orders.filter((o) => o.date < today).slice(0, 5); // Last 5
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
@@ -173,12 +241,12 @@ const HomePage = () => {
           </div>
         </div>
 
-        {/* New Order Button - Redesigned */}
+        {/* New Order CTA — navigates to first next workday */}
         <Link
-          to={`/order?date=${today}`}
+          to={`/order?date=${firstWorkday}`}
           className="group relative block mb-10"
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300" />
           <button className="relative w-full bg-white hover:bg-slate-50 border border-indigo-100 rounded-2xl p-6 flex items-center justify-between shadow-xl shadow-indigo-100/50 transition-all duration-300 group-hover:-translate-y-1">
             <div className="flex items-center gap-5">
               <div className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform duration-300">
@@ -188,9 +256,7 @@ const HomePage = () => {
                 <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
                   Nová objednávka
                 </h3>
-                <p className="text-slate-500">
-                  Objednajte si jedlo na dnešok alebo nasledujúce dni
-                </p>
+                <p className="text-slate-500">{formatDate(firstWorkday)}</p>
               </div>
             </div>
             <div className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold px-4 py-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
@@ -199,70 +265,117 @@ const HomePage = () => {
           </button>
         </Link>
 
-        {/* Active Orders Section */}
-        {activeOrders.length > 0 && (
-          <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
-            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Clock className="w-5 h-5 text-indigo-600" />
-              Aktuálne objednávky
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {activeOrders.map((order) => {
-                const status = getStatus(order.date);
-                return (
-                  <div
-                    key={order.date}
-                    onClick={() => openSummary(order)}
-                    className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200 cursor-pointer transition-all duration-200 group"
-                  >
-                    <div className="flex justify-between items-start mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="bg-indigo-50 p-2.5 rounded-lg group-hover:bg-indigo-100 transition-colors">
+        {/* ── Plánované objednávky – 5 pracovných dní ── */}
+        <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
+          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-indigo-600" />
+            Plánované objednávky
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {plannedDays.map((day) => {
+              const isEmpty = day.exists && day.is_empty;
+              const isUnset = !day.exists;
+              const hasPrediction = isUnset && day.predictedTotal > 0;
+              // auto-filled = unset but system will copy last order → render same as real auto
+              const isAutoFilled = isUnset && hasPrediction;
+              const totalPortions =
+                day.exists && !day.is_empty
+                  ? day.totalPortions
+                  : isAutoFilled
+                    ? day.predictedTotal
+                    : null;
+              const mealCount =
+                day.exists && !day.is_empty
+                  ? day.mealCount
+                  : isAutoFilled
+                    ? day.predictedMealCount
+                    : null;
+
+              return (
+                <div
+                  key={day.date}
+                  onClick={() => handlePlannedCardClick(day)}
+                  className={[
+                    "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
+                    isEmpty
+                      ? "bg-white border-red-100 hover:border-red-200 hover:shadow-sm"
+                      : isUnset && !hasPrediction
+                        ? "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm"
+                        : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200",
+                  ].join(" ")}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={[
+                          "p-2.5 rounded-lg transition-colors",
+                          isEmpty
+                            ? "bg-red-50"
+                            : "bg-indigo-50 group-hover:bg-indigo-100",
+                        ].join(" ")}
+                      >
+                        {isEmpty ? (
+                          <XCircle className="w-5 h-5 text-red-400" />
+                        ) : isUnset ? (
+                          <Bot className="w-5 h-5 text-indigo-600" />
+                        ) : day.is_auto ? (
+                          <Bot className="w-5 h-5 text-indigo-600" />
+                        ) : (
                           <Calendar className="w-5 h-5 text-indigo-600" />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-slate-900">
-                            {formatDate(order.date)}
-                          </h3>
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${status.color}`}
-                          >
-                            {status.label}
-                          </span>
-                        </div>
+                        )}
                       </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900">
+                          {formatDate(day.date)}
+                        </h3>
+                        <PlannedBadge day={day} />
+                      </div>
+                    </div>
+
+                    {totalPortions !== null && (
                       <div className="text-2xl font-bold text-slate-900">
-                        {order.totalPortions}
+                        {totalPortions}
                         <span className="text-xs font-normal text-slate-500 ml-1">
                           ks
                         </span>
                       </div>
-                    </div>
-                    <div className="flex gap-2 mt-2">
-                      {order.mealCount.breakfast > 0 && (
-                        <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
-                          Raňajky: {order.mealCount.breakfast}
-                        </span>
-                      )}
-                      {order.mealCount.lunch > 0 && (
-                        <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
-                          Obed: {order.mealCount.lunch}
-                        </span>
-                      )}
-                      {order.mealCount.olovrant > 0 && (
-                        <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
-                          Olovrant: {order.mealCount.olovrant}
-                        </span>
-                      )}
-                    </div>
+                    )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
-        {/* History Orders Section */}
+                  {/* Meal breakdown chips */}
+                  {mealCount !== null && (
+                    <div className="flex gap-2 mt-2">
+                      {mealCount.breakfast > 0 && (
+                        <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
+                          Raňajky: {mealCount.breakfast}
+                        </span>
+                      )}
+                      {mealCount.lunch > 0 && (
+                        <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
+                          Obed: {mealCount.lunch}
+                        </span>
+                      )}
+                      {mealCount.olovrant > 0 && (
+                        <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
+                          Olovrant: {mealCount.olovrant}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* No history at all — nothing to copy from */}
+                  {isUnset && !hasPrediction && (
+                    <p className="text-xs text-slate-400 mt-2">
+                      Žiadna história na predikciu
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ── História – posledných 5 minulých ── */}
         <div className="animate-in slide-in-from-bottom-10 duration-700">
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
             <History className="w-5 h-5 text-slate-500" />
@@ -278,13 +391,14 @@ const HomePage = () => {
               {historyOrders.map((order) => (
                 <div
                   key={order.date}
-                  onClick={() => openSummary(order)}
+                  onClick={() => {
+                    setModalOrderData(order.data);
+                    setSelectedDate(order.date);
+                  }}
                   className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="text-slate-400">
-                      <Calendar className="w-5 h-5" />
-                    </div>
+                    <Calendar className="w-5 h-5 text-slate-400" />
                     <div>
                       <span className="block font-medium text-slate-700">
                         {formatDate(order.date)}
@@ -294,33 +408,42 @@ const HomePage = () => {
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <span className="block font-bold text-slate-900">
-                        {order.totalPortions} porcií
-                      </span>
-                    </div>
-                  </div>
+                  <span className="font-bold text-slate-900">
+                    {order.totalPortions} porcií
+                  </span>
                 </div>
               ))}
             </div>
           )}
         </div>
 
+        {/* ── Detail modal ── */}
         <OrderSummaryModal
-          isOpen={!!selectedOrder}
-          onClose={() => setSelectedOrder(null)}
-          orderDate={selectedOrder?.date || ""}
-          orderData={orderData}
+          isOpen={!!selectedDate}
+          onClose={() => setSelectedDate(null)}
+          orderDate={selectedDate ?? ""}
+          orderData={modalOrderData}
           globalDeadlines={globalDeadlines}
           onDelete={() => {
-            if (selectedOrder) {
-              // Local updates are handled within OrderSummaryModal -> deleteOrder (context)
-              // We just need to update the HomePage specific list state:
-              setOrders((prev) =>
-                prev.filter((o) => o.date !== selectedOrder.date),
+            if (selectedDate) {
+              setPlannedDays((prev) =>
+                prev.map((d) =>
+                  d.date === selectedDate
+                    ? {
+                        ...d,
+                        exists: false,
+                        is_auto: null,
+                        is_empty: null,
+                        totalPortions: 0,
+                        mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+                      }
+                    : d,
+                ),
               );
-              setSelectedOrder(null);
+              setHistoryOrders((prev) =>
+                prev.filter((o) => o.date !== selectedDate),
+              );
+              setSelectedDate(null);
             }
           }}
         />
