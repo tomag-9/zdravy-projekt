@@ -251,19 +251,23 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
 
+        # Single historical query — avoids N+1 when multiple days have no order.
+        # The planned-week cascade (existing dict) is checked first in-memory;
+        # this serves as the fallback for every unset day.
+        historical_template = _last_non_empty_order(request.user, workdays[0])
+
         def _template_for_day(day):
             """
             Find the most recent non-empty order before `day`.
             Checks orders already placed in the planned week first (cascade
-            forward), then falls back to historical orders.
+            forward), then falls back to the pre-fetched historical template.
+            No additional DB queries are made here.
             """
-            # Check planned-week orders earlier than this day (newest first)
             for prev_day in reversed([d for d in workdays if d < day]):
                 prev = existing.get(prev_day)
                 if prev and not _is_order_empty(prev.data or {}):
                     return prev
-            # Fallback: last historical order before this day
-            return _last_non_empty_order(request.user, day)
+            return historical_template
 
         result = []
         for day in workdays:
