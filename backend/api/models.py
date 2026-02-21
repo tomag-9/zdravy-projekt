@@ -1,3 +1,5 @@
+import datetime
+
 from django.contrib.auth.models import User
 from django.db import models
 
@@ -48,13 +50,13 @@ class ClientSettings(models.Model):
 
 class GlobalSettings(models.Model):
     deadline_breakfast = models.TimeField(
-        default="10:00", help_text="Deadline for breakfast orders"
+        default=datetime.time(10, 0), help_text="Deadline for breakfast orders"
     )
     deadline_lunch = models.TimeField(
-        default="10:00", help_text="Deadline for lunch orders"
+        default=datetime.time(10, 0), help_text="Deadline for lunch orders"
     )
     deadline_olovrant = models.TimeField(
-        default="10:00", help_text="Deadline for olovrant orders"
+        default=datetime.time(10, 0), help_text="Deadline for olovrant orders"
     )
 
     class Meta:

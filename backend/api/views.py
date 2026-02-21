@@ -5,11 +5,7 @@ from rest_framework.response import Response
 
 from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
-from .serializers_user import (
-    AdminUserSerializer,
-    DietSerializer,
-    UserProfileSerializer,
-)
+from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSerializer
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):

@@ -95,9 +95,7 @@ export const useOrder = () => {
         setCurrentOrder(newOrder);
     }, [selectedDate]);
 
-    // Sync & Autosave Logic
-    // Debounce timer ref
-    // Fetch Order from API
+    // Fetch Order from API (server authority; merges into local state)
     useEffect(() => {
         let isMounted = true;
 
@@ -163,9 +161,8 @@ export const useOrder = () => {
         if (user) fetchSettings();
     }, [apiFetch, user]);
 
-    // Autosave Logic REMOVED
-    // We do NOT save drafts to backend anymore. 
-    // Local persistence via localStorage (already implemented above) handles "draft" state robustness against refresh.
+    // Order persistence: no autosave/debounce writes draft orders to the backend.
+    // Draft state is kept only in localStorage (see safeParse logic above) to survive page refreshes.
 
 
     // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)

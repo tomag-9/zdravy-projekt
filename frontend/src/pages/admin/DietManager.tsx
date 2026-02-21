@@ -1,116 +1,129 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../../context/auth';
-import { useToast } from '../../context/ToastContext';
+import React, { useCallback, useEffect, useState } from "react";
+import { useAuth } from "../../context/auth";
+import { useToast } from "../../context/ToastContext";
 
 interface Diet {
-    id: number;
-    name: string;
-    is_active: boolean;
-    description: string;
+  id: number;
+  name: string;
+  is_active: boolean;
+  description: string;
 }
 
 const DietManager: React.FC = () => {
-    const { apiFetch } = useAuth();
-    const { success, error } = useToast();
-    const [diets, setDiets] = useState<Diet[]>([]);
-    const [newDietName, setNewDietName] = useState('');
+  const { apiFetch } = useAuth();
+  const { success, error } = useToast();
+  const [diets, setDiets] = useState<Diet[]>([]);
+  const [newDietName, setNewDietName] = useState("");
 
-    const fetchDiets = useCallback(async () => {
-        try {
-            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/diets/`);
-            if (res.ok) {
-                const data = await res.json();
-                setDiets(Array.isArray(data) ? data : data.results || []);
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    }, [apiFetch]);
+  const fetchDiets = useCallback(async () => {
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setDiets(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, [apiFetch]);
 
-    useEffect(() => {
+  useEffect(() => {
+    fetchDiets();
+  }, [fetchDiets]);
+
+  const handleAddDiet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDietName) return;
+
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: newDietName, is_active: true }),
+        },
+      );
+      if (res.ok) {
+        setNewDietName("");
         fetchDiets();
-    }, [fetchDiets]);
+        success("Diéta bola úspešne pridaná");
+      } else {
+        error("Nepodarilo sa vytvoriť diétu (možno už existuje)");
+      }
+    } catch (e) {
+      console.error(e);
+      error("Chyba pri vytváraní diéty");
+    }
+  };
 
-    const handleAddDiet = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!newDietName) return;
+  const handleDelete = async (id: number) => {
+    if (!confirm("Naozaj chcete odstrániť túto diétu?")) return;
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/${id}/`,
+        {
+          method: "DELETE",
+        },
+      );
+      if (res.ok) {
+        fetchDiets();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-        try {
-            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/diets/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name: newDietName, is_active: true })
-            });
-            if (res.ok) {
-                setNewDietName('');
-                fetchDiets();
-                success('Diéta bola úspešne pridaná');
-            } else {
-                error('Nepodarilo sa vytvoriť diétu (možno už existuje)');
-            }
-        } catch (e) {
-            console.error(e);
-            error('Chyba pri vytváraní diéty');
-        }
-    };
-
-    const handleDelete = async (id: number) => {
-        if (!confirm("Ste si istý?")) return;
-        try {
-            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/diets/${id}/`, {
-                method: 'DELETE'
-            });
-            if (res.ok) {
-                fetchDiets();
-            }
-        } catch (e) {
-            console.error(e);
-        }
-    };
-
-    return (
-        <div className="space-y-6 animate-in fade-in duration-500">
-             <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900">Správa diét</h2>
-                    <p className="text-gray-500 mt-1">Pridajte alebo odstráňte systémové diéty</p>
-                </div>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                <form onSubmit={handleAddDiet} className="flex gap-4">
-                    <input
-                        type="text"
-                        value={newDietName}
-                        onChange={e => setNewDietName(e.target.value)}
-                        placeholder="Názov novej diéty (napr. Bez lepku)"
-                        className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
-                    />
-                    <button
-                        type="submit"
-                        disabled={!newDietName}
-                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
-                    >
-                        Pridať diétu
-                    </button>
-                </form>
-            </div>
-
-            <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-                {diets.map(diet => (
-                    <div key={diet.id} className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
-                        <span className="font-medium text-gray-800">{diet.name}</span>
-                        <button
-                            onClick={() => handleDelete(diet.id)}
-                            className="text-red-500 hover:text-red-700 text-sm px-3 py-1 rounded-md hover:bg-red-50 transition"
-                        >
-                            Vymazať
-                        </button>
-                    </div>
-                ))}
-            </div>
+  return (
+    <div className="space-y-6 animate-in fade-in duration-500">
+      <div className="flex justify-between items-center">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900">Správa diét</h2>
+          <p className="text-gray-500 mt-1">
+            Pridajte alebo odstráňte systémové diéty
+          </p>
         </div>
-    );
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+        <form onSubmit={handleAddDiet} className="flex gap-4">
+          <input
+            type="text"
+            value={newDietName}
+            onChange={(e) => setNewDietName(e.target.value)}
+            placeholder="Názov novej diéty (napr. Bez lepku)"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={!newDietName}
+            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+          >
+            Pridať diétu
+          </button>
+        </form>
+      </div>
+
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {diets.map((diet) => (
+          <div
+            key={diet.id}
+            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center"
+          >
+            <span className="font-medium text-gray-800">{diet.name}</span>
+            <button
+              onClick={() => handleDelete(diet.id)}
+              className="text-red-500 hover:text-red-700 text-sm px-3 py-1 rounded-md hover:bg-red-50 transition"
+            >
+              Vymazať
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export default DietManager;
