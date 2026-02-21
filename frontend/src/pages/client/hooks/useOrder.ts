@@ -82,8 +82,8 @@ export const useOrder = () => {
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
     useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
-    useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]); // eslint-disable-line react-hooks/exhaustive-deps
-    useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
+    useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {

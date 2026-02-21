@@ -131,7 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         headers.set("Authorization", `Bearer ${currentToken}`);
       }
 
-      // Prevent browser from caching API responses (no custom headers → no CORS preflight)
+      // Prevent browser from caching API responses. Note: this cache option does not affect CORS preflight.
       const config = { ...init, headers, cache: "no-store" as RequestCache };
 
       // First attempt

@@ -6,14 +6,7 @@ import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import {
-  Coffee,
-  Utensils,
-  Apple,
-  Check,
-  Trash2,
-  ArrowLeft,
-} from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft } from "lucide-react";
 import { Switch } from "../components/ui/Switch";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
@@ -46,7 +39,6 @@ const OrderPage = () => {
     meal: "breakfast" | "lunch" | "olovrant";
     category: string;
   } | null>(null);
-  const [showToast, setShowToast] = useState(false);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null,
@@ -227,8 +219,6 @@ const OrderPage = () => {
     try {
       await submitOrder(selectedDate);
       toast.success("Objednávka bola úspešne odoslaná!");
-      setShowToast(true);
-      setTimeout(() => setShowToast(false), 3000);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       console.error(e);
@@ -535,17 +525,6 @@ const OrderPage = () => {
             )
           }
         />
-      )}
-
-      {showToast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white px-6 py-3 rounded-full shadow-xl animate-in fade-in slide-in-from-top-5 duration-300">
-          <div className="bg-green-500 p-1 rounded-full">
-            <Check className="w-3 h-3 text-white" />
-          </div>
-          <span className="font-medium text-sm">
-            Objednávka bola úspešne uložená.
-          </span>
-        </div>
       )}
 
       <ConfirmationModal
