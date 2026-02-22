@@ -11,8 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
-      issues: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -36,14 +35,11 @@ jobs:
             echo "PR Title is valid."
             exit 0
           else
-            echo "PR Title is invalid. Checking latest commit message for additional diagnostics..."
+            echo "PR Title is invalid. Checking latest commit message as fallback..."
             # Fetch the latest commit message from the PR
             COMMIT_MSG=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits[-1].messageHeadline')
             echo "Validating latest commit message: $COMMIT_MSG"
-            # Run commitlint on the latest commit message, but do not let this override the PR title failure
-            echo "$COMMIT_MSG" | npx commitlint --config .commitlintrc.json || true
-            # Always fail when the PR title is invalid
-            exit 1
+            echo "$COMMIT_MSG" | npx commitlint --config .commitlintrc.json
           fi
 
       - name: Comment on failure
