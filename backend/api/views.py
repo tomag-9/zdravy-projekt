@@ -863,7 +863,9 @@ class PasswordResetRequestView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
             )
         except Exception:
-            logger.exception("Unexpected error during password reset request for %s", email)
+            logger.exception(
+                "Unexpected error during password reset request for %s", email
+            )
             return Response(
                 {
                     "detail": (
