@@ -1,5 +1,6 @@
 import datetime
 import io
+import logging
 
 from django.contrib.auth.models import User
 from django.http import HttpResponse
@@ -13,6 +14,8 @@ from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
 from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSerializer
 from .services import _is_order_empty, _last_non_empty_order
+
+logger = logging.getLogger(__name__)
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -842,7 +845,7 @@ class PasswordResetRequestView(APIView):
             return Response(
                 {
                     "detail": (
-                        f"Príliš veľa pokusov. Skúste to znova o {minutes} minút."
+                        f"Príliš veľa pokusov. Skúste to znova za {minutes} minút."
                     ),
                     "retry_after_seconds": exc.retry_after_seconds,
                 },
@@ -853,11 +856,22 @@ class PasswordResetRequestView(APIView):
                 {
                     "detail": (
                         f"E-mail bol práve odoslaný. "
-                        f"Opätovné odoslanie bude možné o {exc.wait_seconds} sekúnd."
+                        f"Opätovné odoslanie bude možné za {exc.wait_seconds} sekúnd."
                     ),
                     "wait_seconds": exc.wait_seconds,
                 },
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+        except Exception:
+            logger.exception("Unexpected error during password reset request for %s", email)
+            return Response(
+                {
+                    "detail": (
+                        "Ak je táto e-mailová adresa registrovaná, "
+                        "bol na ňu odoslaný odkaz na obnovu hesla."
+                    )
+                },
+                status=status.HTTP_200_OK,
             )
 
         return Response(
