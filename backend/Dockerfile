@@ -34,4 +34,4 @@ RUN python manage.py collectstatic --noinput || true
 EXPOSE 8000
 
 # Run migrations, seed roles, and start server
-CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && gunicorn app.wsgi:application --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate && python manage.py init_roles && gunicorn app.wsgi:application --bind 0.0.0.0:8000"]
