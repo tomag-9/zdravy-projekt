@@ -84,3 +84,83 @@ class AdminSummaryTest(APITestCase):
         self.client.force_authenticate(user=self.client_user)
         response = self.client.get(f"/api/admin/summary/daily-stats/?date={self.today}")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AdminDailyReportTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="admin2", password="password", is_staff=True
+        )
+        self.client_user = User.objects.create_user(
+            username="clientA",
+            password="password",
+            first_name="Anna",
+            last_name="Novák",
+            email="anna@test.sk",
+            is_staff=False,
+        )
+        self.today = date.today().isoformat()
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date=self.today,
+            status="submitted",
+            data={
+                "breakfast": {
+                    "Dospelý": {"menuCounts": {"A": 2}, "diets": {"No Milk": 1}}
+                },
+                "lunch": {
+                    "ZŠ": {"menuCounts": {"A": 5, "B": 1}, "diets": {}}
+                },
+                "olovrant": {},
+            },
+        )
+
+    def test_daily_report_returns_rows(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(f"/api/admin/summary/daily-report/?date={self.today}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+
+        self.assertEqual(data["date"], self.today)
+        self.assertEqual(len(data["rows"]), 1)
+
+        row = data["rows"][0]
+        self.assertEqual(row["username"], "clientA")
+        self.assertEqual(row["breakfast"]["total"], 2)
+        self.assertEqual(row["lunch"]["total"], 6)
+        self.assertEqual(row["olovrant"]["total"], 0)
+        self.assertEqual(row["total"], 8)
+
+        self.assertEqual(data["totals"]["grand"], 8)
+        self.assertEqual(data["totals"]["breakfast"]["total"], 2)
+        self.assertEqual(data["totals"]["breakfast"]["diets"]["No Milk"], 1)
+
+    def test_daily_report_requires_date(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/admin/summary/daily-report/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_daily_report_client_forbidden(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(f"/api/admin/summary/daily-report/?date={self.today}")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_daily_report_xlsx_returns_file(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertIn("prehlad_", response["Content-Disposition"])
+        self.assertGreater(len(response.content), 100)
+
+    def test_daily_report_xlsx_client_forbidden(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
