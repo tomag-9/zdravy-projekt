@@ -2,6 +2,7 @@ import datetime
 
 from django.contrib.auth.models import User
 from django.db import models
+from django.utils import timezone
 
 
 class DailyOrder(models.Model):
@@ -73,3 +74,34 @@ class GlobalSettings(models.Model):
 
     def __str__(self):
         return "Global System Settings"
+
+
+class PasswordResetToken(models.Model):
+    """
+    Single-use token for password reset via email.
+    Expires after TOKEN_EXPIRY_HOURS hours and is invalidated once used.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_tokens",
+    )
+    token = models.CharField(max_length=128, unique=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"PasswordResetToken for {self.user.username}"
+
+    @property
+    def is_expired(self) -> bool:
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_valid(self) -> bool:
+        return not self.used and not self.is_expired
