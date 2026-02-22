@@ -50,7 +50,10 @@ interface DailyReport {
 // Date helpers (weekday navigation, no weekends)
 // ---------------------------------------------------------------------------
 function toDateString(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function isWeekday(d: Date): boolean {
@@ -191,13 +194,16 @@ const TotalsBadge: React.FC<{
 // ---------------------------------------------------------------------------
 const AdminDashboard: React.FC = () => {
   const { apiFetch } = useAuth();
-  const todayStr = useMemo(() => lastWeekdayToday(), []);
-  const [date, setDate] = useState(todayStr);
+  // maxDate: last weekday on-or-before today (the furthest navigable date)
+  const maxDate = useMemo(() => lastWeekdayToday(), []);
+  // actualTodayStr: the real calendar today (may be a weekend)
+  const actualTodayStr = useMemo(() => toDateString(new Date()), []);
+  const [date, setDate] = useState(maxDate);
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
 
-  const isToday = date >= todayStr;
+  const isAtMax = date >= maxDate;
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -226,7 +232,7 @@ const AdminDashboard: React.FC = () => {
   const handleNext = () => {
     setDate((d) => {
       const next = nextWeekday(d);
-      return next <= todayStr ? next : d;
+      return next <= maxDate ? next : d;
     });
   };
 
@@ -337,26 +343,31 @@ const AdminDashboard: React.FC = () => {
           <input
             type="date"
             value={date}
-            max={todayStr}
+            max={maxDate}
             onChange={(e) => {
               const val = e.target.value;
               if (!val) return;
               const d = new Date(val + "T12:00:00");
               if (!isWeekday(d)) return;
-              if (val <= todayStr) setDate(val);
+              if (val <= maxDate) setDate(val);
             }}
             className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-gray-700 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
           />
-          {date === todayStr && (
+          {date === actualTodayStr && (
             <span className="text-xs font-semibold bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
               Dnes
+            </span>
+          )}
+          {date === maxDate && date !== actualTodayStr && (
+            <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+              Posledný pracovný deň
             </span>
           )}
         </div>
 
         <button
           onClick={handleNext}
-          disabled={isToday}
+          disabled={isAtMax}
           className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gray-50 border border-gray-200 text-gray-700 font-medium text-sm hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Nasledujúci deň

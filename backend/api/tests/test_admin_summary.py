@@ -108,16 +108,16 @@ class AdminDailyReportTest(APITestCase):
                 "breakfast": {
                     "Dospelý": {"menuCounts": {"A": 2}, "diets": {"No Milk": 1}}
                 },
-                "lunch": {
-                    "ZŠ": {"menuCounts": {"A": 5, "B": 1}, "diets": {}}
-                },
+                "lunch": {"ZŠ": {"menuCounts": {"A": 5, "B": 1}, "diets": {}}},
                 "olovrant": {},
             },
         )
 
     def test_daily_report_returns_rows(self):
         self.client.force_authenticate(user=self.admin)
-        response = self.client.get(f"/api/admin/summary/daily-report/?date={self.today}")
+        response = self.client.get(
+            f"/api/admin/summary/daily-report/?date={self.today}"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
 
@@ -140,9 +140,23 @@ class AdminDailyReportTest(APITestCase):
         response = self.client.get("/api/admin/summary/daily-report/")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_daily_report_invalid_date_format(self):
+        self.client.force_authenticate(user=self.admin)
+        for bad_date in ["not-a-date", "2024/01/01", "01-01-2024", "<script>"]:
+            response = self.client.get(
+                f"/api/admin/summary/daily-report/?date={bad_date}"
+            )
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_400_BAD_REQUEST,
+                msg=f"Expected 400 for bad date: {bad_date!r}",
+            )
+
     def test_daily_report_client_forbidden(self):
         self.client.force_authenticate(user=self.client_user)
-        response = self.client.get(f"/api/admin/summary/daily-report/?date={self.today}")
+        response = self.client.get(
+            f"/api/admin/summary/daily-report/?date={self.today}"
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_daily_report_xlsx_returns_file(self):
@@ -164,3 +178,15 @@ class AdminDailyReportTest(APITestCase):
             f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_daily_report_xlsx_invalid_date_format(self):
+        self.client.force_authenticate(user=self.admin)
+        for bad_date in ["not-a-date", "2024/01/01", "01-01-2024"]:
+            response = self.client.get(
+                f"/api/admin/summary/daily-report-xlsx/?date={bad_date}"
+            )
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_400_BAD_REQUEST,
+                msg=f"Expected 400 for bad date: {bad_date!r}",
+            )

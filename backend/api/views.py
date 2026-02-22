@@ -189,7 +189,15 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _build_user_meal_row(order_data: dict, meal_key: str) -> dict:
+    def _safe_int(v) -> int:
+        """Coerce a stored count value to int, returning 0 on any error."""
+        try:
+            return int(v or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @classmethod
+    def _build_user_meal_row(cls, order_data: dict, meal_key: str) -> dict:
         """Return {categories: [{name, menus, diets, total}], total: int}."""
         meal = order_data.get(meal_key) or {}
         categories = []
@@ -197,11 +205,25 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for cat_name, details in meal.items():
             if not isinstance(details, dict):
                 continue
-            menu_counts = {k: int(v or 0) for k, v in (details.get("menuCounts") or {}).items()}
-            diets = {k: int(v or 0) for k, v in (details.get("diets") or {}).items() if int(v or 0) > 0}
+            menu_counts = {
+                k: cls._safe_int(v)
+                for k, v in (details.get("menuCounts") or {}).items()
+            }
+            diets = {
+                k: cls._safe_int(v)
+                for k, v in (details.get("diets") or {}).items()
+                if cls._safe_int(v) > 0
+            }
             cat_total = sum(menu_counts.values())
             meal_total += cat_total
-            categories.append({"name": cat_name, "menus": menu_counts, "diets": diets, "total": cat_total})
+            categories.append(
+                {
+                    "name": cat_name,
+                    "menus": menu_counts,
+                    "diets": diets,
+                    "total": cat_total,
+                }
+            )
         return {"categories": categories, "total": meal_total}
 
     @staticmethod
@@ -210,9 +232,13 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         totals["total"] = totals.get("total", 0) + meal_row["total"]
         for cat in meal_row["categories"]:
             for menu, cnt in cat["menus"].items():
-                totals.setdefault("menus", {})[menu] = totals["menus"].get(menu, 0) + cnt
+                totals.setdefault("menus", {})[menu] = (
+                    totals["menus"].get(menu, 0) + cnt
+                )
             for diet, cnt in cat["diets"].items():
-                totals.setdefault("diets", {})[diet] = totals["diets"].get(diet, 0) + cnt
+                totals.setdefault("diets", {})[diet] = (
+                    totals["diets"].get(diet, 0) + cnt
+                )
 
     @action(detail=False, methods=["get"], url_path="daily-report")
     def daily_report(self, request):
@@ -222,11 +248,19 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         """
         date_str = request.query_params.get("date")
         if not date_str:
-            return Response({"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "invalid date format, expected YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         orders = (
-            DailyOrder.objects
-            .filter(date=date_str)
+            DailyOrder.objects.filter(date=target_date)
             .select_related("user")
             .order_by("user__username")
         )
@@ -248,7 +282,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+                    "name": f"{user.first_name} {user.last_name}".strip()
+                    or user.username,
                     "username": user.username,
                     "email": user.email,
                     "breakfast": bf,
@@ -262,7 +297,193 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             self._merge_meal_totals(totals["olovrant"], ol)
             totals["grand"] += row_total
 
-        return Response({"date": date_str, "rows": rows, "totals": totals})
+        return Response(
+            {"date": target_date.isoformat(), "rows": rows, "totals": totals}
+        )
+
+    # ------------------------------------------------------------------
+    # XLSX helpers — extracted to keep daily_report_xlsx readable
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _xlsx_collect_columns(rows_data, meal_keys):
+        """First-pass scan: gather every menu key and diet name per meal."""
+        all_menus = {m: set() for m in meal_keys}
+        all_diets = {m: set() for m in meal_keys}
+        for row in rows_data:
+            data = row["data"]
+            for mk in meal_keys:
+                meal = data.get(mk) or {}
+                for details in meal.values():
+                    if not isinstance(details, dict):
+                        continue
+                    for key, cnt in (details.get("menuCounts") or {}).items():
+                        if int(cnt or 0) > 0:
+                            all_menus[mk].add(key)
+                    for key, cnt in (details.get("diets") or {}).items():
+                        if int(cnt or 0) > 0:
+                            all_diets[mk].add(key)
+        return all_menus, all_diets
+
+    @staticmethod
+    def _xlsx_build_column_meta(sorted_menus, sorted_diets, meal_keys, meal_labels):
+        """Build header rows and column metadata list."""
+        col_meta = [("fixed", "name", None), ("fixed", "email", None)]
+        header_row_1 = ["Klient", "Email"]
+        header_row_2 = ["", ""]
+        for mk in meal_keys:
+            menus = sorted_menus[mk]
+            diets = sorted_diets[mk]
+            span = len(menus) + len(diets) + 1
+            header_row_1 += [meal_labels[mk]] + [""] * (span - 1)
+            for menu_key in menus:
+                header_row_2.append(f"Menu {menu_key}")
+                col_meta.append((mk, "menu", menu_key))
+            for diet_name in diets:
+                header_row_2.append(diet_name)
+                col_meta.append((mk, "diet", diet_name))
+            header_row_2.append("Spolu")
+            col_meta.append((mk, "total", None))
+        header_row_1.append("Celkovo")
+        header_row_2.append("")
+        col_meta.append(("fixed", "grand_total", None))
+        return col_meta, header_row_1, header_row_2
+
+    @staticmethod
+    def _xlsx_style_headers(
+        ws,
+        col_meta,
+        sorted_menus,
+        sorted_diets,
+        meal_keys,
+        header_fill_main,
+        header_fill_meal,
+        header_font,
+        center,
+    ):
+        """Apply fills, fonts, merges to the two header rows (rows 3 & 4)."""
+        from openpyxl.styles import Alignment  # already imported at call site
+
+        celk_col = len(col_meta)
+
+        # Merge + style meal group cells on row 3
+        current_col = 3
+        for mk in meal_keys:
+            span = len(sorted_menus[mk]) + len(sorted_diets[mk]) + 1
+            if span > 1:
+                ws.merge_cells(
+                    start_row=3,
+                    start_column=current_col,
+                    end_row=3,
+                    end_column=current_col + span - 1,
+                )
+            cell = ws.cell(row=3, column=current_col)
+            cell.fill = header_fill_meal[mk]
+            cell.font = header_font
+            cell.alignment = center
+            current_col += span
+
+        # Klient, Email, Celkovo on row 3
+        for c in [1, 2, celk_col]:
+            cell = ws.cell(row=3, column=c)
+            cell.fill = header_fill_main
+            cell.font = header_font
+            cell.alignment = center
+
+        # Build per-column fill map for row 4
+        col_fill = {}
+        c = 3
+        for mk in meal_keys:
+            for _ in range(len(sorted_menus[mk]) + len(sorted_diets[mk]) + 1):
+                col_fill[c] = header_fill_meal[mk]
+                c += 1
+
+        for c_idx in range(1, len(col_meta) + 1):
+            cell = ws.cell(row=4, column=c_idx)
+            cell.fill = col_fill.get(c_idx, header_fill_main)
+            cell.font = header_font
+            cell.alignment = center
+
+        # Merge Klient, Email, Celkovo across rows 3-4
+        ws.merge_cells(start_row=3, start_column=1, end_row=4, end_column=1)
+        ws.merge_cells(start_row=3, start_column=2, end_row=4, end_column=2)
+        ws.merge_cells(
+            start_row=3, start_column=celk_col, end_row=4, end_column=celk_col
+        )
+
+    @classmethod
+    def _xlsx_write_data(
+        cls,
+        ws,
+        rows_data,
+        meal_keys,
+        sorted_menus,
+        sorted_diets,
+        bold_font,
+    ):
+        """Append per-user data rows and a SPOLU totals row."""
+        totals = {
+            mk: {
+                "menus": {m: 0 for m in sorted_menus[mk]},
+                "diets": {d: 0 for d in sorted_diets[mk]},
+                "total": 0,
+            }
+            for mk in meal_keys
+        }
+        grand_total = 0
+
+        for row_info in rows_data:
+            user = row_info["user"]
+            data = row_info["data"]
+            display_name = (
+                f"{user.first_name} {user.last_name}".strip() or user.username
+            )
+            row_vals = [display_name, user.email]
+            row_grand = 0
+            for mk in meal_keys:
+                meal = data.get(mk) or {}
+                menu_counts = {m: 0 for m in sorted_menus[mk]}
+                diet_counts = {d: 0 for d in sorted_diets[mk]}
+                meal_total = 0
+                for details in meal.values():
+                    if not isinstance(details, dict):
+                        continue
+                    for menu_key, cnt in (details.get("menuCounts") or {}).items():
+                        c = cls._safe_int(cnt)
+                        if menu_key in menu_counts:
+                            menu_counts[menu_key] += c
+                        meal_total += c
+                    for diet_name, cnt in (details.get("diets") or {}).items():
+                        c = cls._safe_int(cnt)
+                        if diet_name in diet_counts:
+                            diet_counts[diet_name] += c
+                for m in sorted_menus[mk]:
+                    row_vals.append(menu_counts[m] or "")
+                    totals[mk]["menus"][m] += menu_counts[m]
+                for d in sorted_diets[mk]:
+                    row_vals.append(diet_counts[d] or "")
+                    totals[mk]["diets"][d] += diet_counts[d]
+                row_vals.append(meal_total or "")
+                totals[mk]["total"] += meal_total
+                row_grand += meal_total
+            row_vals.append(row_grand or "")
+            grand_total += row_grand
+            ws.append(row_vals)
+
+        # Totals row
+        total_row = ["SPOLU", ""]
+        for mk in meal_keys:
+            for m in sorted_menus[mk]:
+                total_row.append(totals[mk]["menus"].get(m, 0) or "")
+            for d in sorted_diets[mk]:
+                total_row.append(totals[mk]["diets"].get(d, 0) or "")
+            total_row.append(totals[mk]["total"] or "")
+        total_row.append(grand_total or "")
+        ws.append(total_row)
+
+        totals_row_num = ws.max_row
+        for c_idx in range(1, ws.max_column + 1):
+            ws.cell(row=totals_row_num, column=c_idx).font = bold_font
 
     @action(detail=False, methods=["get"], url_path="daily-report-xlsx")
     def daily_report_xlsx(self, request):
@@ -276,49 +497,39 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         date_str = request.query_params.get("date")
         if not date_str:
-            return Response({"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "invalid date format, expected YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        safe_date = target_date.isoformat()  # guaranteed YYYY-MM-DD, safe for filenames
 
         orders = (
-            DailyOrder.objects
-            .filter(date=date_str)
+            DailyOrder.objects.filter(date=target_date)
             .select_related("user")
             .order_by("user__username")
         )
 
-        # First pass: collect all menu keys and diet names per meal to build columns
         meal_keys = ["breakfast", "lunch", "olovrant"]
-        all_menus = {m: set() for m in meal_keys}
-        all_diets = {m: set() for m in meal_keys}
-        rows_data = []
+        meal_labels = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
 
-        for order in orders:
-            data = order.data or {}
-            user = order.user
-            row = {"user": user, "data": data}
-            rows_data.append(row)
-            for mk in meal_keys:
-                meal = data.get(mk) or {}
-                for cat_name, details in meal.items():
-                    if not isinstance(details, dict):
-                        continue
-                    for menu_key, cnt in (details.get("menuCounts") or {}).items():
-                        if int(cnt or 0) > 0:
-                            all_menus[mk].add(menu_key)
-                    for diet_name, cnt in (details.get("diets") or {}).items():
-                        if int(cnt or 0) > 0:
-                            all_diets[mk].add(diet_name)
-
-        # Sort for stable column order
+        rows_data = [{"user": o.user, "data": o.data or {}} for o in orders]
+        all_menus, all_diets = self._xlsx_collect_columns(rows_data, meal_keys)
         sorted_menus = {m: sorted(all_menus[m]) for m in meal_keys}
         sorted_diets = {m: sorted(all_diets[m]) for m in meal_keys}
-
-        meal_labels = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
+        col_meta, header_row_1, header_row_2 = self._xlsx_build_column_meta(
+            sorted_menus, sorted_diets, meal_keys, meal_labels
+        )
 
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = f"Prehlad {date_str}"
+        ws.title = f"Prehlad {safe_date}"
 
-        # Styles
         header_fill_main = PatternFill("solid", fgColor="2563EB")
         header_fill_meal = {
             "breakfast": PatternFill("solid", fgColor="F97316"),
@@ -328,183 +539,39 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         header_font = Font(bold=True, color="FFFFFF")
         bold_font = Font(bold=True)
         center = Alignment(horizontal="center", vertical="center")
-        wrap = Alignment(wrap_text=True, vertical="top")
 
-        # Title row
-        ws.append([f"Denný prehľad objednávok — {date_str}"])
+        ws.append([f"Denný prehľad objednávok — {safe_date}"])
         ws["A1"].font = Font(bold=True, size=14)
         ws.append([])  # empty row
-
-        # Build header columns: Klient, Email, then per meal: menus..., diets..., Spolu; then Celkovo
-        header_row_1 = ["Klient", "Email"]
-        header_row_2 = ["", ""]
-        col_meta = []  # (meal_key_or_None, sub_type, key)
-
-        # fixed columns
-        col_meta.append(("fixed", "name", None))
-        col_meta.append(("fixed", "email", None))
-
-        for mk in meal_keys:
-            menus = sorted_menus[mk]
-            diets = sorted_diets[mk]
-            span = len(menus) + len(diets) + 1  # +1 for Spolu
-            header_row_1 += [meal_labels[mk]] + [""] * (span - 1)
-            for menu_key in menus:
-                header_row_2.append(f"Menu {menu_key}")
-                col_meta.append((mk, "menu", menu_key))
-            for diet_name in diets:
-                header_row_2.append(diet_name)
-                col_meta.append((mk, "diet", diet_name))
-            header_row_2.append("Spolu")
-            col_meta.append((mk, "total", None))
-
-        header_row_1.append("Celkovo")
-        header_row_2.append("")
-        col_meta.append(("fixed", "grand_total", None))
-
         ws.append(header_row_1)
         ws.append(header_row_2)
 
-        # Style header rows
-        header1_row_num = 3
-        header2_row_num = 4
+        self._xlsx_style_headers(
+            ws,
+            col_meta,
+            sorted_menus,
+            sorted_diets,
+            meal_keys,
+            header_fill_main,
+            header_fill_meal,
+            header_font,
+            center,
+        )
+        self._xlsx_write_data(
+            ws, rows_data, meal_keys, sorted_menus, sorted_diets, bold_font
+        )
 
-        # Merge meal group cells on row 3
-        current_col = 3  # 1-indexed, first two are Klient, Email
-        for mk in meal_keys:
-            menus = sorted_menus[mk]
-            diets = sorted_diets[mk]
-            span = len(menus) + len(diets) + 1
-            if span > 1:
-                ws.merge_cells(
-                    start_row=header1_row_num, start_column=current_col,
-                    end_row=header1_row_num, end_column=current_col + span - 1
-                )
-            cell = ws.cell(row=header1_row_num, column=current_col)
-            cell.fill = header_fill_meal[mk]
-            cell.font = header_font
-            cell.alignment = center
-            current_col += span
-
-        # Style cols A, B on row 3 (Klient, Email)
-        for c in [1, 2]:
-            cell = ws.cell(row=header1_row_num, column=c)
-            cell.fill = header_fill_main
-            cell.font = header_font
-            cell.alignment = center
-
-        # Celkovo column on row 3
-        celk_col = len(col_meta)
-        cell = ws.cell(row=header1_row_num, column=celk_col)
-        cell.fill = header_fill_main
-        cell.font = header_font
-        cell.alignment = center
-
-        # Style row 4 (sub-headers)
-        col_fill = {}
-        c = 3
-        for mk in meal_keys:
-            menus = sorted_menus[mk]
-            diets = sorted_diets[mk]
-            for _ in menus + diets:
-                col_fill[c] = header_fill_meal[mk]
-                c += 1
-            col_fill[c] = header_fill_meal[mk]
-            c += 1
-
-        for c_idx in range(1, len(col_meta) + 1):
-            cell = ws.cell(row=header2_row_num, column=c_idx)
-            if c_idx <= 2:
-                cell.fill = header_fill_main
-                cell.font = header_font
-            elif c_idx in col_fill:
-                cell.fill = col_fill[c_idx]
-                cell.font = header_font
-            else:
-                cell.fill = header_fill_main
-                cell.font = header_font
-            cell.alignment = center
-
-        # Merge Klient/Email across rows 3-4
-        ws.merge_cells(start_row=3, start_column=1, end_row=4, end_column=1)
-        ws.merge_cells(start_row=3, start_column=2, end_row=4, end_column=2)
-        ws.merge_cells(start_row=3, start_column=celk_col, end_row=4, end_column=celk_col)
-
-        # Data rows
-        total_row_vals = {mk: {"menus": {m: 0 for m in sorted_menus[mk]}, "diets": {d: 0 for d in sorted_diets[mk]}, "total": 0} for mk in meal_keys}
-        grand_total = 0
-
-        for row_info in rows_data:
-            user = row_info["user"]
-            data = row_info["data"]
-            display_name = f"{user.first_name} {user.last_name}".strip() or user.username
-            row_vals = [display_name, user.email]
-
-            row_grand = 0
-            for mk in meal_keys:
-                meal = data.get(mk) or {}
-                menu_counts = {m: 0 for m in sorted_menus[mk]}
-                diet_counts = {d: 0 for d in sorted_diets[mk]}
-                meal_total = 0
-                for cat_name, details in meal.items():
-                    if not isinstance(details, dict):
-                        continue
-                    for menu_key, cnt in (details.get("menuCounts") or {}).items():
-                        c = int(cnt or 0)
-                        if menu_key in menu_counts:
-                            menu_counts[menu_key] += c
-                        meal_total += c
-                    for diet_name, cnt in (details.get("diets") or {}).items():
-                        c = int(cnt or 0)
-                        if diet_name in diet_counts:
-                            diet_counts[diet_name] += c
-
-                for m in sorted_menus[mk]:
-                    row_vals.append(menu_counts[m] or "")
-                    total_row_vals[mk]["menus"][m] = total_row_vals[mk]["menus"].get(m, 0) + menu_counts[m]
-                for d in sorted_diets[mk]:
-                    row_vals.append(diet_counts[d] or "")
-                    total_row_vals[mk]["diets"][d] = total_row_vals[mk]["diets"].get(d, 0) + diet_counts[d]
-                row_vals.append(meal_total or "")
-                total_row_vals[mk]["total"] += meal_total
-                row_grand += meal_total
-
-            row_vals.append(row_grand or "")
-            grand_total += row_grand
-            ws.append(row_vals)
-
-        # Totals row
-        total_row = ["SPOLU", ""]
-        for mk in meal_keys:
-            for m in sorted_menus[mk]:
-                total_row.append(total_row_vals[mk]["menus"].get(m, 0) or "")
-            for d in sorted_diets[mk]:
-                total_row.append(total_row_vals[mk]["diets"].get(d, 0) or "")
-            total_row.append(total_row_vals[mk]["total"] or "")
-        total_row.append(grand_total or "")
-        ws.append(total_row)
-
-        # Bold totals row
-        totals_row_num = ws.max_row
-        for c_idx in range(1, len(col_meta) + 1):
-            cell = ws.cell(row=totals_row_num, column=c_idx)
-            cell.font = bold_font
-
-        # Column widths
         ws.column_dimensions["A"].width = 28
         ws.column_dimensions["B"].width = 28
         for c_idx in range(3, len(col_meta) + 1):
             ws.column_dimensions[get_column_letter(c_idx)].width = 10
-        ws.column_dimensions[get_column_letter(len(col_meta))].width = 10
-
-        # Freeze panes below headers
         ws.freeze_panes = "A5"
 
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
 
-        filename = f"prehlad_{date_str}.xlsx"
+        filename = f"prehlad_{safe_date}.xlsx"
         response = HttpResponse(
             output.read(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
