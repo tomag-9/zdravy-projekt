@@ -75,7 +75,6 @@ jobs:
         with:
           sparse-checkout: |
             docker-compose.staging.yml
-            nginx/staging.conf
           sparse-checkout-cone-mode: false
 
       - name: Setup Docker certificates
