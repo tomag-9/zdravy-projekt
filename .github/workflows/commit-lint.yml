@@ -1,4 +1,4 @@
-name: Commit Message Lint
+name: PR Title Lint
 
 on:
   pull_request:
@@ -7,19 +7,17 @@ on:
 
 jobs:
   commitlint:
-    name: Lint Commit Messages
+    name: Lint PR Title
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install commitlint
         run: |
@@ -31,41 +29,33 @@ jobs:
         run: |
           echo "$PR_TITLE" | npx commitlint --config .commitlintrc.json
 
-      - name: Validate all commit messages
-        run: |
-          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
-
       - name: Comment on failure
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            const message = `## ❌ Commit Message Validation Failed
-            
-            Your commit messages do not follow the [Conventional Commits](https://www.conventionalcommits.org/) format.
-            
+            const message = `## ❌ PR Title Validation Failed
+
+            Your PR title does not follow the [Conventional Commits](https://www.conventionalcommits.org/) format.
+
             ### Expected format:
             \`\`\`
             <type>(<scope>): <subject>
             \`\`\`
-            
+
             ### Examples:
             - \`feat(backend): add user authentication\`
             - \`fix(frontend): resolve button alignment\`
             - \`docs: update README\`
-            
+
             ### Valid types:
             \`feat\`, \`fix\`, \`docs\`, \`style\`, \`refactor\`, \`test\`, \`chore\`, \`perf\`, \`ci\`, \`build\`, \`revert\`
-            
+
             ### Valid scopes:
             \`backend\`, \`frontend\`, \`ci\`, \`docker\`, \`docs\`, \`auth\`, \`api\`, \`tests\`, \`config\`, \`deps\`
-            
-            Please review [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) for detailed guidelines.
-            
-            ---
-            
-            **Note:** Both PR title and all commit messages must follow this format.`;
-            
+
+            Please update your PR title and refer to [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) for detailed guidelines.`;
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,

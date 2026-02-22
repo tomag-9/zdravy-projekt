@@ -10,6 +10,8 @@ from .views import (
     DailyOrderViewSet,
     DietViewSet,
     GlobalSettingsViewSet,
+    PasswordResetConfirmView,
+    PasswordResetRequestView,
     PlannedOrdersViewSet,
     UserProfileViewSet,
 )
@@ -39,4 +41,15 @@ urlpatterns = [
     path("token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("health/", health_check, name="health_check"),
+    # Password reset (unauthenticated)
+    path(
+        "auth/password-reset/",
+        PasswordResetRequestView.as_view(),
+        name="password_reset_request",
+    ),
+    path(
+        "auth/password-reset/confirm/",
+        PasswordResetConfirmView.as_view(),
+        name="password_reset_confirm",
+    ),
 ]
