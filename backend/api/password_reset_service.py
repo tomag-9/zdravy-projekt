@@ -13,7 +13,9 @@ import secrets
 import time
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .email_utils import send_password_reset_email
@@ -102,6 +104,9 @@ def request_password_reset(email: str) -> None:
             raise TooSoonError(wait_seconds=int(RESEND_COOLDOWN - elapsed) + 1)
 
     # ── 3. Increment attempt counter ──────────────────────────────────────────
+    # Incremented before user lookup so that rate-limiting applies equally to
+    # registered and unregistered addresses (prevents enumeration via rate-limit
+    # behaviour differences).
     attempts_key = _key_attempts(email)
     attempts: int = cache.get(attempts_key, 0)
 
@@ -156,6 +161,12 @@ def confirm_password_reset(token: str, new_password: str) -> None:
         raise ValueError("Neplatný alebo expirovaný odkaz na obnovu hesla.")
 
     user = reset_token.user
+
+    try:
+        validate_password(new_password, user=user)
+    except ValidationError as exc:
+        raise ValueError(" ".join(exc.messages)) from exc
+
     user.set_password(new_password)
     user.save(update_fields=["password"])
 

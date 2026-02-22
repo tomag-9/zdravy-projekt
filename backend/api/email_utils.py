@@ -13,22 +13,23 @@ from django.core.mail import send_mail
 
 logger = logging.getLogger(__name__)
 
-_TOKEN_EXPIRY_HOURS = 1
-
 
 def send_password_reset_email(user: User, token: str) -> None:
     """Send a password-reset link to the given user."""
+    # Lazy import to avoid circular dependency with password_reset_service.
+    from .password_reset_service import TOKEN_EXPIRY_HOURS
+
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
     reset_url = f"{frontend_url}/reset-password?token={token}"
 
     subject = "Obnova hesla"
     message = (
-        f"Dobry den {user.first_name or user.username},\n\n"
-        "Dostali sme ziadost o obnovu Vasho hesla.\n\n"
-        f"Pre obnovu hesla pouzite tento odkaz:\n{reset_url}\n\n"
-        f"Odkaz je platny {_TOKEN_EXPIRY_HOURS} hodinu.\n\n"
-        "Ak ste o obnovu hesla neziadali, tento e-mail ignorujte.\n\n"
-        "S pozdravom, Tim Zdravy projekt"
+        f"Dobrý deň {user.first_name or user.username},\n\n"
+        "Dostali sme žiadosť o obnovu Vášho hesla.\n\n"
+        f"Pre obnovu hesla použite tento odkaz:\n{reset_url}\n\n"
+        f"Odkaz je platný {TOKEN_EXPIRY_HOURS} hodinu.\n\n"
+        "Ak ste o obnovu hesla nežiadali, tento e-mail ignorujte.\n\n"
+        "S pozdravom, Tím Zdravý projekt"
     )
 
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")

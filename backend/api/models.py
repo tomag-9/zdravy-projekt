@@ -94,6 +94,9 @@ class PasswordResetToken(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "used", "expires_at"]),
+        ]
 
     def __str__(self):
         return f"PasswordResetToken for {self.user.username}"
