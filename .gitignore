@@ -82,6 +82,7 @@ logs/
 agents.md
 .agent/
 *.txt
+docs/
 
 scripts/
 .venv/

@@ -21,6 +21,9 @@ factory-boy==3.3.0
 # Development tools
 django-extensions==3.2.3
 
+# XLSX export
+openpyxl==3.1.5
+
 # Production server
 gunicorn==23.0.0
 
