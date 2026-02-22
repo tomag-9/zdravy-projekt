@@ -190,3 +190,52 @@ class AdminDailyReportTest(APITestCase):
                 status.HTTP_400_BAD_REQUEST,
                 msg=f"Expected 400 for bad date: {bad_date!r}",
             )
+
+    def test_daily_report_flat_shape(self):
+        """Flat meal shape {menuCounts, diets} must be aggregated correctly."""
+        flat_user = User.objects.create_user(
+            username="flatclient", password="password", is_staff=False
+        )
+        DailyOrder.objects.create(
+            user=flat_user,
+            date=self.today,
+            status="submitted",
+            data={
+                "breakfast": {"menuCounts": {"A": 3}, "diets": {"Bezlepkový": 1}},
+                "lunch": {"menuCounts": {"B": 2}, "diets": {}},
+                "olovrant": {},
+            },
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        flat_row = next(
+            r for r in response.json()["rows"] if r["username"] == "flatclient"
+        )
+        self.assertEqual(flat_row["breakfast"]["total"], 3)
+        self.assertEqual(flat_row["lunch"]["total"], 2)
+        self.assertEqual(flat_row["total"], 5)
+
+    def test_daily_report_xlsx_flat_shape(self):
+        """XLSX export must include columns for flat-shape meal data."""
+        flat_user = User.objects.create_user(
+            username="flatclient2", password="password", is_staff=False
+        )
+        DailyOrder.objects.create(
+            user=flat_user,
+            date=self.today,
+            status="submitted",
+            data={
+                "breakfast": {"menuCounts": {"A": 1}, "diets": {}},
+                "lunch": {},
+                "olovrant": {},
+            },
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreater(len(response.content), 100)

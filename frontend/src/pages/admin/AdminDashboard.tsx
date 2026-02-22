@@ -413,7 +413,7 @@ const AdminDashboard: React.FC = () => {
               <div className="text-4xl font-bold mt-1">
                 {report.rows.length}
               </div>
-              <div className="text-indigo-200 text-xs mt-1">objednávok</div>
+              <div className="text-indigo-200 text-xs mt-1">klientov</div>
             </div>
             <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 flex flex-col">
               <div className="text-indigo-100 text-sm font-medium">

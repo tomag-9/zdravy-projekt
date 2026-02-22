@@ -198,11 +198,24 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
     @classmethod
     def _build_user_meal_row(cls, order_data: dict, meal_key: str) -> dict:
-        """Return {categories: [{name, menus, diets, total}], total: int}."""
+        """Return {categories: [{name, menus, diets, total}], total: int}.
+
+        Supports both data shapes:
+        - Nested-by-category: {"Cat": {"menuCounts": {...}, "diets": {...}}, ...}
+        - Flat (legacy): {"menuCounts": {...}, "diets": {...}}
+        """
         meal = order_data.get(meal_key) or {}
+        if not isinstance(meal, dict):
+            return {"categories": [], "total": 0}
         categories = []
         meal_total = 0
-        for cat_name, details in meal.items():
+        # Flat shape: meal itself contains menuCounts/diets keys
+        iter_categories = (
+            [(meal_key, meal)]
+            if "menuCounts" in meal
+            else [(k, v) for k, v in meal.items() if isinstance(v, dict)]
+        )
+        for cat_name, details in iter_categories:
             if not isinstance(details, dict):
                 continue
             menu_counts = {
@@ -305,24 +318,36 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     # XLSX helpers — extracted to keep daily_report_xlsx readable
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _xlsx_collect_columns(rows_data, meal_keys):
-        """First-pass scan: gather every menu key and diet name per meal."""
+    @classmethod
+    def _xlsx_collect_columns(cls, rows_data, meal_keys):
+        """First-pass scan: gather every menu key and diet name per meal.
+
+        Handles both flat {menuCounts, diets} and nested {cat: {menuCounts, diets}} shapes.
+        """
         all_menus = {m: set() for m in meal_keys}
         all_diets = {m: set() for m in meal_keys}
+
+        def _scan(details, mk):
+            if not isinstance(details, dict):
+                return
+            for key, cnt in (details.get("menuCounts") or {}).items():
+                if cls._safe_int(cnt) > 0:
+                    all_menus[mk].add(key)
+            for key, cnt in (details.get("diets") or {}).items():
+                if cls._safe_int(cnt) > 0:
+                    all_diets[mk].add(key)
+
         for row in rows_data:
             data = row["data"]
             for mk in meal_keys:
                 meal = data.get(mk) or {}
-                for details in meal.values():
-                    if not isinstance(details, dict):
-                        continue
-                    for key, cnt in (details.get("menuCounts") or {}).items():
-                        if int(cnt or 0) > 0:
-                            all_menus[mk].add(key)
-                    for key, cnt in (details.get("diets") or {}).items():
-                        if int(cnt or 0) > 0:
-                            all_diets[mk].add(key)
+                if "menuCounts" in meal:
+                    # Flat shape
+                    _scan(meal, mk)
+                else:
+                    # Nested-by-category shape
+                    for details in meal.values():
+                        _scan(details, mk)
         return all_menus, all_diets
 
     @staticmethod
