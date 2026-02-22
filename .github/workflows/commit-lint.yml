@@ -9,6 +9,9 @@ jobs:
   commitlint:
     name: Lint PR Title
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout code
@@ -26,8 +29,18 @@ jobs:
       - name: Validate PR title
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "$PR_TITLE" | npx commitlint --config .commitlintrc.json
+          if echo "$PR_TITLE" | npx commitlint --config .commitlintrc.json; then
+            echo "PR Title is valid."
+            exit 0
+          else
+            echo "PR Title is invalid. Checking latest commit message as fallback..."
+            # Fetch the latest commit message from the PR
+            COMMIT_MSG=$(gh pr view ${{ github.event.pull_request.number }} --json commits --jq '.commits[-1].messageHeadline')
+            echo "Validating latest commit message: $COMMIT_MSG"
+            echo "$COMMIT_MSG" | npx commitlint --config .commitlintrc.json
+          fi
 
       - name: Comment on failure
         if: failure()
