@@ -9,7 +9,7 @@ jobs:
   build-and-push:
     name: Build and Push Docker Images
     runs-on: [self-hosted, builder]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -102,6 +102,11 @@ jobs:
           FRONTEND_URL: https://${{ secrets.STAGING_HOST }}
           VITE_API_URL: https://${{ secrets.STAGING_HOST }}/api
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          EMAIL_HOST: ${{ secrets.STAGING_EMAIL_HOST }}
+          EMAIL_PORT: ${{ secrets.STAGING_EMAIL_PORT }}
+          EMAIL_HOST_USER: ${{ secrets.STAGING_EMAIL_HOST_USER }}
+          EMAIL_HOST_PASSWORD: ${{ secrets.STAGING_EMAIL_HOST_PASSWORD }}
+          DEFAULT_FROM_EMAIL: ${{ secrets.STAGING_DEFAULT_FROM_EMAIL }}
         run: |
           echo "🔄 Pulling latest images on staging server..."
           docker compose -f docker-compose.staging.yml pull
@@ -111,7 +116,7 @@ jobs:
 
           echo "⏳ Waiting for backend to be healthy..."
           sleep 15
-          
+
           echo "📊 Running database migrations..."
           BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.ID}}" | head -1)
           if [ -z "$BACKEND_CONTAINER" ]; then
@@ -119,8 +124,8 @@ jobs:
             docker ps
             exit 1
           fi
-          
+
           docker exec $BACKEND_CONTAINER python manage.py migrate --noinput
-          
+
           echo "✅ Deployment complete!"
           docker system prune -f
