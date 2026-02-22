@@ -1,25 +1,51 @@
 # Backend Dockerfile
-FROM python:3.12-slim
+
+# Builder stage
+FROM python:3.12-slim as builder
+
+WORKDIR /app
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Set work directory
-WORKDIR /app
-
-# Install system dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-    postgresql-client \
     build-essential \
     libpq-dev \
-    curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Create virtual environment
+RUN python -m venv /opt/venv
+# Enable virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
+
 # Install Python dependencies
-COPY requirements.txt /app/
-RUN pip install --upgrade pip && \
+COPY requirements.txt .
+# Switch to psycopg2 (source build) for production
+RUN sed -i 's/psycopg2-binary/psycopg2/g' requirements.txt && \
+    pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
+
+# Runtime stage
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+# Enable virtual environment
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install runtime dependencies
+# libpq5 is required for psycopg2
+RUN apt-get update && apt-get install -y \
+    libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
 
 # Copy project
 COPY . /app/
@@ -28,6 +54,7 @@ COPY . /app/
 RUN chmod +x /app/manage.py
 
 # Collect static files
+# Note: collectstatic needs django installed, which is available via the venv in PATH
 RUN python manage.py collectstatic --noinput || true
 
 # Expose port
