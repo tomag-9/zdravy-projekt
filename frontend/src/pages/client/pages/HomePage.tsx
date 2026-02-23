@@ -37,8 +37,7 @@ interface HistoryOrder {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any;
+  data: Record<string, Record<string, { menuCounts: Record<string, number> }>>;
 }
 
 /** First workday strictly after today (Mon–Fri). */
@@ -86,18 +85,18 @@ const HomePage = () => {
         const today = new Date().toISOString().split("T")[0];
         const history: HistoryOrder[] = [];
 
-        const toSeed: { date: string; data: any }[] = [];
+        const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items.forEach((rec: any) => {
           if (rec.status !== "submitted" || rec.date >= today) return;
-          const mealData = rec.data || {};
+          const mealData: HistoryOrder["data"] = rec.data || {};
           let total = 0;
           const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
           ["breakfast", "lunch", "olovrant"].forEach((meal) => {
-            if (!mealData[meal]) return;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            Object.values(mealData[meal]).forEach((cat: any) => {
+            const mealObj = mealData[meal];
+            if (!mealObj) return;
+            Object.values(mealObj).forEach((cat) => {
               const menuCounts = cat?.menuCounts || {};
               const c = (Object.values(menuCounts) as number[]).reduce(
                 (a, b) => a + b,
@@ -148,7 +147,11 @@ const HomePage = () => {
                 typeof window !== "undefined" &&
                 "requestIdleCallback" in window
               ) {
-                (window as any).requestIdleCallback(processChunk);
+                (
+                  window as unknown as {
+                    requestIdleCallback: (cb: () => void) => void;
+                  }
+                ).requestIdleCallback(processChunk);
               } else {
                 setTimeout(processChunk, 10);
               }
@@ -159,7 +162,11 @@ const HomePage = () => {
             typeof window !== "undefined" &&
             "requestIdleCallback" in window
           ) {
-            (window as any).requestIdleCallback(processChunk);
+            (
+              window as unknown as {
+                requestIdleCallback: (cb: () => void) => void;
+              }
+            ).requestIdleCallback(processChunk);
           } else {
             setTimeout(processChunk, 10);
           }
