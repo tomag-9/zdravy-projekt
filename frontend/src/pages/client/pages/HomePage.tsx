@@ -86,6 +86,8 @@ const HomePage = () => {
         const today = new Date().toISOString().split("T")[0];
         const history: HistoryOrder[] = [];
 
+        const toSeed: { date: string; data: any }[] = [];
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items.forEach((rec: any) => {
           if (rec.status !== "submitted" || rec.date >= today) return;
@@ -106,19 +108,15 @@ const HomePage = () => {
             });
           });
           if (total > 0) {
-            history.push({
+            const historyItem = {
               date: rec.date,
               totalPortions: total,
               mealCount: counts,
               data: mealData,
-            });
-            // Seed localStorage for fast OrderPage initial render
-            if (!localStorage.getItem(`order_${rec.date}`)) {
-              localStorage.setItem(
-                `order_${rec.date}`,
-                JSON.stringify({ ...mealData, status: "submitted" }),
-              );
-            }
+            };
+            history.push(historyItem);
+            // Collect for deferred localStorage seeding
+            toSeed.push({ date: rec.date, data: mealData });
           }
         });
 
@@ -126,6 +124,46 @@ const HomePage = () => {
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
         setHistoryOrders(history.slice(0, 5));
+
+        // Deferred seeding in background chunks to avoid blocking the main thread
+        if (toSeed.length > 0) {
+          const CHUNK_SIZE = 5;
+          let index = 0;
+
+          const processChunk = () => {
+            const end = Math.min(index + CHUNK_SIZE, toSeed.length);
+            for (; index < end; index++) {
+              const item = toSeed[index];
+              const key = `order_${item.date}`;
+              if (!localStorage.getItem(key)) {
+                localStorage.setItem(
+                  key,
+                  JSON.stringify({ ...item.data, status: "submitted" }),
+                );
+              }
+            }
+
+            if (index < toSeed.length) {
+              if (
+                typeof window !== "undefined" &&
+                "requestIdleCallback" in window
+              ) {
+                (window as any).requestIdleCallback(processChunk);
+              } else {
+                setTimeout(processChunk, 10);
+              }
+            }
+          };
+
+          if (
+            typeof window !== "undefined" &&
+            "requestIdleCallback" in window
+          ) {
+            (window as any).requestIdleCallback(processChunk);
+          } else {
+            setTimeout(processChunk, 10);
+          }
+        }
       } catch (e) {
         console.error("Failed to fetch order history", e);
       }
