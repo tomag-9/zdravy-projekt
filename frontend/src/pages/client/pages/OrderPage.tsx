@@ -160,7 +160,7 @@ const OrderPage = () => {
             }}
             className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Copy className="w-3 h-3" /> Načítať z obeda
+            <Copy className="w-3 h-3" /> Načítať z včerajšieho obeda
           </button>
           <button
             onClick={() => {
