@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { X } from "lucide-react";
 
 interface ModalProps {
   open: boolean;
@@ -55,7 +56,7 @@ const Modal: React.FC<ModalProps> = ({
             className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100"
             aria-label="Zavrieť"
           >
-            ✕
+            <X className="w-4 h-4" />
           </button>
         </div>
         {children}

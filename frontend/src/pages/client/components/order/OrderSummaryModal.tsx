@@ -19,7 +19,7 @@ interface OrderSummaryModalProps {
   isOpen: boolean;
   onClose: () => void;
   orderDate: string;
-  orderData: DailyOrder;
+  orderData?: DailyOrder;
   globalDeadlines: { breakfast: string; lunch: string; olovrant: string };
   onDelete?: () => void;
   /** When true the order is not yet in DB – it's an auto-prediction */
@@ -55,7 +55,7 @@ const OrderSummaryModal = ({
 
   const getMealSummary = (mealKey: string) => {
     const key = mealKey as "breakfast" | "lunch" | "olovrant";
-    const mealData = orderData[key];
+    const mealData = orderData?.[key];
     if (!mealData) return null;
 
     let total = 0;

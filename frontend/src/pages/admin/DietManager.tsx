@@ -239,6 +239,7 @@ const DietManager: React.FC = () => {
           onKeyDown={(e) => {
             if (e.key !== "Enter") return;
             if (renaming || !renameModal?.newName.trim()) return;
+            if (renameModal.newName.trim() === renameModal.currentName) return;
             handleRename();
           }}
           placeholder="Nový názov diéty"
@@ -254,7 +255,11 @@ const DietManager: React.FC = () => {
           </button>
           <button
             onClick={handleRename}
-            disabled={renaming || !renameModal?.newName.trim()}
+            disabled={
+              renaming ||
+              !renameModal?.newName.trim() ||
+              renameModal?.newName.trim() === renameModal?.currentName
+            }
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
           >
             {renaming ? "Ukladám…" : "Uložiť"}

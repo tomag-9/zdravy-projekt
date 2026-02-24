@@ -261,6 +261,7 @@ const HomePage = () => {
       );
     } catch (e) {
       console.error(e);
+      toast.error("Nepodarilo sa vynulovať objednávku.");
     } finally {
       setPredictedModalDay(null);
     }
@@ -295,6 +296,7 @@ const HomePage = () => {
       );
       setSelectedDate(null);
       setModalOrderId(null);
+      toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
       console.error(e);
       toast.error("Nepodarilo sa vynulovať objednávku.");
@@ -719,7 +721,6 @@ const HomePage = () => {
           isOpen={!!predictedModalDay}
           onClose={() => setPredictedModalDay(null)}
           orderDate={predictedModalDay?.date ?? ""}
-          orderData={{} as never}
           globalDeadlines={globalDeadlines}
           isPredicted
           predictedMealCount={predictedModalDay?.predictedMealCount}

@@ -25,9 +25,9 @@ export const useOrder = () => {
 
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
 
-    const [settings, setSettings] = useState(() => safeParse('appSettings', {
-        copyBreakfastFromPrevLunch: true,
-        copyOlovrantFromLunch: true,
+    const [settings] = useState(() => safeParse('appSettings', {
+        copyBreakfastFromPrevLunch: false,
+        copyOlovrantFromLunch: false,
         applyDefaultLunch: false
     }));
 
@@ -319,11 +319,6 @@ export const useOrder = () => {
         setCurrentOrder((prev) => ({ ...OrderService.updateDiet(prev, mealKey, category, diet, count), status: 'draft' }));
     };
 
-    const updateSettings = (key: string, value: boolean) => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setSettings((prev: any) => ({ ...prev, [key]: value }));
-    };
-
     const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
         setTouchedMeals(prev => {
             const next = new Set(prev);
@@ -487,7 +482,6 @@ export const useOrder = () => {
 
     return {
         enabledCategories, toggleCategory,
-        settings, updateSettings,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         updateMenuCount, updateDiet,
