@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
+import Modal from "../../components/Modal";
 
 interface Diet {
   id: number;
@@ -9,11 +10,27 @@ interface Diet {
   description: string;
 }
 
+interface DeleteConfirm {
+  id: number;
+  name: string;
+}
+
+interface RenameModal {
+  id: number;
+  currentName: string;
+  newName: string;
+}
+
 const DietManager: React.FC = () => {
   const { apiFetch } = useAuth();
   const { success, error } = useToast();
   const [diets, setDiets] = useState<Diet[]>([]);
   const [newDietName, setNewDietName] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(
+    null,
+  );
+  const [renameModal, setRenameModal] = useState<RenameModal | null>(null);
+  const [renaming, setRenaming] = useState(false);
 
   const fetchDiets = useCallback(async () => {
     try {
@@ -59,20 +76,51 @@ const DietManager: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("Naozaj chcete odstrániť túto diétu?")) return;
+  const handleDeleteConfirmed = async () => {
+    if (!deleteConfirm) return;
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/diets/${id}/`,
-        {
-          method: "DELETE",
-        },
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/${deleteConfirm.id}/`,
+        { method: "DELETE" },
       );
       if (res.ok) {
+        success(`Diéta „${deleteConfirm.name}" bola odstránená`);
         fetchDiets();
+      } else {
+        error("Nepodarilo sa odstrániť diétu");
       }
     } catch (e) {
       console.error(e);
+      error("Chyba pri odstraňovaní diéty");
+    } finally {
+      setDeleteConfirm(null);
+    }
+  };
+
+  const handleRename = async () => {
+    if (!renameModal || !renameModal.newName.trim()) return;
+    setRenaming(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/${renameModal.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: renameModal.newName.trim() }),
+        },
+      );
+      if (res.ok) {
+        success("Diéta bola premenovaná");
+        fetchDiets();
+        setRenameModal(null);
+      } else {
+        error("Nepodarilo sa premenovať diétu (možno názov už existuje)");
+      }
+    } catch (e) {
+      console.error(e);
+      error("Chyba pri premenovaní diéty");
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -82,7 +130,7 @@ const DietManager: React.FC = () => {
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Správa diét</h2>
           <p className="text-gray-500 mt-1">
-            Pridajte alebo odstráňte systémové diéty
+            Pridajte, premenujte alebo odstráňte systémové diéty
           </p>
         </div>
       </div>
@@ -113,15 +161,102 @@ const DietManager: React.FC = () => {
             className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center"
           >
             <span className="font-medium text-gray-800">{diet.name}</span>
-            <button
-              onClick={() => handleDelete(diet.id)}
-              className="text-red-500 hover:text-red-700 text-sm px-3 py-1 rounded-md hover:bg-red-50 transition"
-            >
-              Vymazať
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() =>
+                  setRenameModal({
+                    id: diet.id,
+                    currentName: diet.name,
+                    newName: diet.name,
+                  })
+                }
+                className="text-indigo-500 hover:text-indigo-700 text-sm px-3 py-1 rounded-md hover:bg-indigo-50 transition"
+              >
+                Premenovať
+              </button>
+              <button
+                onClick={() =>
+                  setDeleteConfirm({ id: diet.id, name: diet.name })
+                }
+                className="text-red-500 hover:text-red-700 text-sm px-3 py-1 rounded-md hover:bg-red-50 transition"
+              >
+                Vymazať
+              </button>
+            </div>
           </div>
         ))}
       </div>
+
+      {/* Delete confirmation modal */}
+      <Modal
+        open={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Odstrániť diétu"
+      >
+        <p className="text-gray-600 mb-6">
+          Naozaj chcete odstrániť diétu{" "}
+          <span className="font-semibold text-gray-900">
+            „{deleteConfirm?.name}"
+          </span>
+          ? Táto akcia sa nedá vrátiť.
+        </p>
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setDeleteConfirm(null)}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+          >
+            Zrušiť
+          </button>
+          <button
+            onClick={handleDeleteConfirmed}
+            className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700 transition"
+          >
+            Áno, vymazať
+          </button>
+        </div>
+      </Modal>
+
+      {/* Rename modal */}
+      <Modal
+        open={!!renameModal}
+        onClose={() => setRenameModal(null)}
+        title="Premenovať diétu"
+      >
+        <p className="text-sm text-gray-500 mb-4">
+          Aktuálny názov:{" "}
+          <span className="font-medium text-gray-700">
+            {renameModal?.currentName}
+          </span>
+        </p>
+        <input
+          type="text"
+          value={renameModal?.newName ?? ""}
+          onChange={(e) =>
+            setRenameModal((prev) =>
+              prev ? { ...prev, newName: e.target.value } : prev,
+            )
+          }
+          onKeyDown={(e) => e.key === "Enter" && handleRename()}
+          placeholder="Nový názov diéty"
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-6"
+          autoFocus
+        />
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={() => setRenameModal(null)}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition"
+          >
+            Zrušiť
+          </button>
+          <button
+            onClick={handleRename}
+            disabled={renaming || !renameModal?.newName.trim()}
+            className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
+          >
+            {renaming ? "Ukladám…" : "Uložiť"}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 };
