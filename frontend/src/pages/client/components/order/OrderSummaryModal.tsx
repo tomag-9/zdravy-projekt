@@ -177,7 +177,7 @@ const OrderSummaryModal = ({
             <>
               {!hasAnyOrder ? (
                 <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                  Žiadne objedlané jedlá pre tento deň.
+                  Žiadne objednané jedlá pre tento deň.
                 </div>
               ) : (
                 <div className="space-y-4">

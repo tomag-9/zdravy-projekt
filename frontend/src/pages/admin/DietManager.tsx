@@ -84,7 +84,7 @@ const DietManager: React.FC = () => {
         { method: "DELETE" },
       );
       if (res.ok) {
-        success(`Diéta „${deleteConfirm.name}" bola odstránená`);
+        success(`Diéta "${deleteConfirm.name}" bola odstránená`);
         fetchDiets();
       } else {
         error("Nepodarilo sa odstrániť diétu");
@@ -196,7 +196,7 @@ const DietManager: React.FC = () => {
         <p className="text-gray-600 mb-6">
           Naozaj chcete odstrániť diétu{" "}
           <span className="font-semibold text-gray-900">
-            „{deleteConfirm?.name}"
+            "{deleteConfirm?.name}"
           </span>
           ? Táto akcia sa nedá vrátiť.
         </p>
@@ -236,7 +236,11 @@ const DietManager: React.FC = () => {
               prev ? { ...prev, newName: e.target.value } : prev,
             )
           }
-          onKeyDown={(e) => e.key === "Enter" && handleRename()}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter") return;
+            if (renaming || !renameModal?.newName.trim()) return;
+            handleRename();
+          }}
           placeholder="Nový názov diéty"
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-6"
           autoFocus

@@ -316,7 +316,7 @@ export const useOrder = () => {
             next.add(mealKey);
             return next;
         });
-        setCurrentOrder((prev) => OrderService.updateDiet(prev, mealKey, category, diet, count));
+        setCurrentOrder((prev) => ({ ...OrderService.updateDiet(prev, mealKey, category, diet, count), status: 'draft' }));
     };
 
     const updateSettings = (key: string, value: boolean) => {
@@ -332,7 +332,8 @@ export const useOrder = () => {
         });
         setCurrentOrder((prev) => ({
             ...prev,
-            [mealKey]: OrderService.createEmptyMeal()
+            [mealKey]: OrderService.createEmptyMeal(),
+            status: 'draft',
         }));
     };
 
@@ -444,7 +445,7 @@ export const useOrder = () => {
             next.add(mealKey);
             return next;
         });
-        setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
+        setCurrentOrder((prev) => ({ ...OrderService.updateMenuCount(prev, mealKey, category, menuType, count), status: 'draft' }));
     };
 
     /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
@@ -459,7 +460,8 @@ export const useOrder = () => {
                 if (prevOrder.lunch && !OrderService.isMealEmpty(prevOrder.lunch)) {
                     setCurrentOrder((prev) => ({
                         ...prev,
-                        breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
+                        breakfast: JSON.parse(JSON.stringify(prevOrder.lunch)),
+                        status: 'draft',
                     }));
                     setActiveMeals(prev => ({ ...prev, breakfast: true }));
                     setTouchedMeals(prev => { const n = new Set(prev); n.add('breakfast'); return n; });
@@ -475,7 +477,8 @@ export const useOrder = () => {
         if (OrderService.isMealEmpty(currentOrder.lunch)) return false;
         setCurrentOrder((prev) => ({
             ...prev,
-            olovrant: JSON.parse(JSON.stringify(prev.lunch))
+            olovrant: JSON.parse(JSON.stringify(prev.lunch)),
+            status: 'draft',
         }));
         setActiveMeals(prev => ({ ...prev, olovrant: true }));
         setTouchedMeals(prev => { const n = new Set(prev); n.add('olovrant'); return n; });

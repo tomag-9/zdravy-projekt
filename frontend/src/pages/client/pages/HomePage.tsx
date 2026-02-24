@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
+import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 
@@ -73,6 +74,7 @@ const HomePage = () => {
 
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   const firstWorkday = firstNextWorkday();
@@ -283,11 +285,16 @@ const HomePage = () => {
 
   const handleZeroPredicted = async (day: PlannedDay) => {
     try {
-      await apiFetch(`${API_URL}/orders/`, {
+      const res = await apiFetch(`${API_URL}/orders/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: day.date, status: "submitted", data: {} }),
       });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        toast.error(msg || "Nepodarilo sa vynulovať objednávku.");
+        return;
+      }
       setPlannedDays((prev) =>
         prev.map((d) =>
           d.date === day.date
