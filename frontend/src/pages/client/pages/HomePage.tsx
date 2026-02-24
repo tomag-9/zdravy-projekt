@@ -12,6 +12,8 @@ import {
   XCircle,
   CalendarDays,
   PenLine,
+  Lock,
+  Clock,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
@@ -48,6 +50,15 @@ function firstNextWorkday(): string {
   return d.toISOString().split("T")[0];
 }
 
+interface TodayOrder {
+  loaded: boolean;
+  exists: boolean;
+  data: Record<string, unknown>;
+  totalPortions: number;
+  mealCount: { breakfast: number; lunch: number; olovrant: number };
+  is_auto: boolean;
+}
+
 const HomePage = () => {
   const [plannedDays, setPlannedDays] = useState<PlannedDay[]>([]);
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
@@ -55,12 +66,70 @@ const HomePage = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const [todayOrder, setTodayOrder] = useState<TodayOrder | null>(null);
 
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
   const navigate = useNavigate();
 
   const firstWorkday = firstNextWorkday();
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // Check whether any meal deadline for today hasn't passed yet
+  const isTodayEditable = (() => {
+    if (!globalDeadlines) return false;
+    const now = new Date();
+    return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
+      const timeStr = globalDeadlines[meal] || "10:00";
+      const deadline = new Date(`${todayStr}T${timeStr}:00`);
+      return now < deadline;
+    });
+  })();
+
+  // ── Today's order ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+    apiFetch(`${API_URL}/orders/by-date/${todayStr}/`)
+      .then((r) => (r.ok ? r.json() : { data: {} }))
+      .then((rec) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: any = rec.data || {};
+        let total = 0;
+        const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
+        ["breakfast", "lunch", "olovrant"].forEach((meal) => {
+          const mealObj = data[meal];
+          if (!mealObj) return;
+          Object.values(mealObj).forEach((cat: unknown) => {
+            const menuCounts =
+              (cat as { menuCounts?: Record<string, number> })?.menuCounts || {};
+            const c = (Object.values(menuCounts) as number[]).reduce(
+              (a, b) => a + b,
+              0,
+            );
+            total += c;
+            counts[meal as keyof typeof counts] += c;
+          });
+        });
+        setTodayOrder({
+          loaded: true,
+          exists: total > 0,
+          data,
+          totalPortions: total,
+          mealCount: counts,
+          is_auto: rec.is_auto || false,
+        });
+      })
+      .catch(() =>
+        setTodayOrder({
+          loaded: true,
+          exists: false,
+          data: {},
+          totalPortions: 0,
+          mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+          is_auto: false,
+        }),
+      );
+  }, [user, apiFetch, todayStr]);
 
   // ── Planned orders (5 next workdays) ──────────────────────────────────────
   useEffect(() => {
@@ -309,6 +378,109 @@ const HomePage = () => {
             </div>
           </button>
         </Link>
+
+        {/* ── Dnešná objednávka ── */}
+        {todayOrder?.loaded && (
+          <div className="mb-8 animate-in slide-in-from-bottom-3 duration-400">
+            <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+              <Clock className="w-5 h-5 text-orange-500" />
+              Dnešná objednávka
+            </h2>
+            <div
+              onClick={() => {
+                if (isTodayEditable) {
+                  navigate(`/order?date=${todayStr}`);
+                } else if (todayOrder.exists) {
+                  setModalOrderData(todayOrder.data);
+                  setSelectedDate(todayStr);
+                }
+              }}
+              className={[
+                "p-5 rounded-xl border transition-all duration-200 group",
+                isTodayEditable
+                  ? "bg-white border-orange-200 shadow-sm hover:shadow-md hover:border-orange-300 cursor-pointer"
+                  : todayOrder.exists
+                    ? "bg-white border-slate-200 shadow-sm hover:shadow-md hover:border-slate-300 cursor-pointer"
+                    : "bg-slate-50 border-slate-200 cursor-default",
+              ].join(" ")}
+            >
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={[
+                      "p-2.5 rounded-lg",
+                      isTodayEditable
+                        ? "bg-orange-50 group-hover:bg-orange-100"
+                        : "bg-slate-100",
+                    ].join(" ")}
+                  >
+                    {isTodayEditable ? (
+                      <Calendar className="w-5 h-5 text-orange-500" />
+                    ) : (
+                      <Lock className="w-5 h-5 text-slate-400" />
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-900">
+                      {formatDate(todayStr)}
+                    </h3>
+                    {isTodayEditable ? (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
+                        <Clock className="w-3 h-3" />
+                        {todayOrder.exists ? "Upraviť do termínu" : "Vytvoriť do termínu"}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">
+                        <Lock className="w-3 h-3" />
+                        Po termíne – len na zobrazenie
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {todayOrder.exists && (
+                  <div className="text-2xl font-bold text-slate-900">
+                    {todayOrder.totalPortions}
+                    <span className="text-xs font-normal text-slate-500 ml-1">ks</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Meal chips */}
+              {todayOrder.exists && (
+                <div className="flex gap-2 mt-3">
+                  {todayOrder.mealCount.breakfast > 0 && (
+                    <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
+                      Raňajky: {todayOrder.mealCount.breakfast}
+                    </span>
+                  )}
+                  {todayOrder.mealCount.lunch > 0 && (
+                    <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
+                      Obed: {todayOrder.mealCount.lunch}
+                    </span>
+                  )}
+                  {todayOrder.mealCount.olovrant > 0 && (
+                    <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
+                      Olovrant: {todayOrder.mealCount.olovrant}
+                    </span>
+                  )}
+                  {todayOrder.is_auto && (
+                    <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-600 text-xs px-2 py-1 rounded-md">
+                      <Bot className="w-3 h-3" />
+                      Auto
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {!todayOrder.exists && !isTodayEditable && (
+                <p className="text-xs text-slate-400 mt-2">
+                  Na dnešný deň nebola vytvorená žiadna objednávka.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── Plánované objednávky – 5 pracovných dní ── */}
         <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
