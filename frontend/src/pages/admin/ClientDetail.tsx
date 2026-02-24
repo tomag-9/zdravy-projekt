@@ -41,6 +41,11 @@ interface DailyOrder {
 
 const ALL_MENUS = ["A", "B", "C", "V"];
 const ALL_MEALS = ["breakfast", "lunch", "olovrant"];
+const MEAL_LABELS: Record<string, string> = {
+  breakfast: "Raňajky",
+  lunch: "Obed",
+  olovrant: "Olovrant",
+};
 
 const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -547,8 +552,8 @@ const ClientDetail: React.FC = () => {
                       onChange={() => toggleSet(meals, meal, setMeals)}
                       className="w-5 h-5 text-amber-600 rounded focus:ring-amber-500 border-gray-300 mr-3"
                     />
-                    <span className="font-medium text-gray-700 capitalize">
-                      {meal}
+                    <span className="font-medium text-gray-700">
+                      {MEAL_LABELS[meal] ?? meal}
                     </span>
                   </label>
                 ))}
