@@ -24,8 +24,6 @@ const OrderPage = () => {
     updateMenuCount,
     updateDiet,
     enabledCategories,
-    settings,
-    updateSettings,
     clearMeal,
     getAvailableDiets,
     submitOrder,
@@ -45,11 +43,6 @@ const OrderPage = () => {
     null,
   );
   const [showZeroModal, setShowZeroModal] = useState(false);
-  const [dataChangedState, setDataChangedState] = useState({
-    breakfast: false,
-    lunch: false,
-    olovrant: false,
-  });
 
   const initialDataRef = useRef<{
     breakfast: string;
@@ -92,29 +85,14 @@ const OrderPage = () => {
     if (dateKeyRef.current !== selectedDate) {
       dateKeyRef.current = selectedDate;
       initialDataRef.current = null;
-      setDataChangedState({ breakfast: false, lunch: false, olovrant: false });
     }
-
     if (initialDataRef.current === null) {
       initialDataRef.current = {
         breakfast: JSON.stringify(currentOrder.breakfast),
         lunch: JSON.stringify(currentOrder.lunch),
         olovrant: JSON.stringify(currentOrder.olovrant),
       };
-      return;
     }
-
-    const cur = {
-      breakfast: JSON.stringify(currentOrder.breakfast),
-      lunch: JSON.stringify(currentOrder.lunch),
-      olovrant: JSON.stringify(currentOrder.olovrant),
-    };
-    const init = initialDataRef.current;
-    setDataChangedState({
-      breakfast: cur.breakfast !== init.breakfast,
-      lunch: cur.lunch !== init.lunch,
-      olovrant: cur.olovrant !== init.olovrant,
-    });
   }, [currentOrder, selectedDate]);
 
   const meals: {
@@ -146,7 +124,6 @@ const OrderPage = () => {
     (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
       clearMeal(meal);
     });
-    setDataChangedState({ breakfast: false, lunch: false, olovrant: false });
     setShowZeroModal(false);
     toast.success("Objednávka bola vynulovaná.");
   };
@@ -180,7 +157,6 @@ const OrderPage = () => {
                 toast.info("Nemám včerajšie dáta na načítanie.");
               }
               resetMealData("breakfast");
-              setDataChangedState((prev) => ({ ...prev, breakfast: false }));
             }}
             className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -190,7 +166,6 @@ const OrderPage = () => {
             onClick={() => {
               clearMeal("breakfast");
               resetMealData("breakfast");
-              setDataChangedState((prev) => ({ ...prev, breakfast: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -207,7 +182,6 @@ const OrderPage = () => {
             onClick={() => {
               clearMeal("lunch");
               resetMealData("lunch");
-              setDataChangedState((prev) => ({ ...prev, lunch: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -229,7 +203,6 @@ const OrderPage = () => {
                 toast.info("Obed je prázdny, nie je čo kopírovať.");
               }
               resetMealData("olovrant");
-              setDataChangedState((prev) => ({ ...prev, olovrant: false }));
             }}
             className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -239,7 +212,6 @@ const OrderPage = () => {
             onClick={() => {
               clearMeal("olovrant");
               resetMealData("olovrant");
-              setDataChangedState((prev) => ({ ...prev, olovrant: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
