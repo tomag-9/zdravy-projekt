@@ -24,6 +24,8 @@ interface OrderSummaryModalProps {
   onDelete?: () => void;
   /** When true the order is not yet in DB – it's an auto-prediction */
   isPredicted?: boolean;
+  /** When true the order was created automatically – Delete is disabled */
+  isAuto?: boolean;
   /** Meal counts for the auto-prediction preview */
   predictedMealCount?: { breakfast: number; lunch: number; olovrant: number };
   /** Called when user chooses to zero out a predicted order */
@@ -38,6 +40,7 @@ const OrderSummaryModal = ({
   globalDeadlines,
   onDelete,
   isPredicted = false,
+  isAuto = false,
   predictedMealCount,
   onZero,
 }: OrderSummaryModalProps) => {
@@ -93,8 +96,14 @@ const OrderSummaryModal = ({
   // For now, we just redirect to edit page for granular control.
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
           <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
             <FileCheck className="w-5 h-5 text-indigo-600" />
@@ -131,8 +140,8 @@ const OrderSummaryModal = ({
                 <Bot className="w-4 h-4 shrink-0" />
                 <span>
                   Táto objednávka ešte{" "}
-                  <strong>nebola manuálne vytvorená</strong>. Systém ju
-                  automaticky predpokladá podľa histórie.
+                  <strong>nebola manuálne vytvorená</strong>. Systém ju zapíše
+                  podľa predošlej objednávky.
                 </span>
               </div>
               {predictedMealCount && (
@@ -249,62 +258,46 @@ const OrderSummaryModal = ({
             </>
           )}
 
-          {/* ── Footer buttons ── */}
-          {isPredicted ? (
-            <div className="pt-4 flex gap-3">
-              <Button
-                className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm border"
-                onClick={onClose}
-              >
-                Zavrieť
-              </Button>
-              {onZero && (
-                <Button
-                  className="flex-1 gap-2 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 border shadow-sm"
-                  onClick={onZero}
-                >
-                  <Eraser className="w-4 h-4" />
-                  Vynulovať
-                </Button>
-              )}
-              <Button
-                className="flex-1 gap-2 shadow-indigo-200"
-                onClick={handleEdit}
-              >
-                <Edit className="w-4 h-4" />
-                Upraviť
-              </Button>
-            </div>
-          ) : (
-            <div className="pt-4 flex gap-3">
-              <Button
-                className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm border"
-                onClick={onClose}
-              >
-                Zavrieť
-              </Button>
-              {(isEditable("breakfast") ||
-                isEditable("lunch") ||
-                isEditable("olovrant")) && (
-                <>
-                  <Button
-                    className="flex-1 gap-2 shadow-indigo-200"
-                    onClick={handleEdit}
-                  >
-                    <Edit className="w-4 h-4" />
-                    Upraviť
-                  </Button>
-                  <Button
-                    className="flex-1 gap-2 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 border shadow-sm"
-                    onClick={() => setDeleteConfirmation(true)}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    Vymazať
-                  </Button>
-                </>
-              )}
-            </div>
-          )}
+          {/* ── Footer buttons: Edit | Erase | Delete ── */}
+          <div className="pt-4 flex gap-3">
+            <Button
+              className="flex-1 gap-2 shadow-indigo-200"
+              onClick={handleEdit}
+            >
+              <Edit className="w-4 h-4" />
+              Upraviť
+            </Button>
+            <Button
+              className={[
+                "flex-1 gap-2 border shadow-sm",
+                onZero
+                  ? "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
+                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
+              ].join(" ")}
+              onClick={onZero ?? undefined}
+              disabled={!onZero}
+            >
+              <Eraser className="w-4 h-4" />
+              Vynulovať
+            </Button>
+            <Button
+              className={[
+                "flex-1 gap-2 border shadow-sm",
+                !isPredicted && !isAuto
+                  ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
+              ].join(" ")}
+              onClick={
+                !isPredicted && !isAuto
+                  ? () => setDeleteConfirmation(true)
+                  : undefined
+              }
+              disabled={isPredicted || isAuto}
+            >
+              <Trash2 className="w-4 h-4" />
+              Vymazať
+            </Button>
+          </div>
         </div>
       </div>
 

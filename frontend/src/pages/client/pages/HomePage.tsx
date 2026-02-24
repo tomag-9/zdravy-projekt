@@ -57,6 +57,7 @@ const HomePage = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
+  const [modalOrderId, setModalOrderId] = useState<number | null>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [predictedModalDay, setPredictedModalDay] = useState<PlannedDay | null>(
     null,
@@ -206,11 +207,14 @@ const HomePage = () => {
       if (r.ok) {
         const rec = await r.json();
         setModalOrderData(rec.data || {});
+        setModalOrderId(rec.id ?? null);
       } else {
         setModalOrderData({});
+        setModalOrderId(null);
       }
     } catch {
       setModalOrderData({});
+      setModalOrderId(null);
     }
     setSelectedDate(date);
   };
@@ -259,6 +263,41 @@ const HomePage = () => {
       console.error(e);
     } finally {
       setPredictedModalDay(null);
+    }
+  };
+
+  const handleZeroExisting = async () => {
+    if (!selectedDate || modalOrderId === null) return;
+    try {
+      const res = await apiFetch(`${API_URL}/orders/${modalOrderId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "submitted", data: {} }),
+      });
+      if (!res.ok) {
+        toast.error("Nepodarilo sa vynulovať objednávku.");
+        return;
+      }
+      const date = selectedDate;
+      setPlannedDays((prev) =>
+        prev.map((d) =>
+          d.date === date
+            ? {
+                ...d,
+                exists: true,
+                is_empty: true,
+                is_auto: false,
+                totalPortions: 0,
+                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+              }
+            : d,
+        ),
+      );
+      setSelectedDate(null);
+      setModalOrderId(null);
+    } catch (e) {
+      console.error(e);
+      toast.error("Nepodarilo sa vynulovať objednávku.");
     }
   };
 
@@ -641,10 +680,15 @@ const HomePage = () => {
         {/* ── Detail modal ── */}
         <OrderSummaryModal
           isOpen={!!selectedDate}
-          onClose={() => setSelectedDate(null)}
+          onClose={() => {
+            setSelectedDate(null);
+            setModalOrderId(null);
+          }}
           orderDate={selectedDate ?? ""}
           orderData={modalOrderData}
           globalDeadlines={globalDeadlines}
+          isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
+          onZero={handleZeroExisting}
           onDelete={() => {
             if (selectedDate) {
               setPlannedDays((prev) =>
@@ -665,6 +709,7 @@ const HomePage = () => {
                 prev.filter((o) => o.date !== selectedDate),
               );
               setSelectedDate(null);
+              setModalOrderId(null);
             }
           }}
         />
