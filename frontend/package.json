@@ -20,6 +20,10 @@
     "react-router-dom": "^7.12.0",
     "tailwind-merge": "^3.4.0"
   },
+  "overrides": {
+    "minimatch": "^10.2.2",
+    "ajv": "^6.14.0"
+  },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.5",
     "@testing-library/react": "^14.1.2",
