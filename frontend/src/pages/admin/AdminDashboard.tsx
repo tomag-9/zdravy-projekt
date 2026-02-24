@@ -104,47 +104,41 @@ const MealCell: React.FC<{ meal: MealRow }> = ({ meal }) => {
     return <span className="text-gray-300 text-xs italic">–</span>;
   }
 
-  const menus: Record<string, number> = {};
-  const diets: Record<string, number> = {};
-  for (const cat of meal.categories) {
-    for (const [k, v] of Object.entries(cat.menus)) {
-      menus[k] = (menus[k] || 0) + v;
-    }
-    for (const [k, v] of Object.entries(cat.diets)) {
-      diets[k] = (diets[k] || 0) + v;
-    }
-  }
+  const activeCats = meal.categories.filter((cat) => cat.total > 0);
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex flex-wrap gap-1">
-        {Object.entries(menus)
-          .filter(([, cnt]) => cnt > 0)
-          .map(([menu, cnt]) => (
-            <span
-              key={menu}
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
-            >
-              <span className="font-bold">{menu}</span>
-              <span className="text-gray-500">×{cnt}</span>
-            </span>
-          ))}
-      </div>
-      {Object.keys(diets).length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {Object.entries(diets)
-            .filter(([, cnt]) => cnt > 0)
-            .map(([diet, cnt]) => (
-              <span
-                key={diet}
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
-              >
-                {diet}
-                {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
-              </span>
-            ))}
+    <div className="flex flex-col gap-2">
+      {activeCats.map((cat) => (
+        <div key={cat.name} className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+            {cat.name}
+          </span>
+          <div className="flex flex-wrap gap-1">
+            {Object.entries(cat.menus)
+              .filter(([, cnt]) => cnt > 0)
+              .map(([menu, cnt]) => (
+                <span
+                  key={menu}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
+                >
+                  <span className="font-bold">{menu}</span>
+                  <span className="text-gray-500">×{cnt}</span>
+                </span>
+              ))}
+            {Object.entries(cat.diets)
+              .filter(([, cnt]) => cnt > 0)
+              .map(([diet, cnt]) => (
+                <span
+                  key={diet}
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
+                >
+                  {diet}
+                  {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
+                </span>
+              ))}
+          </div>
         </div>
-      )}
+      ))}
       <span className="text-xs font-bold text-gray-800">{meal.total} ks</span>
     </div>
   );

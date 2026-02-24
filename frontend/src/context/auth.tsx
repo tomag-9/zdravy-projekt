@@ -143,17 +143,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (refreshed) {
           const newToken = sessionStorage.getItem("access_token");
           headers.set("Authorization", `Bearer ${newToken}`);
-          response = await fetch(input, { ...init, headers });
+          response = await fetch(input, {
+            ...init,
+            headers,
+            cache: "no-store" as RequestCache,
+          });
         }
       } else if (response.status === 403) {
-        // Forbidden - we do NOT logout automatically anymore
-        // because 403 can happen for valid users accessing admin endpoints (e.g. accidentally)
-        // Checks should happen at the call site.
-        console.warn("Access Forbidden (403)");
+        // Forbidden — may be caused by an expired JWT that the backend returns as 403.
+        // Attempt a token refresh and retry. If the refresh or the retried request still
+        // results in 403/failure, treat it as an invalid session and redirect to login.
+        const refreshed = await refreshToken();
+        if (refreshed) {
+          const newToken = sessionStorage.getItem("access_token");
+          headers.set("Authorization", `Bearer ${newToken}`);
+          const retried = await fetch(input, {
+            ...init,
+            headers,
+            cache: "no-store" as RequestCache,
+          });
+          if (retried.status === 403) {
+            // Valid token but still forbidden → session/account issue, force logout.
+            logout();
+          }
+          response = retried;
+        }
+        // If refresh failed, refreshToken() already called logout().
       }
       return response;
     },
-    [refreshToken],
+    [logout, refreshToken],
   );
 
   const fetchUserProfile = useCallback(async (): Promise<User | null> => {
