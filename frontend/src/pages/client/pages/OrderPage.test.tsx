@@ -137,30 +137,20 @@ describe("OrderPage Logic & Triggers", () => {
     const olovrantCard = olovrantTitle.closest(".transition-all");
     expect(olovrantCard).toBeInTheDocument();
 
-    // 3. Find the Copy Switch
-    const copySwitch = await within(olovrantCard as HTMLElement).findByRole(
-      "switch",
+    // 3. Find the "Kopírovať z obeda" button in Olovrant card
+    const copyBtn = await within(olovrantCard as HTMLElement).findByText(
+      /Kopírovať z obeda/i,
     );
+    expect(copyBtn).toBeInTheDocument();
 
-    // Verify it's the right one
-    expect(
-      within(olovrantCard as HTMLElement).getByText(
-        /Kopírovať z dnešného obeda/i,
-      ),
-    ).toBeInTheDocument();
-    expect(copySwitch).toHaveAttribute("aria-checked", "false");
-
-    // 4. Click the switch
-    fireEvent.click(copySwitch);
+    // 4. Click the button
+    fireEvent.click(copyBtn);
 
     // 5. Wait for sync
     await waitFor(() => {
       const updated = getOrderData(date);
       expect(updated.olovrant["Škôlka"].menuCounts["A"]).toBe(10);
     });
-
-    // 6. Verify switch stayed ON
-    expect(copySwitch).toHaveAttribute("aria-checked", "true");
   });
 
   it("Copy Breakfast: Copies from Previous Day Lunch", async () => {
@@ -201,24 +191,20 @@ describe("OrderPage Logic & Triggers", () => {
     const breakfastCard = breakfastTitle.closest(".transition-all");
     expect(breakfastCard).toBeInTheDocument();
 
-    // 4. Find Copy Switch
-    const copySwitch = await within(breakfastCard as HTMLElement).findByRole(
-      "switch",
+    // 4. Find "Načítať z včera" button
+    const copyBtn = await within(breakfastCard as HTMLElement).findByText(
+      /Načítať z včera/i,
     );
-    expect(
-      within(breakfastCard as HTMLElement).getByText(/Auto-výpočet/i),
-    ).toBeInTheDocument();
+    expect(copyBtn).toBeInTheDocument();
 
     // 5. Activate
-    fireEvent.click(copySwitch);
+    fireEvent.click(copyBtn);
 
     // 6. Verify Data Transfer
     await waitFor(() => {
       const updated = getOrderData(today);
       expect(updated.breakfast["Škôlka"].menuCounts["A"]).toBe(5);
     });
-
-    expect(copySwitch).toHaveAttribute("aria-checked", "true");
   });
   it("renders the order page with meals", () => {
     renderPage();
