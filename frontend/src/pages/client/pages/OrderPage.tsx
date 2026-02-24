@@ -152,15 +152,15 @@ const OrderPage = () => {
             onClick={() => {
               const loaded = loadBreakfastFromPrevLunch();
               if (loaded) {
-                toast.success("Raňajky načítané z včerajšieho obeda.");
+                toast.success("Raňajky načítané z obeda (včera).");
               } else {
-                toast.info("Nemám včerajšie dáta na načítanie.");
+                toast.info("Nemám dáta z včerajšieho obeda.");
               }
               resetMealData("breakfast");
             }}
             className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Copy className="w-3 h-3" /> Načítať z včera
+            <Copy className="w-3 h-3" /> Načítať z obeda
           </button>
           <button
             onClick={() => {
