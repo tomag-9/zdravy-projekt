@@ -447,6 +447,41 @@ export const useOrder = () => {
         setCurrentOrder((prev) => OrderService.updateMenuCount(prev, mealKey, category, menuType, count));
     };
 
+    /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
+    const loadBreakfastFromPrevLunch = (): boolean => {
+        const prevDate = new Date(selectedDate);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = prevDate.toISOString().split('T')[0];
+        const raw = localStorage.getItem(`order_${prevDateStr}`);
+        if (raw) {
+            try {
+                const prevOrder = JSON.parse(raw);
+                if (prevOrder.lunch && !OrderService.isMealEmpty(prevOrder.lunch)) {
+                    setCurrentOrder((prev) => ({
+                        ...prev,
+                        breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
+                    }));
+                    setActiveMeals(prev => ({ ...prev, breakfast: true }));
+                    setTouchedMeals(prev => { const n = new Set(prev); n.add('breakfast'); return n; });
+                    return true;
+                }
+            } catch (e) { console.error(e); }
+        }
+        return false;
+    };
+
+    /** Immediately copy today’s current lunch into olovrant. Returns true if lunch had data. */
+    const copyOlovrantFromCurrentLunch = (): boolean => {
+        if (OrderService.isMealEmpty(currentOrder.lunch)) return false;
+        setCurrentOrder((prev) => ({
+            ...prev,
+            olovrant: JSON.parse(JSON.stringify(prev.lunch))
+        }));
+        setActiveMeals(prev => ({ ...prev, olovrant: true }));
+        setTouchedMeals(prev => { const n = new Set(prev); n.add('olovrant'); return n; });
+        return true;
+    };
+
     return {
         enabledCategories, toggleCategory,
         settings, updateSettings,
@@ -456,6 +491,8 @@ export const useOrder = () => {
         getAvailableDiets,
         prevDayLunches,
         clearMeal,
+        loadBreakfastFromPrevLunch,
+        copyOlovrantFromCurrentLunch,
         submitOrder, deleteOrder,
         adminVisibleMenus,
         adminVisibleMeals,
