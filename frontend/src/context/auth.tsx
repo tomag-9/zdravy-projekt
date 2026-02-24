@@ -143,7 +143,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (refreshed) {
           const newToken = sessionStorage.getItem("access_token");
           headers.set("Authorization", `Bearer ${newToken}`);
-          response = await fetch(input, { ...init, headers });
+          response = await fetch(input, {
+            ...init,
+            headers,
+            cache: "no-store" as RequestCache,
+          });
         }
       } else if (response.status === 403) {
         // Forbidden — may be caused by an expired JWT that the backend returns as 403.
@@ -153,7 +157,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (refreshed) {
           const newToken = sessionStorage.getItem("access_token");
           headers.set("Authorization", `Bearer ${newToken}`);
-          const retried = await fetch(input, { ...init, headers });
+          const retried = await fetch(input, {
+            ...init,
+            headers,
+            cache: "no-store" as RequestCache,
+          });
           if (retried.status === 403) {
             // Valid token but still forbidden → session/account issue, force logout.
             logout();
