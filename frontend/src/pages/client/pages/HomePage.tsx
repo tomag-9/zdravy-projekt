@@ -101,7 +101,8 @@ const HomePage = () => {
           if (!mealObj) return;
           Object.values(mealObj).forEach((cat: unknown) => {
             const menuCounts =
-              (cat as { menuCounts?: Record<string, number> })?.menuCounts || {};
+              (cat as { menuCounts?: Record<string, number> })?.menuCounts ||
+              {};
             const c = (Object.values(menuCounts) as number[]).reduce(
               (a, b) => a + b,
               0,
@@ -427,7 +428,9 @@ const HomePage = () => {
                     {isTodayEditable ? (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
                         <Clock className="w-3 h-3" />
-                        {todayOrder.exists ? "Upraviť do termínu" : "Vytvoriť do termínu"}
+                        {todayOrder.exists
+                          ? "Upraviť do termínu"
+                          : "Vytvoriť do termínu"}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-500">
@@ -441,7 +444,9 @@ const HomePage = () => {
                 {todayOrder.exists && (
                   <div className="text-2xl font-bold text-slate-900">
                     {todayOrder.totalPortions}
-                    <span className="text-xs font-normal text-slate-500 ml-1">ks</span>
+                    <span className="text-xs font-normal text-slate-500 ml-1">
+                      ks
+                    </span>
                   </div>
                 )}
               </div>

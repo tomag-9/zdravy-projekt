@@ -43,6 +43,7 @@ const OrderPage = () => {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null,
   );
+  const [showZeroModal, setShowZeroModal] = useState(false);
   const [dataChangedState, setDataChangedState] = useState({
     breakfast: false,
     lunch: false,
@@ -225,7 +226,14 @@ const OrderPage = () => {
       toast.error("Nepodarilo sa odoslať objednávku. Skúste to znova.");
     }
   };
-
+  const handleReset = () => {
+    (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
+      clearMeal(meal);
+    });
+    setDataChangedState({ breakfast: false, lunch: false, olovrant: false });
+    setShowZeroModal(false);
+    toast.success("Objednávka bola vynulovaná.");
+  };
   const resetMealData = (mealKey: keyof DailyOrder) => {
     initialDataRef.current = {
       breakfast:
@@ -479,6 +487,7 @@ const OrderPage = () => {
 
         <OrderSummary
           onSubmit={handleSubmit}
+          onReset={() => setShowZeroModal(true)}
           disabled={
             !OrderService.checkDeadline(
               selectedDate,
@@ -526,6 +535,17 @@ const OrderPage = () => {
           }
         />
       )}
+
+      <ConfirmationModal
+        isOpen={showZeroModal}
+        onClose={() => setShowZeroModal(false)}
+        onConfirm={handleReset}
+        title="Vynulovať objednávku"
+        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
+        confirmText="Vynulovať"
+        cancelText="Zrušiť"
+        variant="danger"
+      />
 
       <ConfirmationModal
         isOpen={showUnsavedModal}
