@@ -67,6 +67,9 @@ const HomePage = () => {
   const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [todayOrder, setTodayOrder] = useState<TodayOrder | null>(null);
+  const [predictedModalDay, setPredictedModalDay] = useState<PlannedDay | null>(
+    null,
+  );
 
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
@@ -265,12 +268,44 @@ const HomePage = () => {
   };
 
   const handlePlannedCardClick = (day: PlannedDay) => {
-    if (!day.exists) {
-      // No order yet → go directly to the order page for that day
+    const hasPrediction = !day.exists && day.predictedTotal > 0;
+    if (!day.exists && hasPrediction) {
+      // Auto-predicted: show preview modal with Edit / Vynulovať
+      setPredictedModalDay(day);
+    } else if (!day.exists) {
+      // No order, no prediction → go directly to order page
       navigate(`/order?date=${day.date}`);
     } else {
-      // Has an order → show summary modal
+      // Has an existing order → show summary modal
       openDayModal(day.date);
+    }
+  };
+
+  const handleZeroPredicted = async (day: PlannedDay) => {
+    try {
+      await apiFetch(`${API_URL}/orders/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: day.date, status: "submitted", data: {} }),
+      });
+      setPlannedDays((prev) =>
+        prev.map((d) =>
+          d.date === day.date
+            ? {
+                ...d,
+                exists: true,
+                is_empty: true,
+                is_auto: false,
+                totalPortions: 0,
+                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+              }
+            : d,
+        ),
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setPredictedModalDay(null);
     }
   };
 
@@ -668,6 +703,20 @@ const HomePage = () => {
               setSelectedDate(null);
             }
           }}
+        />
+
+        {/* ── Auto-predicted day preview modal ── */}
+        <OrderSummaryModal
+          isOpen={!!predictedModalDay}
+          onClose={() => setPredictedModalDay(null)}
+          orderDate={predictedModalDay?.date ?? ""}
+          orderData={{} as never}
+          globalDeadlines={globalDeadlines}
+          isPredicted
+          predictedMealCount={predictedModalDay?.predictedMealCount}
+          onZero={() =>
+            predictedModalDay && handleZeroPredicted(predictedModalDay)
+          }
         />
 
         <ConfirmationModal

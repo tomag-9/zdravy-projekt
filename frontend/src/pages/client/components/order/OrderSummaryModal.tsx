@@ -1,4 +1,12 @@
-import { X, FileCheck, AlertCircle, Edit, Trash2 } from "lucide-react";
+import {
+  X,
+  FileCheck,
+  AlertCircle,
+  Edit,
+  Trash2,
+  Eraser,
+  Bot,
+} from "lucide-react";
 import { Button } from "../ui/Button";
 import { useApp } from "../../context/AppContext";
 import { useNavigate } from "react-router-dom";
@@ -14,6 +22,12 @@ interface OrderSummaryModalProps {
   orderData: DailyOrder;
   globalDeadlines: { breakfast: string; lunch: string; olovrant: string };
   onDelete?: () => void;
+  /** When true the order is not yet in DB – it's an auto-prediction */
+  isPredicted?: boolean;
+  /** Meal counts for the auto-prediction preview */
+  predictedMealCount?: { breakfast: number; lunch: number; olovrant: number };
+  /** Called when user chooses to zero out a predicted order */
+  onZero?: () => void;
 }
 
 const OrderSummaryModal = ({
@@ -23,12 +37,15 @@ const OrderSummaryModal = ({
   orderData,
   globalDeadlines,
   onDelete,
+  isPredicted = false,
+  predictedMealCount,
+  onZero,
 }: OrderSummaryModalProps) => {
   const navigate = useNavigate();
   const { setSelectedDate, deleteOrder } = useApp();
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
 
-  if (!isOpen || !orderData) return null;
+  if (!isOpen || (!orderData && !isPredicted)) return null;
 
   const isEditable = (mealKey: string) =>
     OrderService.checkDeadline(orderDate, mealKey, globalDeadlines);
@@ -107,67 +124,47 @@ const OrderSummaryModal = ({
             </span>
           </div>
 
-          {!hasAnyOrder ? (
-            <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-              Žiadne objedlané jedlá pre tento deň.
-            </div>
-          ) : (
+          {/* ── Predicted-mode body ── */}
+          {isPredicted && (
             <div className="space-y-4">
-              {summaries.breakfast && (
-                <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-amber-900">Raňajky</span>
-                    <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-full">
-                      {summaries.breakfast.total} ks
-                    </span>
-                  </div>
-                  <div className="text-sm text-amber-700">
-                    {summaries.breakfast.details.join(", ")}
-                  </div>
-                  {!isEditable("breakfast") && (
-                    <div className="mt-2 flex items-center gap-1 text-xs text-amber-600/80">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline ({globalDeadlines.breakfast})</span>
+              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-700">
+                <Bot className="w-4 h-4 shrink-0" />
+                <span>
+                  Táto objednávka ešte{" "}
+                  <strong>nebola manuálne vytvorená</strong>. Systém ju
+                  automaticky predpokladá podľa histórie.
+                </span>
+              </div>
+              {predictedMealCount && (
+                <div className="space-y-2">
+                  {predictedMealCount.breakfast > 0 && (
+                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 flex justify-between items-center">
+                      <span className="font-semibold text-amber-900">
+                        Raňajky
+                      </span>
+                      <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-full">
+                        {predictedMealCount.breakfast} ks
+                      </span>
                     </div>
                   )}
-                </div>
-              )}
-
-              {summaries.lunch && (
-                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-indigo-900">Obed</span>
-                    <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded-full">
-                      {summaries.lunch.total} ks
-                    </span>
-                  </div>
-                  <div className="text-sm text-indigo-700">
-                    {summaries.lunch.details.join(", ")}
-                  </div>
-                  {!isEditable("lunch") && (
-                    <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600/80">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline ({globalDeadlines.lunch})</span>
+                  {predictedMealCount.lunch > 0 && (
+                    <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex justify-between items-center">
+                      <span className="font-semibold text-indigo-900">
+                        Obed
+                      </span>
+                      <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded-full">
+                        {predictedMealCount.lunch} ks
+                      </span>
                     </div>
                   )}
-                </div>
-              )}
-
-              {summaries.olovrant && (
-                <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-bold text-purple-900">Olovrant</span>
-                    <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded-full">
-                      {summaries.olovrant.total} ks
-                    </span>
-                  </div>
-                  <div className="text-sm text-purple-700">
-                    {summaries.olovrant.details.join(", ")}
-                  </div>
-                  {!isEditable("olovrant") && (
-                    <div className="mt-2 flex items-center gap-1 text-xs text-purple-600/80">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>Po deadline ({globalDeadlines.olovrant})</span>
+                  {predictedMealCount.olovrant > 0 && (
+                    <div className="bg-purple-50 p-3 rounded-xl border border-purple-100 flex justify-between items-center">
+                      <span className="font-semibold text-purple-900">
+                        Olovrant
+                      </span>
+                      <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded-full">
+                        {predictedMealCount.olovrant} ks
+                      </span>
                     </div>
                   )}
                 </div>
@@ -175,34 +172,139 @@ const OrderSummaryModal = ({
             </div>
           )}
 
-          <div className="pt-4 flex gap-3">
-            <Button
-              className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm border"
-              onClick={onClose}
-            >
-              Zavrieť
-            </Button>
-            {(isEditable("breakfast") ||
-              isEditable("lunch") ||
-              isEditable("olovrant")) && (
-              <>
+          {/* ── Real-order body ── */}
+          {!isPredicted && (
+            <>
+              {!hasAnyOrder ? (
+                <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  Žiadne objedlané jedlá pre tento deň.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {summaries.breakfast && (
+                    <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-amber-900">
+                          Raňajky
+                        </span>
+                        <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2 py-1 rounded-full">
+                          {summaries.breakfast.total} ks
+                        </span>
+                      </div>
+                      <div className="text-sm text-amber-700">
+                        {summaries.breakfast.details.join(", ")}
+                      </div>
+                      {!isEditable("breakfast") && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-amber-600/80">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Po deadline ({globalDeadlines.breakfast})</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {summaries.lunch && (
+                    <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-indigo-900">Obed</span>
+                        <span className="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-1 rounded-full">
+                          {summaries.lunch.total} ks
+                        </span>
+                      </div>
+                      <div className="text-sm text-indigo-700">
+                        {summaries.lunch.details.join(", ")}
+                      </div>
+                      {!isEditable("lunch") && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-indigo-600/80">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Po deadline ({globalDeadlines.lunch})</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {summaries.olovrant && (
+                    <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-purple-900">
+                          Olovrant
+                        </span>
+                        <span className="bg-purple-100 text-purple-800 text-xs font-bold px-2 py-1 rounded-full">
+                          {summaries.olovrant.total} ks
+                        </span>
+                      </div>
+                      <div className="text-sm text-purple-700">
+                        {summaries.olovrant.details.join(", ")}
+                      </div>
+                      {!isEditable("olovrant") && (
+                        <div className="mt-2 flex items-center gap-1 text-xs text-purple-600/80">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Po deadline ({globalDeadlines.olovrant})</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Footer buttons ── */}
+          {isPredicted ? (
+            <div className="pt-4 flex gap-3">
+              <Button
+                className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm border"
+                onClick={onClose}
+              >
+                Zavrieť
+              </Button>
+              {onZero && (
                 <Button
                   className="flex-1 gap-2 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 border shadow-sm"
-                  onClick={() => setDeleteConfirmation(true)}
+                  onClick={onZero}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Vymazať
+                  <Eraser className="w-4 h-4" />
+                  Vynulovať
                 </Button>
-                <Button
-                  className="flex-1 gap-2 shadow-indigo-200"
-                  onClick={handleEdit}
-                >
-                  <Edit className="w-4 h-4" />
-                  Upraviť
-                </Button>
-              </>
-            )}
-          </div>
+              )}
+              <Button
+                className="flex-1 gap-2 shadow-indigo-200"
+                onClick={handleEdit}
+              >
+                <Edit className="w-4 h-4" />
+                Upraviť
+              </Button>
+            </div>
+          ) : (
+            <div className="pt-4 flex gap-3">
+              <Button
+                className="flex-1 bg-white border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm border"
+                onClick={onClose}
+              >
+                Zavrieť
+              </Button>
+              {(isEditable("breakfast") ||
+                isEditable("lunch") ||
+                isEditable("olovrant")) && (
+                <>
+                  <Button
+                    className="flex-1 gap-2 shadow-indigo-200"
+                    onClick={handleEdit}
+                  >
+                    <Edit className="w-4 h-4" />
+                    Upraviť
+                  </Button>
+                  <Button
+                    className="flex-1 gap-2 bg-red-50 text-red-600 border-red-200 hover:bg-red-100 border shadow-sm"
+                    onClick={() => setDeleteConfirmation(true)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Vymazať
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
