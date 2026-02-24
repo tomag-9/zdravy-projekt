@@ -239,3 +239,41 @@ class AdminDailyReportTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreater(len(response.content), 100)
+
+    def test_daily_report_xlsx_has_category_columns(self):
+        """XLSX must have 3-level headers: meal → category/size → menu/diet."""
+        import io
+        import openpyxl
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        wb = openpyxl.load_workbook(io.BytesIO(response.content))
+        ws = wb.active
+
+        # Row 3: meal-level labels
+        row3 = [ws.cell(row=3, column=c).value for c in range(1, ws.max_column + 1)]
+        self.assertIn("Raňajky", row3)
+        self.assertIn("Obed", row3)
+
+        # Row 4: category-level labels (from setUp order data)
+        row4 = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1)]
+        self.assertIn("Dospelý", row4)  # breakfast category in setUp
+        self.assertIn("ZŠ", row4)       # lunch category in setUp
+
+        # Row 5: menu/diet labels
+        row5 = [ws.cell(row=5, column=c).value for c in range(1, ws.max_column + 1)]
+        self.assertIn("Menu A", row5)
+        self.assertIn("No Milk", row5)  # diet from setUp breakfast
+
+        # Data rows start at row 6
+        row6 = [ws.cell(row=6, column=c).value for c in range(1, ws.max_column + 1)]
+        self.assertIn("Anna Novák", row6)
+
+        # SPOLU row is the last row
+        last_row = ws.max_row
+        spolu_vals = [ws.cell(row=last_row, column=c).value for c in range(1, ws.max_column + 1)]
+        self.assertIn("SPOLU", spolu_vals)
