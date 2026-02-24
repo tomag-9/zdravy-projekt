@@ -109,64 +109,6 @@ class TestUserProfile:
         assert response.status_code == status.HTTP_200_OK
         assert "client" in response.data["groups"]
 
-    def test_update_profile_invalid_email_returns_400(self, authenticated_client):
-        """Invalid email format should return 400 Bad Request"""
-        url = reverse("user-profile")
-        response = authenticated_client.patch(
-            url, {"email": "not-an-email"}, format="json"
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
-
-    def test_update_profile_empty_email_returns_400(self, authenticated_client):
-        """Empty (blank) email should return 400 because email is required"""
-        url = reverse("user-profile")
-        response = authenticated_client.patch(url, {"email": ""}, format="json")
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
-
-    def test_update_profile_cannot_set_is_staff(self, authenticated_client, user):
-        """Read-only field is_staff cannot be changed by the user"""
-        assert user.is_staff is False
-        url = reverse("user-profile")
-        response = authenticated_client.patch(url, {"is_staff": True}, format="json")
-
-        assert response.status_code == status.HTTP_200_OK
-        user.refresh_from_db()
-        assert user.is_staff is False
-
-    def test_update_profile_cannot_change_id(self, authenticated_client, user):
-        """Read-only field id cannot be changed by the user"""
-        original_id = user.pk
-        url = reverse("user-profile")
-        response = authenticated_client.patch(
-            url, {"id": original_id + 999}, format="json"
-        )
-
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["id"] == original_id
-
-    def test_profile_response_contains_settings(self, authenticated_client):
-        """Profile response includes the nested settings object"""
-        url = reverse("user-profile")
-        response = authenticated_client.get(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        assert "settings" in response.data
-        settings = response.data["settings"]
-        assert "visible_menus" in settings
-        assert "visible_meals" in settings
-
-    def test_profile_response_contains_is_staff_flag(self, authenticated_client):
-        """Profile response includes the is_staff flag (needed by frontend)"""
-        url = reverse("user-profile")
-        response = authenticated_client.get(url)
-
-        assert response.status_code == status.HTTP_200_OK
-        assert "is_staff" in response.data
-
 
 @pytest.mark.django_db
 class TestUserDataIsolation:

@@ -37,8 +37,7 @@ interface HistoryOrder {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  data: any;
+  data: Record<string, Record<string, { menuCounts: Record<string, number> }>>;
 }
 
 /** First workday strictly after today (Mon–Fri). */
@@ -86,16 +85,18 @@ const HomePage = () => {
         const today = new Date().toISOString().split("T")[0];
         const history: HistoryOrder[] = [];
 
+        const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items.forEach((rec: any) => {
           if (rec.status !== "submitted" || rec.date >= today) return;
-          const mealData = rec.data || {};
+          const mealData: HistoryOrder["data"] = rec.data || {};
           let total = 0;
           const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
           ["breakfast", "lunch", "olovrant"].forEach((meal) => {
-            if (!mealData[meal]) return;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            Object.values(mealData[meal]).forEach((cat: any) => {
+            const mealObj = mealData[meal];
+            if (!mealObj) return;
+            Object.values(mealObj).forEach((cat) => {
               const menuCounts = cat?.menuCounts || {};
               const c = (Object.values(menuCounts) as number[]).reduce(
                 (a, b) => a + b,
@@ -106,19 +107,15 @@ const HomePage = () => {
             });
           });
           if (total > 0) {
-            history.push({
+            const historyItem = {
               date: rec.date,
               totalPortions: total,
               mealCount: counts,
               data: mealData,
-            });
-            // Seed localStorage for fast OrderPage initial render
-            if (!localStorage.getItem(`order_${rec.date}`)) {
-              localStorage.setItem(
-                `order_${rec.date}`,
-                JSON.stringify({ ...mealData, status: "submitted" }),
-              );
-            }
+            };
+            history.push(historyItem);
+            // Collect for deferred localStorage seeding
+            toSeed.push({ date: rec.date, data: mealData });
           }
         });
 
@@ -126,6 +123,54 @@ const HomePage = () => {
           (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
         );
         setHistoryOrders(history.slice(0, 5));
+
+        // Deferred seeding in background chunks to avoid blocking the main thread
+        if (toSeed.length > 0) {
+          const CHUNK_SIZE = 5;
+          let index = 0;
+
+          const processChunk = () => {
+            const end = Math.min(index + CHUNK_SIZE, toSeed.length);
+            for (; index < end; index++) {
+              const item = toSeed[index];
+              const key = `order_${item.date}`;
+              if (!localStorage.getItem(key)) {
+                localStorage.setItem(
+                  key,
+                  JSON.stringify({ ...item.data, status: "submitted" }),
+                );
+              }
+            }
+
+            if (index < toSeed.length) {
+              if (
+                typeof window !== "undefined" &&
+                "requestIdleCallback" in window
+              ) {
+                (
+                  window as unknown as {
+                    requestIdleCallback: (cb: () => void) => void;
+                  }
+                ).requestIdleCallback(processChunk);
+              } else {
+                setTimeout(processChunk, 10);
+              }
+            }
+          };
+
+          if (
+            typeof window !== "undefined" &&
+            "requestIdleCallback" in window
+          ) {
+            (
+              window as unknown as {
+                requestIdleCallback: (cb: () => void) => void;
+              }
+            ).requestIdleCallback(processChunk);
+          } else {
+            setTimeout(processChunk, 10);
+          }
+        }
       } catch (e) {
         console.error("Failed to fetch order history", e);
       }
