@@ -119,12 +119,12 @@ const OrderSummaryModal = ({
           </Button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
           <div className="flex flex-col items-center justify-center text-center">
             <span className="text-sm text-slate-500 uppercase tracking-wider font-medium">
               Dátum
             </span>
-            <span className="text-2xl font-bold text-slate-900">
+            <span className="text-xl sm:text-2xl font-bold text-slate-900">
               {new Date(orderDate).toLocaleDateString("sk-SK", {
                 weekday: "long",
                 day: "numeric",
@@ -259,17 +259,17 @@ const OrderSummaryModal = ({
           )}
 
           {/* ── Footer buttons: Edit | Erase | Delete ── */}
-          <div className="pt-4 flex gap-3">
+          <div className="pt-3 sm:pt-4 flex gap-2">
             <Button
-              className="flex-1 gap-2 shadow-indigo-200"
+              className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm shadow-indigo-200"
               onClick={handleEdit}
             >
-              <Edit className="w-4 h-4" />
+              <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Upraviť
             </Button>
             <Button
               className={[
-                "flex-1 gap-2 border shadow-sm",
+                "flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm",
                 onZero
                   ? "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
                   : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
@@ -277,12 +277,12 @@ const OrderSummaryModal = ({
               onClick={onZero ?? undefined}
               disabled={!onZero}
             >
-              <Eraser className="w-4 h-4" />
+              <Eraser className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Vynulovať
             </Button>
             <Button
               className={[
-                "flex-1 gap-2 border shadow-sm",
+                "flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm",
                 !isPredicted && !isAuto
                   ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
                   : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
@@ -294,7 +294,7 @@ const OrderSummaryModal = ({
               }
               disabled={isPredicted || isAuto}
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Vymazať
             </Button>
           </div>
