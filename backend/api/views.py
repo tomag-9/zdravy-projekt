@@ -576,9 +576,13 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for mk in meal_keys:
             for cat_name, cat_data in sorted_cats[mk].items():
                 for menu_key in cat_data["menus"]:
-                    total_row.append(totals[mk][cat_name]["menus"].get(menu_key, 0) or "")
+                    total_row.append(
+                        totals[mk][cat_name]["menus"].get(menu_key, 0) or ""
+                    )
                 for diet_name in cat_data["diets"]:
-                    total_row.append(totals[mk][cat_name]["diets"].get(diet_name, 0) or "")
+                    total_row.append(
+                        totals[mk][cat_name]["diets"].get(diet_name, 0) or ""
+                    )
             total_row.append(meal_totals[mk] or "")
         total_row.append(grand_total or "")
         ws.append(total_row)
@@ -622,8 +626,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         rows_data = [{"user": o.user, "data": o.data or {}} for o in orders]
         sorted_cats = self._xlsx_collect_columns(rows_data, meal_keys)
-        col_meta, header_row_1, header_row_2, header_row_3 = self._xlsx_build_column_meta(
-            sorted_cats, meal_keys, meal_labels
+        col_meta, header_row_1, header_row_2, header_row_3 = (
+            self._xlsx_build_column_meta(sorted_cats, meal_keys, meal_labels)
         )
 
         wb = openpyxl.Workbook()
@@ -657,9 +661,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             header_font,
             center,
         )
-        self._xlsx_write_data(
-            ws, rows_data, meal_keys, sorted_cats, bold_font
-        )
+        self._xlsx_write_data(ws, rows_data, meal_keys, sorted_cats, bold_font)
 
         ws.column_dimensions["A"].width = 28
         ws.column_dimensions["B"].width = 28

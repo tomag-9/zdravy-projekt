@@ -243,6 +243,7 @@ class AdminDailyReportTest(APITestCase):
     def test_daily_report_xlsx_has_category_columns(self):
         """XLSX must have 3-level headers: meal → category/size → menu/diet."""
         import io
+
         import openpyxl
 
         self.client.force_authenticate(user=self.admin)
@@ -262,7 +263,7 @@ class AdminDailyReportTest(APITestCase):
         # Row 4: category-level labels (from setUp order data)
         row4 = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1)]
         self.assertIn("Dospelý", row4)  # breakfast category in setUp
-        self.assertIn("ZŠ", row4)       # lunch category in setUp
+        self.assertIn("ZŠ", row4)  # lunch category in setUp
 
         # Row 5: menu/diet labels
         row5 = [ws.cell(row=5, column=c).value for c in range(1, ws.max_column + 1)]
@@ -275,5 +276,7 @@ class AdminDailyReportTest(APITestCase):
 
         # SPOLU row is the last row
         last_row = ws.max_row
-        spolu_vals = [ws.cell(row=last_row, column=c).value for c in range(1, ws.max_column + 1)]
+        spolu_vals = [
+            ws.cell(row=last_row, column=c).value for c in range(1, ws.max_column + 1)
+        ]
         self.assertIn("SPOLU", spolu_vals)
