@@ -193,7 +193,7 @@ describe("OrderPage Logic & Triggers", () => {
 
     // 4. Find "Načítať z včera" button
     const copyBtn = await within(breakfastCard as HTMLElement).findByText(
-      /Načítať z obeda/i,
+      /Načítať z včerajšieho obeda/i,
     );
     expect(copyBtn).toBeInTheDocument();
 
