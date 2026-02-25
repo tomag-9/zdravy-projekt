@@ -131,7 +131,9 @@ const OrderPage = () => {
         resetMealData(mealKey);
       });
     setShowZeroModal(false);
-    toast.success("Objednávka bola vynulovaná.");
+    toast.success(
+      "Objednávka bola vynulovaná lokálne. Odošlite ju, aby sa zmena uložila.",
+    );
   };
   const resetMealData = (mealKey: keyof DailyOrder) => {
     initialDataRef.current = {

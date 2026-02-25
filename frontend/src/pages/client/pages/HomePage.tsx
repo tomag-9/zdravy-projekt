@@ -79,8 +79,12 @@ const HomePage = () => {
     if (!globalDeadlines) return false;
     const now = new Date();
     return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
-      const timeStr = globalDeadlines[meal] || "10:00";
-      const deadline = new Date(`${todayStr}T${timeStr}:00`);
+      const rawTime = globalDeadlines[meal] || "10:00";
+      const [hourStr, minuteStr] = rawTime.split(":");
+      const hours = Number.isFinite(Number(hourStr)) ? Number(hourStr) : 10;
+      const minutes = Number.isFinite(Number(minuteStr)) ? Number(minuteStr) : 0;
+      const deadline = new Date(now);
+      deadline.setHours(hours, minutes, 0, 0);
       return now < deadline;
     });
   })();

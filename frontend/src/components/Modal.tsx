@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -21,6 +21,7 @@ const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = "max-w-md",
 }) => {
+  const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -53,7 +54,7 @@ const Modal: React.FC<ModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       aria-modal="true"
       role="dialog"
-      aria-labelledby="modal-title"
+      aria-labelledby={titleId}
     >
       {/* Backdrop */}
       <div
@@ -68,7 +69,7 @@ const Modal: React.FC<ModalProps> = ({
         className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200`}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 id="modal-title" className="text-lg font-semibold text-gray-900">{title}</h3>
+          <h3 id={titleId} className="text-lg font-semibold text-gray-900">{title}</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100"
