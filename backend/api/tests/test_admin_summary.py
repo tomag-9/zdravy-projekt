@@ -11,11 +11,11 @@ class AdminSummaryTest(APITestCase):
     def setUp(self):
         # Create Admin
         self.admin = User.objects.create_user(
-            username="admin", password="password", is_staff=True
+            username="admin@example.com", password="password", email="admin@example.com", is_staff=True
         )
         # Create Client
         self.client_user = User.objects.create_user(
-            username="client", password="password", is_staff=False
+            username="client@example.com", password="password", email="client@example.com", is_staff=False
         )
 
         self.today = date.today().isoformat()
@@ -41,7 +41,7 @@ class AdminSummaryTest(APITestCase):
         )
 
         # Create second client/order
-        self.client2 = User.objects.create_user(username="client2", password="password")
+        self.client2 = User.objects.create_user(username="client2@example.com", password="password", email="client2@example.com")
         DailyOrder.objects.create(
             user=self.client2,
             date=self.today,
@@ -89,10 +89,10 @@ class AdminSummaryTest(APITestCase):
 class AdminDailyReportTest(APITestCase):
     def setUp(self):
         self.admin = User.objects.create_user(
-            username="admin2", password="password", is_staff=True
+            username="admin2@example.com", password="password", email="admin2@example.com", is_staff=True
         )
         self.client_user = User.objects.create_user(
-            username="clientA",
+            username="anna@test.sk",
             password="password",
             first_name="Anna",
             last_name="Novák",
@@ -125,7 +125,7 @@ class AdminDailyReportTest(APITestCase):
         self.assertEqual(len(data["rows"]), 1)
 
         row = data["rows"][0]
-        self.assertEqual(row["username"], "clientA")
+        self.assertEqual(row["email"], "anna@test.sk")
         self.assertEqual(row["breakfast"]["total"], 2)
         self.assertEqual(row["lunch"]["total"], 6)
         self.assertEqual(row["olovrant"]["total"], 0)
@@ -194,7 +194,7 @@ class AdminDailyReportTest(APITestCase):
     def test_daily_report_flat_shape(self):
         """Flat meal shape {menuCounts, diets} must be aggregated correctly."""
         flat_user = User.objects.create_user(
-            username="flatclient", password="password", is_staff=False
+            username="flatclient@example.com", password="password", email="flatclient@example.com", is_staff=False
         )
         DailyOrder.objects.create(
             user=flat_user,
@@ -212,7 +212,7 @@ class AdminDailyReportTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         flat_row = next(
-            r for r in response.json()["rows"] if r["username"] == "flatclient"
+            r for r in response.json()["rows"] if r["email"] == "flatclient@example.com"
         )
         self.assertEqual(flat_row["breakfast"]["total"], 3)
         self.assertEqual(flat_row["lunch"]["total"], 2)
@@ -221,7 +221,7 @@ class AdminDailyReportTest(APITestCase):
     def test_daily_report_xlsx_flat_shape(self):
         """XLSX export must include columns for flat-shape meal data."""
         flat_user = User.objects.create_user(
-            username="flatclient2", password="password", is_staff=False
+            username="flatclient2@example.com", password="password", email="flatclient2@example.com", is_staff=False
         )
         DailyOrder.objects.create(
             user=flat_user,

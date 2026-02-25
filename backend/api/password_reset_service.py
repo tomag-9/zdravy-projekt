@@ -180,5 +180,5 @@ def confirm_password_reset(token: str, new_password: str) -> None:
     cache.delete(_key_block_until(email))
 
     logger.info(
-        "Password successfully reset for user %s (id=%s).", user.username, user.pk
+        "Password successfully reset for user %s (id=%s).", user.email, user.pk
     )

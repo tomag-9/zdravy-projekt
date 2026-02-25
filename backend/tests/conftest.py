@@ -17,7 +17,7 @@ def api_client():
 def user(db):
     """Create a test user."""
     return User.objects.create_user(
-        username="testuser", password="testpassword", email="test@example.com"
+        username="client@example.com", password="client123", email="client@example.com"
     )
 
 
@@ -25,7 +25,7 @@ def user(db):
 def other_user(db):
     """Create another test user."""
     return User.objects.create_user(
-        username="otheruser", password="otherpassword", email="other@example.com"
+        username="other@example.com", password="otherpassword", email="other@example.com"
     )
 
 

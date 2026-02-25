@@ -27,7 +27,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id",
-            "username",
             "email",
             "first_name",
             "last_name",
@@ -36,7 +35,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "settings",
             "is_staff",
         ]
-        read_only_fields = ["id", "username", "date_joined", "is_staff"]
+        read_only_fields = ["id", "date_joined", "is_staff"]
+
+    def update(self, instance, validated_data):
+        # Keep internal username in sync with email
+        if "email" in validated_data:
+            validated_data["username"] = validated_data["email"]
+        return super().update(instance, validated_data)
 
     def get_groups(self, obj):
         return [group.name for group in obj.groups.all()]
@@ -70,7 +75,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id",
-            "username",
             "email",
             "first_name",
             "last_name",
@@ -82,6 +86,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
+        # Use email as internal username so Django's unique constraint is satisfied
+        validated_data["username"] = validated_data["email"]
         user = User(**validated_data)
         if password:
             user.set_password(password)
@@ -99,6 +105,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # Settings are not in validated_data because it's a SerializerMethodField (read-only).
         # We access raw data but validate it explicitly using AdminClientSettingsSerializer.
         settings_data = self.initial_data.get("settings", None)
+
+        # Keep internal username in sync with email
+        if "email" in validated_data:
+            validated_data["username"] = validated_data["email"]
 
         instance = super().update(instance, validated_data)
 

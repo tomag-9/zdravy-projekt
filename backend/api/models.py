@@ -27,7 +27,7 @@ class DailyOrder(models.Model):
         ordering = ["-date"]
 
     def __str__(self):
-        return f"{self.user.username} - {self.date}"
+        return f"{self.user.email} - {self.date}"
 
 
 class Diet(models.Model):
@@ -49,7 +49,7 @@ class ClientSettings(models.Model):
     visible_diets = models.ManyToManyField(Diet, blank=True)
 
     def __str__(self):
-        return f"Settings for {self.user.username}"
+        return f"Settings for {self.user.email}"
 
 
 class GlobalSettings(models.Model):
@@ -99,7 +99,7 @@ class PasswordResetToken(models.Model):
         ]
 
     def __str__(self):
-        return f"PasswordResetToken for {self.user.username}"
+        return f"PasswordResetToken for {self.user.email}"
 
     @property
     def is_expired(self) -> bool:

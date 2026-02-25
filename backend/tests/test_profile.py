@@ -13,12 +13,13 @@ class TestUserProfile:
         response = authenticated_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["username"] == user.username
+        assert response.data["email"] == user.email
         assert "email" in response.data
         assert "first_name" in response.data
         assert "last_name" in response.data
         assert "date_joined" in response.data
         assert "groups" in response.data
+        assert "username" not in response.data
 
     def test_get_profile_unauthenticated(self, api_client):
         """Unauthenticated user cannot get profile"""
@@ -80,20 +81,13 @@ class TestUserProfile:
         assert response.data["last_name"] == "Novák"
         assert response.data["email"] == "jan.novak@email.sk"
 
-    def test_cannot_update_username(self, authenticated_client, user):
-        """User cannot change their username (read-only field)"""
+    def test_username_not_in_profile_response(self, authenticated_client, user):
+        """Username field is not exposed in the profile API response."""
         url = reverse("user-profile")
-        original_username = user.username
-        data = {"username": "newusername"}
+        response = authenticated_client.get(url)
 
-        response = authenticated_client.patch(url, data, format="json")
-
-        # Should succeed but username should not change
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["username"] == original_username
-
-        user.refresh_from_db()
-        assert user.username == original_username
+        assert "username" not in response.data
 
     def test_profile_shows_user_groups(self, authenticated_client, user, db):
         """Profile shows user's groups"""
@@ -121,14 +115,14 @@ class TestUserDataIsolation:
 
         # Create two different users
         user_a = User.objects.create_user(
-            username="user_a",
+            username="user_a@example.com",
             email="user_a@example.com",
             password="password123",
             first_name="User",
             last_name="A",
         )
         user_b = User.objects.create_user(
-            username="user_b",
+            username="user_b@example.com",
             email="user_b@example.com",
             password="password123",
             first_name="User",
@@ -144,7 +138,6 @@ class TestUserDataIsolation:
 
         # Verify User A sees their own data
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["username"] == "user_a"
         assert response.data["email"] == "user_a@example.com"
         assert response.data["first_name"] == "User"
         assert response.data["last_name"] == "A"
@@ -157,17 +150,13 @@ class TestUserDataIsolation:
         response = api_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["username"] == "user_b", "User B is seeing wrong username!"
-        assert (
-            response.data["email"] == "user_b@example.com"
-        ), "User B is seeing wrong email!"
+        assert response.data["email"] == "user_b@example.com", "User B is seeing wrong email!"
         assert (
             response.data["first_name"] == "User"
         ), "User B is seeing wrong first name!"
         assert response.data["last_name"] == "B", "User B is seeing wrong last name!"
 
         # Ensure User B does NOT see User A's data
-        assert response.data["username"] != "user_a"
         assert response.data["email"] != "user_a@example.com"
         assert response.data["last_name"] != "A"
 
@@ -179,7 +168,7 @@ class TestUserDataIsolation:
         # Create three users
         users = [
             User.objects.create_user(
-                username=f"user_{i}",
+                username=f"user_{i}@example.com",
                 email=f"user_{i}@example.com",
                 password="password123",
                 first_name=f"First{i}",
@@ -201,9 +190,6 @@ class TestUserDataIsolation:
                 response = api_client.get(url)
 
                 assert response.status_code == status.HTTP_200_OK
-                assert (
-                    response.data["username"] == f"user_{i}"
-                ), f"Expected user_{i}, got {response.data['username']}"
                 assert (
                     response.data["email"] == f"user_{i}@example.com"
                 ), f"Expected user_{i}@example.com, got {response.data['email']}"

@@ -16,7 +16,6 @@ interface UserSettings {
 
 interface AdminUser {
   id: number;
-  username: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -210,11 +209,13 @@ const ClientDetail: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-blue-500 to-teal-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-blue-200">
-              {user.username.charAt(0).toUpperCase()}
+              {user.email.charAt(0).toUpperCase()}
             </div>
             <div>
               <h2 className="text-3xl font-bold text-gray-900">
-                {user.username}
+                {user.first_name || user.last_name
+                  ? `${user.first_name} ${user.last_name}`.trim()
+                  : user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
             </div>

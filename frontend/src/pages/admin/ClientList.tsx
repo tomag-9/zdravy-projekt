@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 
 interface AdUser {
   id: number;
-  username: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -43,7 +42,6 @@ const ClientList: React.FC = () => {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (u.first_name + " " + u.last_name)
         .toLowerCase()
@@ -112,11 +110,13 @@ const ClientList: React.FC = () => {
                     <td className="px-6 py-4">
                       <div className="flex items-center">
                         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-teal-500 flex items-center justify-center text-white font-bold mr-3 shadow-md shadow-blue-200">
-                          {user.username.charAt(0).toUpperCase()}
+                          {user.email.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div className="font-semibold text-gray-900">
-                            {user.username}
+                            {user.first_name || user.last_name
+                              ? `${user.first_name} ${user.last_name}`.trim()
+                              : user.email}
                           </div>
                           <div className="text-xs text-gray-400">
                             {user.email}

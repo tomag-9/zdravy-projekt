@@ -5,10 +5,14 @@ import logging
 from django.contrib.auth.models import User
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import permissions, status, viewsets
+from rest_framework import permissions, serializers as drf_serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import DailyOrder, Diet
 from .serializers import DailyOrderSerializer
@@ -16,6 +20,39 @@ from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSe
 from .services import _is_order_empty, _last_non_empty_order
 
 logger = logging.getLogger(__name__)
+
+
+class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """JWT token serializer that authenticates via email instead of username."""
+
+    username_field = "email"
+
+    def validate(self, attrs):
+        email = attrs.get("email", "").strip().lower()
+        password = attrs.get("password", "")
+
+        try:
+            user = User.objects.get(email__iexact=email)
+        except User.DoesNotExist:
+            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+
+        if not user.check_password(password):
+            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+
+        if not user.is_active:
+            raise AuthenticationFailed("Tento účet je neaktívny.")
+
+        refresh = RefreshToken.for_user(user)
+        return {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+        }
+
+
+class EmailTokenObtainPairView(TokenObtainPairView):
+    """Token endpoint that accepts email + password."""
+
+    serializer_class = EmailTokenObtainPairSerializer
 
 
 class DailyOrderViewSet(viewsets.ModelViewSet):
@@ -100,7 +137,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     Admin ViewSet for managing users and their settings.
     """
 
-    queryset = User.objects.all().order_by("username")
+    queryset = User.objects.all().order_by("email")
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
 
@@ -279,7 +316,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         orders = (
             DailyOrder.objects.filter(date=target_date)
             .select_related("user")
-            .order_by("user__username")
+            .order_by("user__email")
         )
 
         totals = {
@@ -300,8 +337,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 {
                     "user_id": user.id,
                     "name": f"{user.first_name} {user.last_name}".strip()
-                    or user.username,
-                    "username": user.username,
+                    or user.email,
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,
@@ -537,7 +573,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             user = row_info["user"]
             data = row_info["data"]
             display_name = (
-                f"{user.first_name} {user.last_name}".strip() or user.username
+                f"{user.first_name} {user.last_name}".strip() or user.email
             )
             row_vals = [display_name, user.email]
             row_grand = 0
@@ -618,7 +654,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         orders = (
             DailyOrder.objects.filter(date=target_date)
             .select_related("user")
-            .order_by("user__username")
+            .order_by("user__email")
         )
 
         meal_keys = ["breakfast", "lunch", "olovrant"]

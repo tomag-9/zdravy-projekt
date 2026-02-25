@@ -19,7 +19,6 @@ interface MealRow {
 interface UserRow {
   user_id: number;
   name: string;
-  username: string;
   email: string;
   breakfast: MealRow;
   lunch: MealRow;
@@ -486,7 +485,7 @@ const AdminDashboard: React.FC = () => {
                           {row.name}
                         </div>
                         <div className="text-xs text-gray-400">
-                          {row.username}
+                          {row.email}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-gray-500 text-xs break-all">

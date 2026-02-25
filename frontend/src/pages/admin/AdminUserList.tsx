@@ -5,7 +5,6 @@ import { Link } from "react-router-dom";
 
 interface AdUser {
   id: number;
-  username: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -14,7 +13,6 @@ interface AdUser {
 }
 
 interface CreateForm {
-  username: string;
   email: string;
   first_name: string;
   last_name: string;
@@ -23,7 +21,6 @@ interface CreateForm {
 }
 
 const EMPTY_FORM: CreateForm = {
-  username: "",
   email: "",
   first_name: "",
   last_name: "",
@@ -72,8 +69,8 @@ const AdminUserList: React.FC = () => {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.username.trim() || !createForm.email.trim()) {
-      toastError("Používateľské meno a email sú povinné.");
+    if (!createForm.email.trim()) {
+      toastError("Email je povinn\u00fd.");
       return;
     }
     setCreating(true);
@@ -94,7 +91,6 @@ const AdminUserList: React.FC = () => {
       } else {
         const data = await res.json().catch(() => ({}));
         const msg =
-          data?.username?.[0] ||
           data?.email?.[0] ||
           "Nepodarilo sa vytvoriť účet.";
         toastError(msg);
@@ -116,7 +112,7 @@ const AdminUserList: React.FC = () => {
         { method: "DELETE" },
       );
       if (res.ok || res.status === 204) {
-        success(`Účet „${deleteTarget.username}” bol vymazaný.`);
+        success(`Účet „${deleteTarget.email}“ bol vymazaný.`);
         setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
         setDeleteTarget(null);
       } else {
@@ -132,7 +128,6 @@ const AdminUserList: React.FC = () => {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (u.first_name + " " + u.last_name)
         .toLowerCase()
@@ -211,11 +206,13 @@ const AdminUserList: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="flex items-center">
                           <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white font-bold mr-3 shadow-md shadow-indigo-200">
-                            {user.username.charAt(0).toUpperCase()}
+                            {user.email.charAt(0).toUpperCase()}
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {user.username}
+                              {user.first_name || user.last_name
+                                ? `${user.first_name} ${user.last_name}`.trim()
+                                : user.email}
                             </div>
                             <div className="text-xs text-gray-400">
                               {user.email}
@@ -306,20 +303,6 @@ const AdminUserList: React.FC = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                   />
                 </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Používateľské meno <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={createForm.username}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, username: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -421,7 +404,7 @@ const AdminUserList: React.FC = () => {
               <p className="text-gray-500 mb-6 leading-relaxed">
                 Naozaj chcete vymazať účet{" "}
                 <strong className="text-gray-800">
-                  {deleteTarget.username}
+                  {deleteTarget.email}
                 </strong>
                 ? Táto akcia je nevratná a vymaže aj všetky jeho objednávky.
               </p>

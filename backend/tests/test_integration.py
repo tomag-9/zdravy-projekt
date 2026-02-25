@@ -15,10 +15,10 @@ class TestFullFlow:
         # Use fixture user creds 'testuser'/'testpassword' but create them first
         from django.contrib.auth.models import User
 
-        User.objects.create_user("testuser", "test@example.com", "testpassword")
+        User.objects.create_user("client@example.com", "client@example.com", "client123")
 
         auth_resp = api_client.post(
-            auth_url, {"username": "testuser", "password": "testpassword"}
+            auth_url, {"email": "client@example.com", "password": "client123"}
         )
         assert auth_resp.status_code == status.HTTP_200_OK
         token = auth_resp.data["access"]
