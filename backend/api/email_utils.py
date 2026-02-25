@@ -46,7 +46,5 @@ def send_password_reset_email(user: User, token: str) -> None:
             "Password reset email sent to user %s (id=%s).", user.email, user.pk
         )
     except Exception:
-        logger.exception(
-            "Failed to send password reset email to user %s.", user.email
-        )
+        logger.exception("Failed to send password reset email to user %s.", user.email)
         raise

@@ -150,7 +150,9 @@ class TestUserDataIsolation:
         response = api_client.get(url)
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["email"] == "user_b@example.com", "User B is seeing wrong email!"
+        assert (
+            response.data["email"] == "user_b@example.com"
+        ), "User B is seeing wrong email!"
         assert (
             response.data["first_name"] == "User"
         ), "User B is seeing wrong first name!"

@@ -11,11 +11,17 @@ class AdminSummaryTest(APITestCase):
     def setUp(self):
         # Create Admin
         self.admin = User.objects.create_user(
-            username="admin@example.com", password="password", email="admin@example.com", is_staff=True
+            username="admin@example.com",
+            password="password",
+            email="admin@example.com",
+            is_staff=True,
         )
         # Create Client
         self.client_user = User.objects.create_user(
-            username="client@example.com", password="password", email="client@example.com", is_staff=False
+            username="client@example.com",
+            password="password",
+            email="client@example.com",
+            is_staff=False,
         )
 
         self.today = date.today().isoformat()
@@ -41,7 +47,11 @@ class AdminSummaryTest(APITestCase):
         )
 
         # Create second client/order
-        self.client2 = User.objects.create_user(username="client2@example.com", password="password", email="client2@example.com")
+        self.client2 = User.objects.create_user(
+            username="client2@example.com",
+            password="password",
+            email="client2@example.com",
+        )
         DailyOrder.objects.create(
             user=self.client2,
             date=self.today,
@@ -89,7 +99,10 @@ class AdminSummaryTest(APITestCase):
 class AdminDailyReportTest(APITestCase):
     def setUp(self):
         self.admin = User.objects.create_user(
-            username="admin2@example.com", password="password", email="admin2@example.com", is_staff=True
+            username="admin2@example.com",
+            password="password",
+            email="admin2@example.com",
+            is_staff=True,
         )
         self.client_user = User.objects.create_user(
             username="anna@test.sk",
@@ -194,7 +207,10 @@ class AdminDailyReportTest(APITestCase):
     def test_daily_report_flat_shape(self):
         """Flat meal shape {menuCounts, diets} must be aggregated correctly."""
         flat_user = User.objects.create_user(
-            username="flatclient@example.com", password="password", email="flatclient@example.com", is_staff=False
+            username="flatclient@example.com",
+            password="password",
+            email="flatclient@example.com",
+            is_staff=False,
         )
         DailyOrder.objects.create(
             user=flat_user,
@@ -221,7 +237,10 @@ class AdminDailyReportTest(APITestCase):
     def test_daily_report_xlsx_flat_shape(self):
         """XLSX export must include columns for flat-shape meal data."""
         flat_user = User.objects.create_user(
-            username="flatclient2@example.com", password="password", email="flatclient2@example.com", is_staff=False
+            username="flatclient2@example.com",
+            password="password",
+            email="flatclient2@example.com",
+            is_staff=False,
         )
         DailyOrder.objects.create(
             user=flat_user,

@@ -12,7 +12,9 @@ from api.models import DailyOrder
 class DailyOrderAPITest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
-            username="testuser@example.com", password="testpassword", email="testuser@example.com"
+            username="testuser@example.com",
+            password="testpassword",
+            email="testuser@example.com",
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)

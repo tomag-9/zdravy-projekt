@@ -320,8 +320,12 @@ class TestApplyAutoOrders:
 
     def test_multiple_clients_independent(self, db):
         """Each client is processed independently."""
-        u1 = User.objects.create_user(username="u1@test.com", password="pw", email="u1@test.com")
-        u2 = User.objects.create_user(username="u2@test.com", password="pw", email="u2@test.com")
+        u1 = User.objects.create_user(
+            username="u1@test.com", password="pw", email="u1@test.com"
+        )
+        u2 = User.objects.create_user(
+            username="u2@test.com", password="pw", email="u2@test.com"
+        )
 
         DailyOrder.objects.create(
             user=u1, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
@@ -460,7 +464,9 @@ class TestAdminTriggerAutoOrders:
 
     def test_creates_auto_orders(self, admin_client, db):
         """Trigger endpoint actually creates auto orders for eligible clients."""
-        client_user = User.objects.create_user(username="c1@test.com", password="pw", email="c1@test.com")
+        client_user = User.objects.create_user(
+            username="c1@test.com", password="pw", email="c1@test.com"
+        )
         DailyOrder.objects.create(
             user=client_user,
             date=MONDAY,

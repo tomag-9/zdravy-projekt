@@ -25,7 +25,9 @@ def user(db):
 def other_user(db):
     """Create another test user."""
     return User.objects.create_user(
-        username="other@example.com", password="otherpassword", email="other@example.com"
+        username="other@example.com",
+        password="otherpassword",
+        email="other@example.com",
     )
 
 

@@ -5,7 +5,9 @@ import logging
 from django.contrib.auth.models import User
 from django.http import HttpResponse
 from django.utils import timezone
-from rest_framework import permissions, serializers as drf_serializers, status, viewsets
+from rest_framework import permissions
+from rest_framework import serializers as drf_serializers
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
@@ -336,8 +338,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": f"{user.first_name} {user.last_name}".strip()
-                    or user.email,
+                    "name": f"{user.first_name} {user.last_name}".strip() or user.email,
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,
@@ -572,9 +573,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for row_info in rows_data:
             user = row_info["user"]
             data = row_info["data"]
-            display_name = (
-                f"{user.first_name} {user.last_name}".strip() or user.email
-            )
+            display_name = f"{user.first_name} {user.last_name}".strip() or user.email
             row_vals = [display_name, user.email]
             row_grand = 0
             for mk in meal_keys:
