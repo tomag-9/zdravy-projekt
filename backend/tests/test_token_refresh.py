@@ -11,12 +11,14 @@ class TestTokenRefresh:
     def test_refresh_token_success(self, api_client):
         """Valid refresh token returns new access token"""
         # Create user and get tokens
-        User.objects.create_user("testuser", "test@example.com", "testpass")
+        User.objects.create_user(
+            "client@example.com", "client@example.com", "client123"
+        )
 
         # Get initial token pair
         auth_url = reverse("token_obtain_pair")
         auth_resp = api_client.post(
-            auth_url, {"username": "testuser", "password": "testpass"}
+            auth_url, {"email": "client@example.com", "password": "client123"}
         )
 
         assert auth_resp.status_code == status.HTTP_200_OK
@@ -40,12 +42,14 @@ class TestTokenRefresh:
     def test_access_token_works_after_refresh(self, api_client):
         """New access token from refresh works for authenticated requests"""
         # Create user and get tokens
-        User.objects.create_user("testuser", "test@example.com", "testpass")
+        User.objects.create_user(
+            "client@example.com", "client@example.com", "client123"
+        )
 
         # Get initial tokens
         auth_url = reverse("token_obtain_pair")
         auth_resp = api_client.post(
-            auth_url, {"username": "testuser", "password": "testpass"}
+            auth_url, {"email": "client@example.com", "password": "client123"}
         )
         refresh_token = auth_resp.data["refresh"]
 
@@ -60,7 +64,7 @@ class TestTokenRefresh:
         profile_resp = api_client.get(profile_url)
 
         assert profile_resp.status_code == status.HTTP_200_OK
-        assert profile_resp.data["username"] == "testuser"
+        assert profile_resp.data["email"] == "client@example.com"
 
 
 @pytest.mark.django_db

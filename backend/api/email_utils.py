@@ -24,7 +24,7 @@ def send_password_reset_email(user: User, token: str) -> None:
 
     subject = "Obnova hesla"
     message = (
-        f"Dobrý deň {user.first_name or user.username},\n\n"
+        f"Dobrý deň {user.first_name or user.email},\n\n"
         "Dostali sme žiadosť o obnovu Vášho hesla.\n\n"
         f"Pre obnovu hesla použite tento odkaz:\n{reset_url}\n\n"
         f"Odkaz je platný {TOKEN_EXPIRY_HOURS} hodinu.\n\n"
@@ -43,10 +43,8 @@ def send_password_reset_email(user: User, token: str) -> None:
             fail_silently=False,
         )
         logger.info(
-            "Password reset email sent to user %s (id=%s).", user.username, user.pk
+            "Password reset email sent to user %s (id=%s).", user.email, user.pk
         )
     except Exception:
-        logger.exception(
-            "Failed to send password reset email to user %s.", user.username
-        )
+        logger.exception("Failed to send password reset email to user %s.", user.email)
         raise

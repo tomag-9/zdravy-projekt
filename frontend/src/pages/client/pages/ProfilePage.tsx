@@ -6,7 +6,6 @@ import { useAuth } from '../../../context/auth';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 interface UserProfile {
-    username: string;
     email: string;
     first_name: string;
     last_name: string;
@@ -133,7 +132,7 @@ const ProfilePage = () => {
                             <User className="w-10 h-10 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-900">{profile?.username}</h2>
+                            <h2 className="text-2xl font-bold text-slate-900">{profile?.email}</h2>
                             <div className="flex items-center gap-2 mt-1">
                                 <Shield className="w-4 h-4 text-indigo-600" />
                                 <span className="text-sm text-slate-600">

@@ -10,8 +10,7 @@ import { useNavigate } from "react-router-dom";
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 interface User {
-  username: string;
-  email?: string;
+  email: string;
   first_name?: string;
   last_name?: string;
   groups?: string[];

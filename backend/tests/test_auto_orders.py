@@ -57,13 +57,13 @@ NEXT_MONDAY = datetime.date(2025, 1, 13)
 
 @pytest.fixture
 def client_user(db):
-    return User.objects.create_user(username="client", password="pw", email="c@e.com")
+    return User.objects.create_user(username="c@e.com", password="pw", email="c@e.com")
 
 
 @pytest.fixture
 def admin_user(db):
     return User.objects.create_user(
-        username="admin", password="pw", email="a@e.com", is_staff=True
+        username="a@e.com", password="pw", email="a@e.com", is_staff=True
     )
 
 
@@ -168,7 +168,7 @@ class TestApplyAutoOrders:
     def test_no_history_no_auto_order_created(self, client_user):
         """A client with no prior submitted orders gets no auto order."""
         result = apply_auto_orders(target_date=TUESDAY)
-        assert client_user.username not in result["created"]
+        assert client_user.email not in result["created"]
         assert not DailyOrder.objects.filter(user=client_user, date=TUESDAY).exists()
 
     def test_auto_order_created_when_no_existing_order(self, client_user):
@@ -182,7 +182,7 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert client_user.username in result["created"]
+        assert client_user.email in result["created"]
         auto = DailyOrder.objects.get(user=client_user, date=TUESDAY)
         assert auto.is_auto is True
         assert auto.status == "submitted"
@@ -205,7 +205,7 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert client_user.username not in result["created"]
+        assert client_user.email not in result["created"]
         assert result["skipped"] >= 1
 
     def test_empty_existing_order_prevents_auto(self, client_user):
@@ -226,7 +226,7 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert client_user.username not in result["created"]
+        assert client_user.email not in result["created"]
         # Still only one order for TUESDAY
         assert DailyOrder.objects.filter(user=client_user, date=TUESDAY).count() == 1
 
@@ -241,7 +241,7 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert admin_user.username not in result["created"]
+        assert admin_user.email not in result["created"]
         assert not DailyOrder.objects.filter(user=admin_user, date=TUESDAY).exists()
 
     def test_idempotency(self, client_user):
@@ -320,8 +320,12 @@ class TestApplyAutoOrders:
 
     def test_multiple_clients_independent(self, db):
         """Each client is processed independently."""
-        u1 = User.objects.create_user(username="u1", password="pw")
-        u2 = User.objects.create_user(username="u2", password="pw")
+        u1 = User.objects.create_user(
+            username="u1@test.com", password="pw", email="u1@test.com"
+        )
+        u2 = User.objects.create_user(
+            username="u2@test.com", password="pw", email="u2@test.com"
+        )
 
         DailyOrder.objects.create(
             user=u1, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
@@ -330,8 +334,8 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert "u1" in result["created"]
-        assert "u2" not in result["created"]
+        assert "u1@test.com" in result["created"]
+        assert "u2@test.com" not in result["created"]
         assert DailyOrder.objects.filter(user=u1, date=TUESDAY, is_auto=True).exists()
         assert not DailyOrder.objects.filter(user=u2, date=TUESDAY).exists()
 
@@ -460,7 +464,9 @@ class TestAdminTriggerAutoOrders:
 
     def test_creates_auto_orders(self, admin_client, db):
         """Trigger endpoint actually creates auto orders for eligible clients."""
-        client_user = User.objects.create_user(username="c1", password="pw")
+        client_user = User.objects.create_user(
+            username="c1@test.com", password="pw", email="c1@test.com"
+        )
         DailyOrder.objects.create(
             user=client_user,
             date=MONDAY,
@@ -472,7 +478,7 @@ class TestAdminTriggerAutoOrders:
         response = admin_client.post(url, {"date": str(TUESDAY)}, format="json")
 
         assert response.status_code == status.HTTP_200_OK
-        assert "c1" in response.data["created"]
+        assert "c1@test.com" in response.data["created"]
         assert DailyOrder.objects.filter(
             user=client_user, date=TUESDAY, is_auto=True
         ).exists()

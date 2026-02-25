@@ -27,7 +27,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id",
-            "username",
             "email",
             "first_name",
             "last_name",
@@ -36,7 +35,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "settings",
             "is_staff",
         ]
-        read_only_fields = ["id", "username", "date_joined", "is_staff"]
+        read_only_fields = ["id", "date_joined", "is_staff"]
+
+    def update(self, instance, validated_data):
+        # Keep internal username in sync with email
+        if "email" in validated_data:
+            new_email = validated_data["email"].lower()
+            validated_data["email"] = new_email
+            if (
+                User.objects.filter(username__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
+                raise serializers.ValidationError(
+                    {"email": "A user with that email already exists."}
+                )
+            validated_data["username"] = new_email
+        return super().update(instance, validated_data)
 
     def get_groups(self, obj):
         return [group.name for group in obj.groups.all()]
@@ -59,6 +74,7 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
 class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(
         write_only=True,
         required=False,
@@ -70,7 +86,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id",
-            "username",
             "email",
             "first_name",
             "last_name",
@@ -82,6 +97,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
+        # Normalize and use email as internal username so Django's unique constraint is satisfied
+        normalized_email = validated_data["email"].lower()
+        validated_data["email"] = normalized_email
+        validated_data["username"] = normalized_email
         user = User(**validated_data)
         if password:
             user.set_password(password)
@@ -99,6 +118,20 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # Settings are not in validated_data because it's a SerializerMethodField (read-only).
         # We access raw data but validate it explicitly using AdminClientSettingsSerializer.
         settings_data = self.initial_data.get("settings", None)
+
+        # Keep internal username in sync with email, ensuring uniqueness
+        if "email" in validated_data:
+            new_email = validated_data["email"].lower()
+            validated_data["email"] = new_email
+            if (
+                User.objects.filter(username__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
+                raise serializers.ValidationError(
+                    {"email": "A user with that email already exists."}
+                )
+            validated_data["username"] = new_email
 
         instance = super().update(instance, validated_data)
 

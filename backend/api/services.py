@@ -152,10 +152,10 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
             is_auto=True,
             data=auto_data,
         )
-        created.append(client.username)
+        created.append(client.email)
         logger.info(
             "Auto-order created for user=%s date=%s (template from %s)",
-            client.username,
+            client.email,
             target_date,
             template.date,
         )

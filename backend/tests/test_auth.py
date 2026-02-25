@@ -8,7 +8,7 @@ class TestAuthentication:
     def test_obtain_token_success(self, api_client, user):
         """Test able to obtain JWT pair"""
         url = reverse("token_obtain_pair")
-        data = {"username": "testuser", "password": "testpassword"}
+        data = {"email": "client@example.com", "password": "client123"}
         response = api_client.post(url, data)
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
@@ -17,7 +17,7 @@ class TestAuthentication:
     def test_obtain_token_failure(self, api_client, user):
         """Test invalid credentials fail"""
         url = reverse("token_obtain_pair")
-        data = {"username": "testuser", "password": "wrongpassword"}
+        data = {"email": "client@example.com", "password": "wrongpassword"}
         response = api_client.post(url, data)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
@@ -25,7 +25,7 @@ class TestAuthentication:
         """Test refreshing token"""
         # Get token first
         url = reverse("token_obtain_pair")
-        data = {"username": "testuser", "password": "testpassword"}
+        data = {"email": "client@example.com", "password": "client123"}
         response = api_client.post(url, data)
         refresh_token = response.data["refresh"]
 
