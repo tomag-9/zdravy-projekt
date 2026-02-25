@@ -41,11 +41,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         # Keep internal username in sync with email
         if "email" in validated_data:
             new_email = validated_data["email"]
-            if (
-                User.objects.filter(username=new_email)
-                .exclude(pk=instance.pk)
-                .exists()
-            ):
+            if User.objects.filter(username=new_email).exclude(pk=instance.pk).exists():
                 raise serializers.ValidationError(
                     {"email": "A user with that email already exists."}
                 )
@@ -119,11 +115,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
             new_email = validated_data["email"]
-            if (
-                User.objects.filter(username=new_email)
-                .exclude(pk=instance.pk)
-                .exists()
-            ):
+            if User.objects.filter(username=new_email).exclude(pk=instance.pk).exists():
                 raise serializers.ValidationError(
                     {"email": "A user with that email already exists."}
                 )
