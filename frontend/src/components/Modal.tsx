@@ -42,8 +42,13 @@ const Modal: React.FC<ModalProps> = ({
       );
       focusable?.focus();
     } else if (previousFocusRef.current) {
-      previousFocusRef.current.focus();
+      const elementToFocus = previousFocusRef.current;
       previousFocusRef.current = null;
+      window.setTimeout(() => {
+        if (document.contains(elementToFocus)) {
+          elementToFocus.focus();
+        }
+      }, 0);
     }
   }, [open]);
 

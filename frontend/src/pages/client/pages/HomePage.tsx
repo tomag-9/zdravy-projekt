@@ -251,7 +251,8 @@ const HomePage = () => {
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
-        toast.error(msg || "Nepodarilo sa vynulovať objednávku.");
+        console.error("Failed to zero predicted order:", msg);
+        toast.error("Nepodarilo sa vynulovať objednávku.");
         return;
       }
       setPlannedDays((prev) =>
@@ -268,6 +269,7 @@ const HomePage = () => {
             : d,
         ),
       );
+      toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
       console.error(e);
       toast.error("Nepodarilo sa vynulovať objednávku.");

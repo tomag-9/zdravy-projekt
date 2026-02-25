@@ -121,16 +121,19 @@ const OrderPage = () => {
     }
   };
   const handleReset = () => {
-    visibleMealsList
-      .filter((m) =>
-        OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
-      )
-      .forEach((meal) => {
-        const mealKey = meal.key as "breakfast" | "lunch" | "olovrant";
-        clearMeal(mealKey);
-        resetMealData(mealKey);
-      });
+    const mealsToReset = visibleMealsList.filter((m) =>
+      OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+    );
     setShowZeroModal(false);
+    if (mealsToReset.length === 0) {
+      toast.info("Termín pre všetky jedlá uplynul, nič nebolo vynulované.");
+      return;
+    }
+    mealsToReset.forEach((meal) => {
+      const mealKey = meal.key as "breakfast" | "lunch" | "olovrant";
+      clearMeal(mealKey);
+      resetMealData(mealKey);
+    });
     toast.success(
       "Objednávka bola vynulovaná lokálne. Odošlite ju, aby sa zmena uložila.",
     );
