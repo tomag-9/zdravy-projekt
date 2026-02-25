@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { X } from "lucide-react";
 
 interface ModalProps {
@@ -21,6 +21,9 @@ const Modal: React.FC<ModalProps> = ({
   children,
   maxWidth = "max-w-md",
 }) => {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => {
@@ -30,6 +33,19 @@ const Modal: React.FC<ModalProps> = ({
     return () => document.removeEventListener("keydown", handler);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (open) {
+      previousFocusRef.current = document.activeElement as HTMLElement;
+      const focusable = panelRef.current?.querySelector<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      focusable?.focus();
+    } else if (previousFocusRef.current) {
+      previousFocusRef.current.focus();
+      previousFocusRef.current = null;
+    }
+  }, [open]);
+
   if (!open) return null;
 
   return (
@@ -37,6 +53,7 @@ const Modal: React.FC<ModalProps> = ({
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       aria-modal="true"
       role="dialog"
+      aria-labelledby="modal-title"
     >
       {/* Backdrop */}
       <div
@@ -47,10 +64,11 @@ const Modal: React.FC<ModalProps> = ({
 
       {/* Panel */}
       <div
+        ref={panelRef}
         className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl p-6 animate-in fade-in zoom-in-95 duration-200`}
       >
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <h3 id="modal-title" className="text-lg font-semibold text-gray-900">{title}</h3>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100"

@@ -53,6 +53,11 @@ const OrderSummaryModal = ({
   const isEditable = (mealKey: string) =>
     OrderService.checkDeadline(orderDate, mealKey, globalDeadlines);
 
+  const anyMealEditable = (["breakfast", "lunch", "olovrant"] as const).some(
+    (meal) => OrderService.checkDeadline(orderDate, meal, globalDeadlines),
+  );
+  const canDelete = !isPredicted && !isAuto && anyMealEditable;
+
   const getMealSummary = (mealKey: string) => {
     const key = mealKey as "breakfast" | "lunch" | "olovrant";
     const mealData = orderData?.[key];
@@ -283,16 +288,16 @@ const OrderSummaryModal = ({
             <Button
               className={[
                 "flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm",
-                !isPredicted && !isAuto
+                canDelete
                   ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
                   : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
               ].join(" ")}
               onClick={
-                !isPredicted && !isAuto
+                canDelete
                   ? () => setDeleteConfirmation(true)
                   : undefined
               }
-              disabled={isPredicted || isAuto}
+              disabled={!canDelete}
             >
               <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
               Vymazať

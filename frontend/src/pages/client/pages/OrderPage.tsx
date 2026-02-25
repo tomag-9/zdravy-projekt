@@ -121,9 +121,14 @@ const OrderPage = () => {
     }
   };
   const handleReset = () => {
-    (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
-      clearMeal(meal);
-    });
+    visibleMealsList
+      .filter((m) =>
+        OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+      )
+      .forEach((meal) => {
+        clearMeal(meal.key);
+        resetMealData(meal.key);
+      });
     setShowZeroModal(false);
     toast.success("Objednávka bola vynulovaná.");
   };
@@ -318,7 +323,13 @@ const OrderPage = () => {
 
         <OrderSummary
           onSubmit={handleSubmit}
-          onReset={() => setShowZeroModal(true)}
+          onReset={
+            visibleMealsList.every((m) =>
+              OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+            )
+              ? () => setShowZeroModal(true)
+              : undefined
+          }
           disabled={
             !OrderService.checkDeadline(
               selectedDate,

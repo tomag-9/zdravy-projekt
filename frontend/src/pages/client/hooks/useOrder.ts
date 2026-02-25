@@ -25,11 +25,28 @@ export const useOrder = () => {
 
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
 
-    const [settings] = useState(() => safeParse('appSettings', {
-        copyBreakfastFromPrevLunch: false,
-        copyOlovrantFromLunch: false,
-        applyDefaultLunch: false
-    }));
+    const [settings] = useState(() => {
+        const defaultSettings = {
+            copyBreakfastFromPrevLunch: false,
+            copyOlovrantFromLunch: false,
+            applyDefaultLunch: false
+        };
+        const loaded = safeParse('appSettings', defaultSettings);
+        // Migrate legacy auto-copy flags: no longer user-configurable, force to false.
+        const migrated = {
+            ...loaded,
+            copyBreakfastFromPrevLunch: false,
+            copyOlovrantFromLunch: false
+        };
+        if (loaded.copyBreakfastFromPrevLunch || loaded.copyOlovrantFromLunch) {
+            try {
+                localStorage.setItem('appSettings', JSON.stringify(migrated));
+            } catch {
+                // Ignore persistence errors; settings will still be correct in memory.
+            }
+        }
+        return migrated;
+    });
 
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
 

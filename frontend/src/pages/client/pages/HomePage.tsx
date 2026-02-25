@@ -69,7 +69,8 @@ const HomePage = () => {
   const navigate = useNavigate();
 
   const firstWorkday = firstNextWorkday();
-  const todayStr = new Date().toISOString().split("T")[0];
+  const _now = new Date();
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   // Today derived from planned days (no extra fetch needed)
   const todayDay = plannedDays.find((d) => d.date === todayStr) ?? null;
 
@@ -238,7 +239,11 @@ const HomePage = () => {
       const res = await apiFetch(`${API_URL}/orders/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date: day.date, status: "submitted", data: {} }),
+        body: JSON.stringify({
+          date: day.date,
+          status: "submitted",
+          data: { breakfast: {}, lunch: {}, olovrant: {} },
+        }),
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
@@ -273,7 +278,10 @@ const HomePage = () => {
       const res = await apiFetch(`${API_URL}/orders/${modalOrderId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "submitted", data: {} }),
+        body: JSON.stringify({
+          status: "submitted",
+          data: { breakfast: {}, lunch: {}, olovrant: {} },
+        }),
       });
       if (!res.ok) {
         toast.error("Nepodarilo sa vynulovať objednávku.");
