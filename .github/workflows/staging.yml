@@ -116,7 +116,10 @@ jobs:
           echo "⏳ Waiting for backend to be healthy..."
           sleep 15
 
-          echo "📊 Running database migrations..."
+          echo "� Restarting nginx to pick up new upstream containers..."
+          docker compose -f docker-compose.staging.yml restart nginx
+
+          echo "�📊 Running database migrations..."
           BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.ID}}" | head -1)
           if [ -z "$BACKEND_CONTAINER" ]; then
             echo "❌ Backend container not found!"
