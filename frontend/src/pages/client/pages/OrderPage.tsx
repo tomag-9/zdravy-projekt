@@ -6,8 +6,7 @@ import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft } from "lucide-react";
-import { Switch } from "../components/ui/Switch";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -25,14 +24,14 @@ const OrderPage = () => {
     updateMenuCount,
     updateDiet,
     enabledCategories,
-    settings,
-    updateSettings,
     clearMeal,
     getAvailableDiets,
     submitOrder,
     adminVisibleMeals,
     adminVisibleMenus,
     globalDeadlines,
+    loadBreakfastFromPrevLunch,
+    copyOlovrantFromCurrentLunch,
   } = useApp();
 
   const [activeDietModal, setActiveDietModal] = useState<{
@@ -43,13 +42,14 @@ const OrderPage = () => {
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(
     null,
   );
-  const [dataChangedState, setDataChangedState] = useState({
-    breakfast: false,
-    lunch: false,
-    olovrant: false,
-  });
+  const [showZeroModal, setShowZeroModal] = useState(false);
 
-  // Simple navigation blocking for internal links
+  const initialDataRef = useRef<{
+    breakfast: string;
+    lunch: string;
+    olovrant: string;
+  } | null>(null);
+  const dateKeyRef = useRef(selectedDate);
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const link = (e.target as Element).closest("a");
@@ -74,15 +74,6 @@ const OrderPage = () => {
     return () => document.removeEventListener("click", handleClick, true);
   }, [currentOrder.status]);
 
-  const initialDataRef = useRef<{
-    breakfast: string;
-    lunch: string;
-    olovrant: string;
-  } | null>(null);
-  const dateKeyRef = useRef(selectedDate);
-  const ignoreDataChangeRef = useRef(false);
-  const prevDayLunchDataRef = useRef<string | null>(null);
-
   useEffect(() => {
     const dateFromUrl = searchParams.get("date");
     if (dateFromUrl) {
@@ -94,111 +85,15 @@ const OrderPage = () => {
     if (dateKeyRef.current !== selectedDate) {
       dateKeyRef.current = selectedDate;
       initialDataRef.current = null;
-      ignoreDataChangeRef.current = false;
-      prevDayLunchDataRef.current = null;
-      setDataChangedState({
-        breakfast: false,
-        lunch: false,
-        olovrant: false,
-      });
     }
-
     if (initialDataRef.current === null) {
       initialDataRef.current = {
         breakfast: JSON.stringify(currentOrder.breakfast),
         lunch: JSON.stringify(currentOrder.lunch),
         olovrant: JSON.stringify(currentOrder.olovrant),
       };
-      return;
     }
-
-    const currentData = {
-      breakfast: JSON.stringify(currentOrder.breakfast),
-      lunch: JSON.stringify(currentOrder.lunch),
-      olovrant: JSON.stringify(currentOrder.olovrant),
-    };
-
-    // If ignoring change (during copy init), check if sync completed
-    if (ignoreDataChangeRef.current) {
-      let syncComplete = true;
-
-      // Check Olovrant Sync
-      if (settings.copyOlovrantFromLunch) {
-        if (currentData.olovrant !== currentData.lunch) {
-          syncComplete = false;
-        } else {
-          setDataChangedState((prev) => ({ ...prev, olovrant: false }));
-        }
-      }
-
-      // Check Breakfast Sync
-      if (settings.copyBreakfastFromPrevLunch) {
-        // We compare current breakfast against what we expect (prevDayLunchDataRef)
-        if (
-          prevDayLunchDataRef.current &&
-          currentData.breakfast !== prevDayLunchDataRef.current
-        ) {
-          syncComplete = false;
-        } else if (prevDayLunchDataRef.current) {
-          setDataChangedState((prev) => ({ ...prev, breakfast: false }));
-        }
-      }
-
-      if (syncComplete) {
-        ignoreDataChangeRef.current = false;
-      }
-
-      // While ignoring, we don't want to calculate standard diffs for the copying fields
-      // but we SHOULD calculate normal diffs for non-copying fields.
-      // For simplicity, we just partial update above and avoid the full diff block below if ignoring.
-      // However, we must ensure other fields update.
-      const initialData = initialDataRef.current || {
-        breakfast: "",
-        lunch: "",
-        olovrant: "",
-      };
-
-      setDataChangedState((prev) => ({
-        breakfast: settings.copyBreakfastFromPrevLunch
-          ? prev.breakfast
-          : currentData.breakfast !== initialData.breakfast,
-        lunch: currentData.lunch !== initialData.lunch,
-        olovrant: settings.copyOlovrantFromLunch
-          ? prev.olovrant
-          : currentData.olovrant !== initialData.olovrant,
-      }));
-    } else {
-      const initialData = initialDataRef.current || {
-        breakfast: "",
-        lunch: "",
-        olovrant: "",
-      };
-      setDataChangedState({
-        breakfast: currentData.breakfast !== initialData.breakfast,
-        lunch: currentData.lunch !== initialData.lunch,
-        olovrant: currentData.olovrant !== initialData.olovrant,
-      });
-    }
-  }, [
-    currentOrder,
-    selectedDate,
-    settings.copyOlovrantFromLunch,
-    settings.copyBreakfastFromPrevLunch,
-  ]);
-
-  useEffect(() => {
-    if (dataChangedState.breakfast && settings.copyBreakfastFromPrevLunch) {
-      updateSettings("copyBreakfastFromPrevLunch", false);
-    }
-    if (dataChangedState.olovrant && settings.copyOlovrantFromLunch) {
-      updateSettings("copyOlovrantFromLunch", false);
-    }
-  }, [
-    dataChangedState,
-    settings.copyBreakfastFromPrevLunch,
-    settings.copyOlovrantFromLunch,
-    updateSettings,
-  ]);
+  }, [currentOrder, selectedDate]);
 
   const meals: {
     key: keyof DailyOrder;
@@ -225,7 +120,24 @@ const OrderPage = () => {
       toast.error("Nepodarilo sa odoslať objednávku. Skúste to znova.");
     }
   };
-
+  const handleReset = () => {
+    const mealsToReset = visibleMealsList.filter((m) =>
+      OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+    );
+    setShowZeroModal(false);
+    if (mealsToReset.length === 0) {
+      toast.info("Termín pre všetky jedlá uplynul, nič nebolo vynulované.");
+      return;
+    }
+    mealsToReset.forEach((meal) => {
+      const mealKey = meal.key as "breakfast" | "lunch" | "olovrant";
+      clearMeal(mealKey);
+      resetMealData(mealKey);
+    });
+    toast.success(
+      "Objednávka bola vynulovaná lokálne. Odošlite ju, aby sa zmena uložila.",
+    );
+  };
   const resetMealData = (mealKey: keyof DailyOrder) => {
     initialDataRef.current = {
       breakfast:
@@ -247,68 +159,24 @@ const OrderPage = () => {
     if (mealKey === "breakfast") {
       return (
         <div className="flex flex-col gap-2 w-full">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-sm text-indigo-900 font-medium">
-                Auto-výpočet (podľa včera)
-              </span>
-            </div>
-            <Switch
-              checked={settings.copyBreakfastFromPrevLunch}
-              onCheckedChange={(val) => {
-                updateSettings("copyBreakfastFromPrevLunch", val);
-                if (!val) {
-                  clearMeal("breakfast");
-                  resetMealData("breakfast");
-                } else {
-                  // ENABLE COPY
-                  ignoreDataChangeRef.current = true;
-                  setDataChangedState((prev) => ({
-                    ...prev,
-                    breakfast: false,
-                  }));
-
-                  // Calculate what we expect to receive (Previous Day Lunch)
-                  // This mirrors the logic in useOrder
-                  const prevDate = new Date(selectedDate);
-                  prevDate.setDate(prevDate.getDate() - 1);
-                  const prevDateStr = prevDate.toISOString().split("T")[0];
-                  const prevOrderSaved = localStorage.getItem(
-                    `order_${prevDateStr}`,
-                  );
-
-                  let expectedData = JSON.stringify(
-                    OrderService.createEmptyMeal(),
-                  );
-                  if (prevOrderSaved) {
-                    try {
-                      const prevOrder = JSON.parse(prevOrderSaved);
-                      if (prevOrder.lunch) {
-                        expectedData = JSON.stringify(prevOrder.lunch);
-                      }
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }
-
-                  prevDayLunchDataRef.current = expectedData;
-
-                  // Update expectation
-                  initialDataRef.current = {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    ...(initialDataRef.current as any),
-                    breakfast: expectedData,
-                  };
-                }
-              }}
-              className="scale-90"
-            />
-          </div>
+          <button
+            onClick={() => {
+              const loaded = loadBreakfastFromPrevLunch();
+              if (loaded) {
+                toast.success("Raňajky načítané z obeda (včera).");
+              } else {
+                toast.info("Nemám dáta z včerajšieho obeda.");
+              }
+              resetMealData("breakfast");
+            }}
+            className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
+          >
+            <Copy className="w-3 h-3" /> Načítať z včerajšieho obeda
+          </button>
           <button
             onClick={() => {
               clearMeal("breakfast");
               resetMealData("breakfast");
-              setDataChangedState((prev) => ({ ...prev, breakfast: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -325,7 +193,6 @@ const OrderPage = () => {
             onClick={() => {
               clearMeal("lunch");
               resetMealData("lunch");
-              setDataChangedState((prev) => ({ ...prev, lunch: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -338,41 +205,24 @@ const OrderPage = () => {
     if (mealKey === "olovrant") {
       return (
         <div className="flex flex-col gap-2 w-full">
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center gap-2 flex-1">
-              <span className="text-sm text-indigo-900 font-medium">
-                Kopírovať z dnešného obeda
-              </span>
-            </div>
-            <Switch
-              checked={settings.copyOlovrantFromLunch}
-              onCheckedChange={(val) => {
-                updateSettings("copyOlovrantFromLunch", val);
-                if (!val) {
-                  clearMeal("olovrant");
-                  resetMealData("olovrant");
-                } else {
-                  // ENABLE COPY
-                  ignoreDataChangeRef.current = true;
-                  setDataChangedState((prev) => ({ ...prev, olovrant: false }));
-
-                  // We expect the new state to be currentOrder.lunch
-                  // We update initialDataRef to this EXPECTED state immediately
-                  initialDataRef.current = {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    ...(initialDataRef.current as any),
-                    olovrant: JSON.stringify(currentOrder.lunch),
-                  };
-                }
-              }}
-              className="scale-90"
-            />
-          </div>
+          <button
+            onClick={() => {
+              const copied = copyOlovrantFromCurrentLunch();
+              if (copied) {
+                toast.success("Olovrant skopírovaný z obeda.");
+              } else {
+                toast.info("Obed je prázdny, nie je čo kopírovať.");
+              }
+              resetMealData("olovrant");
+            }}
+            className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
+          >
+            <Copy className="w-3 h-3" /> Kopírovať z obeda
+          </button>
           <button
             onClick={() => {
               clearMeal("olovrant");
               resetMealData("olovrant");
-              setDataChangedState((prev) => ({ ...prev, olovrant: false }));
             }}
             className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
@@ -479,6 +329,13 @@ const OrderPage = () => {
 
         <OrderSummary
           onSubmit={handleSubmit}
+          onReset={
+            visibleMealsList.every((m) =>
+              OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+            )
+              ? () => setShowZeroModal(true)
+              : undefined
+          }
           disabled={
             !OrderService.checkDeadline(
               selectedDate,
@@ -526,6 +383,17 @@ const OrderPage = () => {
           }
         />
       )}
+
+      <ConfirmationModal
+        isOpen={showZeroModal}
+        onClose={() => setShowZeroModal(false)}
+        onConfirm={handleReset}
+        title="Vynulovať objednávku"
+        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
+        confirmText="Vynulovať"
+        cancelText="Zrušiť"
+        variant="danger"
+      />
 
       <ConfirmationModal
         isOpen={showUnsavedModal}

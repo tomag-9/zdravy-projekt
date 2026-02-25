@@ -1,4 +1,4 @@
-import { FileCheck, AlertCircle } from "lucide-react";
+import { FileCheck, AlertCircle, Eraser } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { useApp } from "../../context/AppContext";
@@ -7,12 +7,14 @@ import { getSlovakPlural } from "../../../../lib/utils";
 
 interface OrderSummaryProps {
   onSubmit: () => void;
+  onReset?: () => void;
   disabled?: boolean;
   disabledMessage?: string;
 }
 
 const OrderSummary = ({
   onSubmit,
+  onReset,
   disabled,
   disabledMessage,
 }: OrderSummaryProps) => {
@@ -145,6 +147,17 @@ const OrderSummary = ({
         >
           Odoslať objednávku
         </Button>
+
+        {!disabled && onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            className="w-full mt-3 h-10 flex items-center justify-center gap-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+          >
+            <Eraser className="w-4 h-4" />
+            Vynulovať objednávku
+          </button>
+        )}
 
         {disabled && disabledMessage && (
           <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">

@@ -563,20 +563,39 @@ const ClientDetail: React.FC = () => {
 
           {/* Diets Section */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mt-8">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-              <span className="bg-green-100 text-green-600 p-2 rounded-lg mr-3">
-                🥗
-              </span>
-              Povolené diéty
-            </h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <span className="bg-green-100 text-green-600 p-2 rounded-lg mr-3">
+                  🥗
+                </span>
+                Povolené diéty
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate("/admin/diets")}
+                className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-800 px-3 py-1.5 rounded-lg hover:bg-indigo-50 border border-indigo-200 hover:border-indigo-300 transition"
+              >
+                <span className="text-base leading-none">+</span>
+                Pridať novú diétu
+              </button>
+            </div>
             <p className="text-sm text-gray-500 mb-4">
               Obmedzte, ktoré špeciálne diéty si klient môže vybrať.
             </p>
 
             {allDiets.length === 0 ? (
-              <p className="text-gray-400 italic">
-                V systéme nie sú definované žiadne diéty.
-              </p>
+              <div className="text-center py-6">
+                <p className="text-gray-400 italic mb-3">
+                  V systéme nie sú definované žiadne diéty.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/admin/diets")}
+                  className="text-sm font-medium text-indigo-600 hover:text-indigo-800 underline underline-offset-2 transition"
+                >
+                  Prejsť na správu diét →
+                </button>
+              </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {allDiets.map((diet) => (

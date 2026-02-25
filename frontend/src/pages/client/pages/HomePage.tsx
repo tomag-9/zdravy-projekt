@@ -12,9 +12,12 @@ import {
   XCircle,
   CalendarDays,
   PenLine,
+  Lock,
+  Clock,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
+import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 
@@ -54,13 +57,37 @@ const HomePage = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
+  const [modalOrderId, setModalOrderId] = useState<number | null>(null);
   const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
+  const [predictedModalDay, setPredictedModalDay] = useState<PlannedDay | null>(
+    null,
+  );
 
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   const firstWorkday = firstNextWorkday();
+  const _now = new Date();
+  const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
+  // Today derived from planned days (no extra fetch needed)
+  const todayDay = plannedDays.find((d) => d.date === todayStr) ?? null;
+
+  // Check whether any meal deadline for today hasn't passed yet
+  const isTodayEditable = (() => {
+    if (!globalDeadlines) return false;
+    const now = new Date();
+    return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
+      const rawTime = globalDeadlines[meal] || "10:00";
+      const [hourStr, minuteStr] = rawTime.split(":");
+      const hours = Number.isFinite(Number(hourStr)) ? Number(hourStr) : 10;
+      const minutes = Number.isFinite(Number(minuteStr)) ? Number(minuteStr) : 0;
+      const deadline = new Date(now);
+      deadline.setHours(hours, minutes, 0, 0);
+      return now < deadline;
+    });
+  })();
 
   // ── Planned orders (5 next workdays) ──────────────────────────────────────
   useEffect(() => {
@@ -185,22 +212,108 @@ const HomePage = () => {
       if (r.ok) {
         const rec = await r.json();
         setModalOrderData(rec.data || {});
+        setModalOrderId(rec.id ?? null);
       } else {
         setModalOrderData({});
+        setModalOrderId(null);
       }
     } catch {
       setModalOrderData({});
+      setModalOrderId(null);
     }
     setSelectedDate(date);
   };
 
   const handlePlannedCardClick = (day: PlannedDay) => {
-    if (!day.exists) {
-      // No order yet → go directly to the order page for that day
+    const hasPrediction = !day.exists && day.predictedTotal > 0;
+    if (!day.exists && hasPrediction) {
+      // Auto-predicted: show preview modal with Edit / Vynulovať
+      setPredictedModalDay(day);
+    } else if (!day.exists) {
+      // No order, no prediction → go directly to order page
       navigate(`/order?date=${day.date}`);
     } else {
-      // Has an order → show summary modal
+      // Has an existing order → show summary modal
       openDayModal(day.date);
+    }
+  };
+
+  const handleZeroPredicted = async (day: PlannedDay) => {
+    try {
+      const res = await apiFetch(`${API_URL}/orders/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: day.date,
+          status: "submitted",
+          data: { breakfast: {}, lunch: {}, olovrant: {} },
+        }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        console.error("Failed to zero predicted order:", msg);
+        toast.error("Nepodarilo sa vynulovať objednávku.");
+        return;
+      }
+      setPlannedDays((prev) =>
+        prev.map((d) =>
+          d.date === day.date
+            ? {
+                ...d,
+                exists: true,
+                is_empty: true,
+                is_auto: false,
+                totalPortions: 0,
+                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+              }
+            : d,
+        ),
+      );
+      toast.success("Objednávka bola vynulovaná.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Nepodarilo sa vynulovať objednávku.");
+    } finally {
+      setPredictedModalDay(null);
+    }
+  };
+
+  const handleZeroExisting = async () => {
+    if (!selectedDate || modalOrderId === null) return;
+    try {
+      const res = await apiFetch(`${API_URL}/orders/${modalOrderId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "submitted",
+          data: { breakfast: {}, lunch: {}, olovrant: {} },
+        }),
+      });
+      if (!res.ok) {
+        toast.error("Nepodarilo sa vynulovať objednávku.");
+        return;
+      }
+      const date = selectedDate;
+      setPlannedDays((prev) =>
+        prev.map((d) =>
+          d.date === date
+            ? {
+                ...d,
+                exists: true,
+                is_empty: true,
+                is_auto: false,
+                totalPortions: 0,
+                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+              }
+            : d,
+        ),
+      );
+      setSelectedDate(null);
+      setModalOrderId(null);
+      toast.success("Objednávka bola vynulovaná.");
+    } catch (e) {
+      console.error(e);
+      toast.error("Nepodarilo sa vynulovať objednávku.");
     }
   };
 
@@ -310,43 +423,43 @@ const HomePage = () => {
           </button>
         </Link>
 
-        {/* ── Plánované objednávky – 5 pracovných dní ── */}
-        <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-indigo-600" />
-            Plánované objednávky
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {plannedDays.map((day) => {
-              const isEmpty = day.exists && day.is_empty;
-              const isUnset = !day.exists;
-              const hasPrediction = isUnset && day.predictedTotal > 0;
-              // auto-filled = unset but system will copy last order → render same as real auto
-              const isAutoFilled = isUnset && hasPrediction;
-              const totalPortions =
-                day.exists && !day.is_empty
-                  ? day.totalPortions
-                  : isAutoFilled
-                    ? day.predictedTotal
-                    : null;
-              const mealCount =
-                day.exists && !day.is_empty
-                  ? day.mealCount
-                  : isAutoFilled
-                    ? day.predictedMealCount
-                    : null;
-
-              return (
+        {/* ── Dnešná objednávka ── */}
+        {todayDay &&
+          (() => {
+            const day = todayDay;
+            const isEmpty = day.exists && day.is_empty;
+            const isUnset = !day.exists;
+            const hasPrediction = isUnset && day.predictedTotal > 0;
+            const isAutoFilled = isUnset && hasPrediction;
+            const totalPortions =
+              day.exists && !day.is_empty
+                ? day.totalPortions
+                : isAutoFilled
+                  ? day.predictedTotal
+                  : null;
+            const mealCount =
+              day.exists && !day.is_empty
+                ? day.mealCount
+                : isAutoFilled
+                  ? day.predictedMealCount
+                  : null;
+            return (
+              <div className="mb-8 animate-in slide-in-from-bottom-3 duration-400">
+                <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-orange-500" />
+                  Dnešná objednávka
+                </h2>
                 <div
-                  key={day.date}
-                  onClick={() => handlePlannedCardClick(day)}
+                  onClick={() =>
+                    isTodayEditable
+                      ? navigate(`/order?date=${todayStr}`)
+                      : handlePlannedCardClick(day)
+                  }
                   className={[
                     "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
                     isEmpty
                       ? "bg-white border-red-100 hover:border-red-200 hover:shadow-sm"
-                      : isUnset && !hasPrediction
-                        ? "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm"
-                        : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200",
+                      : "bg-white border-orange-100 shadow-sm hover:shadow-md hover:border-orange-200",
                   ].join(" ")}
                 >
                   <div className="flex justify-between items-start mb-2">
@@ -356,27 +469,38 @@ const HomePage = () => {
                           "p-2.5 rounded-lg transition-colors",
                           isEmpty
                             ? "bg-red-50"
-                            : "bg-indigo-50 group-hover:bg-indigo-100",
+                            : isTodayEditable
+                              ? "bg-orange-50 group-hover:bg-orange-100"
+                              : "bg-slate-100",
                         ].join(" ")}
                       >
                         {isEmpty ? (
                           <XCircle className="w-5 h-5 text-red-400" />
-                        ) : isUnset ? (
-                          <Bot className="w-5 h-5 text-indigo-600" />
-                        ) : day.is_auto ? (
-                          <Bot className="w-5 h-5 text-indigo-600" />
+                        ) : isTodayEditable ? (
+                          <Clock className="w-5 h-5 text-orange-500" />
                         ) : (
-                          <Calendar className="w-5 h-5 text-indigo-600" />
+                          <Lock className="w-5 h-5 text-slate-400" />
                         )}
                       </div>
                       <div>
                         <h3 className="font-bold text-slate-900">
-                          {formatDate(day.date)}
+                          {formatDate(todayStr)}
+                          <span className="ml-2 text-xs font-normal text-orange-500">
+                            Dnes
+                          </span>
                         </h3>
-                        <PlannedBadge day={day} />
+                        {isTodayEditable ? (
+                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
+                            <Clock className="w-3 h-3" />
+                            {day.exists && !day.is_empty
+                              ? "Upraviť do termínu"
+                              : "Vytvoriť do termínu"}
+                          </span>
+                        ) : (
+                          <PlannedBadge day={day} />
+                        )}
                       </div>
                     </div>
-
                     {totalPortions !== null && (
                       <div className="text-2xl font-bold text-slate-900">
                         {totalPortions}
@@ -386,8 +510,6 @@ const HomePage = () => {
                       </div>
                     )}
                   </div>
-
-                  {/* Meal breakdown chips */}
                   {mealCount !== null && (
                     <div className="flex gap-2 mt-2">
                       {mealCount.breakfast > 0 && (
@@ -407,16 +529,125 @@ const HomePage = () => {
                       )}
                     </div>
                   )}
-
-                  {/* No history at all — nothing to copy from */}
                   {isUnset && !hasPrediction && (
                     <p className="text-xs text-slate-400 mt-2">
-                      Žiadna história na predikciu
+                      Na dnešný deň nebola vytvorená žiadna objednávka.
                     </p>
                   )}
                 </div>
-              );
-            })}
+              </div>
+            );
+          })()}
+
+        {/* ── Plánované objednávky – 5 pracovných dní ── */}
+        <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
+          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-indigo-600" />
+            Plánované objednávky
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {plannedDays
+              .filter((d) => d.date !== todayStr)
+              .map((day) => {
+                const isEmpty = day.exists && day.is_empty;
+                const isUnset = !day.exists;
+                const hasPrediction = isUnset && day.predictedTotal > 0;
+                // auto-filled = unset but system will copy last order → render same as real auto
+                const isAutoFilled = isUnset && hasPrediction;
+                const totalPortions =
+                  day.exists && !day.is_empty
+                    ? day.totalPortions
+                    : isAutoFilled
+                      ? day.predictedTotal
+                      : null;
+                const mealCount =
+                  day.exists && !day.is_empty
+                    ? day.mealCount
+                    : isAutoFilled
+                      ? day.predictedMealCount
+                      : null;
+
+                return (
+                  <div
+                    key={day.date}
+                    onClick={() => handlePlannedCardClick(day)}
+                    className={[
+                      "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
+                      isEmpty
+                        ? "bg-white border-red-100 hover:border-red-200 hover:shadow-sm"
+                        : isUnset && !hasPrediction
+                          ? "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm"
+                          : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200",
+                    ].join(" ")}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={[
+                            "p-2.5 rounded-lg transition-colors",
+                            isEmpty
+                              ? "bg-red-50"
+                              : "bg-indigo-50 group-hover:bg-indigo-100",
+                          ].join(" ")}
+                        >
+                          {isEmpty ? (
+                            <XCircle className="w-5 h-5 text-red-400" />
+                          ) : isUnset ? (
+                            <Bot className="w-5 h-5 text-indigo-600" />
+                          ) : day.is_auto ? (
+                            <Bot className="w-5 h-5 text-indigo-600" />
+                          ) : (
+                            <Calendar className="w-5 h-5 text-indigo-600" />
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900">
+                            {formatDate(day.date)}
+                          </h3>
+                          <PlannedBadge day={day} />
+                        </div>
+                      </div>
+
+                      {totalPortions !== null && (
+                        <div className="text-2xl font-bold text-slate-900">
+                          {totalPortions}
+                          <span className="text-xs font-normal text-slate-500 ml-1">
+                            ks
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Meal breakdown chips */}
+                    {mealCount !== null && (
+                      <div className="flex gap-2 mt-2">
+                        {mealCount.breakfast > 0 && (
+                          <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
+                            Raňajky: {mealCount.breakfast}
+                          </span>
+                        )}
+                        {mealCount.lunch > 0 && (
+                          <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
+                            Obed: {mealCount.lunch}
+                          </span>
+                        )}
+                        {mealCount.olovrant > 0 && (
+                          <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
+                            Olovrant: {mealCount.olovrant}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* No history at all — nothing to copy from */}
+                    {isUnset && !hasPrediction && (
+                      <p className="text-xs text-slate-400 mt-2">
+                        Žiadna história na predikciu
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -465,10 +696,15 @@ const HomePage = () => {
         {/* ── Detail modal ── */}
         <OrderSummaryModal
           isOpen={!!selectedDate}
-          onClose={() => setSelectedDate(null)}
+          onClose={() => {
+            setSelectedDate(null);
+            setModalOrderId(null);
+          }}
           orderDate={selectedDate ?? ""}
           orderData={modalOrderData}
           globalDeadlines={globalDeadlines}
+          isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
+          onZero={handleZeroExisting}
           onDelete={() => {
             if (selectedDate) {
               setPlannedDays((prev) =>
@@ -489,8 +725,22 @@ const HomePage = () => {
                 prev.filter((o) => o.date !== selectedDate),
               );
               setSelectedDate(null);
+              setModalOrderId(null);
             }
           }}
+        />
+
+        {/* ── Auto-predicted day preview modal ── */}
+        <OrderSummaryModal
+          isOpen={!!predictedModalDay}
+          onClose={() => setPredictedModalDay(null)}
+          orderDate={predictedModalDay?.date ?? ""}
+          globalDeadlines={globalDeadlines}
+          isPredicted
+          predictedMealCount={predictedModalDay?.predictedMealCount}
+          onZero={() =>
+            predictedModalDay && handleZeroPredicted(predictedModalDay)
+          }
         />
 
         <ConfirmationModal
