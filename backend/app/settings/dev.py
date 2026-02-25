@@ -2,6 +2,8 @@
 Development settings.
 """
 
+import os
+
 from .base import *  # noqa: F401, F403
 
 DEBUG = True
@@ -17,10 +19,18 @@ PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
 
-# Console email backend for development
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# MailHog SMTP backend for development (web UI at http://localhost:8026)
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", 1025))
+EMAIL_USE_TLS = False
+EMAIL_HOST_USER = ""
+EMAIL_HOST_PASSWORD = ""
 
 # Additional debugging tools
 INSTALLED_APPS += [
     "django_extensions",
 ]
+
+# Use plain WhiteNoise storage in dev — no manifest required (runserver doesn't run collectstatic)
+STATICFILES_STORAGE = "whitenoise.storage.CompressedStaticFilesStorage"

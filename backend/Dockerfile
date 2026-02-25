@@ -28,7 +28,7 @@ COPY . /app/
 RUN chmod +x /app/manage.py
 
 # Collect static files
-RUN python manage.py collectstatic --noinput || true
+RUN DJANGO_SETTINGS_MODULE=app.settings.base python manage.py collectstatic --noinput
 
 # Expose port
 EXPOSE 8000
