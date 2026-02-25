@@ -33,9 +33,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         email = attrs.get("email", "").strip().lower()
         password = attrs.get("password", "")
 
+        if not email:
+            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
+            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+        except User.MultipleObjectsReturned:
             raise AuthenticationFailed("Nesprávny email alebo heslo.")
 
         if not user.check_password(password):

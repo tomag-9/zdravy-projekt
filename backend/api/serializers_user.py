@@ -40,7 +40,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Keep internal username in sync with email
         if "email" in validated_data:
-            validated_data["username"] = validated_data["email"]
+            new_email = validated_data["email"]
+            if (
+                User.objects.filter(username=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
+                raise serializers.ValidationError(
+                    {"email": "A user with that email already exists."}
+                )
+            validated_data["username"] = new_email
         return super().update(instance, validated_data)
 
     def get_groups(self, obj):
@@ -64,6 +73,7 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
 class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
+    email = serializers.EmailField(required=True)
     password = serializers.CharField(
         write_only=True,
         required=False,
@@ -106,9 +116,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # We access raw data but validate it explicitly using AdminClientSettingsSerializer.
         settings_data = self.initial_data.get("settings", None)
 
-        # Keep internal username in sync with email
+        # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
-            validated_data["username"] = validated_data["email"]
+            new_email = validated_data["email"]
+            if (
+                User.objects.filter(username=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
+                raise serializers.ValidationError(
+                    {"email": "A user with that email already exists."}
+                )
+            validated_data["username"] = new_email
 
         instance = super().update(instance, validated_data)
 
