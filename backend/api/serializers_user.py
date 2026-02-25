@@ -40,8 +40,13 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         # Keep internal username in sync with email
         if "email" in validated_data:
-            new_email = validated_data["email"]
-            if User.objects.filter(username=new_email).exclude(pk=instance.pk).exists():
+            new_email = validated_data["email"].lower()
+            validated_data["email"] = new_email
+            if (
+                User.objects.filter(username__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
                 raise serializers.ValidationError(
                     {"email": "A user with that email already exists."}
                 )
@@ -92,8 +97,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password", None)
-        # Use email as internal username so Django's unique constraint is satisfied
-        validated_data["username"] = validated_data["email"]
+        # Normalize and use email as internal username so Django's unique constraint is satisfied
+        normalized_email = validated_data["email"].lower()
+        validated_data["email"] = normalized_email
+        validated_data["username"] = normalized_email
         user = User(**validated_data)
         if password:
             user.set_password(password)
@@ -114,8 +121,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
-            new_email = validated_data["email"]
-            if User.objects.filter(username=new_email).exclude(pk=instance.pk).exists():
+            new_email = validated_data["email"].lower()
+            validated_data["email"] = new_email
+            if (
+                User.objects.filter(username__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
+            ):
                 raise serializers.ValidationError(
                     {"email": "A user with that email already exists."}
                 )
