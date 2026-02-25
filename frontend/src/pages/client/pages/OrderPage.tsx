@@ -126,8 +126,9 @@ const OrderPage = () => {
         OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
       )
       .forEach((meal) => {
-        clearMeal(meal.key);
-        resetMealData(meal.key);
+        const mealKey = meal.key as "breakfast" | "lunch" | "olovrant";
+        clearMeal(mealKey);
+        resetMealData(mealKey);
       });
     setShowZeroModal(false);
     toast.success("Objednávka bola vynulovaná.");
