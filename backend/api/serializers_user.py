@@ -59,7 +59,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_settings(self, obj):
         if hasattr(obj, "settings"):
             return ClientSettingsSerializer(obj.settings).data
-        return {"visible_menus": ["A"], "visible_meals": [], "visible_diets": []}
+        return {
+            "visible_menus": ["A"],
+            "visible_meals": ["breakfast", "lunch", "olovrant"],
+            "visible_diets": [],
+        }
 
 
 class AdminClientSettingsSerializer(serializers.ModelSerializer):

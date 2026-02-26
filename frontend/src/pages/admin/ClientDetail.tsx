@@ -50,7 +50,7 @@ const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { apiFetch } = useAuth();
-  const { success, error: toastError } = useToast();
+  const { success, error: toastError, warning: toastWarning } = useToast();
 
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
@@ -82,7 +82,13 @@ const ClientDetail: React.FC = () => {
 
         const settings = data.settings || {};
         setMenus(new Set(settings.visible_menus || ["A"]));
-        setMeals(new Set(settings.visible_meals || []));
+        setMeals(
+          new Set(
+            settings.visible_meals?.length
+              ? settings.visible_meals
+              : ["breakfast", "lunch", "olovrant"],
+          ),
+        );
         setUserDiets(new Set(settings.visible_diets || []));
       }
     } catch (e) {
@@ -550,7 +556,15 @@ const ClientDetail: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={meals.has(meal)}
-                      onChange={() => toggleSet(meals, meal, setMeals)}
+                      onChange={() => {
+                        if (meals.has(meal) && meals.size === 1) {
+                          toastWarning(
+                            "Klient musí mať povolený aspoň jeden chod.",
+                          );
+                          return;
+                        }
+                        toggleSet(meals, meal, setMeals);
+                      }}
                       className="w-5 h-5 text-amber-600 rounded focus:ring-amber-500 border-gray-300 mr-3"
                     />
                     <span className="font-medium text-gray-700">

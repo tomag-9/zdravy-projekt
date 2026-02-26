@@ -322,7 +322,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user")
+            .select_related("user", "user__settings")
             .order_by("user__email")
         )
 
@@ -340,6 +340,14 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             lu = self._build_user_meal_row(data, "lunch")
             ol = self._build_user_meal_row(data, "olovrant")
             row_total = bf["total"] + lu["total"] + ol["total"]
+            try:
+                visible_meals = user.settings.visible_meals or [
+                    "breakfast",
+                    "lunch",
+                    "olovrant",
+                ]
+            except Exception:
+                visible_meals = ["breakfast", "lunch", "olovrant"]
             rows.append(
                 {
                     "user_id": user.id,
@@ -348,6 +356,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                     "breakfast": bf,
                     "lunch": lu,
                     "olovrant": ol,
+                    "visible_meals": visible_meals,
                     "total": row_total,
                 }
             )

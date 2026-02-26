@@ -23,6 +23,7 @@ interface UserRow {
   breakfast: MealRow;
   lunch: MealRow;
   olovrant: MealRow;
+  visible_meals: string[];
   total: number;
 }
 
@@ -94,21 +95,37 @@ function formatDate(dateStr: string): string {
   });
 }
 
+// Canonical age-group category order (youngest → oldest)
+const CAT_ORDER = [
+  "Jasle",
+  "Škôlka",
+  "ZŠ 1.stupeň",
+  "ZŠ 2.stupeň",
+  "Dospelý (SŠ)",
+];
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-const MealCell: React.FC<{ meal: MealRow; allCategoryNames: string[] }> = ({
-  meal,
-  allCategoryNames,
-}) => {
-  if (allCategoryNames.length === 0) {
+/**
+ * mealAllowed=false → completely blank white cell (meal not configured for this user)
+ * mealAllowed=true  → show each category row in canonical order; blank row if no data
+ */
+const MealCell: React.FC<{
+  meal: MealRow;
+  userCategoryNames: string[];
+  mealAllowed: boolean;
+}> = ({ meal, userCategoryNames, mealAllowed }) => {
+  if (!mealAllowed) return null;
+
+  if (userCategoryNames.length === 0) {
     return <span className="text-gray-300 text-xs italic">–</span>;
   }
 
   return (
     <div className="flex flex-col gap-2">
-      {allCategoryNames.map((catName) => {
+      {userCategoryNames.map((catName) => {
         const cat = meal.categories.find((c) => c.name === catName);
         const hasContent = cat && cat.total > 0;
         return (
@@ -205,30 +222,6 @@ const AdminDashboard: React.FC = () => {
   const [xlsxLoading, setXlsxLoading] = useState(false);
 
   const isAtMax = date >= maxDate;
-
-  const breakfastCategories = useMemo(() => {
-    const names = new Set<string>();
-    report?.rows.forEach((row) =>
-      row.breakfast.categories.forEach((cat) => names.add(cat.name)),
-    );
-    return Array.from(names).sort();
-  }, [report]);
-
-  const lunchCategories = useMemo(() => {
-    const names = new Set<string>();
-    report?.rows.forEach((row) =>
-      row.lunch.categories.forEach((cat) => names.add(cat.name)),
-    );
-    return Array.from(names).sort();
-  }, [report]);
-
-  const olovrantCategories = useMemo(() => {
-    const names = new Set<string>();
-    report?.rows.forEach((row) =>
-      row.olovrant.categories.forEach((cat) => names.add(cat.name)),
-    );
-    return Array.from(names).sort();
-  }, [report]);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -480,46 +473,82 @@ const AdminDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {report.rows.map((row) => (
-                    <tr
-                      key={row.user_id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3 align-top">
-                        <div className="font-semibold text-gray-900">
-                          {row.name}
-                        </div>
-                        {!row.name && (
-                          <div className="text-xs text-gray-400">
-                            {row.email}
+                  {report.rows.map((row) => {
+                    // Categories this user actually ordered on this day,
+                    // in canonical age-group order
+                    const userCatNames = (() => {
+                      const names = new Set<string>();
+                      row.breakfast.categories.forEach((c) =>
+                        names.add(c.name),
+                      );
+                      row.lunch.categories.forEach((c) => names.add(c.name));
+                      row.olovrant.categories.forEach((c) =>
+                        names.add(c.name),
+                      );
+                      return CAT_ORDER.filter((c) => names.has(c));
+                    })();
+                    const vm =
+                      row.visible_meals ?? [
+                        "breakfast",
+                        "lunch",
+                        "olovrant",
+                      ];
+                    return (
+                      <tr
+                        key={row.user_id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <div className="font-semibold text-gray-900">
+                            {row.name}
                           </div>
-                        )}
-                      </td>
-                      <td className="px-3 py-3 bg-orange-50/20 align-top">
-                        <MealCell
-                          meal={row.breakfast}
-                          allCategoryNames={breakfastCategories}
-                        />
-                      </td>
-                      <td className="px-3 py-3 bg-blue-50/20 align-top">
-                        <MealCell
-                          meal={row.lunch}
-                          allCategoryNames={lunchCategories}
-                        />
-                      </td>
-                      <td className="px-3 py-3 bg-green-50/20 align-top">
-                        <MealCell
-                          meal={row.olovrant}
-                          allCategoryNames={olovrantCategories}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-right align-top">
-                        <span className="font-bold text-gray-900 text-base">
-                          {row.total}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                          {!row.name && (
+                            <div className="text-xs text-gray-400">
+                              {row.email}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("breakfast") ? "bg-orange-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.breakfast}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("breakfast")}
+                          />
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("lunch") ? "bg-blue-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.lunch}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("lunch")}
+                          />
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("olovrant") ? "bg-green-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.olovrant}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("olovrant")}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right align-top">
+                          <span className="font-bold text-gray-900 text-base">
+                            {row.total}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">

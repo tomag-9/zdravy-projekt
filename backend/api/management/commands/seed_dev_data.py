@@ -16,7 +16,6 @@ from django.core.management.base import BaseCommand
 
 from api.models import ClientSettings, DailyOrder, Diet, GlobalSettings
 
-
 CATEGORIES = ["Jasle", "Škôlka", "ZŠ 1.stupeň", "ZŠ 2.stupeň", "Dospelý (SŠ)"]
 MENUS = ["A", "B", "V"]  # V = vegetariánske menu
 DIETS = [
@@ -166,7 +165,9 @@ class Command(BaseCommand):
             deleted_users = User.objects.filter(email__in=seed_emails).count()
             User.objects.filter(email__in=seed_emails).delete()
             self.stdout.write(
-                self.style.WARNING(f"Flushed {deleted_users} seed users and their data.")
+                self.style.WARNING(
+                    f"Flushed {deleted_users} seed users and their data."
+                )
             )
 
         # ----------------------------------------------------------------
@@ -261,7 +262,9 @@ class Command(BaseCommand):
         self.stdout.write(f"  Users created:   {created_users}")
         self.stdout.write(f"  Diets ensured:   {len(diet_objects)}")
         self.stdout.write(f"  Orders created:  {created_orders}")
-        self.stdout.write(f"  Orders skipped (already existed or empty): {skipped_orders}")
+        self.stdout.write(
+            f"  Orders skipped (already existed or empty): {skipped_orders}"
+        )
         self.stdout.write(
             self.style.WARNING(
                 "\n  All seed users have password: devpass123\n"
