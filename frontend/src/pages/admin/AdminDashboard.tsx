@@ -98,47 +98,55 @@ function formatDate(dateStr: string): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-const MealCell: React.FC<{ meal: MealRow }> = ({ meal }) => {
-  if (meal.total === 0) {
+const MealCell: React.FC<{ meal: MealRow; allCategoryNames: string[] }> = ({
+  meal,
+  allCategoryNames,
+}) => {
+  if (allCategoryNames.length === 0) {
     return <span className="text-gray-300 text-xs italic">–</span>;
   }
 
-  const activeCats = meal.categories.filter((cat) => cat.total > 0);
-
   return (
     <div className="flex flex-col gap-2">
-      {activeCats.map((cat) => (
-        <div key={cat.name} className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-            {cat.name}
-          </span>
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(cat.menus)
-              .filter(([, cnt]) => cnt > 0)
-              .map(([menu, cnt]) => (
-                <span
-                  key={menu}
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
-                >
-                  <span className="font-bold">{menu}</span>
-                  <span className="text-gray-500">×{cnt}</span>
-                </span>
-              ))}
-            {Object.entries(cat.diets)
-              .filter(([, cnt]) => cnt > 0)
-              .map(([diet, cnt]) => (
-                <span
-                  key={diet}
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
-                >
-                  {diet}
-                  {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
-                </span>
-              ))}
+      {allCategoryNames.map((catName) => {
+        const cat = meal.categories.find((c) => c.name === catName);
+        const hasContent = cat && cat.total > 0;
+        return (
+          <div key={catName} className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+              {catName}
+            </span>
+            {hasContent ? (
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(cat!.menus)
+                  .filter(([, cnt]) => cnt > 0)
+                  .map(([menu, cnt]) => (
+                    <span
+                      key={menu}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
+                    >
+                      <span className="font-bold">{menu}</span>
+                      <span className="text-gray-500">×{cnt}</span>
+                    </span>
+                  ))}
+                {Object.entries(cat!.diets)
+                  .filter(([, cnt]) => cnt > 0)
+                  .map(([diet, cnt]) => (
+                    <span
+                      key={diet}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
+                    >
+                      {diet}
+                      {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
+                    </span>
+                  ))}
+              </div>
+            ) : (
+              <span className="text-gray-300 text-xs italic">–</span>
+            )}
           </div>
-        </div>
-      ))}
-      <span className="text-xs font-bold text-gray-800">{meal.total} ks</span>
+        );
+      })}
     </div>
   );
 };
@@ -197,6 +205,30 @@ const AdminDashboard: React.FC = () => {
   const [xlsxLoading, setXlsxLoading] = useState(false);
 
   const isAtMax = date >= maxDate;
+
+  const breakfastCategories = useMemo(() => {
+    const names = new Set<string>();
+    report?.rows.forEach((row) =>
+      row.breakfast.categories.forEach((cat) => names.add(cat.name)),
+    );
+    return Array.from(names).sort();
+  }, [report]);
+
+  const lunchCategories = useMemo(() => {
+    const names = new Set<string>();
+    report?.rows.forEach((row) =>
+      row.lunch.categories.forEach((cat) => names.add(cat.name)),
+    );
+    return Array.from(names).sort();
+  }, [report]);
+
+  const olovrantCategories = useMemo(() => {
+    const names = new Set<string>();
+    report?.rows.forEach((row) =>
+      row.olovrant.categories.forEach((cat) => names.add(cat.name)),
+    );
+    return Array.from(names).sort();
+  }, [report]);
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -398,25 +430,7 @@ const AdminDashboard: React.FC = () => {
       {!loading && report && report.rows.length > 0 && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 flex flex-col">
-              <div className="text-indigo-100 text-sm font-medium">
-                Klientov
-              </div>
-              <div className="text-4xl font-bold mt-1">
-                {report.rows.length}
-              </div>
-              <div className="text-indigo-200 text-xs mt-1">klientov</div>
-            </div>
-            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 flex flex-col">
-              <div className="text-indigo-100 text-sm font-medium">
-                Celkovo porcií
-              </div>
-              <div className="text-4xl font-bold mt-1">
-                {report.totals.grand}
-              </div>
-              <div className="text-indigo-200 text-xs mt-1">porcií spolu</div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <TotalsBadge
               label="☕ Raňajky"
               data={report.totals.breakfast}
@@ -427,17 +441,14 @@ const AdminDashboard: React.FC = () => {
               data={report.totals.lunch}
               colorClass="bg-blue-50 border border-blue-100"
             />
-          </div>
-
-          {report.totals.olovrant.total > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {report.totals.olovrant.total > 0 && (
               <TotalsBadge
                 label="🍎 Olovrant"
                 data={report.totals.olovrant}
                 colorClass="bg-green-50 border border-green-100"
               />
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Orders table */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -445,9 +456,6 @@ const AdminDashboard: React.FC = () => {
               <h3 className="text-lg font-bold text-gray-900">
                 Objednávky klientov
               </h3>
-              <span className="text-sm text-gray-500">
-                {report.rows.length} klientov
-              </span>
             </div>
 
             <div className="overflow-x-auto">
@@ -456,9 +464,6 @@ const AdminDashboard: React.FC = () => {
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="text-left px-4 py-3 font-semibold text-gray-600 min-w-[160px]">
                       Klient
-                    </th>
-                    <th className="text-left px-3 py-3 font-semibold text-gray-600 min-w-[130px]">
-                      Email
                     </th>
                     <th className="px-3 py-3 font-semibold text-orange-700 bg-orange-50/50 min-w-[140px] text-left">
                       ☕ Raňajky
@@ -480,27 +485,35 @@ const AdminDashboard: React.FC = () => {
                       key={row.user_id}
                       className="hover:bg-gray-50 transition-colors"
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 align-top">
                         <div className="font-semibold text-gray-900">
                           {row.name}
                         </div>
-                        <div className="text-xs text-gray-400">
-                          {row.email}
-                        </div>
+                        {!row.name && (
+                          <div className="text-xs text-gray-400">
+                            {row.email}
+                          </div>
+                        )}
                       </td>
-                      <td className="px-3 py-3 text-gray-500 text-xs break-all">
-                        {row.email}
+                      <td className="px-3 py-3 bg-orange-50/20 align-top">
+                        <MealCell
+                          meal={row.breakfast}
+                          allCategoryNames={breakfastCategories}
+                        />
                       </td>
-                      <td className="px-3 py-3 bg-orange-50/20">
-                        <MealCell meal={row.breakfast} />
+                      <td className="px-3 py-3 bg-blue-50/20 align-top">
+                        <MealCell
+                          meal={row.lunch}
+                          allCategoryNames={lunchCategories}
+                        />
                       </td>
-                      <td className="px-3 py-3 bg-blue-50/20">
-                        <MealCell meal={row.lunch} />
+                      <td className="px-3 py-3 bg-green-50/20 align-top">
+                        <MealCell
+                          meal={row.olovrant}
+                          allCategoryNames={olovrantCategories}
+                        />
                       </td>
-                      <td className="px-3 py-3 bg-green-50/20">
-                        <MealCell meal={row.olovrant} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-3 text-right align-top">
                         <span className="font-bold text-gray-900 text-base">
                           {row.total}
                         </span>
@@ -510,7 +523,7 @@ const AdminDashboard: React.FC = () => {
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
-                    <td colSpan={2} className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 text-gray-700">
                       SPOLU
                     </td>
                     <td className="px-3 py-3 bg-orange-50/40">
