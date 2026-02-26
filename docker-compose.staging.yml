@@ -148,7 +148,7 @@ configs:
 
           client_max_body_size 10M;
 
-          # Variables force nginx to use the resolver on each request cycle.
+          # Variables force nginx to use the resolver on each request cycle
           set $$upstream_backend "http://backend:8000";
           set $$upstream_frontend "http://frontend:80";
 
