@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/auth";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -85,9 +85,17 @@ const LoginPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Heslo
-            </label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-slate-700">
+                Heslo
+              </label>
+              <Link
+                to="/forgot-password"
+                className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                Zabudli ste heslo?
+              </Link>
+            </div>
             <input
               type="password"
               placeholder="Zadajte heslo"
