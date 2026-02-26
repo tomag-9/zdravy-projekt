@@ -9,7 +9,7 @@ import logging
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.core.mail import send_mail
+from django.core.mail import EmailMessage, send_mail
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ def send_password_reset_email(user: User, token: str) -> None:
         f"Pre obnovu hesla použite tento odkaz:\n{reset_url}\n\n"
         f"Odkaz je platný {TOKEN_EXPIRY_HOURS} hodinu.\n\n"
         "Ak ste o obnovu hesla nežiadali, tento e-mail ignorujte.\n\n"
+        "Poznámka: Ak e-mail nevidíte v doručenej pošte, skontrolujte priečinok SPAM.\n\n"
         "S pozdravom, Tím Zdravý projekt"
     )
 
@@ -47,4 +48,38 @@ def send_password_reset_email(user: User, token: str) -> None:
         )
     except Exception:
         logger.exception("Failed to send password reset email to user %s.", user.email)
+        raise
+
+
+def send_daily_report_email(
+    recipients: list[str],
+    report_date: str,
+    attachment_bytes: bytes,
+    attachment_filename: str,
+) -> None:
+    """Send the daily order report as an XLSX attachment to *recipients*."""
+    from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
+    subject = f"Denný prehľad objednávok — {report_date}"
+    body = (
+        f"Dobrý deň,\n\n"
+        f"V prílohe nájdete denný prehľad objednávok za {report_date}.\n\n"
+        "S pozdravom, Tím Zdravý projekt"
+    )
+    content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=from_email,
+        to=recipients,
+    )
+    email.attach(attachment_filename, attachment_bytes, content_type)
+    try:
+        email.send(fail_silently=False)
+        logger.info(
+            "Daily report for %s sent to %d recipient(s).",
+            report_date,
+            len(recipients),
+        )
+    except Exception:
+        logger.exception("Failed to send daily report email for %s.", report_date)
         raise

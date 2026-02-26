@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 MAX_ATTEMPTS = 5  # max reset-request attempts per email within BLOCK_DURATION
-BLOCK_DURATION = 15 * 60  # seconds – how long the block lasts after MAX_ATTEMPTS
-RESEND_COOLDOWN = 60  # seconds – minimum gap between consecutive sends
+BLOCK_DURATION = 60 * 60  # seconds – 1 hour block after MAX_ATTEMPTS
+RESEND_COOLDOWN = 60  # seconds – minimum gap between consecutive sends (1 minute)
 TOKEN_EXPIRY_HOURS = 1  # hours – how long the reset link is valid
 
 

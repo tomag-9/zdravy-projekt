@@ -37,8 +37,19 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
 
 class GlobalSettingsSerializer(serializers.ModelSerializer):
+    report_email_recipients = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        allow_empty=True,
+    )
+
     class Meta:
         from .models import GlobalSettings
 
         model = GlobalSettings
-        fields = ["deadline_breakfast", "deadline_lunch", "deadline_olovrant"]
+        fields = [
+            "deadline_breakfast",
+            "deadline_lunch",
+            "deadline_olovrant",
+            "report_email_recipients",
+        ]
