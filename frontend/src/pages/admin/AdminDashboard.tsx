@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/auth";
+import { useToast } from "../../context/ToastContext";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,6 +24,7 @@ interface UserRow {
   breakfast: MealRow;
   lunch: MealRow;
   olovrant: MealRow;
+  visible_meals: string[];
   total: number;
 }
 
@@ -94,51 +96,80 @@ function formatDate(dateStr: string): string {
   });
 }
 
+// Canonical age-group category order (youngest → oldest)
+const CAT_ORDER = [
+  "Jasle",
+  "Škôlka",
+  "ZŠ 1.stupeň",
+  "ZŠ 2.stupeň",
+  "Dospelý (SŠ)",
+];
+
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-const MealCell: React.FC<{ meal: MealRow }> = ({ meal }) => {
-  if (meal.total === 0) {
+/**
+ * mealAllowed=false → completely blank white cell (meal not configured for this user)
+ * mealAllowed=true  → show each category row in canonical order; blank row if no data
+ */
+const MealCell: React.FC<{
+  meal: MealRow;
+  userCategoryNames: string[];
+  mealAllowed: boolean;
+}> = ({ meal, userCategoryNames, mealAllowed }) => {
+  const catByName = useMemo(
+    () => new Map(meal.categories.map((c) => [c.name, c])),
+    [meal.categories],
+  );
+
+  if (!mealAllowed) return null;
+
+  if (userCategoryNames.length === 0) {
     return <span className="text-gray-300 text-xs italic">–</span>;
   }
 
-  const activeCats = meal.categories.filter((cat) => cat.total > 0);
-
   return (
     <div className="flex flex-col gap-2">
-      {activeCats.map((cat) => (
-        <div key={cat.name} className="flex flex-col gap-0.5">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-            {cat.name}
-          </span>
-          <div className="flex flex-wrap gap-1">
-            {Object.entries(cat.menus)
-              .filter(([, cnt]) => cnt > 0)
-              .map(([menu, cnt]) => (
-                <span
-                  key={menu}
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
-                >
-                  <span className="font-bold">{menu}</span>
-                  <span className="text-gray-500">×{cnt}</span>
-                </span>
-              ))}
-            {Object.entries(cat.diets)
-              .filter(([, cnt]) => cnt > 0)
-              .map(([diet, cnt]) => (
-                <span
-                  key={diet}
-                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
-                >
-                  {diet}
-                  {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
-                </span>
-              ))}
+      {userCategoryNames.map((catName) => {
+        const cat = catByName.get(catName);
+        const hasContent = cat && cat.total > 0;
+        return (
+          <div key={catName} className="flex flex-col gap-0.5">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+              {catName}
+            </span>
+            {hasContent ? (
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(cat!.menus)
+                  .filter(([, cnt]) => cnt > 0)
+                  .map(([menu, cnt]) => (
+                    <span
+                      key={menu}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
+                    >
+                      <span className="font-bold">{menu}</span>
+                      <span className="text-gray-500">×{cnt}</span>
+                    </span>
+                  ))}
+                {Object.entries(cat!.diets)
+                  .filter(([, cnt]) => cnt > 0)
+                  .map(([diet, cnt]) => (
+                    <span
+                      key={diet}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium bg-red-50 text-red-600 border border-red-100"
+                    >
+                      {diet}
+                      {cnt > 1 && <span className="font-bold ml-0.5">×{cnt}</span>}
+                    </span>
+                  ))}
+              </div>
+            ) : (
+              <span className="text-gray-300 text-xs italic">–</span>
+            )}
           </div>
-        </div>
-      ))}
-      <span className="text-xs font-bold text-gray-800">{meal.total} ks</span>
+        );
+      })}
     </div>
   );
 };
@@ -195,6 +226,7 @@ const AdminDashboard: React.FC = () => {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const isAtMax = date >= maxDate;
 
@@ -246,15 +278,44 @@ const AdminDashboard: React.FC = () => {
         a.remove();
         URL.revokeObjectURL(url);
       } else {
-        alert("Chyba pri generovaní XLSX súboru.");
+        toastError("Chyba pri generovaní XLSX súboru.");
       }
     } catch (e) {
       console.error(e);
-      alert("Chyba pri generovaní XLSX súboru.");
+      toastError("Chyba pri generovaní XLSX súboru.");
     } finally {
       setXlsxLoading(false);
     }
   };
+
+  const handleDownloadPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/admin/summary/daily-report-pdf/?date=${date}`,
+      );
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `prehlad_${date}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } else {
+        toastError("Chyba pri generovaní PDF súboru.");
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Chyba pri generovaní PDF súboru.");
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
+  const { error: toastError } = useToast();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -264,50 +325,96 @@ const AdminDashboard: React.FC = () => {
           <h2 className="text-3xl font-bold text-gray-900">Denný prehľad</h2>
           <p className="text-gray-500 mt-1 capitalize">{formatDate(date)}</p>
         </div>
-        <button
-          onClick={handleDownloadXlsx}
-          disabled={
-            xlsxLoading || loading || !report || report.rows.length === 0
-          }
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold shadow hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          {xlsxLoading ? (
-            <svg
-              className="animate-spin h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDownloadPdf}
+            disabled={
+              pdfLoading || loading || !report || report.rows.length === 0
+            }
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold shadow hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {pdfLoading ? (
+              <svg
+                className="animate-spin h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
                 stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8v8z"
-              />
-            </svg>
-          ) : (
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
-              />
-            </svg>
-          )}
-          Stiahnuť XLSX
-        </button>
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            )}
+            Stiahnuť PDF
+          </button>
+          <button
+            onClick={handleDownloadXlsx}
+            disabled={
+              xlsxLoading || loading || !report || report.rows.length === 0
+            }
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold shadow hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {xlsxLoading ? (
+              <svg
+                className="animate-spin h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8v8z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"
+                />
+              </svg>
+            )}
+            Stiahnuť XLSX
+          </button>
+        </div>
       </div>
 
       {/* Day navigator */}
@@ -398,25 +505,7 @@ const AdminDashboard: React.FC = () => {
       {!loading && report && report.rows.length > 0 && (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 flex flex-col">
-              <div className="text-indigo-100 text-sm font-medium">
-                Klientov
-              </div>
-              <div className="text-4xl font-bold mt-1">
-                {report.rows.length}
-              </div>
-              <div className="text-indigo-200 text-xs mt-1">klientov</div>
-            </div>
-            <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl p-5 text-white shadow-lg shadow-indigo-200 flex flex-col">
-              <div className="text-indigo-100 text-sm font-medium">
-                Celkovo porcií
-              </div>
-              <div className="text-4xl font-bold mt-1">
-                {report.totals.grand}
-              </div>
-              <div className="text-indigo-200 text-xs mt-1">porcií spolu</div>
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <TotalsBadge
               label="☕ Raňajky"
               data={report.totals.breakfast}
@@ -427,17 +516,14 @@ const AdminDashboard: React.FC = () => {
               data={report.totals.lunch}
               colorClass="bg-blue-50 border border-blue-100"
             />
-          </div>
-
-          {report.totals.olovrant.total > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {report.totals.olovrant.total > 0 && (
               <TotalsBadge
                 label="🍎 Olovrant"
                 data={report.totals.olovrant}
                 colorClass="bg-green-50 border border-green-100"
               />
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Orders table */}
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
@@ -445,9 +531,6 @@ const AdminDashboard: React.FC = () => {
               <h3 className="text-lg font-bold text-gray-900">
                 Objednávky klientov
               </h3>
-              <span className="text-sm text-gray-500">
-                {report.rows.length} klientov
-              </span>
             </div>
 
             <div className="overflow-x-auto">
@@ -456,9 +539,6 @@ const AdminDashboard: React.FC = () => {
                   <tr className="bg-gray-50 border-b border-gray-100">
                     <th className="text-left px-4 py-3 font-semibold text-gray-600 min-w-[160px]">
                       Klient
-                    </th>
-                    <th className="text-left px-3 py-3 font-semibold text-gray-600 min-w-[130px]">
-                      Email
                     </th>
                     <th className="px-3 py-3 font-semibold text-orange-700 bg-orange-50/50 min-w-[140px] text-left">
                       ☕ Raňajky
@@ -475,42 +555,91 @@ const AdminDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {report.rows.map((row) => (
-                    <tr
-                      key={row.user_id}
-                      className="hover:bg-gray-50 transition-colors"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="font-semibold text-gray-900">
-                          {row.name}
-                        </div>
-                        <div className="text-xs text-gray-400">
-                          {row.email}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3 text-gray-500 text-xs break-all">
-                        {row.email}
-                      </td>
-                      <td className="px-3 py-3 bg-orange-50/20">
-                        <MealCell meal={row.breakfast} />
-                      </td>
-                      <td className="px-3 py-3 bg-blue-50/20">
-                        <MealCell meal={row.lunch} />
-                      </td>
-                      <td className="px-3 py-3 bg-green-50/20">
-                        <MealCell meal={row.olovrant} />
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span className="font-bold text-gray-900 text-base">
-                          {row.total}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {report.rows.map((row) => {
+                    // Categories this user actually ordered on this day,
+                    // in canonical age-group order
+                    const userCatNames = (() => {
+                      const names = new Set<string>();
+                      row.breakfast.categories.forEach((c) =>
+                        names.add(c.name),
+                      );
+                      row.lunch.categories.forEach((c) => names.add(c.name));
+                      row.olovrant.categories.forEach((c) =>
+                        names.add(c.name),
+                      );
+                      return [
+                        ...CAT_ORDER.filter((c) => names.has(c)),
+                        ...Array.from(names)
+                          .filter((n) => !CAT_ORDER.includes(n))
+                          .sort(),
+                      ];
+                    })();
+                    const vm =
+                      row.visible_meals ?? [
+                        "breakfast",
+                        "lunch",
+                        "olovrant",
+                      ];
+                    return (
+                      <tr
+                        key={row.user_id}
+                        className="hover:bg-gray-50 transition-colors"
+                      >
+                        <td className="px-4 py-3 align-top">
+                          <div className="font-semibold text-gray-900">
+                            {row.name}
+                          </div>
+                          {row.name !== row.email && (
+                            <div className="text-xs text-gray-400">
+                              {row.email}
+                            </div>
+                          )}
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("breakfast") ? "bg-orange-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.breakfast}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("breakfast")}
+                          />
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("lunch") ? "bg-blue-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.lunch}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("lunch")}
+                          />
+                        </td>
+                        <td
+                          className={`px-3 py-3 align-top ${
+                            vm.includes("olovrant") ? "bg-green-50/20" : ""
+                          }`}
+                        >
+                          <MealCell
+                            meal={row.olovrant}
+                            userCategoryNames={userCatNames}
+                            mealAllowed={vm.includes("olovrant")}
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right align-top">
+                          <span className="font-bold text-gray-900 text-base">
+                            {row.total}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
                 <tfoot>
                   <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold">
-                    <td colSpan={2} className="px-4 py-3 text-gray-700">
+                    <td className="px-4 py-3 text-gray-700">
                       SPOLU
                     </td>
                     <td className="px-3 py-3 bg-orange-50/40">

@@ -299,3 +299,39 @@ class AdminDailyReportTest(APITestCase):
             ws.cell(row=last_row, column=c).value for c in range(1, ws.max_column + 1)
         ]
         self.assertIn("SPOLU", spolu_vals)
+
+    def test_daily_report_pdf_returns_file(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-pdf/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response["Content-Type"], "application/pdf")
+        self.assertIn("prehlad_", response["Content-Disposition"])
+        # PDF magic bytes — consume streaming response
+        content = b"".join(response.streaming_content)
+        self.assertTrue(content.startswith(b"%PDF"))
+
+    def test_daily_report_pdf_client_forbidden(self):
+        self.client.force_authenticate(user=self.client_user)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-pdf/?date={self.today}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_daily_report_pdf_requires_date(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/admin/summary/daily-report-pdf/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_daily_report_pdf_invalid_date_format(self):
+        self.client.force_authenticate(user=self.admin)
+        for bad_date in ["not-a-date", "2024/01/01", "01-01-2024"]:
+            response = self.client.get(
+                f"/api/admin/summary/daily-report-pdf/?date={bad_date}"
+            )
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_400_BAD_REQUEST,
+                msg=f"Expected 400 for bad date: {bad_date!r}",
+            )
