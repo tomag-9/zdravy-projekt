@@ -61,11 +61,17 @@ const SystemSettings: React.FC = () => {
 
     if (loading) return <div className="p-8">Načítavam...</div>;
 
+    const isValidEmail = (value: string): boolean => {
+        const input = document.createElement('input');
+        input.type = 'email';
+        input.value = value;
+        return input.checkValidity();
+    };
+
     const addRecipient = () => {
         const email = newRecipient.trim().toLowerCase();
         if (!email) return;
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!isValidEmail(email)) {
             error('Neplatná e-mailová adresa');
             return;
         }
@@ -188,7 +194,7 @@ const SystemSettings: React.FC = () => {
                 <div className="pt-6 border-t border-gray-100 flex justify-end mt-6">
                     <button
                         type="button"
-                        onClick={handleSubmit as unknown as React.MouseEventHandler}
+                        onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
                         className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl transition-colors shadow-sm hover:shadow-md"
                     >
                         Uložiť príjemcov

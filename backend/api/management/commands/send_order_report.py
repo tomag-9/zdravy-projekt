@@ -7,7 +7,7 @@ recipients stored in GlobalSettings.report_email_recipients.
 Usage:
     python manage.py send_order_report           # yesterday (--days 1)
     python manage.py send_order_report --days 0  # today
-    python manage.py send_order_report --date 2026-02-25
+    python manage.py send_order_report --date YYYY-MM-DD
 """
 
 import datetime

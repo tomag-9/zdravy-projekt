@@ -33,15 +33,6 @@ logger = logging.getLogger(__name__)
 # We register DejaVu Sans (full Unicode/UTF-8 TrueType) and fall back to
 # Helvetica only if the font file cannot be found (e.g. a minimal test env).
 
-_DEJAVU_CANDIDATES = [
-    # Debian / Ubuntu / Docker with fonts-dejavu-core
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    # macOS (via Homebrew font-dejavu)
-    "/Library/Fonts/DejaVuSans.ttf",
-    "/Library/Fonts/DejaVuSans-Bold.ttf",
-]
-
 _PDF_FONT_REGULAR = "Helvetica"  # fallback
 _PDF_FONT_BOLD = "Helvetica-Bold"  # fallback
 _pdf_fonts_registered = False
@@ -56,10 +47,8 @@ def _register_pdf_fonts():
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
 
-        regular = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-        bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-
         # Walk candidate pairs until we find a matching set
+        regular = bold = None
         candidates = [
             (
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -72,7 +61,7 @@ def _register_pdf_fonts():
                 regular, bold = reg_path, bold_path
                 break
         else:
-            # No TTFont found — stay with Helvetica fallback
+            # No matching TTFont found — stay with Helvetica fallback
             _pdf_fonts_registered = True
             return
 

@@ -6,7 +6,6 @@ Tests for:
 """
 
 import datetime
-from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +14,7 @@ from django.core import management
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from api.models import DailyOrder, GlobalSettings
+from api.models import GlobalSettings
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -162,10 +161,11 @@ class TestSendOrderReportCommand:
         global_settings.report_email_recipients = ["r@example.com"]
         global_settings.save()
 
-        management.call_command("send_order_report", "--date=2026-01-15")
+        fixed_date = "2024-06-15"  # a past Saturday — safe fixed date for assertions
+        management.call_command("send_order_report", f"--date={fixed_date}")
 
         call_kwargs = mock_send.call_args.kwargs
-        assert call_kwargs["report_date"] == "2026-01-15"
+        assert call_kwargs["report_date"] == fixed_date
 
     @patch("api.management.commands.send_order_report.send_daily_report_email")
     def test_report_includes_order_data(self, mock_send, global_settings, admin_user):
