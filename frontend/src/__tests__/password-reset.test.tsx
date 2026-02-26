@@ -33,6 +33,7 @@ function renderResetPassword(token = "valid-token-123") {
 describe("ForgotPasswordPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("renders email input and submit button", () => {
@@ -47,11 +48,11 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows success state after 200 response", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ detail: "ok" }),
-    } as Response);
+    } as Response));
 
     renderForgotPassword();
     fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
@@ -67,14 +68,14 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows rate-limit message on 429 response", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 429,
       json: async () => ({
         detail: "Príliš veľa pokusov. Skúste to znova za 1 minút.",
         retry_after_seconds: 60,
       }),
-    } as Response);
+    } as Response));
 
     renderForgotPassword();
     fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
@@ -88,11 +89,11 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows generic error on non-ok non-429 response", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ detail: "Bad request" }),
-    } as Response);
+    } as Response));
 
     renderForgotPassword();
     fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
@@ -106,7 +107,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows network error when fetch throws", async () => {
-    (globalThis as any).fetch = vi.fn().mockRejectedValueOnce(new Error("network failure"));
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network failure")));
 
     renderForgotPassword();
     fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
@@ -125,6 +126,7 @@ describe("ForgotPasswordPage", () => {
 describe("ResetPasswordPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("renders password fields and submit button", () => {
@@ -178,11 +180,11 @@ describe("ResetPasswordPage", () => {
   });
 
   it("shows success state after 200 response", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ detail: "Heslo bolo úspešne zmenené." }),
-    } as Response);
+    } as Response));
 
     renderResetPassword();
     fireEvent.change(screen.getByPlaceholderText(/Minimálne 8 znakov/i), {
@@ -199,11 +201,11 @@ describe("ResetPasswordPage", () => {
   });
 
   it("shows backend error on failure response", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ detail: "Token je neplatný alebo vypršal." }),
-    } as Response);
+    } as Response));
 
     renderResetPassword();
     fireEvent.change(screen.getByPlaceholderText(/Minimálne 8 znakov/i), {
