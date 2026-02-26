@@ -42,8 +42,8 @@ _DEJAVU_CANDIDATES = [
     "/Library/Fonts/DejaVuSans-Bold.ttf",
 ]
 
-_PDF_FONT_REGULAR = "Helvetica"      # fallback
-_PDF_FONT_BOLD = "Helvetica-Bold"    # fallback
+_PDF_FONT_REGULAR = "Helvetica"  # fallback
+_PDF_FONT_BOLD = "Helvetica-Bold"  # fallback
 _pdf_fonts_registered = False
 
 
@@ -61,8 +61,10 @@ def _register_pdf_fonts():
 
         # Walk candidate pairs until we find a matching set
         candidates = [
-            ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ),
             ("/Library/Fonts/DejaVuSans.ttf", "/Library/Fonts/DejaVuSans-Bold.ttf"),
         ]
         for reg_path, bold_path in candidates:
@@ -85,7 +87,10 @@ def _register_pdf_fonts():
         _PDF_FONT_BOLD = "DejaVuSans-Bold"
         logger.debug("Registered DejaVuSans TTFont for PDF generation.")
     except Exception:
-        logger.warning("Could not register DejaVuSans TTFont; falling back to Helvetica.", exc_info=True)
+        logger.warning(
+            "Could not register DejaVuSans TTFont; falling back to Helvetica.",
+            exc_info=True,
+        )
     finally:
         _pdf_fonts_registered = True
 
