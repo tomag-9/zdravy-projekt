@@ -163,7 +163,12 @@ const SystemSettings: React.FC = () => {
                         type="email"
                         value={newRecipient}
                         onChange={(e) => setNewRecipient(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addRecipient())}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addRecipient();
+                            }
+                        }}
                         placeholder="email@priklad.sk"
                         className="flex-1 px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                     />
