@@ -123,6 +123,20 @@ class TestGlobalSettingsAPI:
         )
         assert res.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_non_admin_read_hides_recipients(self, db, global_settings):
+        """Non-admin users must not see report_email_recipients (PII)."""
+        global_settings.report_email_recipients = ["secret@example.com"]
+        global_settings.save()
+
+        regular_user = User.objects.create_user(
+            username="r@x.com", email="r@x.com", password="pass1234"
+        )
+        client = APIClient()
+        client.force_authenticate(user=regular_user)
+        res = client.get(self.ENDPOINT)
+        assert res.status_code == status.HTTP_200_OK
+        assert "report_email_recipients" not in res.data
+
 
 # ---------------------------------------------------------------------------
 # send_order_report management command

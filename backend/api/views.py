@@ -1215,7 +1215,7 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         from .serializers import GlobalSettingsSerializer
 
         settings, _ = GlobalSettings.objects.get_or_create(pk=1)
-        serializer = GlobalSettingsSerializer(settings)
+        serializer = GlobalSettingsSerializer(settings, context={"request": request})
         return Response(serializer.data)
 
     def create(self, request):
@@ -1227,7 +1227,9 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         from .serializers import GlobalSettingsSerializer
 
         settings, _ = GlobalSettings.objects.get_or_create(pk=1)
-        serializer = GlobalSettingsSerializer(settings, data=request.data, partial=True)
+        serializer = GlobalSettingsSerializer(
+            settings, data=request.data, partial=True, context={"request": request}
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

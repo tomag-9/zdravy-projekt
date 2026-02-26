@@ -42,6 +42,10 @@ const SystemSettings: React.FC = () => {
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        await saveSettings();
+    };
+
+    const saveSettings = async () => {
         try {
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
                 method: 'POST',
@@ -79,18 +83,18 @@ const SystemSettings: React.FC = () => {
             error('Táto adresa je už v zozname');
             return;
         }
-        setSettings({
-            ...settings,
-            report_email_recipients: [...settings.report_email_recipients, email],
-        });
+        setSettings((prev) => ({
+            ...prev,
+            report_email_recipients: [...prev.report_email_recipients, email],
+        }));
         setNewRecipient('');
     };
 
     const removeRecipient = (email: string) => {
-        setSettings({
-            ...settings,
-            report_email_recipients: settings.report_email_recipients.filter((r) => r !== email),
-        });
+        setSettings((prev) => ({
+            ...prev,
+            report_email_recipients: prev.report_email_recipients.filter((r) => r !== email),
+        }));
     };
 
     return (
@@ -194,7 +198,7 @@ const SystemSettings: React.FC = () => {
                 <div className="pt-6 border-t border-gray-100 flex justify-end mt-6">
                     <button
                         type="button"
-                        onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
+                        onClick={() => saveSettings()}
                         className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl transition-colors shadow-sm hover:shadow-md"
                     >
                         Uložiť príjemcov
