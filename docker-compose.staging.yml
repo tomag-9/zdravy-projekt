@@ -112,11 +112,11 @@ services:
       VITE_API_URL: ${VITE_API_URL}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:80"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 15s
 
   nginx:
     image: nginx:alpine
@@ -148,7 +148,7 @@ configs:
 
           client_max_body_size 10M;
 
-          # Variables force nginx to use the resolver on each request cycle.
+          # Variables force nginx to use the resolver on each request cycle
           set $$upstream_backend "http://backend:8000";
           set $$upstream_frontend "http://frontend:80";
 
