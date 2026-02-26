@@ -433,14 +433,14 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     def _xlsx_build_column_meta(sorted_cats, meal_keys, meal_labels):
         """Build 3 header rows and column metadata list.
 
-        Row 1 (meal level):     Klient | Email | Raňajky...           | Obed...   | Celkovo
-        Row 2 (category level):        |       | Jasle... | ZŠ... | Spolu | Jasle... | Spolu |
-        Row 3 (menu/diet):             |       | Menu A | Diet | Menu A | B | Diet |   |   |
+        Row 1 (meal level):     Klient | Raňajky...           | Obed...   | Celkovo
+        Row 2 (category level):        | Jasle... | ZŠ... | Spolu | Jasle... | Spolu |
+        Row 3 (menu/diet):             | Menu A | Diet | Menu A | B | Diet |   |   |
         """
-        col_meta = [("fixed", None, "name", None), ("fixed", None, "email", None)]
-        header_row_1 = ["Klient", "Email"]
-        header_row_2 = ["", ""]
-        header_row_3 = ["", ""]
+        col_meta = [("fixed", None, "name", None)]
+        header_row_1 = ["Klient"]
+        header_row_2 = [""]
+        header_row_3 = [""]
 
         for mk in meal_keys:
             cats = sorted_cats[mk]
@@ -487,7 +487,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         total_cols = len(col_meta)
 
         # ── Row 3: meal-level spans ────────────────────────────────────────────
-        current_col = 3  # cols 1=Klient, 2=Email
+        current_col = 2  # col 1=Klient, col 2+ = meals
         for mk in meal_keys:
             cats = sorted_cats[mk]
             inner_cols = sum(len(v["menus"]) + len(v["diets"]) for v in cats.values())
@@ -505,7 +505,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             cell.alignment = center
             current_col += meal_span
 
-        for c in [1, 2, total_cols]:
+        for c in [1, total_cols]:
             cell = ws.cell(row=3, column=c)
             cell.fill = header_fill_main
             cell.font = header_font
@@ -513,7 +513,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         # ── Row 4: category-level spans + Spolu per meal ───────────────────────
         row45_fill = {}  # col_index -> fill (shared for rows 4 and 5)
-        current_col = 3
+        current_col = 2
         for mk in meal_keys:
             for cat_name, cat_data in sorted_cats[mk].items():
                 cat_span = len(cat_data["menus"]) + len(cat_data["diets"])
@@ -540,7 +540,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             cell.alignment = center
             current_col += 1
 
-        for c in [1, 2, total_cols]:
+        for c in [1, total_cols]:
             cell = ws.cell(row=4, column=c)
             cell.fill = header_fill_main
             cell.font = header_font
@@ -553,9 +553,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             cell.font = header_font
             cell.alignment = center
 
-        # ── Merge Klient, Email, Celkovo across all 3 header rows (3-5) ────────
+        # ── Merge Klient and Celkovo across all 3 header rows (3-5) ────────
         ws.merge_cells(start_row=3, start_column=1, end_row=5, end_column=1)
-        ws.merge_cells(start_row=3, start_column=2, end_row=5, end_column=2)
         ws.merge_cells(
             start_row=3, start_column=total_cols, end_row=5, end_column=total_cols
         )
@@ -587,15 +586,26 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for row_info in rows_data:
             user = row_info["user"]
             data = row_info["data"]
+            visible_meals = row_info.get("visible_meals") or meal_keys
             display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-            row_vals = [display_name, user.email]
+            row_vals = [display_name]
             row_grand = 0
             for mk in meal_keys:
+                # Pre-compute column count for this meal (to fill blanks when disallowed)
+                meal_col_count = (
+                    sum(
+                        len(cat_data["menus"]) + len(cat_data["diets"])
+                        for cat_data in sorted_cats[mk].values()
+                    )
+                    + 1  # +1 for Spolu
+                )
+                if mk not in visible_meals:
+                    row_vals.extend([""] * meal_col_count)
+                    continue
                 meal = data.get(mk) or {}
                 meal_total = 0
                 is_flat = "menuCounts" in meal
                 for cat_name, cat_data in sorted_cats[mk].items():
-                    # Resolve raw details for this category
                     if is_flat:
                         cat_details = meal if cat_name == mk else {}
                     else:
@@ -621,7 +631,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             ws.append(row_vals)
 
         # SPOLU totals row
-        total_row = ["SPOLU", ""]
+        total_row = ["SPOLU"]
         for mk in meal_keys:
             for cat_name, cat_data in sorted_cats[mk].items():
                 for menu_key in cat_data["menus"]:
@@ -666,14 +676,24 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user")
+            .select_related("user", "user__settings")
             .order_by("user__email")
         )
 
         meal_keys = ["breakfast", "lunch", "olovrant"]
         meal_labels = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
 
-        rows_data = [{"user": o.user, "data": o.data or {}} for o in orders]
+        rows_data = [
+            {
+                "user": o.user,
+                "data": o.data or {},
+                "visible_meals": (
+                    getattr(getattr(o.user, "settings", None), "visible_meals", None)
+                    or ["breakfast", "lunch", "olovrant"]
+                ),
+            }
+            for o in orders
+        ]
         sorted_cats = self._xlsx_collect_columns(rows_data, meal_keys)
         col_meta, header_row_1, header_row_2, header_row_3 = (
             self._xlsx_build_column_meta(sorted_cats, meal_keys, meal_labels)
@@ -713,11 +733,10 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         self._xlsx_write_data(ws, rows_data, meal_keys, sorted_cats, bold_font)
 
         ws.column_dimensions["A"].width = 28
-        ws.column_dimensions["B"].width = 28
-        for c_idx in range(3, len(col_meta) + 1):
+        for c_idx in range(2, len(col_meta) + 1):
             ws.column_dimensions[get_column_letter(c_idx)].width = 12
-        # Freeze top 5 rows (title, empty, meal, category, menu/diet) + cols A-B
-        ws.freeze_panes = "C6"
+        # Freeze top 5 rows (title, empty, meal, category, menu/diet) + col A
+        ws.freeze_panes = "B6"
 
         output = io.BytesIO()
         wb.save(output)
@@ -728,6 +747,224 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             output.read(),
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+    @action(detail=False, methods=["get"], url_path="daily-report-pdf")
+    def daily_report_pdf(self, request):
+        """
+        Download per-user order report as portrait PDF.
+        GET /api/admin/summary/daily-report-pdf/?date=YYYY-MM-DD
+        """
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (
+            HRFlowable,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "invalid date format, expected YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        safe_date = target_date.isoformat()
+
+        orders = (
+            DailyOrder.objects.filter(date=target_date)
+            .select_related("user", "user__settings")
+            .order_by("user__email")
+        )
+
+        CAT_ORDER = ["Jasle", "Škôlka", "ZŠ 1.stupeň", "ZŠ 2.stupeň", "Dospelý (SŠ)"]
+        MEAL_LABELS = {
+            "breakfast": "☕ Raňajky",
+            "lunch": "🍽 Obed",
+            "olovrant": "🍎 Olovrant",
+        }
+
+        # ── Styles ─────────────────────────────────────────────────────────────
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "title",
+            parent=styles["Heading1"],
+            fontSize=13,
+            spaceAfter=4,
+            textColor=colors.HexColor("#1e3a5f"),
+        )
+        user_style = ParagraphStyle(
+            "user",
+            parent=styles["Heading2"],
+            fontSize=11,
+            spaceBefore=10,
+            spaceAfter=2,
+            textColor=colors.HexColor("#111827"),
+        )
+        meal_style = ParagraphStyle(
+            "meal",
+            parent=styles["Normal"],
+            fontSize=9,
+            spaceBefore=4,
+            spaceAfter=2,
+            textColor=colors.HexColor("#374151"),
+            fontName="Helvetica-Bold",
+        )
+
+        MEAL_COLORS = {
+            "breakfast": colors.HexColor("#fff7ed"),
+            "lunch": colors.HexColor("#eff6ff"),
+            "olovrant": colors.HexColor("#f0fdf4"),
+        }
+        MEAL_HEADER_COLORS = {
+            "breakfast": colors.HexColor("#f97316"),
+            "lunch": colors.HexColor("#3b82f6"),
+            "olovrant": colors.HexColor("#22c55e"),
+        }
+
+        # A4 portrait: usable width = 21cm - 2×1.5cm = 18cm
+        PAGE_W = 18 * cm
+        COL_WIDTHS = [4.5 * cm, 8 * cm, 5.5 * cm]
+
+        def _build_meal_table(meal_data, meal_key):
+            """Return a Table flowable for one meal's data, or None if empty."""
+            meal = meal_data.get(meal_key) or {}
+            if not meal:
+                return None
+            is_flat = "menuCounts" in meal
+            if is_flat:
+                cat_entries = [(meal_key, meal)]
+            else:
+                cat_entries = [(k, v) for k, v in meal.items() if isinstance(v, dict)]
+            cat_dict = dict(cat_entries)
+            ordered = [c for c in CAT_ORDER if c in cat_dict]
+            ordered += [c for c in cat_dict if c not in ordered]
+
+            rows = [["Kategória", "Menu", "Špeciálne diéty"]]
+            for cat_name in ordered:
+                details = cat_dict[cat_name]
+                menus_str = ", ".join(
+                    f"{k}×{v}"
+                    for k, v in sorted((details.get("menuCounts") or {}).items())
+                    if self._safe_int(v) > 0
+                )
+                diets_str = ", ".join(
+                    (f"{k}×{v}" if self._safe_int(v) > 1 else k)
+                    for k, v in sorted((details.get("diets") or {}).items())
+                    if self._safe_int(v) > 0
+                )
+                if menus_str or diets_str:
+                    rows.append([cat_name, menus_str or "–", diets_str or ""])
+
+            if len(rows) == 1:
+                return None  # header only → nothing ordered
+
+            bg = MEAL_COLORS[meal_key]
+            hdr_bg = MEAL_HEADER_COLORS[meal_key]
+            t = Table(rows, colWidths=COL_WIDTHS)
+            t.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), hdr_bg),
+                        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTSIZE", (0, 0), (-1, -1), 8),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [bg, colors.white]),
+                        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d1d5db")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                        ("TOPPADDING", (0, 0), (-1, -1), 3),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ]
+                )
+            )
+            return t
+
+        # ── Build story ────────────────────────────────────────────────────────
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(
+            buf,
+            pagesize=A4,
+            topMargin=1.5 * cm,
+            bottomMargin=1.5 * cm,
+            leftMargin=1.5 * cm,
+            rightMargin=1.5 * cm,
+            title=f"Denný prehľad {safe_date}",
+        )
+
+        story = []
+        story.append(Paragraph(f"Denný prehľad objednávok — {safe_date}", title_style))
+        story.append(
+            HRFlowable(width=PAGE_W, thickness=1, color=colors.HexColor("#2563eb"))
+        )
+        story.append(Spacer(1, 0.3 * cm))
+
+        for order in orders:
+            user = order.user
+            data = order.data or {}
+            try:
+                visible_meals = user.settings.visible_meals or [
+                    "breakfast",
+                    "lunch",
+                    "olovrant",
+                ]
+            except Exception:
+                visible_meals = ["breakfast", "lunch", "olovrant"]
+
+            display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+            story.append(Paragraph(display_name, user_style))
+
+            any_meal = False
+            for mk in ["breakfast", "lunch", "olovrant"]:
+                if mk not in visible_meals:
+                    continue
+                tbl = _build_meal_table(data, mk)
+                if tbl is None:
+                    continue
+                story.append(Paragraph(MEAL_LABELS[mk], meal_style))
+                story.append(tbl)
+                story.append(Spacer(1, 0.15 * cm))
+                any_meal = True
+
+            if not any_meal:
+                story.append(
+                    Paragraph(
+                        "<i>Žiadne objednávky</i>",
+                        ParagraphStyle(
+                            "empty",
+                            parent=styles["Normal"],
+                            fontSize=8,
+                            textColor=colors.grey,
+                        ),
+                    )
+                )
+            story.append(
+                HRFlowable(
+                    width=PAGE_W,
+                    thickness=0.4,
+                    color=colors.HexColor("#e5e7eb"),
+                    spaceAfter=4,
+                )
+            )
+
+        doc.build(story)
+        buf.seek(0)
+
+        filename = f"prehlad_{safe_date}.pdf"
+        response = HttpResponse(buf.read(), content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
