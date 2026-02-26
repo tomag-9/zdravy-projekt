@@ -559,7 +559,12 @@ const AdminDashboard: React.FC = () => {
                       row.olovrant.categories.forEach((c) =>
                         names.add(c.name),
                       );
-                      return CAT_ORDER.filter((c) => names.has(c));
+                      return [
+                        ...CAT_ORDER.filter((c) => names.has(c)),
+                        ...Array.from(names)
+                          .filter((n) => !CAT_ORDER.includes(n))
+                          .sort(),
+                      ];
                     })();
                     const vm =
                       row.visible_meals ?? [
@@ -576,7 +581,7 @@ const AdminDashboard: React.FC = () => {
                           <div className="font-semibold text-gray-900">
                             {row.name}
                           </div>
-                          {!row.name && (
+                          {row.name !== row.email && (
                             <div className="text-xs text-gray-400">
                               {row.email}
                             </div>

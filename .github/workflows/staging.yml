@@ -114,18 +114,25 @@ jobs:
           docker compose -f docker-compose.staging.yml up -d --remove-orphans
 
           echo "⏳ Waiting for backend to be healthy..."
+          BACKEND_HEALTHY=false
           for i in $(seq 1 24); do
             BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.ID}}" | head -1)
             if [ -n "$BACKEND_CONTAINER" ]; then
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$BACKEND_CONTAINER" 2>/dev/null)
               if [ "$STATUS" = "healthy" ]; then
                 echo "✅ Backend is healthy after $((i * 5))s"
+                BACKEND_HEALTHY=true
                 break
               fi
             fi
             echo "  ⏳ Still waiting... ($((i * 5))s)"
             sleep 5
           done
+          if [ "$BACKEND_HEALTHY" != "true" ]; then
+            echo "❌ Backend failed to become healthy after 120s"
+            docker compose -f docker-compose.staging.yml logs backend --tail=50
+            exit 1
+          fi
 
           echo "🔁 Restarting nginx to pick up new upstream containers..."
           docker compose -f docker-compose.staging.yml restart nginx

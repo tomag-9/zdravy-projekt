@@ -340,14 +340,12 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             lu = self._build_user_meal_row(data, "lunch")
             ol = self._build_user_meal_row(data, "olovrant")
             row_total = bf["total"] + lu["total"] + ol["total"]
-            try:
-                visible_meals = user.settings.visible_meals or [
-                    "breakfast",
-                    "lunch",
-                    "olovrant",
-                ]
-            except Exception:
-                visible_meals = ["breakfast", "lunch", "olovrant"]
+            _settings = getattr(user, "settings", None)
+            visible_meals = getattr(_settings, "visible_meals", None) or [
+                "breakfast",
+                "lunch",
+                "olovrant",
+            ]
             rows.append(
                 {
                     "user_id": user.id,
@@ -840,8 +838,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         def _build_meal_table(meal_data, meal_key):
             """Return a Table flowable for one meal's data, or None if empty."""
-            meal = meal_data.get(meal_key) or {}
-            if not meal:
+            meal = meal_data.get(meal_key)
+            if not isinstance(meal, dict) or not meal:
                 return None
             is_flat = "menuCounts" in meal
             if is_flat:
@@ -915,14 +913,12 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for order in orders:
             user = order.user
             data = order.data or {}
-            try:
-                visible_meals = user.settings.visible_meals or [
-                    "breakfast",
-                    "lunch",
-                    "olovrant",
-                ]
-            except Exception:
-                visible_meals = ["breakfast", "lunch", "olovrant"]
+            _settings = getattr(user, "settings", None)
+            visible_meals = getattr(_settings, "visible_meals", None) or [
+                "breakfast",
+                "lunch",
+                "olovrant",
+            ]
 
             display_name = f"{user.first_name} {user.last_name}".strip() or user.email
             story.append(Paragraph(display_name, user_style))
