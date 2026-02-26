@@ -13,6 +13,8 @@ import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminLayout from "./pages/admin/AdminLayout";
 import DietManager from "./pages/admin/DietManager";
 import ClientList from "./pages/admin/ClientList";
@@ -80,6 +82,8 @@ export default function App() {
         <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Admin Routes */}
             <Route path="/admin" element={<AdminRoute />}>

@@ -22,6 +22,7 @@ from rest_framework import status
 
 from api.models import PasswordResetToken
 from api.password_reset_service import (
+    BLOCK_DURATION,
     MAX_ATTEMPTS,
     RESEND_COOLDOWN,
     RateLimitExceeded,
@@ -40,6 +41,25 @@ MOCK_EMAIL_PATH = "api.password_reset_service.send_password_reset_email"
 def _clear_cache():
     """Clear all entries in the LocMem cache between tests."""
     cache.clear()
+
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+
+def test_block_duration_is_one_hour():
+    """BLOCK_DURATION must be exactly 3600 s (max 5 attempts per hour)."""
+    assert BLOCK_DURATION == 3600
+
+
+def test_resend_cooldown_is_one_minute():
+    """RESEND_COOLDOWN must be exactly 60 s."""
+    assert RESEND_COOLDOWN == 60
+
+
+def test_max_attempts_is_five():
+    assert MAX_ATTEMPTS == 5
 
 
 # ---------------------------------------------------------------------------

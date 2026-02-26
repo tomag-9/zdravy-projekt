@@ -1,6 +1,7 @@
 import datetime
 import io
 import logging
+import os
 
 from django.contrib.auth.models import User
 from django.http import FileResponse, HttpResponse
@@ -22,6 +23,65 @@ from .serializers_user import AdminUserSerializer, DietSerializer, UserProfileSe
 from .services import _is_order_empty, _last_non_empty_order
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# PDF Unicode font helpers
+# ---------------------------------------------------------------------------
+# reportlab's built-in fonts (Helvetica, Times…) are Type1 and limited to
+# Latin-1, which drops many Slovak characters (č, š, ľ, ň, ť, ŕ, ĺ, ď…).
+# We register DejaVu Sans (full Unicode/UTF-8 TrueType) and fall back to
+# Helvetica only if the font file cannot be found (e.g. a minimal test env).
+
+_PDF_FONT_REGULAR = "Helvetica"  # fallback
+_PDF_FONT_BOLD = "Helvetica-Bold"  # fallback
+_pdf_fonts_registered = False
+
+
+def _register_pdf_fonts():
+    """Register DejaVu Sans TTFont once per process for full Unicode support."""
+    global _PDF_FONT_REGULAR, _PDF_FONT_BOLD, _pdf_fonts_registered
+    if _pdf_fonts_registered:
+        return
+    try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+
+        # Walk candidate pairs until we find a matching set
+        regular = bold = None
+        candidates = [
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ),
+            ("/Library/Fonts/DejaVuSans.ttf", "/Library/Fonts/DejaVuSans-Bold.ttf"),
+        ]
+        for reg_path, bold_path in candidates:
+            if os.path.isfile(reg_path) and os.path.isfile(bold_path):
+                regular, bold = reg_path, bold_path
+                break
+        else:
+            # No matching TTFont found — stay with Helvetica fallback
+            _pdf_fonts_registered = True
+            return
+
+        pdfmetrics.registerFont(TTFont("DejaVuSans", regular))
+        pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", bold))
+        pdfmetrics.registerFontFamily(
+            "DejaVuSans",
+            normal="DejaVuSans",
+            bold="DejaVuSans-Bold",
+        )
+        _PDF_FONT_REGULAR = "DejaVuSans"
+        _PDF_FONT_BOLD = "DejaVuSans-Bold"
+        logger.debug("Registered DejaVuSans TTFont for PDF generation.")
+    except Exception:
+        logger.warning(
+            "Could not register DejaVuSans TTFont; falling back to Helvetica.",
+            exc_info=True,
+        )
+    finally:
+        _pdf_fonts_registered = True
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -794,6 +854,11 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             "olovrant": "Olovrant",
         }
 
+        # ── Register Unicode fonts ──────────────────────────────────────────
+        _register_pdf_fonts()
+        _font = _PDF_FONT_REGULAR
+        _font_bold = _PDF_FONT_BOLD
+
         # ── Styles ─────────────────────────────────────────────────────────────
         styles = getSampleStyleSheet()
         title_style = ParagraphStyle(
@@ -801,6 +866,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             parent=styles["Heading1"],
             fontSize=13,
             spaceAfter=4,
+            fontName=_font_bold,
             textColor=colors.HexColor("#1e3a5f"),
         )
         user_style = ParagraphStyle(
@@ -809,6 +875,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             fontSize=11,
             spaceBefore=10,
             spaceAfter=2,
+            fontName=_font_bold,
             textColor=colors.HexColor("#111827"),
         )
         meal_style = ParagraphStyle(
@@ -818,7 +885,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             spaceBefore=4,
             spaceAfter=2,
             textColor=colors.HexColor("#374151"),
-            fontName="Helvetica-Bold",
+            fontName=_font_bold,
         )
 
         MEAL_COLORS = {
@@ -877,7 +944,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                     [
                         ("BACKGROUND", (0, 0), (-1, 0), hdr_bg),
                         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("FONTNAME", (0, 0), (-1, -1), _font),
+                        ("FONTNAME", (0, 0), (-1, 0), _font_bold),
                         ("FONTSIZE", (0, 0), (-1, -1), 8),
                         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [bg, colors.white]),
                         ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d1d5db")),
@@ -938,11 +1006,12 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             if not any_meal:
                 story.append(
                     Paragraph(
-                        "<i>Žiadne objednávky</i>",
+                        "Žiadne objednávky",
                         ParagraphStyle(
                             "empty",
                             parent=styles["Normal"],
                             fontSize=8,
+                            fontName=_font,
                             textColor=colors.grey,
                         ),
                     )
@@ -1146,7 +1215,7 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         from .serializers import GlobalSettingsSerializer
 
         settings, _ = GlobalSettings.objects.get_or_create(pk=1)
-        serializer = GlobalSettingsSerializer(settings)
+        serializer = GlobalSettingsSerializer(settings, context={"request": request})
         return Response(serializer.data)
 
     def create(self, request):
@@ -1158,7 +1227,9 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         from .serializers import GlobalSettingsSerializer
 
         settings, _ = GlobalSettings.objects.get_or_create(pk=1)
-        serializer = GlobalSettingsSerializer(settings, data=request.data, partial=True)
+        serializer = GlobalSettingsSerializer(
+            settings, data=request.data, partial=True, context={"request": request}
+        )
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)

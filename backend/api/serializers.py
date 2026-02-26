@@ -37,8 +37,33 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
 
 class GlobalSettingsSerializer(serializers.ModelSerializer):
+    report_email_recipients = serializers.ListField(
+        child=serializers.EmailField(),
+        required=False,
+        allow_empty=True,
+    )
+
     class Meta:
         from .models import GlobalSettings
 
         model = GlobalSettings
-        fields = ["deadline_breakfast", "deadline_lunch", "deadline_olovrant"]
+        fields = [
+            "deadline_breakfast",
+            "deadline_lunch",
+            "deadline_olovrant",
+            "report_email_recipients",
+        ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        is_admin = bool(
+            user is not None
+            and (
+                getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
+            )
+        )
+        if not is_admin:
+            data.pop("report_email_recipients", None)
+        return data

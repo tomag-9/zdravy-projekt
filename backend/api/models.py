@@ -66,6 +66,11 @@ class GlobalSettings(models.Model):
     deadline_olovrant = models.TimeField(
         default=datetime.time(10, 0), help_text="Deadline for olovrant orders"
     )
+    report_email_recipients = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of email addresses that receive the daily order report.",
+    )
 
     class Meta:
         verbose_name = "System Settings"
