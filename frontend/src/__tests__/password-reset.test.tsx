@@ -47,7 +47,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows success state after 200 response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ detail: "ok" }),
@@ -67,7 +67,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows rate-limit message on 429 response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 429,
       json: async () => ({
@@ -88,7 +88,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows generic error on non-ok non-429 response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ detail: "Bad request" }),
@@ -106,7 +106,7 @@ describe("ForgotPasswordPage", () => {
   });
 
   it("shows network error when fetch throws", async () => {
-    global.fetch = vi.fn().mockRejectedValueOnce(new Error("network failure"));
+    (globalThis as any).fetch = vi.fn().mockRejectedValueOnce(new Error("network failure"));
 
     renderForgotPassword();
     fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
@@ -178,7 +178,7 @@ describe("ResetPasswordPage", () => {
   });
 
   it("shows success state after 200 response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
       ok: true,
       status: 200,
       json: async () => ({ detail: "Heslo bolo úspešne zmenené." }),
@@ -199,7 +199,7 @@ describe("ResetPasswordPage", () => {
   });
 
   it("shows backend error on failure response", async () => {
-    global.fetch = vi.fn().mockResolvedValueOnce({
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce({
       ok: false,
       status: 400,
       json: async () => ({ detail: "Token je neplatný alebo vypršal." }),

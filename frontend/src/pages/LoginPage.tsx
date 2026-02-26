@@ -85,17 +85,9 @@ const LoginPage: React.FC = () => {
           </div>
 
           <div>
-            <div className="flex justify-between items-center mb-2">
-              <label className="block text-sm font-medium text-slate-700">
-                Heslo
-              </label>
-              <Link
-                to="/forgot-password"
-                className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                Zabudli ste heslo?
-              </Link>
-            </div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Heslo
+            </label>
             <input
               type="password"
               placeholder="Zadajte heslo"
@@ -104,6 +96,14 @@ const LoginPage: React.FC = () => {
               required
               className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
             />
+            <div className="text-right mt-1">
+              <Link
+                to="/forgot-password"
+                className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
+              >
+                Zabudli ste heslo?
+              </Link>
+            </div>
           </div>
 
           {error && (
