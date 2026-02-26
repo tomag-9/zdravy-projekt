@@ -308,8 +308,9 @@ class AdminDailyReportTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response["Content-Type"], "application/pdf")
         self.assertIn("prehlad_", response["Content-Disposition"])
-        # PDF magic bytes
-        self.assertTrue(response.content.startswith(b"%PDF"))
+        # PDF magic bytes — consume streaming response
+        content = b"".join(response.streaming_content)
+        self.assertTrue(content.startswith(b"%PDF"))
 
     def test_daily_report_pdf_client_forbidden(self):
         self.client.force_authenticate(user=self.client_user)

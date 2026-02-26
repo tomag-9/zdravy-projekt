@@ -3,7 +3,7 @@ import io
 import logging
 
 from django.contrib.auth.models import User
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import permissions
 from rest_framework import serializers as drf_serializers
@@ -789,9 +789,9 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         CAT_ORDER = ["Jasle", "Škôlka", "ZŠ 1.stupeň", "ZŠ 2.stupeň", "Dospelý (SŠ)"]
         MEAL_LABELS = {
-            "breakfast": "☕ Raňajky",
-            "lunch": "🍽 Obed",
-            "olovrant": "🍎 Olovrant",
+            "breakfast": "Raňajky",
+            "lunch": "Obed",
+            "olovrant": "Olovrant",
         }
 
         # ── Styles ─────────────────────────────────────────────────────────────
@@ -960,7 +960,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         buf.seek(0)
 
         filename = f"prehlad_{safe_date}.pdf"
-        response = HttpResponse(buf.read(), content_type="application/pdf")
+        response = FileResponse(buf, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 

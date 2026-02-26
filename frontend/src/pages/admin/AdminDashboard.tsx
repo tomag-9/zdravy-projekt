@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/auth";
+import { useToast } from "../../context/ToastContext";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -117,6 +118,11 @@ const MealCell: React.FC<{
   userCategoryNames: string[];
   mealAllowed: boolean;
 }> = ({ meal, userCategoryNames, mealAllowed }) => {
+  const catByName = useMemo(
+    () => new Map(meal.categories.map((c) => [c.name, c])),
+    [meal.categories],
+  );
+
   if (!mealAllowed) return null;
 
   if (userCategoryNames.length === 0) {
@@ -126,7 +132,7 @@ const MealCell: React.FC<{
   return (
     <div className="flex flex-col gap-2">
       {userCategoryNames.map((catName) => {
-        const cat = meal.categories.find((c) => c.name === catName);
+        const cat = catByName.get(catName);
         const hasContent = cat && cat.total > 0;
         return (
           <div key={catName} className="flex flex-col gap-0.5">
@@ -272,11 +278,11 @@ const AdminDashboard: React.FC = () => {
         a.remove();
         URL.revokeObjectURL(url);
       } else {
-        alert("Chyba pri generovaní XLSX súboru.");
+        toastError("Chyba pri generovaní XLSX súboru.");
       }
     } catch (e) {
       console.error(e);
-      alert("Chyba pri generovaní XLSX súboru.");
+      toastError("Chyba pri generovaní XLSX súboru.");
     } finally {
       setXlsxLoading(false);
     }
@@ -299,15 +305,17 @@ const AdminDashboard: React.FC = () => {
         a.remove();
         URL.revokeObjectURL(url);
       } else {
-        alert("Chyba pri generovaní PDF súboru.");
+        toastError("Chyba pri generovaní PDF súboru.");
       }
     } catch (e) {
       console.error(e);
-      alert("Chyba pri generovaní PDF súboru.");
+      toastError("Chyba pri generovaní PDF súboru.");
     } finally {
       setPdfLoading(false);
     }
   };
+
+  const { error: toastError } = useToast();
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
