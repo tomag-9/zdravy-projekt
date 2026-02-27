@@ -3,7 +3,7 @@ Middleware for API security and caching control.
 """
 
 from django.conf import settings
-from django.http import HttpResponseRedirect, JsonResponse
+from django.http import HttpResponseRedirect
 from django.urls import resolve
 from django.urls.exceptions import Resolver404
 

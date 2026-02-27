@@ -91,14 +91,12 @@ class MiddlewareSecurityTests(TestCase):
             self.assertNotIn("redirect_url", data)
 
     @override_settings(DEBUG=False)
-    def test_frontend_admin_routes_not_blocked(self):
-        """Frontend admin routes like /admin/settings should not be blocked by middleware."""
-        # These are frontend (React) routes and should pass through the middleware
-        # They won't resolve as Django routes, so they'll be handled by Resolver404
+    def test_frontend_admin_routes_redirect_to_login(self):
+        """Frontend admin-like routes under /admin/ should redirect to frontend login in production."""
+        # These are frontend (React) routes and should be handled like other non-API routes
+        # They won't resolve as Django routes, so Resolver404/middleware will redirect to /login
         response = self.api_client.get("/admin/settings/", format="json", follow=False)
         # In production, this should redirect to login page, not serve Django admin
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/login", response.url)
-        self.assertNotIn("Django administration", str(response.content))
         self.assertIn("/login", response.url)
         self.assertNotIn("Django administration", str(response.content))

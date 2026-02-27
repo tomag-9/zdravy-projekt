@@ -50,12 +50,13 @@ def send_daily_report_task(
         import datetime
 
         from django.core import management
+        from django.utils import timezone
 
         # Determine target date
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
         else:
-            target_date = datetime.date.today() - datetime.timedelta(days=1)
+            target_date = timezone.localdate() - datetime.timedelta(days=1)
 
         # Build meal argument
         meals_arg = ",".join(meals) if meals else "breakfast,lunch,olovrant"

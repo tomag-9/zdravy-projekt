@@ -2,7 +2,7 @@
 Tests for api/signals.py
 
 Verifies that saving GlobalSettings creates/updates the Celery Beat
-PeriodicTasks for auto-orders and daily reports.
+PeriodicTask for auto-orders.
 """
 
 import datetime

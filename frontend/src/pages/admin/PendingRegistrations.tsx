@@ -311,11 +311,21 @@ const PendingRegistrations: React.FC = () => {
           <div
             className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approval-modal-title"
+            aria-describedby="approval-modal-description"
           >
-            <h2 className="text-xl font-bold text-slate-900 mb-4">
+            <h2
+              id="approval-modal-title"
+              className="text-xl font-bold text-slate-900 mb-4"
+            >
               Schváliť registráciu
             </h2>
-            <p className="text-slate-600 mb-6">
+            <p
+              id="approval-modal-description"
+              className="text-slate-600 mb-6"
+            >
               Naozaj chcete schváliť túto registráciu? Používateľ bude môcť
               prihlásiť sa do systému.
             </p>
