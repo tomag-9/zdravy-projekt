@@ -41,6 +41,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.NoCacheMiddleware",
+    "api.middleware.UnauthorizedAccessRedirectMiddleware",
 ]
 
 ROOT_URLCONF = "app.urls"

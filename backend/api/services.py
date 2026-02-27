@@ -91,7 +91,8 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
     Returns a summary dict: {"created": [...], "skipped": int}
     """
     if target_date is None:
-        today = timezone.localdate()  # CET/CEST via Django TIME_ZONE
+        # Use UTC date so all clients see the same calendar regardless of timezone
+        today = timezone.now().astimezone(datetime.timezone.utc).date()
         target_date = _next_workday(today)
 
     # Safety: never auto-order on weekends

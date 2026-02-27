@@ -1096,7 +1096,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request):
-        today = timezone.localdate()
+        # Use UTC date so all clients see the same calendar regardless of timezone
+        today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
 
         existing = {

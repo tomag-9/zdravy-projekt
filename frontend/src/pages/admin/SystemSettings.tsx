@@ -72,7 +72,7 @@ const SystemSettings: React.FC = () => {
         return input.checkValidity();
     };
 
-    const addRecipient = () => {
+    const addRecipient = async () => {
         const email = newRecipient.trim().toLowerCase();
         if (!email) return;
         if (!isValidEmail(email)) {
@@ -83,18 +83,61 @@ const SystemSettings: React.FC = () => {
             error('Táto adresa je už v zozname');
             return;
         }
-        setSettings((prev) => ({
-            ...prev,
-            report_email_recipients: [...prev.report_email_recipients, email],
-        }));
+        
+        const newSettings: GlobalSettings = {
+            ...settings,
+            report_email_recipients: [...settings.report_email_recipients, email],
+        };
+        setSettings(newSettings);
         setNewRecipient('');
+        
+        // Auto-save only the recipients field after adding
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ report_email_recipients: newSettings.report_email_recipients }),
+            });
+            if (res.ok) {
+                success('Príjemca bol úspešne pridaný');
+            } else {
+                error('Chyba pri pridávaní príjemcu');
+                // Revert on error by fetching fresh state
+                await fetchSettings();
+            }
+        } catch (e) {
+            console.error(e);
+            error('Chyba pripojenia');
+            await fetchSettings();
+        }
     };
 
-    const removeRecipient = (email: string) => {
-        setSettings((prev) => ({
-            ...prev,
-            report_email_recipients: prev.report_email_recipients.filter((r) => r !== email),
-        }));
+    const removeRecipient = async (email: string) => {
+        const newSettings: GlobalSettings = {
+            ...settings,
+            report_email_recipients: settings.report_email_recipients.filter((r) => r !== email),
+        };
+        setSettings(newSettings);
+        
+        // Auto-save only the recipients field after removing
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ report_email_recipients: newSettings.report_email_recipients }),
+            });
+            if (res.ok) {
+                success('Príjemca bol úspešne odstránený');
+            } else {
+                error('Chyba pri odstraňovaní príjemcu');
+                // Revert on error by fetching fresh state
+                await fetchSettings();
+            }
+        } catch (e) {
+            console.error(e);
+            error('Chyba pripojenia');
+            await fetchSettings();
+        }
     };
 
     return (
@@ -199,16 +242,6 @@ const SystemSettings: React.FC = () => {
                         ))}
                     </ul>
                 )}
-
-                <div className="pt-6 border-t border-gray-100 flex justify-end mt-6">
-                    <button
-                        type="button"
-                        onClick={() => saveSettings()}
-                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl transition-colors shadow-sm hover:shadow-md"
-                    >
-                        Uložiť príjemcov
-                    </button>
-                </div>
             </div>
         </div>
     );
