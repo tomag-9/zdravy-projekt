@@ -8,6 +8,9 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
+# Remove Django admin in production for security
+INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django.contrib.admin"]
+
 ALLOWED_HOSTS = [
     os.environ.get("PROD_HOST", "example.com"),
     os.environ.get("PROD_HOST_WWW", "www.example.com"),
