@@ -76,12 +76,14 @@ def check_registration_rate_limit(identifier: str) -> None:
         retry_after = max(1, int(block_until - now))
         raise RateLimitExceeded(retry_after_seconds=retry_after)
 
-    # Increment attempt counter
+    # Atomically increment attempt counter using cache.incr()
     attempts_key = _key_registration_attempts(identifier)
-    attempts: int = cache.get(attempts_key, 0)
-    new_attempts = attempts + 1
-
-    cache.set(attempts_key, new_attempts, timeout=REGISTRATION_BLOCK_DURATION)
+    try:
+        new_attempts = cache.incr(attempts_key)
+    except ValueError:
+        # Key doesn't exist yet, initialize it
+        cache.set(attempts_key, 1, timeout=REGISTRATION_BLOCK_DURATION)
+        new_attempts = 1
 
     # Block if exceeded max attempts
     if new_attempts >= REGISTRATION_MAX_ATTEMPTS:

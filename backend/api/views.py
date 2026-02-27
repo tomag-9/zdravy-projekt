@@ -5,6 +5,7 @@ import os
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.db import transaction
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from rest_framework import permissions
@@ -1367,7 +1368,7 @@ class RegistrationView(APIView):
         """Get client IP address from request."""
         x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
         if x_forwarded_for:
-            ip = x_forwarded_for.split(",")[0]
+            ip = x_forwarded_for.split(",")[0].strip()
         else:
             ip = request.META.get("REMOTE_ADDR")
         return ip
@@ -1592,15 +1593,16 @@ class PendingRegistrationsViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Approve registration
-        profile.registration_status = UserProfile.REGISTRATION_APPROVED
-        profile.approval_date = timezone.now()
-        profile.approved_by = request.user
-        profile.save()
+        # Approve registration with transaction protection
+        with transaction.atomic():
+            profile.registration_status = UserProfile.REGISTRATION_APPROVED
+            profile.approval_date = timezone.now()
+            profile.approved_by = request.user
+            profile.save()
 
-        # Activate user account
-        user.is_active = True
-        user.save()
+            # Activate user account
+            user.is_active = True
+            user.save()
 
         # Send approval email
         try:
@@ -1620,7 +1622,9 @@ class PendingRegistrationsViewSet(viewsets.ViewSet):
             send_mail(
                 subject=subject,
                 message=plain_message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"
+                ),
                 recipient_list=[user.email],
                 html_message=html_message,
                 fail_silently=False,
@@ -1673,12 +1677,13 @@ class PendingRegistrationsViewSet(viewsets.ViewSet):
         # Get denial reason from request
         denial_reason = request.data.get("reason", "")
 
-        # Deny registration
-        profile.registration_status = UserProfile.REGISTRATION_DENIED
-        profile.approval_date = timezone.now()
-        profile.approved_by = request.user
-        profile.denial_reason = denial_reason
-        profile.save()
+        # Deny registration with transaction protection
+        with transaction.atomic():
+            profile.registration_status = UserProfile.REGISTRATION_DENIED
+            profile.approval_date = timezone.now()
+            profile.approved_by = request.user
+            profile.denial_reason = denial_reason
+            profile.save()
 
         # Send denial email
         try:
@@ -1695,7 +1700,9 @@ class PendingRegistrationsViewSet(viewsets.ViewSet):
             send_mail(
                 subject=subject,
                 message=plain_message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
+                from_email=getattr(
+                    settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"
+                ),
                 recipient_list=[user.email],
                 html_message=html_message,
                 fail_silently=False,

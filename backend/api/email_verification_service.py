@@ -81,7 +81,7 @@ def send_verification_email(user, token):
         html_message = render_to_string("email/verify_email.html", context)
         plain_message = strip_tags(html_message)
 
-        from_email = settings.DEFAULT_FROM_EMAIL
+        from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
         recipient_list = [user.email]
 
         send_mail(
