@@ -43,7 +43,7 @@ const PendingRegistrations: React.FC = () => {
       );
 
       if (!response.ok) {
-        throw new Error("Nepodarilo sa načítať seznam čakajúcich registrácií");
+        throw new Error("Nepodarilo sa načítať zoznam čakajúcich registrácií");
       }
 
       const data = await response.json();

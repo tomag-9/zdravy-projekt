@@ -1357,16 +1357,45 @@ class RegistrationView(APIView):
 
     Register new user with company details. Creates user with pending status
     and sends email verification link.
+
+    Rate limited to prevent spam registrations.
     """
 
     permission_classes = [permissions.AllowAny]
+
+    def _get_client_ip(self, request):
+        """Get client IP address from request."""
+        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+        if x_forwarded_for:
+            ip = x_forwarded_for.split(",")[0]
+        else:
+            ip = request.META.get("REMOTE_ADDR")
+        return ip
 
     def post(self, request):
         from .email_verification_service import (
             generate_verification_token,
             send_verification_email,
         )
+        from .rate_limit import (
+            RateLimitExceeded,
+            check_registration_rate_limit,
+            record_verification_sent,
+        )
         from .serializers_user import RegistrationSerializer
+
+        # Check rate limit by IP address
+        client_ip = self._get_client_ip(request)
+        try:
+            check_registration_rate_limit(client_ip)
+        except RateLimitExceeded as e:
+            return Response(
+                {
+                    "detail": f"Príliš veľa pokusov o registráciu. Skúste znova o {e.retry_after_seconds} sekúnd."
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={"Retry-After": str(e.retry_after_seconds)},
+            )
 
         serializer = RegistrationSerializer(data=request.data)
         if not serializer.is_valid():
@@ -1379,6 +1408,7 @@ class RegistrationView(APIView):
         try:
             token = generate_verification_token(user)
             send_verification_email(user, token)
+            record_verification_sent(user.email)
         except Exception as e:
             logger.error(f"Failed to send verification email: {e}")
             # Don't fail registration if email fails
@@ -1440,12 +1470,19 @@ class ResendVerificationEmailView(APIView):
     Body: {"email": "<user_email>"}
 
     Resend verification email to user.
+    Rate limited to prevent email spam.
     """
 
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
         from .email_verification_service import resend_verification_email
+        from .rate_limit import (
+            RateLimitExceeded,
+            TooSoonError,
+            check_verification_resend_rate_limit,
+            record_verification_sent,
+        )
 
         email = request.data.get("email", "").strip().lower()
 
@@ -1453,6 +1490,18 @@ class ResendVerificationEmailView(APIView):
             return Response(
                 {"detail": "Email je povinný."},
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check rate limit for this email
+        try:
+            check_verification_resend_rate_limit(email)
+        except TooSoonError as e:
+            return Response(
+                {
+                    "detail": f"Počkajte {e.wait_seconds} sekúnd pred opätovným odoslaním."
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+                headers={"Retry-After": str(e.wait_seconds)},
             )
 
         try:
@@ -1465,13 +1514,15 @@ class ResendVerificationEmailView(APIView):
             )
 
         if hasattr(user, "profile") and user.profile.email_verified:
+            # Don't reveal that email is already verified (prevent enumeration)
             return Response(
-                {"detail": "Email je už overený."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"detail": "Ak je email registrovaný, bol odoslaný verifikačný link."},
+                status=status.HTTP_200_OK,
             )
 
         try:
             resend_verification_email(user)
+            record_verification_sent(email)
         except Exception as e:
             logger.error(f"Failed to resend verification email: {e}")
 
