@@ -51,6 +51,8 @@ class TestTimezonePlanning:
         today_utc = timezone.now().astimezone(datetime.timezone.utc).date()
         first_date = datetime.date.fromisoformat(data[0]["date"])
         assert first_date >= today_utc
+
+    def test_planned_orders_only_workdays(self, authenticated_client):
         """Planned orders should include only Mon-Fri (workdays)."""
         response = authenticated_client.get("/api/orders/planned/")
         data = response.json()
@@ -78,9 +80,6 @@ class TestTimezoneAutoOrders:
             date=yesterday,
             data={"breakfast": {"menuCounts": {"A": 1}}},
         )
-
-        # Get UTC date
-        today_utc = timezone.now().astimezone(datetime.timezone.utc).date()
 
         # Call auto-orders without explicit date
         result = apply_auto_orders()
