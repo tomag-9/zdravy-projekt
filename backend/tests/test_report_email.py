@@ -234,3 +234,22 @@ class TestSendDailyReportEmail:
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         mock_instance.send.assert_called_once_with(fail_silently=False)
+
+    @patch("api.email_utils.EmailMessage")
+    def test_breakfast_only_report_subject(self, MockEmailMessage):
+        from api.email_utils import send_daily_report_email
+
+        mock_instance = MagicMock()
+        MockEmailMessage.return_value = mock_instance
+
+        send_daily_report_email(
+            recipients=["report@example.com"],
+            report_date="2026-02-25",
+            attachment_bytes=b"fake-xlsx-content",
+            attachment_filename="prehlad_2026-02-25.xlsx",
+            meals=["breakfast"],
+        )
+
+        call_kwargs = MockEmailMessage.call_args.kwargs
+        assert "Raňajky" in call_kwargs["subject"]
+        assert "2026-02-25" in call_kwargs["subject"]

@@ -26,11 +26,27 @@ _MEAL_KEYS = ["breakfast", "lunch", "olovrant"]
 _MEAL_LABELS = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
 
 
-def build_xlsx_bytes(target_date: datetime.date) -> bytes:
-    """Generate an XLSX report for *target_date* and return raw bytes."""
+def build_xlsx_bytes(
+    target_date: datetime.date, meals: list[str] | None = None
+) -> bytes:
+    """Generate an XLSX report for *target_date* and optional meal filter.
+
+    Args:
+        target_date: The date to generate the report for
+        meals: List of meals to include (e.g., ["breakfast"] or ["breakfast", "lunch", "olovrant"])
+               If None, includes all meals.
+    """
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
+
+    if meals is None:
+        meals = _MEAL_KEYS
+    else:
+        # Ensure meals is a subset of valid meals
+        meals = [m for m in meals if m in _MEAL_KEYS]
+        if not meals:
+            meals = _MEAL_KEYS
 
     safe_date = target_date.isoformat()
 
@@ -53,9 +69,9 @@ def build_xlsx_bytes(target_date: datetime.date) -> bytes:
     ]
 
     vs = AdminSummaryViewSet
-    sorted_cats = vs._xlsx_collect_columns(rows_data, _MEAL_KEYS)
+    sorted_cats = vs._xlsx_collect_columns(rows_data, meals)
     col_meta, header_row_1, header_row_2, header_row_3 = vs._xlsx_build_column_meta(
-        sorted_cats, _MEAL_KEYS, _MEAL_LABELS
+        sorted_cats, meals, _MEAL_LABELS
     )
 
     wb = openpyxl.Workbook()
@@ -83,13 +99,13 @@ def build_xlsx_bytes(target_date: datetime.date) -> bytes:
         ws,
         col_meta,
         sorted_cats,
-        _MEAL_KEYS,
+        meals,
         header_fill_main,
         header_fill_meal,
         header_font,
         center,
     )
-    vs._xlsx_write_data(ws, rows_data, _MEAL_KEYS, sorted_cats, bold_font)
+    vs._xlsx_write_data(ws, rows_data, meals, sorted_cats, bold_font)
 
     ws.column_dimensions["A"].width = 28
     for c_idx in range(2, len(col_meta) + 1):
@@ -117,6 +133,12 @@ class Command(BaseCommand):
             type=str,
             default=None,
             help="Explicit target date in YYYY-MM-DD format.",
+        )
+        parser.add_argument(
+            "--meals",
+            type=str,
+            default="breakfast,lunch,olovrant",
+            help="Comma-separated list of meals to include (breakfast, lunch, olovrant). Default: all.",
         )
 
     def handle(self, *args, **options):
@@ -148,9 +170,13 @@ class Command(BaseCommand):
             )
             return
 
+        # ── Parse meals parameter ────────────────────────────────────────────
+        meals_str = options.get("meals", "breakfast,lunch,olovrant")
+        meals = [m.strip() for m in meals_str.split(",") if m.strip()]
+
         # ── Generate report ───────────────────────────────────────────────────
         try:
-            report_bytes = build_xlsx_bytes(target_date)
+            report_bytes = build_xlsx_bytes(target_date, meals=meals)
         except Exception:
             logger.exception("Failed to generate XLSX report for %s", target_date)
             self.stderr.write(
@@ -167,6 +193,7 @@ class Command(BaseCommand):
                 report_date=target_date.isoformat(),
                 attachment_bytes=report_bytes,
                 attachment_filename=filename,
+                meals=meals,
             )
         except Exception:
             self.stderr.write(self.style.ERROR("Failed to send daily report email."))

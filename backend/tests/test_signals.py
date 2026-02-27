@@ -2,7 +2,7 @@
 Tests for api/signals.py
 
 Verifies that saving GlobalSettings creates/updates the Celery Beat
-PeriodicTask with the correct crontab derived from the configured deadlines.
+PeriodicTasks for auto-orders and daily reports.
 """
 
 import datetime
@@ -11,14 +11,16 @@ import pytest
 from django_celery_beat.models import PeriodicTask
 
 from api.models import GlobalSettings
-from api.signals import PERIODIC_TASK_NAME
+from api.signals import PERIODIC_TASK_NAME_AUTO_ORDER
 
 
 @pytest.mark.django_db
 class TestAutoOrderScheduleSync:
     def test_creates_periodic_task_on_first_save(self):
         """Saving GlobalSettings for the first time creates the PeriodicTask."""
-        assert not PeriodicTask.objects.filter(name=PERIODIC_TASK_NAME).exists()
+        assert not PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_AUTO_ORDER
+        ).exists()
 
         GlobalSettings.objects.create(
             deadline_breakfast=datetime.time(8, 0),
@@ -26,7 +28,7 @@ class TestAutoOrderScheduleSync:
             deadline_olovrant=datetime.time(9, 0),
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME)
+        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
         assert task.task == "api.tasks.apply_auto_orders_task"
         assert task.enabled is True
         # Trigger time = max(08:00, 10:00, 09:00) = 10:00
@@ -46,7 +48,7 @@ class TestAutoOrderScheduleSync:
         settings.deadline_lunch = datetime.time(11, 30)
         settings.save()
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME)
+        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
         assert task.crontab.hour == "11"
         assert task.crontab.minute == "30"
 
@@ -58,7 +60,7 @@ class TestAutoOrderScheduleSync:
             deadline_olovrant=datetime.time(12, 45),
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME)
+        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
         assert task.crontab.hour == "12"
         assert task.crontab.minute == "45"
 
@@ -70,5 +72,5 @@ class TestAutoOrderScheduleSync:
             deadline_olovrant=datetime.time(10, 0),
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME)
+        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
         assert task.crontab.day_of_week == "1-5"
