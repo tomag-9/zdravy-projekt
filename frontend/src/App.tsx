@@ -13,6 +13,9 @@ import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
 import LoginPage from "./pages/LoginPage";
+import RegisterPage from "./pages/RegisterPage";
+import EmailVerificationPage from "./pages/EmailVerificationPage";
+import ResendVerificationPage from "./pages/ResendVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import AdminLayout from "./pages/admin/AdminLayout";
@@ -23,6 +26,7 @@ import AdminUserList from "./pages/admin/AdminUserList";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
+import PendingRegistrations from "./pages/admin/PendingRegistrations";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -75,13 +79,21 @@ const AdminRoute = () => {
 };
 
 export default function App() {
-  console.log("App initialized");
   return (
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route
+              path="/verify-email/:token"
+              element={<EmailVerificationPage />}
+            />
+            <Route
+              path="/resend-verification"
+              element={<ResendVerificationPage />}
+            />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
 
@@ -89,6 +101,7 @@ export default function App() {
             <Route path="/admin" element={<AdminRoute />}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="pending-registrations" element={<PendingRegistrations />} />
               <Route path="clients" element={<ClientList />} />
               <Route path="clients/:id" element={<ClientDetail />} />
               <Route path="roles" element={<AdminUserList />} />

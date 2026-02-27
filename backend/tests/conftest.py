@@ -4,7 +4,16 @@ Pytest configuration and fixtures.
 
 import pytest
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from rest_framework.test import APIClient
+
+
+@pytest.fixture(autouse=True)
+def clear_cache():
+    """Clear cache before each test to prevent rate limit issues."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 @pytest.fixture
@@ -28,6 +37,18 @@ def other_user(db):
         username="other@example.com",
         password="otherpassword",
         email="other@example.com",
+    )
+
+
+@pytest.fixture
+def admin_user(db):
+    """Create an admin user."""
+    return User.objects.create_user(
+        username="admin@example.com",
+        password="admin123",
+        email="admin@example.com",
+        is_staff=True,
+        is_superuser=True,
     )
 
 

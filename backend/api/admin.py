@@ -1,0 +1,198 @@
+"""
+Django admin configuration for API models.
+"""
+
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.models import User
+
+from .models import (
+    ClientSettings,
+    DailyOrder,
+    Diet,
+    EmailVerificationToken,
+    GlobalSettings,
+    PasswordResetToken,
+    UserProfile,
+)
+
+
+class UserProfileInline(admin.StackedInline):
+    """Inline admin for UserProfile."""
+
+    model = UserProfile
+    can_delete = False
+    fk_name = "user"
+    verbose_name_plural = "Company Profile"
+    fields = (
+        "company_name",
+        "ico",
+        "dic",
+        "registration_status",
+        "email_verified",
+        "registration_date",
+        "approval_date",
+        "approved_by",
+        "denial_reason",
+    )
+    readonly_fields = ("registration_date", "approval_date")
+
+
+class UserAdmin(BaseUserAdmin):
+    """Extended User admin with profile inline."""
+
+    inlines = (UserProfileInline,)
+    list_display = (
+        "username",
+        "email",
+        "get_company_name",
+        "is_active",
+        "is_staff",
+        "date_joined",
+    )
+    list_filter = ("is_staff", "is_active", "date_joined")
+    search_fields = ("username", "email", "profile__company_name")
+
+    def get_company_name(self, obj):
+        """Display company name from profile."""
+        if hasattr(obj, "profile"):
+            return obj.profile.company_name
+        return "-"
+
+    get_company_name.short_description = "Company Name"
+
+
+# Re-register User with our custom admin
+admin.site.unregister(User)
+admin.site.register(User, UserAdmin)
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    """Admin for UserProfile model."""
+
+    list_display = (
+        "company_name",
+        "user_email",
+        "registration_status",
+        "email_verified",
+        "registration_date",
+    )
+    list_filter = ("registration_status", "email_verified", "registration_date")
+    search_fields = ("company_name", "ico", "dic", "user__email")
+    readonly_fields = ("registration_date", "approval_date")
+
+    fieldsets = (
+        (
+            "Company Information",
+            {
+                "fields": ("user", "company_name", "ico", "dic"),
+            },
+        ),
+        (
+            "Registration Status",
+            {
+                "fields": (
+                    "registration_status",
+                    "email_verified",
+                    "registration_date",
+                    "approval_date",
+                    "approved_by",
+                    "denial_reason",
+                ),
+            },
+        ),
+    )
+
+    def user_email(self, obj):
+        """Display user email."""
+        return obj.user.email
+
+    user_email.short_description = "Email"
+
+
+@admin.register(EmailVerificationToken)
+class EmailVerificationTokenAdmin(admin.ModelAdmin):
+    """Admin for EmailVerificationToken model."""
+
+    list_display = ("user", "token_preview", "created_at", "expires_at", "used")
+    list_filter = ("used", "created_at")
+    search_fields = ("user__email", "token")
+    readonly_fields = ("created_at",)
+
+    def token_preview(self, obj):
+        """Display token preview."""
+        return f"{obj.token[:20]}..."
+
+    token_preview.short_description = "Token"
+
+
+@admin.register(PasswordResetToken)
+class PasswordResetTokenAdmin(admin.ModelAdmin):
+    """Admin for PasswordResetToken model."""
+
+    list_display = ("user", "token_preview", "created_at", "expires_at", "used")
+    list_filter = ("used", "created_at")
+    search_fields = ("user__email", "token")
+    readonly_fields = ("created_at",)
+
+    def token_preview(self, obj):
+        """Display token preview."""
+        return f"{obj.token[:20]}..."
+
+    token_preview.short_description = "Token"
+
+
+@admin.register(DailyOrder)
+class DailyOrderAdmin(admin.ModelAdmin):
+    """Admin for DailyOrder model."""
+
+    list_display = ("user", "date", "status", "is_auto", "created_at")
+    list_filter = ("status", "is_auto", "date", "created_at")
+    search_fields = ("user__email", "user__profile__company_name")
+    date_hierarchy = "date"
+
+
+@admin.register(Diet)
+class DietAdmin(admin.ModelAdmin):
+    """Admin for Diet model."""
+
+    list_display = ("name", "is_active", "description")
+    list_filter = ("is_active",)
+    search_fields = ("name", "description")
+
+
+@admin.register(ClientSettings)
+class ClientSettingsAdmin(admin.ModelAdmin):
+    """Admin for ClientSettings model."""
+
+    list_display = ("user", "get_visible_menus", "get_visible_meals")
+    search_fields = ("user__email", "user__profile__company_name")
+    filter_horizontal = ("visible_diets",)
+
+    def get_visible_menus(self, obj):
+        """Display visible menus."""
+        return ", ".join(obj.visible_menus) if obj.visible_menus else "-"
+
+    get_visible_menus.short_description = "Visible Menus"
+
+    def get_visible_meals(self, obj):
+        """Display visible meals."""
+        return ", ".join(obj.visible_meals) if obj.visible_meals else "-"
+
+    get_visible_meals.short_description = "Visible Meals"
+
+
+@admin.register(GlobalSettings)
+class GlobalSettingsAdmin(admin.ModelAdmin):
+    """Admin for GlobalSettings model."""
+
+    list_display = ("deadline_breakfast", "deadline_lunch", "deadline_olovrant")
+
+    def has_add_permission(self, request):
+        """Only allow one GlobalSettings instance."""
+        return not GlobalSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        """Prevent deletion of GlobalSettings."""
+        return False

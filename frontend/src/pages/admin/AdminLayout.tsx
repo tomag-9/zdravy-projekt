@@ -73,6 +73,17 @@ const AdminLayout: React.FC = () => {
                         Prehľad
                     </Link>
                     <Link
+                        to="/admin/pending-registrations"
+                        className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                            isActive('/admin/pending-registrations')
+                                ? 'bg-yellow-50 text-yellow-700 font-medium translate-x-1'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                    >
+                        <span className="mr-3">⏳</span>
+                        Čakajúce registrácie
+                    </Link>
+                    <Link
                         to="/admin/clients"
                         className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
                             isActive('/admin/clients')

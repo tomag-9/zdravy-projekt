@@ -5,12 +5,23 @@ import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
+interface UserProfileData {
+    company_name: string;
+    ico?: string;
+    dic?: string;
+    registration_status: string;
+    email_verified: boolean;
+    registration_date: string;
+}
+
 interface UserProfile {
     email: string;
     first_name: string;
     last_name: string;
+    company_name: string;
     date_joined: string;
     groups: string[];
+    profile?: UserProfileData;
 }
 
 const ProfilePage = () => {
@@ -132,7 +143,10 @@ const ProfilePage = () => {
                             <User className="w-10 h-10 text-white" />
                         </div>
                         <div>
-                            <h2 className="text-2xl font-bold text-slate-900">{profile?.email}</h2>
+                            <h2 className="text-2xl font-bold text-slate-900">
+                                {profile?.company_name || profile?.email}
+                            </h2>
+                            <p className="text-sm text-slate-600 mt-1">{profile?.email}</p>
                             <div className="flex items-center gap-2 mt-1">
                                 <Shield className="w-4 h-4 text-indigo-600" />
                                 <span className="text-sm text-slate-600">
@@ -144,33 +158,29 @@ const ProfilePage = () => {
 
                     {/* Edit Form */}
                     <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Krstné meno
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.first_name}
-                                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                    placeholder="Vaše krstné meno"
-                                />
+                        {profile?.profile && (
+                            <div className="bg-indigo-50 rounded-lg p-4 mb-6">
+                                <h3 className="font-semibold text-slate-900 mb-3">Informácie o spoločnosti</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                        <span className="font-medium text-slate-700">Názov:</span>{" "}
+                                        <span className="text-slate-600">{profile.profile.company_name}</span>
+                                    </div>
+                                    {profile.profile.ico && (
+                                        <div>
+                                            <span className="font-medium text-slate-700">IČO:</span>{" "}
+                                            <span className="text-slate-600">{profile.profile.ico}</span>
+                                        </div>
+                                    )}
+                                    {profile.profile.dic && (
+                                        <div>
+                                            <span className="font-medium text-slate-700">DIČ:</span>{" "}
+                                            <span className="text-slate-600">{profile.profile.dic}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">
-                                    Priezvisko
-                                </label>
-                                <input
-                                    type="text"
-                                    value={formData.last_name}
-                                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                                    className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                    placeholder="Vaše priezvisko"
-                                />
-                            </div>
-                        </div>
+                        )}
 
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
@@ -184,6 +194,37 @@ const ProfilePage = () => {
                                 className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
                                 placeholder="vas@email.sk"
                             />
+                        </div>
+
+                        <div className="border-t border-slate-200 pt-6">
+                            <h3 className="font-semibold text-slate-900 mb-4">Kontaktná osoba (nepovinné)</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                                        Krstné meno
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.first_name}
+                                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                                        placeholder="Vaše krstné meno"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                                        Priezvisko
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.last_name}
+                                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
+                                        placeholder="Vaše priezvisko"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="bg-slate-50 rounded-lg p-4 flex items-center gap-3">
