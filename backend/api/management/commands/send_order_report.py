@@ -35,6 +35,9 @@ def build_xlsx_bytes(
         target_date: The date to generate the report for
         meals: List of meals to include (e.g., ["breakfast"] or ["breakfast", "lunch", "olovrant"])
                If None, includes all meals.
+
+    Raises:
+        ValueError: If meals list is provided but contains no valid meal keys.
     """
     import openpyxl
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -43,10 +46,20 @@ def build_xlsx_bytes(
     if meals is None:
         meals = _MEAL_KEYS
     else:
+        # Warn about any unknown meal keys
+        invalid_meals = sorted({m for m in meals if m not in _MEAL_KEYS})
+        if invalid_meals:
+            logger.warning(
+                "Unknown meal keys in order report: %s (valid: %s)",
+                ", ".join(invalid_meals),
+                ", ".join(_MEAL_KEYS),
+            )
         # Ensure meals is a subset of valid meals
         meals = [m for m in meals if m in _MEAL_KEYS]
         if not meals:
-            meals = _MEAL_KEYS
+            raise ValueError(
+                f"No valid meals in request. Valid keys: {', '.join(_MEAL_KEYS)}"
+            )
 
     safe_date = target_date.isoformat()
 
@@ -170,9 +183,27 @@ class Command(BaseCommand):
             )
             return
 
-        # ── Parse meals parameter ────────────────────────────────────────────
+        # ── Parse and validate meals parameter ───────────────────────────────
         meals_str = options.get("meals", "breakfast,lunch,olovrant")
-        meals = [m.strip() for m in meals_str.split(",") if m.strip()]
+        requested_meals = [m.strip() for m in meals_str.split(",") if m.strip()]
+
+        # Validate and normalize meals
+        invalid_meals = sorted({m for m in requested_meals if m not in _MEAL_KEYS})
+        if invalid_meals:
+            logger.warning(
+                "Unknown meal keys: %s (valid: %s)",
+                ", ".join(invalid_meals),
+                ", ".join(_MEAL_KEYS),
+            )
+
+        meals = [m for m in requested_meals if m in _MEAL_KEYS]
+        if not meals:
+            self.stderr.write(
+                self.style.ERROR(
+                    f"No valid meals specified. Valid keys: {', '.join(_MEAL_KEYS)}"
+                )
+            )
+            return
 
         # ── Generate report ───────────────────────────────────────────────────
         try:

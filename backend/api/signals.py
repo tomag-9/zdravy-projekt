@@ -28,6 +28,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
     before we fill in the gaps automatically.
     """
     try:
+        from django.conf import settings
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
@@ -47,7 +48,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         day_of_week="1-5",  # Mon–Fri
         day_of_month="*",
         month_of_year="*",
-        timezone="Europe/Bratislava",
+        timezone=settings.TIME_ZONE,
     )
 
     PeriodicTask.objects.update_or_create(
@@ -79,6 +80,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
     2. Full report (all meals) at olovrant deadline (Monday–Friday)
     """
     try:
+        from django.conf import settings
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
@@ -94,7 +96,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         day_of_week="1-5",  # Mon–Fri
         day_of_month="*",
         month_of_year="*",
-        timezone="Europe/Bratislava",
+        timezone=settings.TIME_ZONE,
     )
 
     PeriodicTask.objects.update_or_create(
@@ -123,7 +125,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         day_of_week="1-5",  # Mon–Fri
         day_of_month="*",
         month_of_year="*",
-        timezone="Europe/Bratislava",
+        timezone=settings.TIME_ZONE,
     )
 
     PeriodicTask.objects.update_or_create(

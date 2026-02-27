@@ -46,9 +46,9 @@ class InvalidRouteRedirectTests(TestCase):
         response = self.api_client.get(
             "/admin/login/?next=/admin/diets", format="json", follow=False
         )
-        # Should either be a redirect (302) or pass through to become a 404
-        # The middleware will redirect it via Resolver404 handling
-        self.assertNotIn("Django", str(response.content))
+        # Should redirect to login page
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login", response.url)
 
     @override_settings(DEBUG=False)
     def test_api_routes_still_work(self):
@@ -96,7 +96,9 @@ class MiddlewareSecurityTests(TestCase):
         # These are frontend (React) routes and should pass through the middleware
         # They won't resolve as Django routes, so they'll be handled by Resolver404
         response = self.api_client.get("/admin/settings/", format="json", follow=False)
-        # Should get a redirect via Resolver404, not be blocked by the admin check
-        # The response should indicate this came from the 404 handler, not the admin blocker
-        # In production, this should redirect to login page
-        self.assertIsNotNone(response)  # Should get a response, not crash
+        # In production, this should redirect to login page, not serve Django admin
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login", response.url)
+        self.assertNotIn("Django administration", str(response.content))
+        self.assertIn("/login", response.url)
+        self.assertNotIn("Django administration", str(response.content))
