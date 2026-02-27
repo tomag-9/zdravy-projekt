@@ -83,59 +83,60 @@ const SystemSettings: React.FC = () => {
             error('Táto adresa je už v zozname');
             return;
         }
-        const updatedSettings = {
+        
+        const newSettings: GlobalSettings = {
             ...settings,
             report_email_recipients: [...settings.report_email_recipients, email],
         };
-        setSettings(updatedSettings);
+        setSettings(newSettings);
         setNewRecipient('');
         
-        // Auto-save after adding recipient
+        // Auto-save only the recipients field after adding
         try {
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedSettings),
+                body: JSON.stringify({ report_email_recipients: newSettings.report_email_recipients }),
             });
             if (res.ok) {
                 success('Príjemca bol úspešne pridaný');
             } else {
                 error('Chyba pri pridávaní príjemcu');
-                // Revert on error
-                setSettings(settings);
+                // Revert on error by fetching fresh state
+                await fetchSettings();
             }
         } catch (e) {
             console.error(e);
             error('Chyba pripojenia');
-            setSettings(settings);
+            await fetchSettings();
         }
     };
 
     const removeRecipient = async (email: string) => {
-        const updatedSettings = {
+        const newSettings: GlobalSettings = {
             ...settings,
             report_email_recipients: settings.report_email_recipients.filter((r) => r !== email),
         };
-        setSettings(updatedSettings);
+        setSettings(newSettings);
         
-        // Auto-save after removing recipient
+        // Auto-save only the recipients field after removing
         try {
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(updatedSettings),
+                body: JSON.stringify({ report_email_recipients: newSettings.report_email_recipients }),
             });
             if (res.ok) {
                 success('Príjemca bol úspešne odstránený');
             } else {
                 error('Chyba pri odstraňovaní príjemcu');
-                // Revert on error
-                setSettings(settings);
+                // Revert on error by fetching fresh state
+                await fetchSettings();
             }
         } catch (e) {
             console.error(e);
             error('Chyba pripojenia');
-            setSettings(settings);
+            await fetchSettings();
         }
     };
 

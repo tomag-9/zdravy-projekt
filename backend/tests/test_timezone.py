@@ -24,14 +24,19 @@ class TestTimezonePlanning:
         data = response.json()
         assert len(data) == 5  # Should return 5 workdays
 
-        # Verify all dates are valid and in the future
+        # Verify all dates are valid and in the future, and in ascending order
         today_utc = timezone.now().astimezone(datetime.timezone.utc).date()
+        prev_date = None
         for day_info in data:
             day_date = datetime.date.fromisoformat(day_info["date"])
             # Each day should be >= today (in UTC)
             assert day_date >= today_utc
-            # Dates should be in ascending order
-            assert day_info["date"]
+            # Dates should be in ascending (non-decreasing) order
+            if prev_date is not None:
+                assert (
+                    day_date >= prev_date
+                ), f"Dates not in order: {prev_date} > {day_date}"
+            prev_date = day_date
 
     def test_planned_orders_consistent_across_timezones(self, authenticated_client):
         """
@@ -39,15 +44,13 @@ class TestTimezonePlanning:
         This is verified by ensuring the dates are based on UTC, not server time.
         """
         # Simulate client requests at different times
-        response1 = authenticated_client.get("/api/orders/planned/")
-        data1 = response1.json()
+        response = authenticated_client.get("/api/orders/planned/")
+        data = response.json()
 
         # Dates should be consistent and based on UTC
         today_utc = timezone.now().astimezone(datetime.timezone.utc).date()
-        first_date = datetime.date.fromisoformat(data1[0]["date"])
+        first_date = datetime.date.fromisoformat(data[0]["date"])
         assert first_date >= today_utc
-
-    def test_planned_orders_include_only_workdays(self, authenticated_client):
         """Planned orders should include only Mon-Fri (workdays)."""
         response = authenticated_client.get("/api/orders/planned/")
         data = response.json()

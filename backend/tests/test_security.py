@@ -12,14 +12,17 @@ class AdminSecurityTests(TestCase):
     """Test Django admin security."""
 
     def setUp(self):
-        self.client = Client()
+        self.api_client = APIClient()
 
     @override_settings(DEBUG=False)
     def test_admin_not_accessible_in_production(self):
-        """Django admin should not be accessible in production."""
-        response = self.client.get("/admin/", follow=False)
-        # Should get 404 or redirect, not the login page
-        self.assertNotIn("Django administration", response.content.decode())
+        """Django admin should not be accessible in production via API test."""
+        response = self.api_client.get("/admin/", format="json")
+        # Should get 404 with our custom error response, not Django admin login
+        self.assertEqual(response.status_code, 404)
+        data = response.json()
+        self.assertIn("redirect_url", data)
+        self.assertNotIn("Django administration", str(data))
 
     def test_admin_app_installed_in_development(self):
         """Django admin should be installed in development (tests use dev settings)."""

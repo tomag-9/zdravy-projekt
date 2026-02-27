@@ -49,9 +49,17 @@ class UnauthorizedAccessRedirectMiddleware:
         if request.path.startswith("/api/"):
             return self.get_response(request)
 
-        # Allow health check
-        if request.path == "/health/":
-            return self.get_response(request)
+        # Block /admin/ routes in production
+        if not settings.DEBUG and request.path.startswith("/admin/"):
+            frontend_url = self.get_frontend_url()
+            return JsonResponse(
+                {
+                    "error": "Not Found",
+                    "detail": f"Redirect to {frontend_url}/login",
+                    "redirect_url": f"{frontend_url}/login",
+                },
+                status=404,
+            )
 
         # In production, redirect non-API, non-static requests to frontend login
         if not settings.DEBUG:
