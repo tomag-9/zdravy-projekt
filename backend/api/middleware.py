@@ -64,9 +64,11 @@ class UnauthorizedAccessRedirectMiddleware:
         # In production, redirect non-API, non-static requests to frontend login
         if not settings.DEBUG:
             # Allow static files through
-            if request.path.startswith("/static/") or request.path.startswith("/media/"):
+            if request.path.startswith("/static/") or request.path.startswith(
+                "/media/"
+            ):
                 return self.get_response(request)
-            
+
             # Try to resolve the URL; if it fails, redirect to frontend
             try:
                 resolve(request.path)
