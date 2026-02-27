@@ -3,7 +3,7 @@ Middleware for API security and caching control.
 """
 
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import HttpResponseRedirect
 from django.urls import resolve
 from django.urls.exceptions import Resolver404
 
@@ -49,17 +49,12 @@ class UnauthorizedAccessRedirectMiddleware:
         if request.path.startswith("/api/"):
             return self.get_response(request)
 
-        # Block /admin/ routes in production
-        if not settings.DEBUG and request.path.startswith("/admin/"):
+        # Block only the Django admin root in production (/admin/ and /admin)
+        # Do NOT block frontend admin routes like /admin/settings, /admin/clients, etc.
+        if not settings.DEBUG and request.path in ("/admin/", "/admin"):
             frontend_url = self.get_frontend_url()
-            return JsonResponse(
-                {
-                    "error": "Not Found",
-                    "detail": f"Redirect to {frontend_url}/login",
-                    "redirect_url": f"{frontend_url}/login",
-                },
-                status=404,
-            )
+            # Use proper HTTP redirect instead of JSON error
+            return HttpResponseRedirect(f"{frontend_url}/login")
 
         # In production, redirect non-API, non-static requests to frontend login
         if not settings.DEBUG:
@@ -69,19 +64,12 @@ class UnauthorizedAccessRedirectMiddleware:
             ):
                 return self.get_response(request)
 
-            # Try to resolve the URL; if it fails, redirect to frontend
+            # Try to resolve the URL; if it fails, redirect to frontend login
             try:
                 resolve(request.path)
             except Resolver404:
                 # If path doesn't exist, redirect to frontend login
                 frontend_url = self.get_frontend_url()
-                return JsonResponse(
-                    {
-                        "error": "Not Found",
-                        "detail": f"Redirect to {frontend_url}/login",
-                        "redirect_url": f"{frontend_url}/login",
-                    },
-                    status=404,
-                )
+                return HttpResponseRedirect(f"{frontend_url}/login")
 
         return self.get_response(request)

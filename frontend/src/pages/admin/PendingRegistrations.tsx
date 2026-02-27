@@ -30,6 +30,7 @@ const PendingRegistrations: React.FC = () => {
   const [actionLoading, setActionLoading] = useState<number | null>(null);
   const [denialReason, setDenialReason] = useState("");
   const [showDenialModal, setShowDenialModal] = useState<number | null>(null);
+  const [showApprovalModal, setShowApprovalModal] = useState<number | null>(null);
 
   const fetchPendingUsers = useCallback(async () => {
     try {
@@ -60,14 +61,6 @@ const PendingRegistrations: React.FC = () => {
   }, [fetchPendingUsers]);
 
   const handleApprove = async (userId: number) => {
-    if (
-      !confirm(
-        "Naozaj chcete schváliť túto registráciu? Používateľ bude môcť prihlásiť sa do systému."
-      )
-    ) {
-      return;
-    }
-
     setActionLoading(userId);
     setError("");
 
@@ -90,6 +83,7 @@ const PendingRegistrations: React.FC = () => {
 
       // Refresh list
       await fetchPendingUsers();
+      setShowApprovalModal(null);
       alert("Registrácia bola úspešne schválená!");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chyba pri schvaľovaní");
@@ -232,7 +226,7 @@ const PendingRegistrations: React.FC = () => {
 
                 <div className="flex flex-col sm:flex-row lg:flex-col gap-2 lg:min-w-[160px]">
                   <button
-                    onClick={() => handleApprove(user.id)}
+                    onClick={() => setShowApprovalModal(user.id)}
                     disabled={
                       !user.profile.email_verified || actionLoading === user.id
                     }
@@ -302,6 +296,54 @@ const PendingRegistrations: React.FC = () => {
                 {actionLoading === showDenialModal
                   ? "Spracováva sa..."
                   : "Zamietnuť"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {showApprovalModal !== null && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
+          onClick={() => setShowApprovalModal(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approval-modal-title"
+            aria-describedby="approval-modal-description"
+          >
+            <h2
+              id="approval-modal-title"
+              className="text-xl font-bold text-slate-900 mb-4"
+            >
+              Schváliť registráciu
+            </h2>
+            <p
+              id="approval-modal-description"
+              className="text-slate-600 mb-6"
+            >
+              Naozaj chcete schváliť túto registráciu? Používateľ bude môcť
+              prihlásiť sa do systému.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowApprovalModal(null)}
+                className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Zrušiť
+              </button>
+              <button
+                onClick={() => handleApprove(showApprovalModal)}
+                disabled={actionLoading === showApprovalModal}
+                className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-slate-400 text-white rounded-lg font-medium transition-colors"
+              >
+                {actionLoading === showApprovalModal
+                  ? "Spracováva sa..."
+                  : "Schváliť"}
               </button>
             </div>
           </div>

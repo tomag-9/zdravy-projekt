@@ -56,10 +56,27 @@ def send_daily_report_email(
     report_date: str,
     attachment_bytes: bytes,
     attachment_filename: str,
+    meals: list[str] | None = None,
 ) -> None:
-    """Send the daily order report as an XLSX attachment to *recipients*."""
+    """Send the daily order report as an XLSX attachment to *recipients*.
+
+    Args:
+        recipients: List of email addresses to send to
+        report_date: Date string in YYYY-MM-DD format
+        attachment_bytes: XLSX file bytes
+        attachment_filename: Name of the attachment file
+        meals: List of meals included in report (breakfast, lunch, olovrant)
+    """
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
-    subject = f"Denný prehľad objednávok — {report_date}"
+
+    # Build subject and body based on included meals
+    if meals:
+        meal_labels = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
+        meals_text = ", ".join(meal_labels.get(m, m) for m in meals)
+        subject = f"Denný prehľad ({meals_text}) — {report_date}"
+    else:
+        subject = f"Denný prehľad objednávok — {report_date}"
+
     body = (
         f"Dobrý deň,\n\n"
         f"V prílohe nájdete denný prehľad objednávok za {report_date}.\n\n"
