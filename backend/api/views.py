@@ -3,6 +3,7 @@ import io
 import logging
 import os
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
@@ -1346,5 +1347,318 @@ class PasswordResetConfirmView(APIView):
 
         return Response(
             {"detail": "Heslo bolo úspešne zmenené. Môžete sa prihlásiť."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class RegistrationView(APIView):
+    """
+    POST /api/auth/register/
+
+    Register new user with company details. Creates user with pending status
+    and sends email verification link.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from .email_verification_service import (
+            generate_verification_token,
+            send_verification_email,
+        )
+        from .serializers_user import RegistrationSerializer
+
+        serializer = RegistrationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Create user and profile
+        user = serializer.save()
+
+        # Generate and send verification email
+        try:
+            token = generate_verification_token(user)
+            send_verification_email(user, token)
+        except Exception as e:
+            logger.error(f"Failed to send verification email: {e}")
+            # Don't fail registration if email fails
+            pass
+
+        return Response(
+            {
+                "detail": (
+                    "Registrácia bola úspešná! "
+                    "Na váš email sme odoslali odkaz na overenie."
+                ),
+                "email": user.email,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class EmailVerificationView(APIView):
+    """
+    POST /api/auth/verify-email/
+    Body: {"token": "<verification_token>"}
+
+    Verify user's email address using verification token.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from .email_verification_service import verify_email_token
+
+        token = request.data.get("token", "").strip()
+
+        if not token:
+            return Response(
+                {"detail": "Token je povinný."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        success, message, user = verify_email_token(token)
+
+        if not success:
+            return Response(
+                {"detail": message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "detail": message,
+                "email": user.email if user else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResendVerificationEmailView(APIView):
+    """
+    POST /api/auth/resend-verification/
+    Body: {"email": "<user_email>"}
+
+    Resend verification email to user.
+    """
+
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        from .email_verification_service import resend_verification_email
+
+        email = request.data.get("email", "").strip().lower()
+
+        if not email:
+            return Response(
+                {"detail": "Email je povinný."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(username__iexact=email)
+        except User.DoesNotExist:
+            # Don't reveal if email exists
+            return Response(
+                {"detail": "Ak je email registrovaný, bol odoslaný verifikačný link."},
+                status=status.HTTP_200_OK,
+            )
+
+        if hasattr(user, "profile") and user.profile.email_verified:
+            return Response(
+                {"detail": "Email je už overený."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            resend_verification_email(user)
+        except Exception as e:
+            logger.error(f"Failed to resend verification email: {e}")
+
+        return Response(
+            {"detail": "Ak je email registrovaný, bol odoslaný verifikačný link."},
+            status=status.HTTP_200_OK,
+        )
+
+
+class PendingRegistrationsViewSet(viewsets.ViewSet):
+    """
+    ViewSet for managing pending user registrations (admin only).
+
+    GET /api/admin/pending-registrations/ - List pending registrations
+    POST /api/admin/pending-registrations/{id}/approve/ - Approve registration
+    POST /api/admin/pending-registrations/{id}/deny/ - Deny registration
+    """
+
+    permission_classes = [permissions.IsAdminUser]
+
+    def list(self, request):
+        """List all pending registrations."""
+        from .models import UserProfile
+        from .serializers_user import PendingRegistrationSerializer
+
+        pending_users = User.objects.filter(
+            profile__registration_status=UserProfile.REGISTRATION_PENDING
+        ).select_related("profile")
+
+        serializer = PendingRegistrationSerializer(pending_users, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        """Approve a pending registration."""
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
+        from django.utils.html import strip_tags
+
+        from .models import UserProfile
+
+        try:
+            user = User.objects.select_related("profile").get(pk=pk)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Používateľ nebol nájdený."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not hasattr(user, "profile"):
+            return Response(
+                {"detail": "Používateľ nemá profil."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = user.profile
+
+        if profile.registration_status != UserProfile.REGISTRATION_PENDING:
+            return Response(
+                {"detail": "Registrácia nie je v stave čakajúca."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not profile.email_verified:
+            return Response(
+                {"detail": "Email používateľa ešte nebol overený."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Approve registration
+        profile.registration_status = UserProfile.REGISTRATION_APPROVED
+        profile.approval_date = timezone.now()
+        profile.approved_by = request.user
+        profile.save()
+
+        # Activate user account
+        user.is_active = True
+        user.save()
+
+        # Send approval email
+        try:
+            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+            login_url = f"{frontend_url}/login"
+
+            context = {
+                "user": user,
+                "company_name": profile.company_name,
+                "login_url": login_url,
+            }
+
+            subject = "Účet schválený - Zdravý projekt"
+            html_message = render_to_string("email/registration_approved.html", context)
+            plain_message = strip_tags(html_message)
+
+            send_mail(
+                subject=subject,
+                message=plain_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+
+            logger.info(f"Approval email sent to {user.email}")
+        except Exception as e:
+            logger.error(f"Failed to send approval email to {user.email}: {e}")
+
+        return Response(
+            {
+                "detail": "Registrácia bola úspešne schválená.",
+                "user_id": user.id,
+                "email": user.email,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(detail=True, methods=["post"])
+    def deny(self, request, pk=None):
+        """Deny a pending registration."""
+        from django.core.mail import send_mail
+        from django.template.loader import render_to_string
+        from django.utils.html import strip_tags
+
+        from .models import UserProfile
+
+        try:
+            user = User.objects.select_related("profile").get(pk=pk)
+        except User.DoesNotExist:
+            return Response(
+                {"detail": "Používateľ nebol nájdený."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not hasattr(user, "profile"):
+            return Response(
+                {"detail": "Používateľ nemá profil."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        profile = user.profile
+
+        if profile.registration_status != UserProfile.REGISTRATION_PENDING:
+            return Response(
+                {"detail": "Registrácia nie je v stave čakajúca."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Get denial reason from request
+        denial_reason = request.data.get("reason", "")
+
+        # Deny registration
+        profile.registration_status = UserProfile.REGISTRATION_DENIED
+        profile.approval_date = timezone.now()
+        profile.approved_by = request.user
+        profile.denial_reason = denial_reason
+        profile.save()
+
+        # Send denial email
+        try:
+            context = {
+                "user": user,
+                "company_name": profile.company_name,
+                "denial_reason": denial_reason,
+            }
+
+            subject = "Registrácia zamietnutá - Zdravý projekt"
+            html_message = render_to_string("email/registration_denied.html", context)
+            plain_message = strip_tags(html_message)
+
+            send_mail(
+                subject=subject,
+                message=plain_message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                html_message=html_message,
+                fail_silently=False,
+            )
+
+            logger.info(f"Denial email sent to {user.email}")
+        except Exception as e:
+            logger.error(f"Failed to send denial email to {user.email}: {e}")
+
+        return Response(
+            {
+                "detail": "Registrácia bola zamietnutá.",
+                "user_id": user.id,
+                "email": user.email,
+            },
             status=status.HTTP_200_OK,
         )

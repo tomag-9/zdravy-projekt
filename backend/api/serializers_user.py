@@ -1,13 +1,133 @@
+import re
+
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
-from .models import ClientSettings, Diet
+from .models import ClientSettings, Diet, UserProfile
 
 
 class DietSerializer(serializers.ModelSerializer):
     class Meta:
         model = Diet
         fields = ["id", "name", "is_active", "description"]
+
+
+def validate_password_strength(password):
+    """
+    Validate password meets strength requirements:
+    - At least 8 characters
+    - At least one number
+    """
+    if len(password) < 8:
+        raise serializers.ValidationError("Heslo musí obsahovať aspoň 8 znakov.")
+
+    if not re.search(r"\d", password):
+        raise serializers.ValidationError("Heslo musí obsahovať aspoň jedno číslo.")
+
+    return password
+
+
+class UserProfileDetailSerializer(serializers.ModelSerializer):
+    """Serializer for UserProfile details."""
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "company_name",
+            "ico",
+            "dic",
+            "registration_status",
+            "email_verified",
+            "registration_date",
+        ]
+        read_only_fields = [
+            "registration_status",
+            "email_verified",
+            "registration_date",
+        ]
+
+
+class RegistrationSerializer(serializers.ModelSerializer):
+    """
+    Serializer for new user registration with company details.
+    Creates user with pending status awaiting admin approval.
+    """
+
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={"input_type": "password"},
+        validators=[validate_password_strength],
+    )
+    password_confirm = serializers.CharField(
+        write_only=True,
+        required=True,
+        style={"input_type": "password"},
+    )
+    company_name = serializers.CharField(required=True, max_length=255)
+    ico = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    dic = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+
+    class Meta:
+        model = User
+        fields = [
+            "email",
+            "password",
+            "password_confirm",
+            "first_name",
+            "last_name",
+            "company_name",
+            "ico",
+            "dic",
+        ]
+
+    def validate_email(self, value):
+        """Check that email is unique."""
+        normalized_email = value.lower()
+        if User.objects.filter(username__iexact=normalized_email).exists():
+            raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
+        return normalized_email
+
+    def validate(self, data):
+        """Validate passwords match."""
+        if data["password"] != data["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "Heslá sa nezhodujú."}
+            )
+        return data
+
+    def create(self, validated_data):
+        """Create user and profile with pending status."""
+        # Remove fields not for User model
+        password = validated_data.pop("password")
+        validated_data.pop("password_confirm")
+        company_name = validated_data.pop("company_name")
+        ico = validated_data.pop("ico", "")
+        dic = validated_data.pop("dic", "")
+
+        # Create user (inactive until approved)
+        email = validated_data["email"]
+        validated_data["username"] = email
+        validated_data["is_active"] = False  # Inactive until admin approves
+
+        user = User.objects.create(**validated_data)
+        user.set_password(password)
+        user.save()
+
+        # Create profile
+        UserProfile.objects.create(
+            user=user,
+            company_name=company_name,
+            ico=ico,
+            dic=dic,
+            registration_status=UserProfile.REGISTRATION_PENDING,
+            email_verified=False,
+        )
+
+        return user
 
 
 class ClientSettingsSerializer(serializers.ModelSerializer):
@@ -22,6 +142,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     groups = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
     settings = serializers.SerializerMethodField()
+    profile = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -30,12 +152,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "company_name",
             "date_joined",
             "groups",
             "settings",
+            "profile",
             "is_staff",
         ]
-        read_only_fields = ["id", "date_joined", "is_staff"]
+        read_only_fields = ["id", "date_joined", "is_staff", "company_name"]
 
     def update(self, instance, validated_data):
         # Keep internal username in sync with email
@@ -55,6 +179,18 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def get_groups(self, obj):
         return [group.name for group in obj.groups.all()]
+
+    def get_company_name(self, obj):
+        """Return company name from profile, primary identifier."""
+        if hasattr(obj, "profile"):
+            return obj.profile.company_name
+        return ""
+
+    def get_profile(self, obj):
+        """Return profile details if exists."""
+        if hasattr(obj, "profile"):
+            return UserProfileDetailSerializer(obj.profile).data
+        return None
 
     def get_settings(self, obj):
         if hasattr(obj, "settings"):
@@ -78,6 +214,8 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
 class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
+    profile = serializers.SerializerMethodField()
+    company_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
     password = serializers.CharField(
         write_only=True,
@@ -93,9 +231,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "company_name",
             "is_active",
             "is_staff",
             "settings",
+            "profile",
             "password",
         ]
 
@@ -112,6 +252,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
             user.set_unusable_password()
         user.save()
         return user
+
+    def get_company_name(self, obj):
+        """Return company name from profile."""
+        if hasattr(obj, "profile"):
+            return obj.profile.company_name
+        return ""
+
+    def get_profile(self, obj):
+        """Return profile details if exists."""
+        if hasattr(obj, "profile"):
+            return UserProfileDetailSerializer(obj.profile).data
+        return None
 
     def get_settings(self, obj):
         if hasattr(obj, "settings"):
@@ -161,3 +313,29 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 settings_obj.visible_diets.set(visible_diets)
 
         return instance
+
+
+class PendingRegistrationSerializer(serializers.ModelSerializer):
+    """Serializer for pending user registrations (admin view)."""
+
+    profile = UserProfileDetailSerializer(read_only=True)
+    company_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "company_name",
+            "profile",
+            "date_joined",
+        ]
+        read_only_fields = fields
+
+    def get_company_name(self, obj):
+        """Return company name from profile."""
+        if hasattr(obj, "profile"):
+            return obj.profile.company_name
+        return ""

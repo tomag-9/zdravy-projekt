@@ -19,7 +19,7 @@ def send_password_reset_email(user: User, token: str) -> None:
     # Lazy import to avoid circular dependency with password_reset_service.
     from .password_reset_service import TOKEN_EXPIRY_HOURS
 
-    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:5173")
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
     reset_url = f"{frontend_url}/reset-password?token={token}"
 
     subject = "Obnova hesla"

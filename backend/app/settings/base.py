@@ -123,7 +123,7 @@ CELERY_TIMEZONE = "Europe/Bratislava"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 # Frontend URL – used for building links inside transactional emails.
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 # Django REST Framework
 REST_FRAMEWORK = {

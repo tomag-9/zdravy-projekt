@@ -9,13 +9,24 @@ import { useNavigate } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
+interface UserProfile {
+  company_name: string;
+  ico?: string;
+  dic?: string;
+  registration_status: string;
+  email_verified: boolean;
+  registration_date: string;
+}
+
 interface User {
   email: string;
   first_name?: string;
   last_name?: string;
+  company_name?: string;
   groups?: string[];
   is_staff?: boolean;
   settings?: UserSettings;
+  profile?: UserProfile;
 }
 
 export interface UserSettings {
