@@ -43,7 +43,9 @@ class InvalidRouteRedirectTests(TestCase):
         """Invalid /admin/* routes should redirect to login (except /admin/ and /admin)."""
         # /admin/login/ is not /admin/ or /admin, so it won't resolve as a Django route
         # and will trigger the Resolver404 path, resulting in a redirect
-        response = self.api_client.get("/admin/login/?next=/admin/diets", format="json", follow=False)
+        response = self.api_client.get(
+            "/admin/login/?next=/admin/diets", format="json", follow=False
+        )
         # Should either be a redirect (302) or pass through to become a 404
         # The middleware will redirect it via Resolver404 handling
         self.assertNotIn("Django", str(response.content))
