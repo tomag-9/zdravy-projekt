@@ -18,7 +18,12 @@ from django.core.management.base import BaseCommand
 
 from api.email_utils import send_daily_report_email
 from api.models import DailyOrder, GlobalSettings
-from api.views import AdminSummaryViewSet
+from api.views.report_xlsx_helpers import (
+    xlsx_build_column_meta,
+    xlsx_collect_columns,
+    xlsx_style_headers,
+    xlsx_write_data,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +86,8 @@ def build_xlsx_bytes(
         for o in orders
     ]
 
-    vs = AdminSummaryViewSet
-    sorted_cats = vs._xlsx_collect_columns(rows_data, meals)
-    col_meta, header_row_1, header_row_2, header_row_3 = vs._xlsx_build_column_meta(
+    sorted_cats = xlsx_collect_columns(rows_data, meals)
+    col_meta, header_row_1, header_row_2, header_row_3 = xlsx_build_column_meta(
         sorted_cats, meals, _MEAL_LABELS
     )
 
@@ -108,7 +112,7 @@ def build_xlsx_bytes(
     ws.append(header_row_2)
     ws.append(header_row_3)
 
-    vs._xlsx_style_headers(
+    xlsx_style_headers(
         ws,
         col_meta,
         sorted_cats,
@@ -118,7 +122,7 @@ def build_xlsx_bytes(
         header_font,
         center,
     )
-    vs._xlsx_write_data(ws, rows_data, meals, sorted_cats, bold_font)
+    xlsx_write_data(ws, rows_data, meals, sorted_cats, bold_font)
 
     ws.column_dimensions["A"].width = 28
     for c_idx in range(2, len(col_meta) + 1):
