@@ -1,7 +1,7 @@
 """Report Service - Extract data preparation logic from views."""
 
 import datetime
-from typing import Dict, List, Optional
+from typing import List
 
 from ..models import DailyOrder
 
@@ -111,9 +111,9 @@ class ReportService:
         )
 
         totals = {
-            "breakfast": {"menus": {}, "diets": {}, "total": 0},
-            "lunch": {"menus": {}, "diets": {}, "total": 0},
-            "olovrant": {"menus": {}, "diets": {}, "total": 0},
+            "breakfast": {"total": 0},
+            "lunch": {"total": 0},
+            "olovrant": {"total": 0},
             "grand": 0,
         }
         rows = []

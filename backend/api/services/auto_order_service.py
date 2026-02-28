@@ -143,6 +143,11 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
 
         auto_data = _build_auto_data(template, visible_meals)
 
+        # Skip if filtered data is empty
+        if _is_order_empty(auto_data):
+            skipped += 1
+            continue
+
         DailyOrder.objects.create(
             user=client,
             date=target_date,

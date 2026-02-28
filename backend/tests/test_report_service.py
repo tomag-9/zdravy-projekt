@@ -1,7 +1,6 @@
 """Tests for ReportService."""
 
 import datetime
-from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.auth.models import User

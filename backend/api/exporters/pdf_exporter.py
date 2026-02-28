@@ -3,7 +3,6 @@
 import io
 import logging
 import os
-from typing import Optional
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4

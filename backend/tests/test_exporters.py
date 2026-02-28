@@ -1,7 +1,6 @@
 """Tests for Report Exporters."""
 
 import datetime
-from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth.models import User
