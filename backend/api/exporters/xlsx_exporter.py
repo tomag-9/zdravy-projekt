@@ -1,13 +1,14 @@
 """XLSX Report Exporter - Generate XLSX reports from order data."""
 
-import io
-from typing import Dict, List
+from __future__ import annotations
 
-import openpyxl
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
+import io
+from typing import TYPE_CHECKING, Dict, List
 
 from .report_helpers import safe_int
+
+if TYPE_CHECKING:
+    from openpyxl.styles import Alignment, Font, PatternFill
 
 
 class XLSXReportExporter:
@@ -45,6 +46,11 @@ class XLSXReportExporter:
         Returns:
             XLSX file content as bytes
         """
+        # Lazy-import openpyxl to avoid startup overhead
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
         # Collect unique menu/diet combinations
         sorted_cats = self._collect_columns()
 

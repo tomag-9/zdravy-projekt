@@ -1,23 +1,10 @@
 """PDF Report Exporter - Generate PDF reports from order data."""
 
+from __future__ import annotations
+
 import io
 import logging
 import os
-
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import cm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    HRFlowable,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 
 from .report_helpers import safe_int
 
@@ -43,6 +30,10 @@ class PDFFontManager:
         if cls._fonts_registered:
             return
         try:
+            # Lazy-import reportlab to avoid startup overhead
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+
             regular = bold = None
             candidates = [
                 (
@@ -92,15 +83,15 @@ class PDFReportExporter:
     }
 
     MEAL_COLORS = {
-        "breakfast": colors.HexColor("#fff7ed"),
-        "lunch": colors.HexColor("#eff6ff"),
-        "olovrant": colors.HexColor("#f0fdf4"),
+        "breakfast": "#fff7ed",
+        "lunch": "#eff6ff",
+        "olovrant": "#f0fdf4",
     }
 
     MEAL_HEADER_COLORS = {
-        "breakfast": colors.HexColor("#f97316"),
-        "lunch": colors.HexColor("#3b82f6"),
-        "olovrant": colors.HexColor("#22c55e"),
+        "breakfast": "#f97316",
+        "lunch": "#3b82f6",
+        "olovrant": "#22c55e",
     }
 
     def __init__(self, orders: list, target_date: str):
@@ -122,13 +113,30 @@ class PDFReportExporter:
         Returns:
             PDF file content as bytes
         """
+        # Lazy-import reportlab to avoid startup overhead
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import cm
+        from reportlab.platypus import (
+            HRFlowable,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+
         styles = self._setup_styles()
-        story = self._build_story(styles)
-        buf = self._render_pdf(story, styles)
+        story = self._build_story(styles, cm)
+        buf = self._render_pdf(story, styles, A4, cm)
         return buf.getvalue()
 
     def _setup_styles(self) -> dict:
         """Create paragraph styles for report."""
+        from reportlab.lib import colors as reportlab_colors
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+
         styles = getSampleStyleSheet()
         return {
             "title": ParagraphStyle(
@@ -137,7 +145,7 @@ class PDFReportExporter:
                 fontSize=13,
                 spaceAfter=4,
                 fontName=self.font_bold,
-                textColor=colors.HexColor("#1e3a5f"),
+                textColor=reportlab_colors.HexColor("#1e3a5f"),
             ),
             "user": ParagraphStyle(
                 "user",
@@ -146,7 +154,7 @@ class PDFReportExporter:
                 spaceBefore=10,
                 spaceAfter=2,
                 fontName=self.font_bold,
-                textColor=colors.HexColor("#111827"),
+                textColor=reportlab_colors.HexColor("#111827"),
             ),
             "meal": ParagraphStyle(
                 "meal",
@@ -154,7 +162,7 @@ class PDFReportExporter:
                 fontSize=9,
                 spaceBefore=4,
                 spaceAfter=2,
-                textColor=colors.HexColor("#374151"),
+                textColor=reportlab_colors.HexColor("#374151"),
                 fontName=self.font_bold,
             ),
             "empty": ParagraphStyle(
@@ -162,12 +170,15 @@ class PDFReportExporter:
                 parent=styles["Normal"],
                 fontSize=8,
                 fontName=self.font_regular,
-                textColor=colors.grey,
+                textColor=reportlab_colors.grey,
             ),
         }
 
-    def _build_story(self, styles: dict) -> list:
+    def _build_story(self, styles: dict, cm) -> list:
         """Build PDF story elements."""
+        from reportlab.lib import colors as reportlab_colors
+        from reportlab.platypus import HRFlowable, Paragraph, Spacer
+
         story = []
         page_w = 18 * cm
         col_widths = [4.5 * cm, 8 * cm, 5.5 * cm]
@@ -177,7 +188,9 @@ class PDFReportExporter:
             Paragraph(f"Denný prehľad objednávok — {self.target_date}", styles["title"])
         )
         story.append(
-            HRFlowable(width=page_w, thickness=1, color=colors.HexColor("#2563eb"))
+            HRFlowable(
+                width=page_w, thickness=1, color=reportlab_colors.HexColor("#2563eb")
+            )
         )
         story.append(Spacer(1, 0.3 * cm))
 
@@ -216,7 +229,7 @@ class PDFReportExporter:
                 HRFlowable(
                     width=page_w,
                     thickness=0.4,
-                    color=colors.HexColor("#e5e7eb"),
+                    color=reportlab_colors.HexColor("#e5e7eb"),
                     spaceAfter=4,
                 )
             )
@@ -227,6 +240,9 @@ class PDFReportExporter:
         self, meal_data, meal_key, col_widths, font_regular, font_bold
     ):
         """Build table for one meal's data."""
+        from reportlab.lib import colors as reportlab_colors
+        from reportlab.platypus import Table, TableStyle
+
         meal = meal_data.get(meal_key)
         if not isinstance(meal, dict) or not meal:
             return None
@@ -260,19 +276,26 @@ class PDFReportExporter:
         if len(rows) == 1:
             return None
 
-        bg = self.MEAL_COLORS[meal_key]
-        hdr_bg = self.MEAL_HEADER_COLORS[meal_key]
+        # Convert hex strings to HexColor objects
+        bg = reportlab_colors.HexColor(self.MEAL_COLORS[meal_key])
+        hdr_bg = reportlab_colors.HexColor(self.MEAL_HEADER_COLORS[meal_key])
         t = Table(rows, colWidths=col_widths)
         t.setStyle(
             TableStyle(
                 [
                     ("BACKGROUND", (0, 0), (-1, 0), hdr_bg),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), reportlab_colors.white),
                     ("FONTNAME", (0, 0), (-1, -1), font_regular),
                     ("FONTNAME", (0, 0), (-1, 0), font_bold),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [bg, colors.white]),
-                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#d1d5db")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [bg, reportlab_colors.white]),
+                    (
+                        "GRID",
+                        (0, 0),
+                        (-1, -1),
+                        0.3,
+                        reportlab_colors.HexColor("#d1d5db"),
+                    ),
                     ("LEFTPADDING", (0, 0), (-1, -1), 5),
                     ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                     ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -283,8 +306,10 @@ class PDFReportExporter:
         )
         return t
 
-    def _render_pdf(self, story: list, styles: dict) -> io.BytesIO:
+    def _render_pdf(self, story: list, styles: dict, A4, cm) -> io.BytesIO:
         """Render story to PDF."""
+        from reportlab.platypus import SimpleDocTemplate
+
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf,

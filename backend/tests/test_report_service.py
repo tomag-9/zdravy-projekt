@@ -65,7 +65,9 @@ class TestReportService:
 
         assert len(result["rows"]) == 2
         assert result["totals"]["grand"] == 3
-        assert result["totals"]["breakfast"]["Jasle"]["menus"]["Menu A"] == 3
+        # Totals are flattened per meal (menus/diets are merged across categories)
+        assert result["totals"]["breakfast"]["menus"]["Menu A"] == 3
+        assert result["totals"]["breakfast"]["total"] == 3
 
     def test_get_orders_for_export(self):
         """Test getting orders in export format."""
@@ -90,7 +92,7 @@ class TestReportServiceHelpers:
 
     def test_build_user_meal_row_empty(self):
         """Test meal row building with empty data."""
-        from api.services.report_service import build_user_meal_row
+        from api.utils import build_user_meal_row
 
         result = build_user_meal_row({}, "breakfast")
 
@@ -99,7 +101,7 @@ class TestReportServiceHelpers:
 
     def test_build_user_meal_row_with_data(self):
         """Test meal row building with order data."""
-        from api.services.report_service import build_user_meal_row
+        from api.utils import build_user_meal_row
 
         order_data = {
             "breakfast": {"Jasle": {"menuCounts": {"Menu A": 2}, "diets": {"Vegan": 1}}}
@@ -115,11 +117,13 @@ class TestReportServiceHelpers:
 
     def test_merge_meal_totals(self):
         """Test merging meal totals."""
-        from api.services.report_service import merge_meal_totals
+        from api.utils import merge_meal_totals
 
+        # Totals after merging are flattened (menus/diets merged across categories)
         totals = {
             "total": 5,
-            "Jasle": {"menus": {"Menu A": 2}, "diets": {}, "total": 2},
+            "menus": {"Menu A": 2},
+            "diets": {},
         }
         meal_row = {
             "total": 3,
@@ -136,4 +140,5 @@ class TestReportServiceHelpers:
         merge_meal_totals(totals, meal_row)
 
         assert totals["total"] == 8
-        assert totals["Jasle"]["menus"]["Menu A"] == 3
+        assert totals["menus"]["Menu A"] == 3
+        assert totals["diets"]["Vegan"] == 1

@@ -4,83 +4,7 @@ import datetime
 from typing import List
 
 from ..models import DailyOrder
-
-
-def safe_int(v) -> int:
-    """Coerce a stored count value to int, returning 0 on any error."""
-    try:
-        return int(v or 0)
-    except (TypeError, ValueError):
-        return 0
-
-
-def build_user_meal_row(order_data: dict, meal_key: str) -> dict:
-    """
-    Return {categories: [...], total: int} for a meal.
-
-    Args:
-        order_data: Order data dictionary from DailyOrder.data
-        meal_key: Meal type (breakfast, lunch, olovrant)
-
-    Returns:
-        Dictionary with categories and total count
-    """
-    meal = order_data.get(meal_key) or {}
-    if not isinstance(meal, dict):
-        return {"categories": [], "total": 0}
-
-    categories = []
-    meal_total = 0
-    iter_categories = (
-        [(meal_key, meal)]
-        if "menuCounts" in meal
-        else [(k, v) for k, v in meal.items() if isinstance(v, dict)]
-    )
-    for cat_name, details in iter_categories:
-        if not isinstance(details, dict):
-            continue
-        menu_counts = {
-            k: safe_int(v) for k, v in (details.get("menuCounts") or {}).items()
-        }
-        diets = {
-            k: safe_int(v)
-            for k, v in (details.get("diets") or {}).items()
-            if safe_int(v) > 0
-        }
-        cat_total = sum(menu_counts.values())
-        meal_total += cat_total
-        categories.append(
-            {
-                "name": cat_name,
-                "menus": menu_counts,
-                "diets": diets,
-                "total": cat_total,
-            }
-        )
-    return {"categories": categories, "total": meal_total}
-
-
-def merge_meal_totals(totals: dict, meal_row: dict) -> None:
-    """
-    Accumulate meal_row counts into totals dict (in-place).
-
-    Args:
-        totals: Totals accumulator dictionary
-        meal_row: Meal row data from build_user_meal_row()
-    """
-    totals["total"] = totals.get("total", 0) + meal_row["total"]
-    for cat in meal_row["categories"]:
-        if cat["name"] not in totals:
-            totals[cat["name"]] = {"menus": {}, "diets": {}, "total": 0}
-        for menu_key, count in cat["menus"].items():
-            totals[cat["name"]]["menus"][menu_key] = (
-                totals[cat["name"]]["menus"].get(menu_key, 0) + count
-            )
-        for diet_name, count in cat["diets"].items():
-            totals[cat["name"]]["diets"][diet_name] = (
-                totals[cat["name"]]["diets"].get(diet_name, 0) + count
-            )
-        totals[cat["name"]]["total"] += cat["total"]
+from ..utils import build_user_meal_row, merge_meal_totals
 
 
 class ReportService:
@@ -181,7 +105,7 @@ class ReportService:
                         getattr(
                             getattr(order.user, "settings", None), "visible_meals", None
                         )
-                        or ReportService.MEAL_KEYS
+                        or list(ReportService.MEAL_KEYS)
                     ),
                 }
             )

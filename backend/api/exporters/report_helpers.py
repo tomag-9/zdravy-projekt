@@ -1,9 +1,5 @@
 """Shared helpers for exporter modules."""
 
+from ..utils import safe_int
 
-def safe_int(v) -> int:
-    """Coerce a stored count value to int, returning 0 on any error."""
-    try:
-        return int(v or 0)
-    except (TypeError, ValueError):
-        return 0
+__all__ = ["safe_int"]
