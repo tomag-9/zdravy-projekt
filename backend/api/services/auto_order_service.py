@@ -1,7 +1,4 @@
-"""
-Auto-order service: pure business logic with no side-effects beyond DB writes.
-Called by the management command and Celery task alike.
-"""
+"""Auto-order service: pure business logic with no side-effects beyond DB writes."""
 
 import datetime
 import logging
@@ -9,7 +6,7 @@ import logging
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from .models import DailyOrder
+from ..models import DailyOrder
 
 logger = logging.getLogger(__name__)
 
@@ -145,6 +142,11 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
             visible_meals = client.settings.visible_meals or []
 
         auto_data = _build_auto_data(template, visible_meals)
+
+        # Skip if filtered data is empty
+        if _is_order_empty(auto_data):
+            skipped += 1
+            continue
 
         DailyOrder.objects.create(
             user=client,
