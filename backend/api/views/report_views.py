@@ -29,7 +29,15 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        orders = DailyOrder.objects.filter(date=date_str)
+        try:
+            target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response(
+                {"error": "Invalid date format. Use YYYY-MM-DD."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        orders = DailyOrder.objects.filter(date=target_date)
 
         stats = {
             "total_orders": 0,
@@ -55,6 +63,13 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         meal_data = data[meal_key]
         if not isinstance(meal_data, dict):
             return
+
+        # Support both nested-by-category and flat meal shapes.
+        # If the meal data itself contains menuCounts/diets, treat it as a
+        # single synthetic category keyed by the meal_key (e.g. "lunch").
+        if "menuCounts" in meal_data or "diets" in meal_data:
+            meal_data = {meal_key: meal_data}
+
         for category, details in meal_data.items():
             if not details:
                 continue

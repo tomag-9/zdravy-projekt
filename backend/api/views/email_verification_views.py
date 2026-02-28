@@ -60,7 +60,6 @@ class ResendVerificationEmailView(APIView):
     def post(self, request):
         from ..email_verification_service import resend_verification_email
         from ..rate_limit import (
-            RateLimitExceeded,
             TooSoonError,
             check_verification_resend_rate_limit,
             record_verification_sent,
