@@ -24,7 +24,7 @@ class UserProfileViewSet(viewsets.ViewSet):
             serializer = UserProfileSerializer(
                 request.user,
                 data=request.data,
-                partial=True,
+                partial=(request.method == "PATCH"),
                 context={"request": request},
             )
             if serializer.is_valid():

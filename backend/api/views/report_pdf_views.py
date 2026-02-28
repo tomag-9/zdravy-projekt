@@ -228,7 +228,7 @@ def generate_pdf_report(request):
 
     for order in orders:
         user = order.user
-        data = order.data or {}
+        data = order.data if isinstance(order.data, dict) else {}
         _settings = getattr(user, "settings", None)
         visible_meals = getattr(_settings, "visible_meals", None) or [
             "breakfast",

@@ -45,17 +45,19 @@ def generate_xlsx_report(request):
     meal_keys = ["breakfast", "lunch", "olovrant"]
     meal_labels = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
 
-    rows_data = [
-        {
-            "user": o.user,
-            "data": o.data or {},
-            "visible_meals": (
-                getattr(getattr(o.user, "settings", None), "visible_meals", None)
-                or ["breakfast", "lunch", "olovrant"]
-            ),
-        }
-        for o in orders
-    ]
+    rows_data = []
+    for o in orders:
+        data = o.data if isinstance(o.data, dict) else {}
+        rows_data.append(
+            {
+                "user": o.user,
+                "data": data,
+                "visible_meals": (
+                    getattr(getattr(o.user, "settings", None), "visible_meals", None)
+                    or ["breakfast", "lunch", "olovrant"]
+                ),
+            }
+        )
     sorted_cats = xlsx_collect_columns(rows_data, meal_keys)
     col_meta, header_row_1, header_row_2, header_row_3 = xlsx_build_column_meta(
         sorted_cats, meal_keys, meal_labels

@@ -1,8 +1,5 @@
 """XLSX Helper Functions."""
 
-from openpyxl.styles import Alignment, Font, PatternFill
-from openpyxl.utils import get_column_letter
-
 from .report_helpers import safe_int
 
 
@@ -27,6 +24,8 @@ def xlsx_collect_columns(rows_data, meal_keys):
         data = row["data"]
         for mk in meal_keys:
             meal = data.get(mk) or {}
+            if not isinstance(meal, dict):
+                continue
             if "menuCounts" in meal:
                 _scan(mk, meal, mk)
             else:

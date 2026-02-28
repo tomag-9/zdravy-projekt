@@ -40,7 +40,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         for order in orders:
             stats["total_orders"] += 1
             stats["status_breakdown"]["submitted"] += 1
-            data = order.data or {}
+            data = order.data if isinstance(order.data, dict) else {}
             self._aggregate_meal(stats, data, "breakfast")
             self._aggregate_meal(stats, data, "lunch")
             self._aggregate_meal(stats, data, "olovrant")
@@ -53,6 +53,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             return
 
         meal_data = data[meal_key]
+        if not isinstance(meal_data, dict):
+            return
         for category, details in meal_data.items():
             if not details:
                 continue
@@ -116,7 +118,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         rows = []
         for order in orders:
             user = order.user
-            data = order.data or {}
+            data = order.data if isinstance(order.data, dict) else {}
             bf = build_user_meal_row(data, "breakfast")
             lu = build_user_meal_row(data, "lunch")
             ol = build_user_meal_row(data, "olovrant")
