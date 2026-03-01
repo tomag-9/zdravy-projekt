@@ -44,7 +44,8 @@ describe("ProfilePage", () => {
     );
 
     await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith("/api/user/profile/");
+      const expectedUrl = `${import.meta.env.VITE_API_URL || "/api"}/user/profile/`;
+      expect(mockApiFetch).toHaveBeenCalledWith(expectedUrl);
     });
 
     expect(await screen.findByText("Môj profil")).toBeInTheDocument();

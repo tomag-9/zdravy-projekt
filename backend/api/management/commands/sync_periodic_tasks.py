@@ -1,7 +1,7 @@
 """
 Management command: sync_periodic_tasks
 
-Verify and recreate Celery Beat PeriodicTasks for daily report and auto-order scheduling.
+Verify and recreate Celery Beat PeriodicTasks for daily report scheduling.
 
 Usage:
     python manage.py sync_periodic_tasks           # verify/sync all tasks
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Verify and recreate Celery Beat PeriodicTasks for daily reports and auto-orders. "
+        "Verify and recreate Celery Beat PeriodicTasks for daily reports. "
         "Use --verify to only check without making changes, --fix to recreate tasks (default), "
         "or --delete to remove report tasks."
     )
@@ -133,8 +133,10 @@ class Command(BaseCommand):
                 )
             )
             if task_breakfast.crontab:
+                hour = str(task_breakfast.crontab.hour)
+                minute = str(task_breakfast.crontab.minute)
                 self.stdout.write(
-                    f"    Schedule: {task_breakfast.crontab.hour:02d}:{task_breakfast.crontab.minute:02d} "
+                    f"    Schedule: {hour}:{minute} "
                     f"Mon–Fri (tz: {task_breakfast.crontab.timezone})"
                 )
         else:

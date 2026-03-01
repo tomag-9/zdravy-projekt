@@ -25,7 +25,7 @@ interface PendingUser {
 
 const PendingRegistrations: React.FC = () => {
   const { token } = useAuth();
-  const { success: toastSuccess } = useToast();
+  const { success: toastSuccess, warning: toastWarning } = useToast();
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -120,7 +120,7 @@ const PendingRegistrations: React.FC = () => {
       await fetchPendingUsers();
       setShowDenialModal(null);
       setDenialReason("");
-      toastSuccess("Registrácia bola zamietnutá.");
+      toastWarning("Registrácia bola zamietnutá.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chyba pri zamietaní");
     } finally {

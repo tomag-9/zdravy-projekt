@@ -45,7 +45,7 @@ class UniqueEmailUserCreationForm(UserCreationForm):
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "email")
+        fields = ("email",)  # username auto-synced from email
 
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip().lower()
@@ -54,6 +54,14 @@ class UniqueEmailUserCreationForm(UserCreationForm):
         if User.objects.filter(email__iexact=email).exists():
             raise forms.ValidationError("Používateľ s týmto emailom už existuje.")
         return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        # Sync username with normalized email to maintain consistency
+        user.username = self.cleaned_data["email"].lower()
+        if commit:
+            user.save()
+        return user
 
 
 class UniqueEmailUserChangeForm(UserChangeForm):
@@ -70,6 +78,15 @@ class UniqueEmailUserChangeForm(UserChangeForm):
         ):
             raise forms.ValidationError("Používateľ s týmto emailom už existuje.")
         return email
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        # Sync username with normalized email to maintain consistency
+        if "email" in self.cleaned_data:
+            user.username = self.cleaned_data["email"].lower()
+        if commit:
+            user.save()
+        return user
 
 
 class UserAdmin(BaseUserAdmin):
