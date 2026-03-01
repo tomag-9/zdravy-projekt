@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, User, Mail, Shield, Calendar, Save } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface UserProfileData {
     company_name: string;

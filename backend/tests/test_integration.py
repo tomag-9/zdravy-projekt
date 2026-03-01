@@ -9,6 +9,40 @@ from rest_framework import status
 class TestFullFlow:
     """Smoke test for the critical user journey"""
 
+    def test_login_and_profile_access_flow(self, api_client):
+        """Integration: user can log in and access /api/user/profile/."""
+        from django.contrib.auth.models import User
+
+        User.objects.create_user(
+            username="profile.client@example.com",
+            email="profile.client@example.com",
+            password="client123",
+            first_name="Profile",
+            last_name="Client",
+        )
+
+        auth_url = reverse("token_obtain_pair")
+        auth_resp = api_client.post(
+            auth_url,
+            {"email": "profile.client@example.com", "password": "client123"},
+            format="json",
+        )
+
+        assert auth_resp.status_code == status.HTTP_200_OK
+        assert "access" in auth_resp.data
+
+        token = auth_resp.data["access"]
+        api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        profile_url = reverse("user-profile")
+        profile_resp = api_client.get(profile_url)
+
+        assert profile_resp.status_code == status.HTTP_200_OK
+        assert profile_resp.data["email"] == "profile.client@example.com"
+        assert profile_resp.data["first_name"] == "Profile"
+        assert profile_resp.data["last_name"] == "Client"
+        assert "username" not in profile_resp.data
+
     def test_full_order_flow(self, api_client):
         # 1. Obtain Token (Login)
         auth_url = reverse("token_obtain_pair")
