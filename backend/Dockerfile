@@ -28,8 +28,17 @@ COPY . /app/
 # Make manage.py executable
 RUN chmod +x /app/manage.py
 
+# Create a dedicated non-root user for runtime processes.
+RUN groupadd --system appuser && useradd --system --gid appuser --create-home appuser
+
 # Collect static files
 RUN DJANGO_SETTINGS_MODULE=app.settings.base python manage.py collectstatic --noinput
+
+# Ensure runtime user can read/write where needed (e.g., pyc, temp files).
+RUN chown -R appuser:appuser /app
+
+# Drop root privileges for runtime (backend + celery + beat).
+USER appuser
 
 # Expose port
 EXPOSE 8000
