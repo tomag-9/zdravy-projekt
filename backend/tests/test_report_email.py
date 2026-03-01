@@ -253,3 +253,122 @@ class TestSendDailyReportEmail:
         call_kwargs = MockEmailMessage.call_args.kwargs
         assert "Raňajky" in call_kwargs["subject"]
         assert "2026-02-25" in call_kwargs["subject"]
+
+
+# ---------------------------------------------------------------------------
+# Periodic task creation and syncing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestPeriodicTaskSync:
+    """Test that PeriodicTasks are created when recipients are configured."""
+
+    def test_periodic_tasks_created_when_recipients_set(self, global_settings):
+        """Saving GlobalSettings with recipients should create PeriodicTasks."""
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+        )
+
+        # Clear any existing tasks
+        PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).delete()
+
+        # Set recipients and save
+        global_settings.report_email_recipients = ["report@example.com"]
+        global_settings.save()
+
+        # Verify tasks were created
+        task_breakfast = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
+        ).first()
+        task_all = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_ALL
+        ).first()
+
+        assert task_breakfast is not None, "Breakfast task should be created"
+        assert task_all is not None, "Full report task should be created"
+        assert task_breakfast.enabled is True
+        assert task_all.enabled is True
+
+    def test_periodic_tasks_skipped_when_no_recipients(self, global_settings):
+        """Saving GlobalSettings without recipients should not create tasks."""
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+        )
+
+        # Ensure recipients are empty
+        global_settings.report_email_recipients = []
+        global_settings.save()
+
+        # Clear any existing tasks
+        count, _ = PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).delete()
+
+        # Re-save with empty recipients
+        global_settings.save()
+
+        # Verify no tasks created (since recipients empty)
+        task_breakfast = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
+        ).first()
+        task_all = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_ALL
+        ).first()
+
+        assert (
+            task_breakfast is None
+        ), "Breakfast task should not be created (no recipients)"
+        assert (
+            task_all is None
+        ), "Full report task should not be created (no recipients)"
+
+    def test_sync_periodic_tasks_management_command(self, global_settings):
+        """sync_periodic_tasks command should create missing tasks."""
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+        )
+
+        global_settings.report_email_recipients = ["test@example.com"]
+        global_settings.save()
+
+        # Clear tasks to simulate the bug
+        PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).delete()
+
+        # Run sync command
+        management.call_command("sync_periodic_tasks")
+
+        # Verify tasks created
+        task_breakfast = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
+        ).first()
+        task_all = PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_ALL
+        ).first()
+
+        assert task_breakfast is not None
+        assert task_all is not None
+        assert task_breakfast.enabled is True
+        assert task_all.enabled is True
