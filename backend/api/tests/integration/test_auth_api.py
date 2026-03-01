@@ -13,8 +13,8 @@ Covers:
 - Edge cases
 """
 
-import time
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
@@ -415,11 +415,8 @@ class TestLoginFlow:
             url, {"email": "", "password": "anypassword"}, format="json"
         )
 
-        # Empty email is invalid, returns validation error
-        assert response.status_code in [
-            status.HTTP_400_BAD_REQUEST,
-            status.HTTP_401_UNAUTHORIZED,
-        ]
+        # Empty email is a serializer validation error for this endpoint.
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -727,13 +724,13 @@ class TestAuthEdgeCases:
     def test_concurrent_verification_tokens(self, api_client, user):
         """Test handling of multiple verification tokens."""
         # Create multiple tokens
-        token1 = EmailVerificationToken.objects.create(
+        EmailVerificationToken.objects.create(
             user=user,
             token="token-1",
             expires_at=timezone.now() + timedelta(hours=24),
             used=False,
         )
-        token2 = EmailVerificationToken.objects.create(
+        EmailVerificationToken.objects.create(
             user=user,
             token="token-2",
             expires_at=timezone.now() + timedelta(hours=24),
@@ -745,9 +742,9 @@ class TestAuthEdgeCases:
         response = api_client.post(url, {"token": "token-1"}, format="json")
         assert response.status_code == status.HTTP_200_OK
 
-        # Second token should still work (it's independent)
+        # Second token is still valid because tokens are independent.
         response = api_client.post(url, {"token": "token-2"}, format="json")
-        # This will fail because token1 already verified the user
+        assert response.status_code == status.HTTP_200_OK
 
     def test_sql_injection_attempt(self, api_client):
         """Test that SQL injection is prevented in auth endpoints."""
@@ -788,20 +785,19 @@ class TestAuthEdgeCases:
         """Test that each password reset token is unique."""
         url = reverse("password_reset_request")
 
-        # Request multiple times (with cooldown delay)
+        # Request twice while simulating cooldown passage without real sleep.
         tokens = []
-        for i in range(2):
-            response = api_client.post(url, {"email": user.email}, format="json")
-            if response.status_code == status.HTTP_200_OK:
+        with patch("api.password_reset_service.RESEND_COOLDOWN", 0):
+            for _ in range(2):
+                response = api_client.post(url, {"email": user.email}, format="json")
+                assert response.status_code == status.HTTP_200_OK
                 token = PasswordResetToken.objects.filter(user=user).latest(
                     "created_at"
                 )
                 tokens.append(token.token)
-            time.sleep(1.5)  # Wait for cooldown
 
-        # Both should be different (if both created)
-        if len(tokens) == 2:
-            assert tokens[0] != tokens[1]
+        assert len(tokens) == 2
+        assert tokens[0] != tokens[1]
 
     def test_cross_user_token_reuse(self, api_client, user):
         """Test that tokens from one user cannot be used by another."""

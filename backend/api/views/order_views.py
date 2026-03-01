@@ -1,7 +1,6 @@
 import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from django.utils import timezone
@@ -12,7 +11,7 @@ from rest_framework.response import Response
 
 from ..models import DailyOrder
 from ..serializers import DailyOrderSerializer
-from ..services import _is_order_empty, _last_non_empty_order
+from ..services import _build_auto_data, _is_order_empty, _last_non_empty_order
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -122,7 +121,9 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
 
-        existing: Dict[Any, Any] = {
+        visible_meals = list(getattr(getattr(request.user, "settings", None), "visible_meals", []) or [])
+
+        existing: Dict[datetime.date, DailyOrder] = {
             o.date: o
             for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
@@ -142,8 +143,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             for prev_day in reversed([d for d in workdays if d < day]):
                 prev = existing.get(prev_day)
                 if prev and not _is_order_empty(prev.data or {}):
-                    return prev  # type: ignore[no-any-return]
-            return historical_template  # type: ignore[no-any-return]
+                    return prev
+            return historical_template
 
         result: List[Dict[str, Any]] = []
         for day in workdays:
@@ -169,9 +170,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             else:
                 tmpl = _template_for_day(day)
                 if tmpl:
-                    predicted_total, predicted_meal_count = _order_total(
-                        tmpl.data or {}
-                    )
+                    predicted_data = _build_auto_data(tmpl, visible_meals)
+                    predicted_total, predicted_meal_count = _order_total(predicted_data)
                 else:
                     predicted_total = 0
                     predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}

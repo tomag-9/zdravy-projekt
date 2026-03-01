@@ -461,11 +461,25 @@ class TestAutoOrderTemplateSelection:
         url = reverse("planned-orders-list")
         response = authenticated_client.get(url)
 
-        # Find a day without order; predicted should only have lunch portions
+        def _sum_ints(value):
+            if isinstance(value, int):
+                return value
+            if isinstance(value, dict):
+                return sum(_sum_ints(v) for v in value.values())
+            if isinstance(value, (list, tuple)):
+                return sum(_sum_ints(v) for v in value)
+            return 0
+
+        expected_lunch_total = _sum_ints(NON_EMPTY_DATA.get("lunch", {}))
+        found_predicted = False
+
+        # Find a day without order; predicted should only include lunch portions.
         for item in response.data:
             if not item["exists"]:
-                # This depends on implementation; verify it's fetching predicted data
-                pass
+                found_predicted = True
+                assert item["predictedTotal"] == expected_lunch_total
+
+        assert found_predicted
 
 
 @pytest.mark.django_db
@@ -528,7 +542,7 @@ class TestAutoOrderEdgeCases:
                 # Verify only allowed meals have data
                 for meal in ["breakfast", "lunch", "olovrant"]:
                     if meal in combo:
-                        # Should not be empty if was non-empty in template
-                        pass
+                        template_meal_data = NON_EMPTY_DATA.get(meal, {})
+                        assert auto.data.get(meal, {}) == template_meal_data
                     else:
                         assert auto.data.get(meal) == {}

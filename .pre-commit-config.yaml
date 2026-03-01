@@ -3,7 +3,7 @@ repos:
     hooks:
       - id: backend-pytest-coverage
         name: backend pytest coverage >= 60%
-        entry: bash -c 'cd backend && /home/tomas-magula/Documents/Projects/ZB/zdravy-projekt/backend/.venv/bin/pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60'
+        entry: bash -c 'cd backend && if [ -x ./.venv/bin/python ]; then ./.venv/bin/python -m pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60; else python3 -m pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60; fi'
         language: system
         pass_filenames: false
         stages: [pre-commit]
