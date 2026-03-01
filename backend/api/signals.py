@@ -177,6 +177,6 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_auto_order_schedule(instance)
         _sync_daily_report_schedule(instance)
         action = "created" if created else "updated"
-        logger.debug(f"GlobalSettings {action} – periodic tasks synced")
+        logger.debug("GlobalSettings %s – periodic tasks synced", action)
     except Exception as exc:
         logger.exception("Error syncing periodic tasks for GlobalSettings: %s", exc)

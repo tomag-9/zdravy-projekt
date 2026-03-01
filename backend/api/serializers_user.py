@@ -1,6 +1,7 @@
 import re
 
 from django.contrib.auth.models import User
+from django.db.models import Q
 from rest_framework import serializers
 
 from .models import ClientSettings, Diet, UserProfile
@@ -271,7 +272,10 @@ class AdminUserSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password", None)
         # Normalize and use email as internal username so Django's unique constraint is satisfied
         normalized_email = validated_data["email"].lower()
-        if User.objects.filter(email__iexact=normalized_email).exists():
+        # Check both email and username to prevent IntegrityError on save
+        if User.objects.filter(
+            Q(email__iexact=normalized_email) | Q(username__iexact=normalized_email)
+        ).exists():
             raise serializers.ValidationError(
                 {"email": "Používateľ s týmto emailom už existuje."}
             )

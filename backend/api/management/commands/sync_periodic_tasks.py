@@ -49,7 +49,6 @@ class Command(BaseCommand):
         from api.signals import (
             PERIODIC_TASK_NAME_REPORT_ALL,
             PERIODIC_TASK_NAME_REPORT_BREAKFAST,
-            _sync_daily_report_schedule,
         )
 
         # Get GlobalSettings
