@@ -1,10 +1,13 @@
 from datetime import date
 
+import pytest
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from api.models import DailyOrder
+
+pytestmark = pytest.mark.integration
 
 
 class AdminSummaryTest(APITestCase):

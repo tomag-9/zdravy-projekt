@@ -2,8 +2,10 @@
 Middleware for API security and caching control.
 """
 
+from typing import Any, Callable
+
 from django.conf import settings
-from django.http import HttpResponseRedirect
+from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.urls import resolve
 from django.urls.exceptions import Resolver404
 
@@ -15,10 +17,10 @@ class NoCacheMiddleware:
     and prevents user data leakage across sessions.
     """
 
-    def __init__(self, get_response):
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
 
-    def __call__(self, request):
+    def __call__(self, request: HttpRequest) -> HttpResponse:
         response = self.get_response(request)
 
         # Only apply to API endpoints
@@ -38,13 +40,13 @@ class UnauthorizedAccessRedirectMiddleware:
     This prevents users from seeing raw Django error pages.
     """
 
-    def __init__(self, get_response):
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
         self.get_response = get_response
         self.get_frontend_url = lambda: getattr(
             settings, "FRONTEND_URL", "https://example.com"
         )
 
-    def __call__(self, request):
+    def __call__(self, request: HttpRequest) -> HttpResponse:
         # Allow all API routes through
         if request.path.startswith("/api/"):
             return self.get_response(request)

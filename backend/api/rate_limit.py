@@ -7,6 +7,7 @@ Prevents spam and abuse by limiting requests per IP or email.
 
 import hashlib
 import time
+from typing import Optional
 
 from django.core.cache import cache
 
@@ -71,7 +72,7 @@ def check_registration_rate_limit(identifier: str) -> None:
     now = time.time()
 
     # Check if currently blocked
-    block_until = cache.get(_key_registration_block(identifier))
+    block_until: Optional[float] = cache.get(_key_registration_block(identifier))
     if block_until is not None:
         retry_after = max(1, int(block_until - now))
         raise RateLimitExceeded(retry_after_seconds=retry_after)
@@ -103,7 +104,7 @@ def check_verification_resend_rate_limit(email: str) -> None:
         TooSoonError: If resend requested too soon after last send
     """
     now = time.time()
-    last_sent = cache.get(_key_verification_last_sent(email))
+    last_sent: Optional[float] = cache.get(_key_verification_last_sent(email))
 
     if last_sent is not None:
         elapsed = now - last_sent

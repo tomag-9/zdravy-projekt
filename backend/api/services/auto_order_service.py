@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+from typing import Any, Dict, List
 
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -11,7 +12,7 @@ from ..models import DailyOrder
 logger = logging.getLogger(__name__)
 
 
-def _is_order_empty(data: dict) -> bool:
+def _is_order_empty(data: Dict[str, Any]) -> bool:
     """
     Return True if the order data contains zero portions across all meals.
 
@@ -63,7 +64,7 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
     return None
 
 
-def _build_auto_data(template: DailyOrder, visible_meals: list[str]) -> dict:
+def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str, Any]:
     """
     Copy only the allowed meals from the template.
     If visible_meals is empty, all three meals are copied.
@@ -80,7 +81,7 @@ def _build_auto_data(template: DailyOrder, visible_meals: list[str]) -> dict:
     return data
 
 
-def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
+def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any]:
     """
     For every active non-staff client that has no order on target_date,
     find their last non-empty order and create an auto order.
@@ -112,7 +113,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
     )
 
     # Preload: best (latest non-empty) template per client (1 query, no N+1)
-    templates_by_user: dict[int, DailyOrder] = {}
+    templates_by_user: Dict[int, DailyOrder] = {}
     for order in DailyOrder.objects.filter(
         user_id__in=client_ids,
         date__lt=target_date,
@@ -137,7 +138,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> dict:
             continue
 
         # Respect visible_meals from ClientSettings
-        visible_meals: list[str] = []
+        visible_meals: List[str] = []
         if hasattr(client, "settings") and client.settings is not None:
             visible_meals = client.settings.visible_meals or []
 

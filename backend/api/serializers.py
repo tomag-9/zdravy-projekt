@@ -1,3 +1,5 @@
+from typing import Any, Dict, Optional
+
 from rest_framework import serializers
 
 from .models import DailyOrder
@@ -9,7 +11,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
         read_only_fields = ["id", "is_auto", "updated_at"]
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         # User is passed via serializer.save(user=...) in views.py
         user = validated_data.get("user") or self.context["request"].user
         input_status = validated_data.get("status", "submitted")
@@ -54,7 +56,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "report_email_recipients",
         ]
 
-    def to_representation(self, instance):
+    def to_representation(self, instance: Any) -> Dict[str, Any]:
         data = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)

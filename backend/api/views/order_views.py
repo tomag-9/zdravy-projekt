@@ -1,23 +1,26 @@
 import datetime
+from typing import Any, Dict, List, Optional, Tuple
 
+from django.db.models import QuerySet
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ..models import DailyOrder
 from ..serializers import DailyOrderSerializer
-from ..services import _is_order_empty, _last_non_empty_order
+from ..services import _build_auto_data, _is_order_empty, _last_non_empty_order
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _next_workdays(start: datetime.date, count: int = 5) -> list[datetime.date]:
+def _next_workdays(start: datetime.date, count: int = 5) -> List[datetime.date]:
     """Return the next `count` Mon-Fri dates starting from (and including) start."""
-    days = []
+    days: List[datetime.date] = []
     d = start
     while len(days) < count:
         if d.weekday() < 5:  # Mon-Fri
@@ -26,7 +29,7 @@ def _next_workdays(start: datetime.date, count: int = 5) -> list[datetime.date]:
     return days
 
 
-def _order_total(data: dict) -> tuple[int, dict]:
+def _order_total(data: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
     """
     Return (total_portions, {meal: count}) for the order data dict.
 
@@ -34,8 +37,8 @@ def _order_total(data: dict) -> tuple[int, dict]:
     - Flat:            {"lunch": {"menuCounts": {"A": 5}}}
     - Category-nested: {"lunch": {"Dospelý": {"menuCounts": {"A": 5}}}}
     """
-    meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
-    total = 0
+    meal_count: Dict[str, int] = {"breakfast": 0, "lunch": 0, "olovrant": 0}
+    total: int = 0
     for meal_key in ("breakfast", "lunch", "olovrant"):
         meal = data.get(meal_key, {}) or {}
         if "menuCounts" in meal:
@@ -70,7 +73,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     # Authenticated users only
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
+    def get_queryset(self) -> QuerySet[DailyOrder]:
         queryset = DailyOrder.objects.all()
         user = self.request.user
 
@@ -87,14 +90,14 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
 
         return queryset
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: DailyOrderSerializer) -> None:
         if self.request.user.is_staff:
             raise PermissionDenied("Administrators cannot place orders.")
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
-    def by_date(self, request, date=None):
+    def by_date(self, request: Request, date: Optional[str] = None) -> Response:
         try:
             order = self.get_queryset().get(date=date)
             serializer = self.get_serializer(order)
@@ -113,12 +116,16 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def list(self, request):
+    def list(self, request: Request) -> Response:
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
 
-        existing = {
+        visible_meals = list(
+            getattr(getattr(request.user, "settings", None), "visible_meals", []) or []
+        )
+
+        existing: Dict[datetime.date, DailyOrder] = {
             o.date: o
             for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
@@ -128,7 +135,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         # this serves as the fallback for every unset day.
         historical_template = _last_non_empty_order(request.user, workdays[0])
 
-        def _template_for_day(day):
+        def _template_for_day(day: datetime.date) -> Optional[DailyOrder]:
             """
             Find the most recent non-empty order before `day`.
             Checks orders already placed in the planned week first (cascade
@@ -141,7 +148,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
                     return prev
             return historical_template
 
-        result = []
+        result: List[Dict[str, Any]] = []
         for day in workdays:
             order = existing.get(day)
             if order:
@@ -165,9 +172,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             else:
                 tmpl = _template_for_day(day)
                 if tmpl:
-                    predicted_total, predicted_meal_count = _order_total(
-                        tmpl.data or {}
-                    )
+                    predicted_data = _build_auto_data(tmpl, visible_meals)
+                    predicted_total, predicted_meal_count = _order_total(predicted_data)
                 else:
                     predicted_total = 0
                     predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
@@ -195,9 +201,9 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
 
     permission_classes = [permissions.IsAdminUser]
 
-    def create(self, request):
+    def create(self, request: Request) -> Response:
         date_str = request.data.get("date")
-        target_date = None
+        target_date: Optional[datetime.date] = None
         if date_str:
             try:
                 target_date = datetime.date.fromisoformat(date_str)

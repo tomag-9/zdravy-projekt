@@ -1,4 +1,5 @@
 import datetime
+from typing import Any, Dict, List
 
 from django.contrib.auth.models import User
 from django.db import models
@@ -26,7 +27,7 @@ class DailyOrder(models.Model):
         ]
         ordering = ["-date"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.user.email} - {self.date}"
 
 
@@ -35,11 +36,11 @@ class Diet(models.Model):
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
-def _default_all_meals():
+def _default_all_meals() -> List[str]:
     return ["breakfast", "lunch", "olovrant"]
 
 
@@ -52,7 +53,7 @@ class ClientSettings(models.Model):
     # ManyToMany to allow dynamic diet selection
     visible_diets = models.ManyToManyField(Diet, blank=True)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Settings for {self.user.email}"
 
 
@@ -76,12 +77,12 @@ class GlobalSettings(models.Model):
         verbose_name = "System Settings"
         verbose_name_plural = "System Settings"
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.pk and GlobalSettings.objects.exists():
             return
         return super(GlobalSettings, self).save(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "Global System Settings"
 
 
@@ -135,7 +136,7 @@ class UserProfile(models.Model):
             models.Index(fields=["registration_status", "email_verified"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.company_name} ({self.user.email})"
 
 
@@ -156,7 +157,7 @@ class EmailVerificationToken(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"EmailVerificationToken for {self.user.email}"
 
     @property
@@ -190,7 +191,7 @@ class PasswordResetToken(models.Model):
             models.Index(fields=["user", "used", "expires_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"PasswordResetToken for {self.user.email}"
 
     @property

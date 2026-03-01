@@ -39,6 +39,10 @@ jobs:
         working-directory: ./backend
         run: isort --check-only .
 
+      - name: Type check with mypy
+        working-directory: ./backend
+        run: mypy api --ignore-missing-imports
+
   frontend-lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
@@ -107,7 +111,7 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
         run: |
-          pytest --cov=app --cov-report=xml --cov-report=term-missing
+          pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

@@ -73,11 +73,14 @@ docker compose -f docker-compose.dev.yml exec backend python manage.py createsup
 # Run all tests
 docker compose -f docker-compose.dev.yml exec backend pytest
 
-# Run with coverage
-docker compose -f docker-compose.dev.yml exec backend pytest --cov=app --cov-report=term-missing
+# Run with coverage (terminal + HTML report)
+docker compose -f docker-compose.dev.yml exec backend pytest --cov=api --cov=app --cov-report=term-missing --cov-report=html
+
+# Enforce minimum backend coverage (60%)
+docker compose -f docker-compose.dev.yml exec backend pytest --cov=api --cov=app --cov-fail-under=60
 
 # Run specific test file
-docker compose -f docker-compose.dev.yml exec backend pytest tests/test_models.py
+docker compose -f docker-compose.dev.yml exec backend pytest api/tests/integration/test_order_api.py
 ```
 
 **Local testing without Docker:**
@@ -122,11 +125,13 @@ zdravy-projekt/
 │   │   ├── urls.py
 │   │   ├── wsgi.py
 │   │   └── asgi.py
-│   ├── tests/                  # Test suite
-│   │   ├── test_models.py
-│   │   ├── test_views.py
-│   │   ├── test_api.py
-│   │   └── factories.py
+│   ├── tests/                  # Legacy + broad backend tests
+│   ├── api/tests/              # Structured API test layers
+│   │   ├── conftest.py
+│   │   ├── factories.py
+│   │   ├── unit/
+│   │   ├── integration/
+│   │   └── e2e/
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── pytest.ini
