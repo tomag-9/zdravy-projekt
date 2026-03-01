@@ -130,6 +130,21 @@ class TestRegistration:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "email" in response.data
 
+    def test_register_duplicate_email_case_insensitive(self, api_client, user):
+        """Registration must reject the same email even with different casing."""
+        url = reverse("register")
+        data = {
+            "email": "CLIENT@EXAMPLE.COM",  # Same as fixture user but uppercase
+            "password": "Password123",
+            "password_confirm": "Password123",
+            "company_name": "Test Company",
+        }
+
+        response = api_client.post(url, data, format="json")
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "email" in response.data
+
     def test_register_missing_company_name(self, api_client):
         """Test registration fails without company_name."""
         url = reverse("register")

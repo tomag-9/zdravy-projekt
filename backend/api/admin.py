@@ -2,8 +2,10 @@
 Django admin configuration for API models.
 """
 
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
 from .models import (
@@ -38,9 +40,43 @@ class UserProfileInline(admin.StackedInline):
     readonly_fields = ("registration_date", "approval_date")
 
 
+class UniqueEmailUserCreationForm(UserCreationForm):
+    """Admin add-user form enforcing one account per email (case-insensitive)."""
+
+    class Meta(UserCreationForm.Meta):
+        model = User
+        fields = ("username", "email")
+
+    def clean_email(self):
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if not email:
+            return email
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError("Používateľ s týmto emailom už existuje.")
+        return email
+
+
+class UniqueEmailUserChangeForm(UserChangeForm):
+    """Admin edit-user form enforcing one account per email (case-insensitive)."""
+
+    def clean_email(self):
+        email = (self.cleaned_data.get("email") or "").strip().lower()
+        if not email:
+            return email
+        if (
+            User.objects.filter(email__iexact=email)
+            .exclude(pk=self.instance.pk)
+            .exists()
+        ):
+            raise forms.ValidationError("Používateľ s týmto emailom už existuje.")
+        return email
+
+
 class UserAdmin(BaseUserAdmin):
     """Extended User admin with profile inline."""
 
+    form = UniqueEmailUserChangeForm
+    add_form = UniqueEmailUserCreationForm
     inlines = (UserProfileInline,)
     list_display = (
         "username",

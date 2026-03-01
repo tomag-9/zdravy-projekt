@@ -87,7 +87,10 @@ class RegistrationSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         """Check that email is unique."""
         normalized_email = value.lower()
-        if User.objects.filter(username__iexact=normalized_email).exists():
+        if (
+            User.objects.filter(username__iexact=normalized_email).exists()
+            or User.objects.filter(email__iexact=normalized_email).exists()
+        ):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
@@ -161,6 +164,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "date_joined", "is_staff", "company_name"]
 
+    def validate_email(self, value):
+        """Enforce unique email for profile updates."""
+        normalized_email = value.lower()
+        if (
+            User.objects.filter(email__iexact=normalized_email)
+            .exclude(pk=self.instance.pk if self.instance else None)
+            .exists()
+        ):
+            raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
+        return normalized_email
+
     def update(self, instance, validated_data):
         # Keep internal username in sync with email
         if "email" in validated_data:
@@ -170,9 +184,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 User.objects.filter(username__iexact=new_email)
                 .exclude(pk=instance.pk)
                 .exists()
+                or User.objects.filter(email__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
             ):
                 raise serializers.ValidationError(
-                    {"email": "A user with that email already exists."}
+                    {"email": "Používateľ s týmto emailom už existuje."}
                 )
             validated_data["username"] = new_email
         return super().update(instance, validated_data)
@@ -239,10 +256,25 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "password",
         ]
 
+    def validate_email(self, value):
+        """Enforce unique email for admin create/update."""
+        normalized_email = value.lower()
+        if (
+            User.objects.filter(email__iexact=normalized_email)
+            .exclude(pk=self.instance.pk if self.instance else None)
+            .exists()
+        ):
+            raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
+        return normalized_email
+
     def create(self, validated_data):
         password = validated_data.pop("password", None)
         # Normalize and use email as internal username so Django's unique constraint is satisfied
         normalized_email = validated_data["email"].lower()
+        if User.objects.filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError(
+                {"email": "Používateľ s týmto emailom už existuje."}
+            )
         validated_data["email"] = normalized_email
         validated_data["username"] = normalized_email
         user = User(**validated_data)
@@ -283,9 +315,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 User.objects.filter(username__iexact=new_email)
                 .exclude(pk=instance.pk)
                 .exists()
+                or User.objects.filter(email__iexact=new_email)
+                .exclude(pk=instance.pk)
+                .exists()
             ):
                 raise serializers.ValidationError(
-                    {"email": "A user with that email already exists."}
+                    {"email": "Používateľ s týmto emailom už existuje."}
                 )
             validated_data["username"] = new_email
 
