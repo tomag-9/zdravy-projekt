@@ -1,4 +1,5 @@
 import pytest
+from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
@@ -64,6 +65,24 @@ class TestUserProfile:
 
         assert response.status_code == status.HTTP_200_OK
         assert response.data["email"] == "novy@email.sk"
+
+    def test_update_profile_email_rejects_duplicate(self, authenticated_client, user):
+        """User cannot update email to one already used by another account."""
+        User.objects.create_user(
+            username="existing@example.com",
+            email="existing@example.com",
+            password="Password123",
+        )
+
+        url = reverse("user-profile")
+        response = authenticated_client.patch(
+            url,
+            {"email": "EXISTING@example.com"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "email" in response.data
 
     def test_update_profile_multiple_fields(self, authenticated_client, user):
         """User can update multiple fields at once"""

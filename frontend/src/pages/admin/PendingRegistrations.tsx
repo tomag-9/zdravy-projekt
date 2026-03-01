@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useAuth } from "../../context/auth";
+import { useToast } from "../../context/ToastContext";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -24,6 +25,7 @@ interface PendingUser {
 
 const PendingRegistrations: React.FC = () => {
   const { token } = useAuth();
+  const { success: toastSuccess, warning: toastWarning } = useToast();
   const [users, setUsers] = useState<PendingUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -84,7 +86,7 @@ const PendingRegistrations: React.FC = () => {
       // Refresh list
       await fetchPendingUsers();
       setShowApprovalModal(null);
-      alert("Registrácia bola úspešne schválená!");
+      toastSuccess("Registrácia bola úspešne schválená!");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chyba pri schvaľovaní");
     } finally {
@@ -118,7 +120,7 @@ const PendingRegistrations: React.FC = () => {
       await fetchPendingUsers();
       setShowDenialModal(null);
       setDenialReason("");
-      alert("Registrácia bola zamietnutá.");
+      toastWarning("Registrácia bola zamietnutá.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chyba pri zamietaní");
     } finally {
