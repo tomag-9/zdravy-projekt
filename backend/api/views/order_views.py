@@ -121,7 +121,9 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
 
-        visible_meals = list(getattr(getattr(request.user, "settings", None), "visible_meals", []) or [])
+        visible_meals = list(
+            getattr(getattr(request.user, "settings", None), "visible_meals", []) or []
+        )
 
         existing: Dict[datetime.date, DailyOrder] = {
             o.date: o
