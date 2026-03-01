@@ -1,4 +1,5 @@
 import re
+from typing import Any, Dict, List, Optional
 
 from django.contrib.auth.models import User
 from django.db.models import Q
@@ -13,7 +14,7 @@ class DietSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "is_active", "description"]
 
 
-def validate_password_strength(password):
+def validate_password_strength(password: str) -> str:
     """
     Validate password meets strength requirements:
     - At least 8 characters
@@ -85,7 +86,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
             "dic",
         ]
 
-    def validate_email(self, value):
+    def validate_email(self, value: str) -> str:
         """Check that email is unique."""
         normalized_email = value.lower()
         if (
@@ -95,7 +96,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
-    def validate(self, data):
+    def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate passwords match."""
         if data["password"] != data["password_confirm"]:
             raise serializers.ValidationError(
@@ -103,7 +104,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
             )
         return data
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> User:
         """Create user and profile with pending status."""
         # Remove fields not for User model
         password = validated_data.pop("password")
@@ -165,7 +166,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "date_joined", "is_staff", "company_name"]
 
-    def validate_email(self, value):
+    def validate_email(self, value: str) -> str:
         """Enforce unique email for profile updates."""
         normalized_email = value.lower()
         if (
@@ -176,7 +177,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
-    def update(self, instance, validated_data):
+    def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
         # Keep internal username in sync with email
         if "email" in validated_data:
             new_email = validated_data["email"].lower()
@@ -195,22 +196,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
             validated_data["username"] = new_email
         return super().update(instance, validated_data)
 
-    def get_groups(self, obj):
+    def get_groups(self, obj: User) -> List[str]:
         return [group.name for group in obj.groups.all()]
 
-    def get_company_name(self, obj):
+    def get_company_name(self, obj: User) -> str:
         """Return company name from profile, primary identifier."""
         if hasattr(obj, "profile"):
             return obj.profile.company_name
         return ""
 
-    def get_profile(self, obj):
+    def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
         if hasattr(obj, "profile"):
             return UserProfileDetailSerializer(obj.profile).data
         return None
 
-    def get_settings(self, obj):
+    def get_settings(self, obj: User) -> Dict[str, Any]:
         if hasattr(obj, "settings"):
             return ClientSettingsSerializer(obj.settings).data
         return {
@@ -257,7 +258,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "password",
         ]
 
-    def validate_email(self, value):
+    def validate_email(self, value: str) -> str:
         """Enforce unique email for admin create/update."""
         normalized_email = value.lower()
         if (
@@ -268,7 +269,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
-    def create(self, validated_data):
+    def create(self, validated_data: Dict[str, Any]) -> User:
         password = validated_data.pop("password", None)
         # Normalize and use email as internal username so Django's unique constraint is satisfied
         normalized_email = validated_data["email"].lower()
@@ -289,24 +290,24 @@ class AdminUserSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
-    def get_company_name(self, obj):
+    def get_company_name(self, obj: User) -> str:
         """Return company name from profile."""
         if hasattr(obj, "profile"):
             return obj.profile.company_name
         return ""
 
-    def get_profile(self, obj):
+    def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
         if hasattr(obj, "profile"):
             return UserProfileDetailSerializer(obj.profile).data
         return None
 
-    def get_settings(self, obj):
+    def get_settings(self, obj: User) -> Optional[Dict[str, Any]]:
         if hasattr(obj, "settings"):
             return AdminClientSettingsSerializer(obj.settings).data
         return None
 
-    def update(self, instance, validated_data):
+    def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
         # Settings are not in validated_data because it's a SerializerMethodField (read-only).
         # We access raw data but validate it explicitly using AdminClientSettingsSerializer.
         settings_data = self.initial_data.get("settings", None)
@@ -373,7 +374,7 @@ class PendingRegistrationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_company_name(self, obj):
+    def get_company_name(self, obj: User) -> str:
         """Return company name from profile."""
         if hasattr(obj, "profile"):
             return obj.profile.company_name

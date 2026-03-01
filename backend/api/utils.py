@@ -1,7 +1,9 @@
 """Shared utility functions for report processing."""
 
+from typing import Any, Dict, List
 
-def safe_int(v) -> int:
+
+def safe_int(v: Any) -> int:
     """Coerce a stored count value to int, returning 0 on any error."""
     try:
         return int(v or 0)
@@ -9,7 +11,7 @@ def safe_int(v) -> int:
         return 0
 
 
-def build_user_meal_row(order_data: dict, meal_key: str) -> dict:
+def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:
     """
     Return {categories: [...], total: int} for a meal.
 
@@ -24,7 +26,7 @@ def build_user_meal_row(order_data: dict, meal_key: str) -> dict:
     if not isinstance(meal, dict):
         return {"categories": [], "total": 0}
 
-    categories = []
+    categories: List[Dict[str, Any]] = []
     meal_total = 0
     iter_categories = (
         [(meal_key, meal)]
@@ -55,7 +57,7 @@ def build_user_meal_row(order_data: dict, meal_key: str) -> dict:
     return {"categories": categories, "total": meal_total}
 
 
-def merge_meal_totals(totals: dict, meal_row: dict) -> None:
+def merge_meal_totals(totals: Dict[str, Any], meal_row: Dict[str, Any]) -> None:
     """
     Accumulate meal_row counts into totals dict (in-place).
 
