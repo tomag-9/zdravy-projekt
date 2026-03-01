@@ -1,0 +1,9 @@
+[run]
+omit =
+    */migrations/*
+    api/tests/*
+    api/views_backup.py
+
+[report]
+show_missing = True
+skip_covered = False

@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-pytest-coverage
+        name: backend pytest coverage >= 60%
+        entry: bash -lc 'cd backend && pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
