@@ -142,8 +142,8 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             for prev_day in reversed([d for d in workdays if d < day]):
                 prev = existing.get(prev_day)
                 if prev and not _is_order_empty(prev.data or {}):
-                    return prev
-            return historical_template
+                    return prev  # type: ignore[no-any-return]
+            return historical_template  # type: ignore[no-any-return]
 
         result: List[Dict[str, Any]] = []
         for day in workdays:

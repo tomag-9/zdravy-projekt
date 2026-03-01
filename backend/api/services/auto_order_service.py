@@ -60,7 +60,7 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
 
     for order in orders:
         if not _is_order_empty(order.data or {}):
-            return order
+            return order  # type: ignore[no-any-return]
     return None
 
 

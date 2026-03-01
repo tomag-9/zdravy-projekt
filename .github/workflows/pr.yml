@@ -39,6 +39,10 @@ jobs:
         working-directory: ./backend
         run: isort --check-only .
 
+      - name: Type check with mypy
+        working-directory: ./backend
+        run: mypy api --ignore-missing-imports
+
   frontend-lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
