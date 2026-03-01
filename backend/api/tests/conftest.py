@@ -59,7 +59,7 @@ def order_payload():
     return {
         "date": date.today().isoformat(),
         "data": {
-            "breakfast": {"Dospely": {"menuCounts": {"A": 1}, "diets": {}}},
+            "breakfast": {"Dospelý": {"menuCounts": {"A": 1}, "diets": {}}},
             "lunch": {},
             "olovrant": {},
         },

@@ -248,8 +248,8 @@ class TestApplyAutoOrders:
         assert user.email not in result["created"]
         assert DailyOrder.objects.filter(user=user, date=TUESDAY).count() == 1
 
-    def test_empty_template_still_prevents_auto(self, user):
-        """Client with explicit empty order → no auto order created."""
+    def test_empty_template_does_not_block_future_auto(self, user):
+        """Client with explicit empty order in history still gets future auto order."""
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
         DailyOrder.objects.create(user=user, date=TUESDAY, data=EMPTY_DATA)
 

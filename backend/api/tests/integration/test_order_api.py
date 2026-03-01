@@ -3,10 +3,9 @@ import datetime
 import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
-from django.utils import timezone
 from rest_framework import status
 
-from api.models import ClientSettings, DailyOrder
+from api.models import DailyOrder
 
 pytestmark = pytest.mark.integration
 

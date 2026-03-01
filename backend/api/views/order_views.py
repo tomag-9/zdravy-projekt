@@ -2,11 +2,11 @@ import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from django.db.models import QuerySet
-from django.http import HttpRequest
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ..models import DailyOrder
@@ -97,7 +97,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         serializer.save(user=self.request.user)
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
-    def by_date(self, request: HttpRequest, date: Optional[str] = None) -> Response:
+    def by_date(self, request: Request, date: Optional[str] = None) -> Response:
         try:
             order = self.get_queryset().get(date=date)
             serializer = self.get_serializer(order)
@@ -116,7 +116,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
 
     permission_classes = [permissions.IsAuthenticated]
 
-    def list(self, request: HttpRequest) -> Response:
+    def list(self, request: Request) -> Response:
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
@@ -201,7 +201,7 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
 
     permission_classes = [permissions.IsAdminUser]
 
-    def create(self, request: HttpRequest) -> Response:
+    def create(self, request: Request) -> Response:
         date_str = request.data.get("date")
         target_date: Optional[datetime.date] = None
         if date_str:

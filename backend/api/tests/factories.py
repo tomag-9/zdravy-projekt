@@ -68,7 +68,7 @@ class DailyOrderFactory(DjangoModelFactory):
     status = "submitted"
     is_auto = False
     data = {
-        "breakfast": {"Dospely": {"menuCounts": {"A": 1}, "diets": {}}},
+        "breakfast": {"Dospelý": {"menuCounts": {"A": 1}, "diets": {}}},
         "lunch": {},
         "olovrant": {},
     }
