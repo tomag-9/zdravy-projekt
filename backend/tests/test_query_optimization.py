@@ -5,17 +5,17 @@ These tests ensure that ViewSets properly use select_related and prefetch_relate
 to minimize database queries. Each test documents the expected query count for a
 common operation and will fail if query count exceeds the optimized threshold.
 
-Reference baseline (before optimization):
+Reference baseline (before optimization / regression checks):
 - AdminUserViewSet.list (10 users): ~31 queries (1 users + 10 profiles + 10 settings + 10 settings M2M)
-- DailyOrderViewSet.list (10 orders): ~11 queries (1 orders + 10 user FK)
-- AdminSummaryViewSet.daily_stats (10 orders): ~11 queries (1 orders + 10 user FK)
+- DailyOrderViewSet.list (10 orders): constant number of queries from orders table only
+- AdminSummaryViewSet.daily_stats (10 orders): constant number of queries iterating DailyOrder and reading order.data
 - PlannedOrdersViewSet.list (user with 5 planned days): ~5-6 queries
 
-After optimization (target):
-- AdminUserViewSet.list (10 users): ~1-2 queries (with prefetch)
-- DailyOrderViewSet.list (10 orders): ~1-2 queries (with select_related)
-- AdminSummaryViewSet.daily_stats (10 orders): ~1-2 queries (with select_related)
-- PlannedOrdersViewSet.list (user with 5 planned days): ~1-2 queries
+After optimization / safeguards (target):
+- AdminUserViewSet.list (10 users): ~1-2 queries (with prefetch for profiles, settings and visible_diets)
+- DailyOrderViewSet.list (10 orders): ~1-2 queries; serializer only reads order fields, no user relations
+- AdminSummaryViewSet.daily_stats (10 orders): ~1-2 queries; view aggregates order.data without dereferencing users
+- PlannedOrdersViewSet.list (user with 5 planned days): ~1-2 queries (with appropriate eager loading)
 """
 
 import pytest

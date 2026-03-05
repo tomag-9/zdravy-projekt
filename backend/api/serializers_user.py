@@ -245,13 +245,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
     operation can trigger separate queries for profile, settings, and the
     M2M `visible_diets` relation (N+1 query pattern).
 
-    The ViewSet should eagerly load these relations, for example:
-      - select_related('profile', 'settings')
-      - prefetch_related('settings__visible_diets')
+    The ViewSet should eagerly load these relations using:
+      - select_related('profile', 'settings')               # single-valued (OneToOne) relations
+      - prefetch_related('settings__visible_diets')         # M2M relation
 
-    Using prefetch_related('profile', 'settings', 'settings__visible_diets')
-    is also valid; the key requirement is that these relations are eagerly
-    loaded to avoid N+1 queries.
+    In general, prefer select_related for single-valued relations such as
+    `profile` and `settings` because it uses efficient SQL JOINs. Reserve
+    prefetch_related for many-to-many relations like `settings__visible_diets`,
+    which are fetched in a separate targeted query and assembled in Python.
+    Using prefetch_related('profile', 'settings', ...) would add unnecessary
+    extra queries for these single-valued relations. The key requirement is
+    that these relations are eagerly loaded to avoid N+1 queries.
     """
 
     settings = serializers.SerializerMethodField()

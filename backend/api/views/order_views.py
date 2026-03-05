@@ -81,9 +81,12 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         "user_id" query parameter; otherwise, only the requesting user's
         orders are returned.
 
-        Note: No select_related/prefetch_related is applied here because
-        DailyOrderSerializer only accesses id/date/status/data/is_auto/updated_at,
-        which are all direct fields on DailyOrder.
+        Query Optimization: No select_related/prefetch_related is needed here
+        because DailyOrderSerializer only accesses direct DailyOrder fields
+        (id, date, status, data, is_auto, updated_at) and does not dereference
+        any related objects like user or settings. As a result, the base
+        queryset is already optimized and query count remains constant
+        regardless of the number of orders returned.
         """
         queryset = DailyOrder.objects.all()
         user = self.request.user
