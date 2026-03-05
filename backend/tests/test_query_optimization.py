@@ -18,14 +18,10 @@ After optimization (target):
 - PlannedOrdersViewSet.list (user with 5 planned days): ~1-2 queries
 """
 
-import datetime
-
 import pytest
 from django.db import connection
-from django.test import TestCase
-from django.test.utils import CaptureQueriesContext, override_settings
+from django.test.utils import CaptureQueriesContext
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from api.models import ClientSettings, DailyOrder, Diet, UserProfile
 
@@ -62,9 +58,7 @@ class TestAdminUserViewSetQueries:
             response = admin_authenticated_client.get("/api/admin/users/")
             assert response.status_code == status.HTTP_200_OK
 
-        # Document actual count for verification
         query_count = len(ctx.captured_queries)
-        print(f"\nAdminUserViewSet.list query count: {query_count}")
         # After prefetch_related optimization, should be <= 5 (improved from ~31 before)
         assert (
             query_count <= 5
@@ -132,7 +126,7 @@ class TestAdminSummaryViewSetQueries:
             )
 
         # After optimization: should be ~1-2 queries (see select_related user, user__settings)
-        # Before: ~1 orders query + 5 user FK queries = ~6 queries (minimal aggregation)
+        # Should execute minimal queries (no N+1 pattern)
         with CaptureQueriesContext(connection) as ctx:
             response = admin_authenticated_client.get(
                 f"/api/admin/summary/daily-stats/?date={target_date}"
@@ -140,8 +134,7 @@ class TestAdminSummaryViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        print(f"\nAdminSummaryViewSet.daily_stats query count: {query_count}")
-        # After select_related optimization, should be <= 2
+        # Should be <= 2 queries (orders + aggregate computation)
         assert (
             query_count <= 2
         ), f"Expected <= 2 queries, got {query_count}. Possible N+1 issue."
@@ -170,15 +163,15 @@ class TestPlannedOrdersViewSetQueries:
                 data={"breakfast": {}, "lunch": {}, "olovrant": {}},
             )
 
-        # After optimization: should be ~1-2 queries
-        # Accessing user.settings.visible_meals should be prefetched
+        # After query optimization, the overall query count should remain low
+        # Accessing user.settings.visible_meals should not introduce an N+1 query pattern
         with CaptureQueriesContext(connection) as ctx:
             response = authenticated_client.get("/api/orders/planned/")
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        print(f"\nPlannedOrdersViewSet.list query count: {query_count}")
-        # After prefetch optimization, should be <= 3 (accounts for _last_non_empty_order helper)
+        # After query optimization, total queries should be <= 3
+        # (includes main list query, helper logic like _last_non_empty_order, and user settings lookup)
         assert (
             query_count <= 3
         ), f"Expected <= 3 queries, got {query_count}. Possible N+1 issue."

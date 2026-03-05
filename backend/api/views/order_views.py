@@ -75,16 +75,13 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet[DailyOrder]:
         """
-        Get filtered DailyOrder queryset with query optimization.
+        Get filtered DailyOrder queryset for the current request user.
 
-        Optimization: Uses select_related() to fetch user and user.settings
-        in a single query with JOINs. Without this, serializer would trigger
-        N+1 queries when accessing user fields.
-
-        Before: 1 orders query + N user FK queries = 1+N total
-        After: 1 query with JOINs for all orders and related users
+        Staff users may optionally filter by another user's ID via the
+        "user_id" query parameter; otherwise, only the requesting user's
+        orders are returned.
         """
-        queryset = DailyOrder.objects.select_related("user", "user__settings").all()
+        queryset = DailyOrder.objects.all()
         user = self.request.user
 
         if user.is_staff:
@@ -142,12 +139,9 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             getattr(getattr(request.user, "settings", None), "visible_meals", []) or []
         )
 
-        # Optimization: select_related to prevent N+1 when accessing order.user
         existing: Dict[datetime.date, DailyOrder] = {
             o.date: o
-            for o in DailyOrder.objects.select_related("user", "user__settings").filter(
-                user=request.user, date__in=workdays
-            )
+            for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
         }
 
         # Single historical query — avoids N+1 when multiple days have no order.

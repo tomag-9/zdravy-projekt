@@ -47,9 +47,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        orders = DailyOrder.objects.filter(date=target_date).select_related(
-            "user", "user__settings"
-        )
+        orders = DailyOrder.objects.filter(date=target_date)
 
         stats = {
             "total_orders": 0,

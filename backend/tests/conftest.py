@@ -81,7 +81,9 @@ def assert_max_queries(num: int, using: str = "default", verbose: bool = False):
 
     Useful for detecting N+1 queries and verifying optimization.
     """
-    with CaptureQueriesContext(connection) as context:
+    from django.db import connections
+
+    with CaptureQueriesContext(connections[using]) as context:
         yield
 
     actual = len(context.captured_queries)
