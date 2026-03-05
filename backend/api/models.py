@@ -24,6 +24,9 @@ class DailyOrder(models.Model):
         unique_together = ["user", "date"]
         indexes = [
             models.Index(fields=["user", "date"]),
+            models.Index(fields=["date", "status"]),  # For admin daily stats queries
+            models.Index(fields=["is_auto"]),  # For filtering auto-generated orders
+            models.Index(fields=["created_at"]),  # For audit and recent order queries
         ]
         ordering = ["-date"]
 
@@ -134,6 +137,10 @@ class UserProfile(models.Model):
         ordering = ["-registration_date"]
         indexes = [
             models.Index(fields=["registration_status", "email_verified"]),
+            models.Index(
+                fields=["registration_status", "registration_date"],
+                name="pending_reg_idx",
+            ),  # For efficient pending registration queries
         ]
 
     def __str__(self) -> str:
