@@ -79,14 +79,14 @@ class TestDailyOrderViewSetQueries:
                 data={"breakfast": {}, "lunch": {}, "olovrant": {}},
             )
 
-        # After optimization: should be ~1-2 queries (see select_related user, user__settings)
-        # Before: ~1 orders query + 5 user FK queries = ~6 queries
+        # Expect a small, constant number of queries for listing multiple orders.
+        # This test guards against introducing an N+1 pattern in the list endpoint.
         with CaptureQueriesContext(connection) as ctx:
             response = authenticated_client.get("/api/orders/")
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # Orders list should execute minimal queries (no N+1 pattern)
+        # DailyOrderSerializer only accesses id/date/status/data/is_auto/updated_at (no user relations)
         assert (
             query_count <= 2
         ), f"Expected <= 2 queries, got {query_count}. Possible N+1 issue."
@@ -122,8 +122,9 @@ class TestAdminSummaryViewSetQueries:
                 },
             )
 
-        # After optimization: should be ~1-2 queries (see select_related user, user__settings)
-        # Should execute minimal queries (no N+1 pattern)
+        # After optimization: should be ~1-2 queries (orders retrieval + aggregation only).
+        # The view iterates DailyOrder for the given date and reads order.data without accessing user/settings,
+        # so this test guards against introducing an N+1 pattern on that code path.
         with CaptureQueriesContext(connection) as ctx:
             response = admin_authenticated_client.get(
                 f"/api/admin/summary/daily-stats/?date={target_date}"

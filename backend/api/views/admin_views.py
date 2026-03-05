@@ -8,13 +8,13 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     """
     Admin ViewSet for managing users and their settings.
 
-    Uses prefetch_related to optimize queries for nested serializer access:
-    - profile: OneToOne relationship accessed in get_profile() and get_company_name()
-    - settings: OneToOne relationship accessed in get_settings()
-    - settings__visible_diets: M2M relationship accessed in AdminClientSettingsSerializer
+    Uses select_related/prefetch_related to optimize queries for nested serializer access:
+    - profile: OneToOne relationship loaded via select_related, accessed in get_profile() and get_company_name()
+    - settings: OneToOne relationship loaded via select_related, accessed in get_settings()
+    - settings__visible_diets: M2M relationship loaded via prefetch_related, accessed in AdminClientSettingsSerializer
 
-    Query optimization: Without prefetch, listing 10 users would trigger ~31 queries
-    (1 users + 10 profiles + 10 settings + 10 M2M visible_diets). With prefetch,
+    Query optimization: Without these optimizations, listing 10 users would trigger ~31 queries
+    (1 users + 10 profiles + 10 settings + 10 M2M visible_diets). With select_related/prefetch_related,
     reduced to 2-3 queries total (>90% reduction).
     """
 

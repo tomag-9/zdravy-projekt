@@ -15,12 +15,6 @@ class Migration(migrations.Migration):
         migrations.AddIndex(
             model_name="dailyorder",
             index=models.Index(
-                fields=["date", "status"], name="api_dailyor_date_d42ee6_idx"
-            ),
-        ),
-        migrations.AddIndex(
-            model_name="dailyorder",
-            index=models.Index(
                 fields=["is_auto"], name="api_dailyor_is_auto_f68526_idx"
             ),
         ),

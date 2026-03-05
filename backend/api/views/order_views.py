@@ -80,6 +80,10 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         Staff users may optionally filter by another user's ID via the
         "user_id" query parameter; otherwise, only the requesting user's
         orders are returned.
+
+        Note: No select_related/prefetch_related is applied here because
+        DailyOrderSerializer only accesses id/date/status/data/is_auto/updated_at,
+        which are all direct fields on DailyOrder.
         """
         queryset = DailyOrder.objects.all()
         user = self.request.user
