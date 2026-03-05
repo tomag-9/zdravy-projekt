@@ -135,9 +135,17 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         Get planned orders for the next 5 workdays.
 
         Returns orders for the requesting user across the next 5 workdays,
-        with template data from the most recent non-empty order. Uses a single
-        query to fetch existing orders; no additional eager loading needed
-        since only order.date, order.data, and order.is_auto are accessed.
+        combining:
+        - Existing orders in the requested window, fetched in a single query
+        - Template data from the most recent non-empty order before the window,
+          plus the user's visible meals, used to predict auto-orders for
+          days without an existing order
+
+        This view is structured to avoid per-day (N+1) queries within the
+        planned range by fetching all existing orders at once and caching
+        the historical template. Additional lookups for user settings and
+        the historical template order may occur, but query count remains small
+        and constant regardless of the number of planned days.
         """
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()

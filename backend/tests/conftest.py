@@ -77,7 +77,7 @@ def assert_max_queries(num: int, using: str = "default", verbose: bool = False):
 
     Usage:
         with assert_max_queries(5):
-            User.objects.all().select_related('profile').prefetch_related('settings')
+            User.objects.select_related('profile', 'settings').prefetch_related('groups')
 
     Useful for detecting N+1 queries and verifying optimization.
     """

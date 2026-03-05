@@ -50,17 +50,17 @@ class TestAdminUserViewSetQueries:
             # Add diets to exercise the settings__visible_diets prefetch path
             settings.visible_diets.set(diets)
 
-        # After optimization: should be ~2-3 queries (users + prefetch)
-        # Before: ~1 + 5 profiles + 5 settings + 5 settings M2M = ~16 queries
+        # After optimization: typically ~2-3 queries (users + select_related/prefetch).
+        # Baseline for 5 users without optimization: ~1 + 5 profiles + 5 settings + 5 settings M2M = ~16 queries.
         with CaptureQueriesContext(connection) as ctx:
             response = admin_authenticated_client.get("/api/admin/users/")
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # After prefetch_related optimization, should be <= 5 (improved from ~31 before)
+        # After select_related/prefetch_related optimization, should be <= 5 (improved from ~16 for 5 users).
         assert (
             query_count <= 5
-        ), f"Expected <= 5 queries, got {query_count}. Possible N+1 issue."
+        ), f"Expected <= 5 queries (was ~16 before optimizations), got {query_count}. Possible N+1 issue."
 
 
 @pytest.mark.django_db
