@@ -35,6 +35,9 @@ class TestAdminUserViewSetQueries:
         # Create 5 test users with their related objects
         from django.contrib.auth.models import User
 
+        # Create Diet objects for visible_diets M2M relationship
+        diets = [Diet.objects.create(name=f"Diet {i}") for i in range(1, 3)]
+
         for i in range(5):
             user = User.objects.create_user(
                 username=f"user{i}@example.com",
@@ -44,13 +47,8 @@ class TestAdminUserViewSetQueries:
             # Create profile and settings for each
             UserProfile.objects.create(user=user, company_name=f"Company {i}")
             settings = ClientSettings.objects.create(user=user)
-            # Add some diets to create M2M relationships
-            for diet_id in range(1, 3):
-                try:
-                    diet = Diet.objects.get(id=diet_id)
-                    settings.visible_diets.add(diet)
-                except Diet.DoesNotExist:
-                    pass
+            # Add diets to exercise the settings__visible_diets prefetch path
+            settings.visible_diets.set(diets)
 
         # After optimization: should be ~2-3 queries (users + prefetch)
         # Before: ~1 + 5 profiles + 5 settings + 5 settings M2M = ~16 queries
@@ -88,8 +86,7 @@ class TestDailyOrderViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        print(f"\nDailyOrderViewSet.list query count: {query_count}")
-        # After select_related optimization, should be <= 2
+        # Orders list should execute minimal queries (no N+1 pattern)
         assert (
             query_count <= 2
         ), f"Expected <= 2 queries, got {query_count}. Possible N+1 issue."

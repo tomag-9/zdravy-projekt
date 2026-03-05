@@ -237,14 +237,21 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     **IMPORTANT: Query Optimization**
     This serializer accesses related objects through getter methods:
-    - get_profile() → requires prefetch_related('profile')
-    - get_company_name() → requires prefetch_related('profile')
-    - get_settings() → requires prefetch_related('settings', 'settings__visible_diets')
+    - get_profile() → accesses `user.profile`
+    - get_company_name() → accesses `user.profile`
+    - get_settings() → accesses `user.settings` and `user.settings.visible_diets`
 
-    Without these prefetches in the ViewSet, each user in a list operation
-    triggers separate queries for profile, settings, and M2M visible_diets.
+    Without appropriate eager loading in the ViewSet, each user in a list
+    operation can trigger separate queries for profile, settings, and the
+    M2M `visible_diets` relation (N+1 query pattern).
 
-    ViewSet MUST use: prefetch_related('profile', 'settings', 'settings__visible_diets')
+    The ViewSet should eagerly load these relations, for example:
+      - select_related('profile', 'settings')
+      - prefetch_related('settings__visible_diets')
+
+    Using prefetch_related('profile', 'settings', 'settings__visible_diets')
+    is also valid; the key requirement is that these relations are eagerly
+    loaded to avoid N+1 queries.
     """
 
     settings = serializers.SerializerMethodField()

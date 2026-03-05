@@ -24,7 +24,6 @@ class DailyOrder(models.Model):
         unique_together = ["user", "date"]
         indexes = [
             models.Index(fields=["user", "date"]),
-            models.Index(fields=["date", "status"]),  # For admin daily stats queries
             models.Index(fields=["is_auto"]),  # For filtering auto-generated orders
             models.Index(fields=["created_at"]),  # For audit and recent order queries
         ]

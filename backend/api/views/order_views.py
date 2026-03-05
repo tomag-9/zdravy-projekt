@@ -127,9 +127,10 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         """
         Get planned orders for the next 5 workdays.
 
-        Optimization: Uses select_related() on the DailyOrder query to fetch
-        user and user.settings in a single query. This prevents N+1 queries
-        when accessing order.user attributes.
+        Returns orders for the requesting user across the next 5 workdays,
+        with template data from the most recent non-empty order. Uses a single
+        query to fetch existing orders; no additional eager loading needed
+        since only order.date, order.data, and order.is_auto are accessed.
         """
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()

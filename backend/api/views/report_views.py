@@ -25,12 +25,9 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     def daily_stats(self, request):
         """Get daily order statistics for a given date.
 
-        Optimization: Uses select_related() to fetch user and user.settings
-        alongside orders in a single query. This matches the optimization pattern
-        used in daily_report and daily_report_pdf methods.
-
-        Without select_related: 1 orders query + N user FK queries = 1+N total
-        With select_related: 1 query with JOINs for all orders and users
+        Fetches all orders for the target date and aggregates meal statistics
+        from their data payloads. No additional eager loading is performed
+        since this endpoint only accesses order.data and order.id.
         """
         date_str = request.query_params.get("date")
         if not date_str:

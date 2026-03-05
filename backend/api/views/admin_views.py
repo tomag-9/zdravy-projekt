@@ -20,11 +20,8 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     queryset = (
         User.objects.all()
-        .prefetch_related(
-            "profile",
-            "settings",
-            "settings__visible_diets",
-        )
+        .select_related("profile", "settings")
+        .prefetch_related("settings__visible_diets")
         .order_by("email")
     )
     serializer_class = AdminUserSerializer
