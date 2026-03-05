@@ -47,10 +47,10 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         return [permissions.IsAdminUser()]
 
     def list(self, request):
-        from ..models import GlobalSettings
+        from ..cached_settings_service import get_global_settings
         from ..serializers import GlobalSettingsSerializer
 
-        settings, _ = GlobalSettings.objects.get_or_create(pk=1)
+        settings = get_global_settings()
         serializer = GlobalSettingsSerializer(settings, context={"request": request})
         return Response(serializer.data)
 
@@ -58,6 +58,7 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         """
         Using create/post to update settings for simplicity or
         standard REST conventions.
+        Note: Cache is automatically invalidated via signals when settings are saved.
         """
         from ..models import GlobalSettings
         from ..serializers import GlobalSettingsSerializer

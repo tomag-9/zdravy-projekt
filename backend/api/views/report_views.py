@@ -26,9 +26,15 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         """Get daily order statistics for a given date.
 
         Fetches all orders for the target date and aggregates meal statistics
-        from their data payloads. No additional eager loading is performed
-        since this endpoint only accesses order.data and order.id.
+        from their data payloads. Results are cached for 5 minutes.
         """
+        from ..cache_service import (
+            DAILY_STATS_TIMEOUT,
+            get_cached,
+            get_daily_stats_cache_key,
+            set_cached,
+        )
+
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(
@@ -43,6 +49,12 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 {"error": "Invalid date format. Use YYYY-MM-DD."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Try cache first
+        cache_key = get_daily_stats_cache_key(date_str)
+        cached_stats = get_cached(cache_key)
+        if cached_stats is not None:
+            return Response(cached_stats, status=status.HTTP_200_OK)
 
         orders = DailyOrder.objects.filter(date=target_date)
 
@@ -59,6 +71,9 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             self._aggregate_meal(stats, data, "breakfast")
             self._aggregate_meal(stats, data, "lunch")
             self._aggregate_meal(stats, data, "olovrant")
+
+        # Cache the stats
+        set_cached(cache_key, stats, timeout=DAILY_STATS_TIMEOUT)
 
         return Response(stats)
 
@@ -195,10 +210,10 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         xlsx_bytes = exporter.generate()
 
         filename = f"prehlad_{date_str}.xlsx"
-        response = HttpResponse(
-            xlsx_bytes,
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        content_type = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+        response = HttpResponse(xlsx_bytes, content_type=content_type)
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
