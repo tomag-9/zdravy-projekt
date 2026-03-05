@@ -23,7 +23,12 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="daily-stats")
     def daily_stats(self, request):
-        """Get daily order statistics for a given date."""
+        """Get daily order statistics for a given date.
+
+        Fetches all orders for the target date and aggregates meal statistics
+        from their data payloads. No additional eager loading is performed
+        since this endpoint only accesses order.data and order.id.
+        """
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(

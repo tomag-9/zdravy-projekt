@@ -74,6 +74,20 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self) -> QuerySet[DailyOrder]:
+        """
+        Get filtered DailyOrder queryset for the current request user.
+
+        Staff users may optionally filter by another user's ID via the
+        "user_id" query parameter; otherwise, only the requesting user's
+        orders are returned.
+
+        Query Optimization: No select_related/prefetch_related is needed here
+        because DailyOrderSerializer only accesses direct DailyOrder fields
+        (id, date, status, data, is_auto, updated_at) and does not dereference
+        any related objects like user or settings. As a result, the base
+        queryset is already optimized and query count remains constant
+        regardless of the number of orders returned.
+        """
         queryset = DailyOrder.objects.all()
         user = self.request.user
 
@@ -117,6 +131,22 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request: Request) -> Response:
+        """
+        Get planned orders for the next 5 workdays.
+
+        Returns orders for the requesting user across the next 5 workdays,
+        combining:
+        - Existing orders in the requested window, fetched in a single query
+        - Template data from the most recent non-empty order before the window,
+          plus the user's visible meals, used to predict auto-orders for
+          days without an existing order
+
+        This view is structured to avoid per-day (N+1) queries within the
+        planned range by fetching all existing orders at once and caching
+        the historical template. Additional lookups for user settings and
+        the historical template order may occur, but query count remains small
+        and constant regardless of the number of planned days.
+        """
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
