@@ -232,6 +232,21 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
+    """
+    Serializer for admin user management with nested profile and settings.
+
+    **IMPORTANT: Query Optimization**
+    This serializer accesses related objects through getter methods:
+    - get_profile() → requires prefetch_related('profile')
+    - get_company_name() → requires prefetch_related('profile')
+    - get_settings() → requires prefetch_related('settings', 'settings__visible_diets')
+
+    Without these prefetches in the ViewSet, each user in a list operation
+    triggers separate queries for profile, settings, and M2M visible_diets.
+
+    ViewSet MUST use: prefetch_related('profile', 'settings', 'settings__visible_diets')
+    """
+
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
     company_name = serializers.SerializerMethodField()

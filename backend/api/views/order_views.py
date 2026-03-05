@@ -74,7 +74,17 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self) -> QuerySet[DailyOrder]:
-        queryset = DailyOrder.objects.all()
+        """
+        Get filtered DailyOrder queryset with query optimization.
+
+        Optimization: Uses select_related() to fetch user and user.settings
+        in a single query with JOINs. Without this, serializer would trigger
+        N+1 queries when accessing user fields.
+
+        Before: 1 orders query + N user FK queries = 1+N total
+        After: 1 query with JOINs for all orders and related users
+        """
+        queryset = DailyOrder.objects.select_related("user", "user__settings").all()
         user = self.request.user
 
         if user.is_staff:
@@ -117,6 +127,13 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request: Request) -> Response:
+        """
+        Get planned orders for the next 5 workdays.
+
+        Optimization: Uses select_related() on the DailyOrder query to fetch
+        user and user.settings in a single query. This prevents N+1 queries
+        when accessing order.user attributes.
+        """
         # Use UTC date so all clients see the same calendar regardless of timezone
         today = timezone.now().astimezone(datetime.timezone.utc).date()
         workdays = _next_workdays(today, 5)
@@ -125,9 +142,12 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
             getattr(getattr(request.user, "settings", None), "visible_meals", []) or []
         )
 
+        # Optimization: select_related to prevent N+1 when accessing order.user
         existing: Dict[datetime.date, DailyOrder] = {
             o.date: o
-            for o in DailyOrder.objects.filter(user=request.user, date__in=workdays)
+            for o in DailyOrder.objects.select_related("user", "user__settings").filter(
+                user=request.user, date__in=workdays
+            )
         }
 
         # Single historical query — avoids N+1 when multiple days have no order.

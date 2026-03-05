@@ -2,9 +2,13 @@
 Pytest configuration and fixtures.
 """
 
+from contextlib import contextmanager
+
 import pytest
 from django.contrib.auth.models import User
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APIClient
 
 
@@ -57,3 +61,46 @@ def authenticated_client(api_client, user):
     """Authenticated API client fixture."""
     api_client.force_authenticate(user=user)
     return api_client
+
+
+@pytest.fixture
+def admin_authenticated_client(api_client, admin_user):
+    """Admin authenticated API client fixture."""
+    api_client.force_authenticate(user=admin_user)
+    return api_client
+
+
+@contextmanager
+def assert_max_queries(num: int, using: str = "default", verbose: bool = False):
+    """
+    Context manager to assert that at most `num` queries are executed.
+
+    Usage:
+        with assert_max_queries(5):
+            User.objects.all().select_related('profile').prefetch_related('settings')
+
+    Useful for detecting N+1 queries and verifying optimization.
+    """
+    with CaptureQueriesContext(connection) as context:
+        yield
+
+    actual = len(context.captured_queries)
+    if actual > num:
+        msg = f"Expected at most {num} queries, but {actual} were executed.\n"
+        if verbose:
+            for i, query in enumerate(context.captured_queries, 1):
+                msg += f"\n[Query {i}]:\n{query['sql']}\n"
+        raise AssertionError(msg)
+
+
+@pytest.fixture
+def query_counter():
+    """Fixture to capture and analyze database queries."""
+    return CaptureQueriesContext(connection)
+
+
+def get_query_count(func, *args, **kwargs):
+    """Execute function and return the number of queries it triggered."""
+    with CaptureQueriesContext(connection) as context:
+        func(*args, **kwargs)
+    return len(context.captured_queries)

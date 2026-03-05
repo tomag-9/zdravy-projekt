@@ -23,7 +23,15 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="daily-stats")
     def daily_stats(self, request):
-        """Get daily order statistics for a given date."""
+        """Get daily order statistics for a given date.
+
+        Optimization: Uses select_related() to fetch user and user.settings
+        alongside orders in a single query. This matches the optimization pattern
+        used in daily_report and daily_report_pdf methods.
+
+        Without select_related: 1 orders query + N user FK queries = 1+N total
+        With select_related: 1 query with JOINs for all orders and users
+        """
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(
@@ -39,7 +47,9 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        orders = DailyOrder.objects.filter(date=target_date)
+        orders = DailyOrder.objects.filter(date=target_date).select_related(
+            "user", "user__settings"
+        )
 
         stats = {
             "total_orders": 0,
