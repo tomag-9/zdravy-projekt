@@ -25,8 +25,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     def daily_stats(self, request):
         """Get daily order statistics for a given date.
 
-        Fetches all orders for the target date and aggregates meal statistics
-        from their data payloads. Results are cached for 5 minutes.
+        Delegates aggregation to ReportService. Results are cached for 5 minutes.
         """
         from ..cache_service import (
             DAILY_STATS_TIMEOUT,
@@ -50,79 +49,15 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Try cache first
         cache_key = get_daily_stats_cache_key(date_str)
         cached_stats = get_cached(cache_key)
         if cached_stats is not None:
             return Response(cached_stats, status=status.HTTP_200_OK)
 
-        orders = DailyOrder.objects.filter(date=target_date)
-
-        stats = {
-            "total_orders": 0,
-            "status_breakdown": {"submitted": 0},
-            "meals": {"breakfast": {}, "lunch": {}, "olovrant": {}},
-        }
-
-        for order in orders:
-            stats["total_orders"] += 1
-            stats["status_breakdown"]["submitted"] += 1
-            data = order.data if isinstance(order.data, dict) else {}
-            self._aggregate_meal(stats, data, "breakfast")
-            self._aggregate_meal(stats, data, "lunch")
-            self._aggregate_meal(stats, data, "olovrant")
-
-        # Cache the stats
+        stats = ReportService.aggregate_daily_stats(target_date)
         set_cached(cache_key, stats, timeout=DAILY_STATS_TIMEOUT)
 
         return Response(stats)
-
-    def _aggregate_meal(self, stats, data, meal_key):
-        """Aggregate meal counts for a specific meal type."""
-        if meal_key not in data or not data[meal_key]:
-            return
-
-        meal_data = data[meal_key]
-        if not isinstance(meal_data, dict):
-            return
-
-        # Support both nested-by-category and flat meal shapes.
-        # If the meal data itself contains menuCounts/diets, treat it as a
-        # single synthetic category keyed by the meal_key (e.g. "lunch").
-        if "menuCounts" in meal_data or "diets" in meal_data:
-            meal_data = {meal_key: meal_data}
-
-        for category, details in meal_data.items():
-            if not details:
-                continue
-
-            if category not in stats["meals"][meal_key]:
-                stats["meals"][meal_key][category] = {
-                    "menus": {},
-                    "diets": {},
-                    "total": 0,
-                }
-
-            cat_stats = stats["meals"][meal_key][category]
-
-            # Aggregate Menus
-            menu_counts = details.get("menuCounts", {})
-            for menu_type, count in menu_counts.items():
-                count = int(count or 0)
-                if count > 0:
-                    cat_stats["menus"][menu_type] = (
-                        cat_stats["menus"].get(menu_type, 0) + count
-                    )
-                    cat_stats["total"] += count
-
-            # Aggregate Diets
-            diets = details.get("diets", {})
-            for diet_name, count in diets.items():
-                count = int(count or 0)
-                if count > 0:
-                    cat_stats["diets"][diet_name] = (
-                        cat_stats["diets"].get(diet_name, 0) + count
-                    )
 
     @action(detail=False, methods=["get"], url_path="daily-report")
     def daily_report(self, request):

@@ -4,6 +4,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..services import RegistrationError, UserService
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,21 +31,11 @@ class RegistrationView(APIView):
         return ip
 
     def post(self, request):
-        from ..email_verification_service import (
-            generate_verification_token,
-            send_verification_email,
-        )
-        from ..rate_limit import (
-            RateLimitExceeded,
-            check_registration_rate_limit,
-            record_verification_sent,
-        )
-        from ..serializers_user import RegistrationSerializer
+        from ..rate_limit import RateLimitExceeded
 
-        # Check rate limit by IP address
         client_ip = self._get_client_ip(request)
         try:
-            check_registration_rate_limit(client_ip)
+            user = UserService.register_user(request.data, client_ip)
         except RateLimitExceeded as e:
             return Response(
                 {
@@ -52,23 +44,8 @@ class RegistrationView(APIView):
                 status=status.HTTP_429_TOO_MANY_REQUESTS,
                 headers={"Retry-After": str(e.retry_after_seconds)},
             )
-
-        serializer = RegistrationSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-        # Create user and profile
-        user = serializer.save()
-
-        # Generate and send verification email
-        try:
-            token = generate_verification_token(user)
-            send_verification_email(user, token)
-            record_verification_sent(user.email)
-        except Exception as e:
-            logger.error(f"Failed to send verification email: {e}")
-            # Don't fail registration if email fails
-            pass
+        except RegistrationError as e:
+            return Response(e.args[0], status=status.HTTP_400_BAD_REQUEST)
 
         return Response(
             {
