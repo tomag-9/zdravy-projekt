@@ -1,9 +1,18 @@
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
 
 from ..serializers_user import AdminUserSerializer
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["admin"]),
+    retrieve=extend_schema(tags=["admin"]),
+    create=extend_schema(tags=["admin"]),
+    update=extend_schema(tags=["admin"]),
+    partial_update=extend_schema(tags=["admin"]),
+    destroy=extend_schema(tags=["admin"]),
+)
 class AdminUserViewSet(viewsets.ModelViewSet):
     """
     Admin ViewSet for managing users and their settings.

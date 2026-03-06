@@ -36,6 +36,9 @@ whitenoise==6.9.0
 # Environment variables
 python-decouple==3.8
 
+# API Documentation
+drf-spectacular==0.28.0
+
 # Code quality
 black==25.1.0
 flake8==7.0.0

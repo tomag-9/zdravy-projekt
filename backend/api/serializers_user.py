@@ -9,6 +9,8 @@ from .models import ClientSettings, Diet, UserProfile
 
 
 class DietSerializer(serializers.ModelSerializer):
+    """Read/write serializer for the Diet catalogue model."""
+
     class Meta:
         model = Diet
         fields = ["id", "name", "is_active", "description"]
@@ -136,6 +138,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
 
 class ClientSettingsSerializer(serializers.ModelSerializer):
+    """Serializer for client-specific display settings (visible menus/meals/diets)."""
+
     visible_diets = DietSerializer(many=True, read_only=True)
 
     class Meta:
@@ -212,6 +216,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return None
 
     def get_settings(self, obj: User) -> Dict[str, Any]:
+        """Return client settings; fall back to sensible defaults when no settings row exists."""
         if hasattr(obj, "settings"):
             return ClientSettingsSerializer(obj.settings).data
         return {
@@ -222,6 +227,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 class AdminClientSettingsSerializer(serializers.ModelSerializer):
+    """Write serializer for admin-managed client settings (accepts diet PKs)."""
+
     visible_diets = serializers.PrimaryKeyRelatedField(
         queryset=Diet.objects.all(), many=True, required=False
     )
@@ -329,13 +336,20 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return None
 
     def get_settings(self, obj: User) -> Optional[Dict[str, Any]]:
+        """Return admin-visible settings including diet PKs, or ``None`` if missing."""
         if hasattr(obj, "settings"):
             return AdminClientSettingsSerializer(obj.settings).data
         return None
 
     def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
-        # Settings are not in validated_data because it's a SerializerMethodField (read-only).
-        # We access raw data but validate it explicitly using AdminClientSettingsSerializer.
+        """
+        Update user fields and optionally update nested ClientSettings.
+
+        Settings data is read from ``self.initial_data`` because the
+        ``settings`` field is a read-only ``SerializerMethodField``.  It is
+        validated explicitly with ``AdminClientSettingsSerializer`` before
+        being applied.
+        """
         settings_data = self.initial_data.get("settings", None)
 
         # Keep internal username in sync with email, ensuring uniqueness

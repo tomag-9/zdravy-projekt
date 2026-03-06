@@ -1,13 +1,17 @@
 import logging
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..exceptions import MissingRequiredFieldError, TooSoonError
+
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["registration"])
 class EmailVerificationView(APIView):
     """
     POST /api/auth/verify-email/
@@ -19,15 +23,21 @@ class EmailVerificationView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Verify a user's email address using a one-time token.
+
+        Args (request body):
+            token: The verification token from the registration email.
+
+        Returns HTTP 200 with ``{detail, email}`` on success, HTTP 400 when
+        the token is missing, expired, or already used.
+        """
         from ..email_verification_service import verify_email_token
 
         token = request.data.get("token", "").strip()
 
         if not token:
-            return Response(
-                {"detail": "Token je povinný."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("token", detail="Token je povinný.")
 
         success, message, user = verify_email_token(token)
 
@@ -46,6 +56,7 @@ class EmailVerificationView(APIView):
         )
 
 
+@extend_schema(tags=["registration"])
 class ResendVerificationEmailView(APIView):
     """
     POST /api/auth/resend-verification/
@@ -58,9 +69,16 @@ class ResendVerificationEmailView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Resend the email-verification link to the given address.
+
+        The response is always HTTP 200 with a generic message to avoid
+        disclosing whether an email is registered.  Rate-limited to prevent
+        spam: returns HTTP 429 with ``Retry-After`` when the cooldown has
+        not elapsed.
+        """
         from ..email_verification_service import resend_verification_email
         from ..rate_limit import (
-            TooSoonError,
             check_verification_resend_rate_limit,
             record_verification_sent,
         )
@@ -68,22 +86,14 @@ class ResendVerificationEmailView(APIView):
         email = request.data.get("email", "").strip().lower()
 
         if not email:
-            return Response(
-                {"detail": "Email je povinný."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("email", detail="Email je povinný.")
 
         # Check rate limit for this email
         try:
             check_verification_resend_rate_limit(email)
-        except TooSoonError as e:
-            return Response(
-                {
-                    "detail": f"Počkajte {e.wait_seconds} sekúnd pred opätovným odoslaním."
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-                headers={"Retry-After": str(e.wait_seconds)},
-            )
+        except TooSoonError:
+            # Re-raise to let exception handler format it
+            raise
 
         try:
             user = User.objects.get(username__iexact=email)

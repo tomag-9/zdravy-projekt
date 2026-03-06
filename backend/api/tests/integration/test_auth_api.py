@@ -24,17 +24,6 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from api.models import EmailVerificationToken, PasswordResetToken, UserProfile
-from api.password_reset_service import (
-    RateLimitExceeded,
-    TooSoonError,
-    request_password_reset,
-)
-from api.rate_limit import RateLimitExceeded as RateLimitRegistration
-from api.rate_limit import TooSoonError as TooSoonRegistration
-from api.rate_limit import (
-    check_registration_rate_limit,
-    check_verification_resend_rate_limit,
-)
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +103,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_duplicate_email(self, api_client, user):
         """Test registration fails with duplicate email."""
@@ -129,7 +118,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_password_mismatch(self, api_client):
         """Test registration fails when passwords don't match."""
@@ -144,7 +133,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password_confirm" in response.data
+        assert "password_confirm" in response.data["error"]["details"]
 
     def test_register_weak_password(self, api_client):
         """Test registration fails with weak password."""
@@ -288,7 +277,8 @@ class TestEmailVerificationFlow:
         # Second request too soon should be rate limited
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "detail" in response.data
+        assert "error" in response.data
+        assert response.data["error"]["code"] == "too_soon"
 
     def test_resend_already_verified_email(self, api_client):
         """Test resending verification to already verified user."""
@@ -526,7 +516,9 @@ class TestPasswordResetFlow:
         # (cooldown is enforced before attempt counter)
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "retry_after_seconds" in response.data or "detail" in response.data
+        assert "error" in response.data
+        # Should be either rate_limit_exceeded or too_soon
+        assert response.data["error"]["code"] in ["rate_limit_exceeded", "too_soon"]
 
     def test_password_reset_request_cooldown(self, api_client, user):
         """Test cooldown between password reset requests."""
@@ -539,7 +531,9 @@ class TestPasswordResetFlow:
         # Immediate second request should fail with cooldown error
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "wait_seconds" in response.data
+        assert "error" in response.data
+        assert response.data["error"]["code"] == "too_soon"
+        assert "wait_seconds" in response.data["error"]["details"]
 
     def test_password_reset_confirm_success(self, api_client, user):
         """Test successful password reset confirmation."""

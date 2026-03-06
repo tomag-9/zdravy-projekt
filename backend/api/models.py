@@ -1,5 +1,5 @@
 import datetime
-from typing import Any, Dict, List
+from typing import Any, List
 
 from django.contrib.auth.models import User
 from django.db import models

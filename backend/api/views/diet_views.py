@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
 
 from ..cache_service import (
@@ -10,6 +11,14 @@ from ..models import Diet
 from ..serializers_user import DietSerializer
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["diets"]),
+    retrieve=extend_schema(tags=["diets"]),
+    create=extend_schema(tags=["diets"]),
+    update=extend_schema(tags=["diets"]),
+    partial_update=extend_schema(tags=["diets"]),
+    destroy=extend_schema(tags=["diets"]),
+)
 class DietViewSet(viewsets.ModelViewSet):
     """
     ViewSet for the Diet model (CRUD).

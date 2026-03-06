@@ -110,3 +110,88 @@ class ReportService:
                 }
             )
         return rows_data
+
+    # ------------------------------------------------------------------ #
+    # Daily stats aggregation
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def aggregate_daily_stats(target_date: datetime.date) -> dict:
+        """
+        Aggregate per-meal statistics for all orders on *target_date*.
+
+        Returns a dict compatible with the /api/summary/daily-stats/ endpoint:
+        {
+            "total_orders": int,
+            "status_breakdown": {"submitted": int},
+            "meals": {
+                "breakfast": {category: {"menus": {}, "diets": {}, "total": int}},
+                "lunch": {...},
+                "olovrant": {...},
+            },
+        }
+        """
+        orders = DailyOrder.objects.filter(date=target_date)
+
+        stats: dict = {
+            "total_orders": 0,
+            "status_breakdown": {"submitted": 0},
+            "meals": {"breakfast": {}, "lunch": {}, "olovrant": {}},
+        }
+
+        for order in orders:
+            stats["total_orders"] += 1
+            stats["status_breakdown"]["submitted"] += 1
+            data = order.data if isinstance(order.data, dict) else {}
+            ReportService._aggregate_meal(stats, data, "breakfast")
+            ReportService._aggregate_meal(stats, data, "lunch")
+            ReportService._aggregate_meal(stats, data, "olovrant")
+
+        return stats
+
+    @staticmethod
+    def _aggregate_meal(stats: dict, data: dict, meal_key: str) -> None:
+        """
+        Merge meal counts from *data[meal_key]* into *stats*.
+
+        Handles both nested-by-category and flat meal storage shapes.
+        """
+        if meal_key not in data or not data[meal_key]:
+            return
+
+        meal_data = data[meal_key]
+        if not isinstance(meal_data, dict):
+            return
+
+        # Flat shape: the meal dict itself contains menuCounts/diets.
+        # Wrap it in a synthetic category so the loop below is uniform.
+        if "menuCounts" in meal_data or "diets" in meal_data:
+            meal_data = {meal_key: meal_data}
+
+        for category, details in meal_data.items():
+            if not details:
+                continue
+
+            if category not in stats["meals"][meal_key]:
+                stats["meals"][meal_key][category] = {
+                    "menus": {},
+                    "diets": {},
+                    "total": 0,
+                }
+
+            cat_stats = stats["meals"][meal_key][category]
+
+            for menu_type, count in (details.get("menuCounts") or {}).items():
+                count = int(count or 0)
+                if count > 0:
+                    cat_stats["menus"][menu_type] = (
+                        cat_stats["menus"].get(menu_type, 0) + count
+                    )
+                    cat_stats["total"] += count
+
+            for diet_name, count in (details.get("diets") or {}).items():
+                count = int(count or 0)
+                if count > 0:
+                    cat_stats["diets"][diet_name] = (
+                        cat_stats["diets"].get(diet_name, 0) + count
+                    )

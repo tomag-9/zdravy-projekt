@@ -19,6 +19,7 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .email_utils import send_password_reset_email
+from .exceptions import RateLimitExceeded, TooSoonError
 from .models import PasswordResetToken
 
 logger = logging.getLogger(__name__)
@@ -28,27 +29,6 @@ MAX_ATTEMPTS = 5  # max reset-request attempts per email within BLOCK_DURATION
 BLOCK_DURATION = 60 * 60  # seconds – 1 hour block after MAX_ATTEMPTS
 RESEND_COOLDOWN = 60  # seconds – minimum gap between consecutive sends (1 minute)
 TOKEN_EXPIRY_HOURS = 1  # hours – how long the reset link is valid
-
-
-# ── Custom exceptions ──────────────────────────────────────────────────────────
-
-
-class RateLimitExceeded(Exception):
-    """Raised when the email has hit the attempt limit."""
-
-    def __init__(self, retry_after_seconds: int) -> None:
-        self.retry_after_seconds = retry_after_seconds
-        super().__init__(f"Rate limit exceeded. Retry after {retry_after_seconds}s.")
-
-
-class TooSoonError(Exception):
-    """Raised when a resend is requested before the cooldown has elapsed."""
-
-    def __init__(self, wait_seconds: int) -> None:
-        self.wait_seconds = wait_seconds
-        super().__init__(
-            f"Please wait {wait_seconds}s before requesting another email."
-        )
 
 
 # ── Internal cache helpers ─────────────────────────────────────────────────────

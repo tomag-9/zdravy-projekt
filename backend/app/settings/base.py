@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     "django_celery_beat",
     # Local apps
     "api",
+    # API documentation
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -157,4 +159,71 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "api.exception_handlers.custom_exception_handler",
+}
+
+# drf-spectacular – OpenAPI / Swagger configuration
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Zdravý projekt API",
+    "DESCRIPTION": (
+        "REST API for the Zdravý projekt catering order management system.\n\n"
+        "## Authentication\n"
+        "All protected endpoints require a JWT **Bearer** token obtained from "
+        "`POST /api/token/`.  Include it in the `Authorization` header:\n"
+        "```\nAuthorization: Bearer <access_token>\n```\n\n"
+        "## Error Response Format\n"
+        "All API errors follow a standardized format:\n"
+        "```json\n"
+        "{\n"
+        '  "error": {\n'
+        '    "code": "error_code",\n'
+        '    "message": "Human-readable error message",\n'
+        '    "details": {\n'
+        '      "field": "additional context"\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "```\n\n"
+        "The `error.code` field contains a machine-readable error code (e.g., "
+        "`invalid_credentials`, `rate_limit_exceeded`) that you can use for "
+        "programmatic error handling. The `error.message` field contains a "
+        "human-readable message that may be localized. The `error.details` "
+        "object provides additional context specific to the error type.\n\n"
+        "For a complete reference of error codes, see the project documentation."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+    "TAGS": [
+        {
+            "name": "auth",
+            "description": "Authentication – token obtain/refresh, password reset",
+        },
+        {
+            "name": "registration",
+            "description": "User registration and email verification",
+        },
+        {"name": "orders", "description": "Daily and planned order management"},
+        {"name": "user", "description": "User profile and client settings"},
+        {"name": "diets", "description": "Diet catalogue"},
+        {
+            "name": "admin",
+            "description": "Admin-only endpoints (users, reports, settings)",
+        },
+    ],
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": False,
+    },
+    "SECURITY": [{"jwtAuth": []}],
+    "SECURITY_SCHEMES": {
+        "jwtAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        }
+    },
 }

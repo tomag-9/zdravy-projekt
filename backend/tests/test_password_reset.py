@@ -250,7 +250,9 @@ class TestPasswordResetRequestEndpoint:
             response = api_client.post(self._url(), {"email": user.email})
 
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "wait_seconds" in response.data
+        assert "error" in response.data
+        assert response.data["error"]["code"] == "too_soon"
+        assert "wait_seconds" in response.data["error"]["details"]
 
     def test_returns_429_when_rate_limited(self, api_client, user):
         """After MAX_ATTEMPTS exhausted, returns 429 with retry_after_seconds."""
@@ -262,7 +264,9 @@ class TestPasswordResetRequestEndpoint:
                     resp = api_client.post(self._url(), {"email": user.email})
 
         assert resp.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "retry_after_seconds" in resp.data
+        assert "error" in resp.data
+        assert resp.data["error"]["code"] == "rate_limit_exceeded"
+        assert "retry_after_seconds" in resp.data["error"]["details"]
 
     def test_is_case_insensitive_for_email(self, api_client, user):
         """Email lookup is case-insensitive."""

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +6,9 @@ from rest_framework.response import Response
 from ..serializers_user import UserProfileSerializer
 
 
+@extend_schema_view(
+    profile=extend_schema(tags=["user"]),
+)
 class UserProfileViewSet(viewsets.ViewSet):
     """
     ViewSet for user profile and settings.
@@ -15,6 +19,13 @@ class UserProfileViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get", "put", "patch"], url_path="profile")
     def profile(self, request):
+        """
+        Retrieve or update the authenticated user's profile.
+
+        - ``GET``: Return full profile including settings and company name.
+        - ``PUT``: Full update (all writable fields required).
+        - ``PATCH``: Partial update (only provided fields are changed).
+        """
         if request.method == "GET":
             serializer = UserProfileSerializer(
                 request.user, context={"request": request}
@@ -33,6 +44,10 @@ class UserProfileViewSet(viewsets.ViewSet):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["admin"]),
+    create=extend_schema(tags=["admin"]),
+)
 class GlobalSettingsViewSet(viewsets.ViewSet):
     """
     Manage system-wide settings.
@@ -47,6 +62,13 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         return [permissions.IsAdminUser()]
 
     def list(self, request):
+        """
+        Return global application settings.
+
+        Accessible to all authenticated users.  Admin-only fields
+        (e.g. ``report_email_recipients``) are stripped for non-staff callers
+        by the serializer.
+        """
         from ..cached_settings_service import get_global_settings
         from ..serializers import GlobalSettingsSerializer
 
@@ -56,9 +78,12 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
 
     def create(self, request):
         """
-        Using create/post to update settings for simplicity or
-        standard REST conventions.
-        Note: Cache is automatically invalidated via signals when settings are saved.
+        Create or update global application settings (admin only).
+
+        Uses POST/create semantics for a singleton model – always operates on
+        the single GlobalSettings row (pk=1).  Accepts partial updates so
+        callers can change individual fields.  The cache is automatically
+        invalidated via signal handlers when the settings instance is saved.
         """
         from ..models import GlobalSettings
         from ..serializers import GlobalSettingsSerializer

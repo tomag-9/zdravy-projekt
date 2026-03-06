@@ -1,8 +1,13 @@
 [flake8]
 max-line-length = 88
-extend-ignore = E203
-exclude = .git,__pycache__,docs/source/conf.py,old,build,dist,.venv,migrations
-ignore = F401
+extend-ignore = E203,W503
+exclude = .git,__pycache__,docs/source/conf.py,old,build,dist,.venv,migrations,api/views_backup.py
 per-file-ignores =
-    # Imported keywords in settings files
+    # Settings use star imports by convention
+    **/settings/*.py:F403,F405
     app/settings/*.py:F403,F405
+    # Unused variables in tests are often intentional (side-effect assertions)
+    **/tests/**/*.py:F841,F811
+    **/tests/*.py:F841,F811
+    tests/*.py:F841,F811
+    test_*.py:F841,F811

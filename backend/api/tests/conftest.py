@@ -23,11 +23,16 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    return User.objects.create_user(
+    user, created = User.objects.get_or_create(
         username="client@example.com",
-        email="client@example.com",
-        password="client123",
+        defaults={
+            "email": "client@example.com",
+        },
     )
+    if created:
+        user.set_password("client123")
+        user.save()
+    return user
 
 
 @pytest.fixture
