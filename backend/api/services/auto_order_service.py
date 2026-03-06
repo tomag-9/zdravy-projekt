@@ -152,8 +152,8 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
 
         # Use get_or_create inside an atomic block to be idempotent when the
         # auto-order task is triggered concurrently (e.g. duplicate Celery tasks).
-        # select_for_update on the lookup prevents two concurrent tasks from
-        # both seeing DoesNotExist and racing to INSERT.
+        # Rely on a unique constraint for (user, date) plus IntegrityError handling
+        # to ensure that at most one auto-order row is ultimately created.
         try:
             with transaction.atomic():
                 _, auto_created = DailyOrder.objects.get_or_create(

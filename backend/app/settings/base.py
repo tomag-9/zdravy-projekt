@@ -112,15 +112,25 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Cache – Redis for production, LocMem for development
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": os.environ.get("REDIS_URL", "redis://localhost:6379/1"),
-        "KEY_PREFIX": "zdravy_projekt",
-        "TIMEOUT": 300,  # Default 5-minute timeout
+# Cache – Redis when REDIS_URL is set, LocMem for development
+REDIS_URL = os.environ.get("REDIS_URL")
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "zdravy_projekt",
+            "TIMEOUT": 300,  # Default 5-minute timeout
+        }
     }
-}
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "KEY_PREFIX": "zdravy_projekt",
+            "TIMEOUT": 300,  # Default 5-minute timeout
+        }
+    }
 
 # Celery
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")

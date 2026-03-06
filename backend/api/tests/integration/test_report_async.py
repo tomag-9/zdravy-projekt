@@ -269,9 +269,11 @@ class TestGenerateReportTasks:
         assert result["status"] == "complete"
         assert result["format"] == "pdf"
         assert result["date"] == today_str
+        assert "cache_key" in result
         mock_cache.set.assert_called_once()
         cache_key = mock_cache.set.call_args[0][0]
-        assert f"pdf:{today_str}" in cache_key
+        # Cache key now uses task_id instead of date/format
+        assert cache_key.startswith("report_task:")
 
     @pytest.mark.django_db
     def test_generate_xlsx_task_stores_in_cache(self, daily_order, today_str):
@@ -289,9 +291,11 @@ class TestGenerateReportTasks:
 
         assert result["status"] == "complete"
         assert result["format"] == "xlsx"
+        assert "cache_key" in result
         mock_cache.set.assert_called_once()
         cache_key = mock_cache.set.call_args[0][0]
-        assert f"xlsx:{today_str}" in cache_key
+        # Cache key now uses task_id instead of date/format
+        assert cache_key.startswith("report_task:")
 
     @pytest.mark.django_db
     def test_pdf_task_uses_correct_cache_timeout(self, daily_order, today_str):

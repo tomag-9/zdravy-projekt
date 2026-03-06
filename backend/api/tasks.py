@@ -41,10 +41,17 @@ def generate_report_pdf_task(self, date_str: str):
         .order_by("user__email")
     )
     pdf_bytes = PDFReportExporter(orders, date_str).generate()
-    cache_key = f"report_task:pdf:{date_str}"
+    # Use task id in cache key to ensure concurrent requests for the same date/format
+    # don't overwrite each other. The download endpoint uses this key from the task result.
+    cache_key = f"report_task:{self.request.id}"
     cache.set(cache_key, pdf_bytes, timeout=REPORT_CACHE_TIMEOUT)
     logger.info("generate_report_pdf_task complete for %s", date_str)
-    return {"status": "complete", "format": "pdf", "date": date_str}
+    return {
+        "status": "complete",
+        "format": "pdf",
+        "date": date_str,
+        "cache_key": cache_key,
+    }
 
 
 @shared_task(
@@ -73,10 +80,17 @@ def generate_report_xlsx_task(self, date_str: str):
     target_date = datetime.date.fromisoformat(date_str)
     rows_data = ReportService.get_orders_for_export(target_date)
     xlsx_bytes = XLSXReportExporter(rows_data, date_str).generate()
-    cache_key = f"report_task:xlsx:{date_str}"
+    # Use task id in cache key to ensure concurrent requests for the same date/format
+    # don't overwrite each other. The download endpoint uses this key from the task result.
+    cache_key = f"report_task:{self.request.id}"
     cache.set(cache_key, xlsx_bytes, timeout=REPORT_CACHE_TIMEOUT)
     logger.info("generate_report_xlsx_task complete for %s", date_str)
-    return {"status": "complete", "format": "xlsx", "date": date_str}
+    return {
+        "status": "complete",
+        "format": "xlsx",
+        "date": date_str,
+        "cache_key": cache_key,
+    }
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

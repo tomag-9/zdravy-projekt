@@ -40,8 +40,8 @@ def get_global_settings():
     if cached_settings is not None:
         return cached_settings
 
-    # Fetch from database
-    settings = GlobalSettings.objects.get(pk=1)
+    # Fetch from database (or create if fresh DB)
+    settings, _ = GlobalSettings.objects.get_or_create(pk=1)
 
     # Cache for future requests
     set_cached(cache_key, settings, timeout=GLOBAL_SETTINGS_TIMEOUT)

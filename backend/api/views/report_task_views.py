@@ -133,7 +133,10 @@ class ReportTaskViewSet(viewsets.ViewSet):
         fmt = task_result.get("format", "pdf")
         date_str = task_result.get("date", "")
 
-        cache_key = f"report_task:{fmt}:{date_str}"
+        # Use a task-identity-based cache key from the Celery task result to ensure
+        # we fetch the bytes produced by this specific task (not overwritten by a
+        # concurrent request for the same date/format). Fall back to task pk if not present.
+        cache_key = task_result.get("cache_key") or f"report_task:{pk}"
         file_bytes = cache.get(cache_key)
 
         if not file_bytes:

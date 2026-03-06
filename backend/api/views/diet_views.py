@@ -2,8 +2,14 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
 from rest_framework import permissions, viewsets
 
-from ..models import Diet
-from ..serializers_user import DietSerializer
+from api.cache_service import (
+    DIET_LIST_TIMEOUT,
+    get_cached,
+    get_diet_list_cache_key,
+    set_cached,
+)
+from api.models import Diet
+from api.serializers_user import DietSerializer
 
 
 class DietViewSet(viewsets.ModelViewSet):
@@ -24,7 +30,27 @@ class DietViewSet(viewsets.ModelViewSet):
             return [permissions.IsAdminUser()]
         return super().get_permissions()
 
-    @method_decorator(cache_page(60 * 60 * 24))  # Cache for 24 hours
     def list(self, request, *args, **kwargs):
-        """Cache the Diet list since it's rarely modified."""
-        return super().list(request, *args, **kwargs)
+        """
+        Return cached Diet list (24h TTL).
+
+        Cache is automatically invalidated when Diet instances are
+        created/updated/deleted via signal handlers (clear_diet_list_cache).
+        """
+        cache_key = get_diet_list_cache_key()
+
+        # Try to get cached serialized data
+        cached_data = get_cached(cache_key)
+        if cached_data is not None:
+            from rest_framework.response import Response
+
+            return Response(cached_data)
+
+        # Generate response via parent list() method
+        response = super().list(request, *args, **kwargs)
+
+        # Cache the serialized data (response.data is already paginated dict)
+        if response.status_code == 200:
+            set_cached(cache_key, response.data, timeout=DIET_LIST_TIMEOUT)
+
+        return response

@@ -62,9 +62,10 @@ def set_cached(key: str, value: Any, timeout: Optional[int] = None) -> None:
     Args:
         key: The cache key.
         value: The value to cache.
-        timeout: TTL in seconds. If None, uses default timeout.
+        timeout: TTL in seconds. If None, uses cache backend's default.
     """
-    cache.set(key, value, timeout=timeout or 300)
+    # Pass timeout as-is to cache.set(); Django will handle None by using the backend default
+    cache.set(key, value, timeout=timeout)
 
 
 def delete_cached(key: str) -> None:
@@ -99,39 +100,41 @@ def clear_diet_list_cache() -> None:
 
 def clear_daily_stats_cache(date_str: Optional[str] = None) -> None:
     """
-    Clear the daily stats cache.
+    Clear the daily stats cache for a specific date.
 
     Args:
-        date_str: Optional specific date (YYYY-MM-DD). If None, clears all stats.
+        date_str: Specific date (YYYY-MM-DD). If None, no action is taken.
     """
     if date_str:
         delete_cached(get_daily_stats_cache_key(date_str))
     else:
-        # Clear all daily stats cache keys (pattern matching via cache backend)
-        # This is a simplified approach: delete all keys matching the pattern
-        cache.delete_many([get_daily_stats_cache_key("*")])
+        # Global deletion of all daily stats keys is not implemented here because
+        # the Django cache API does not support wildcard deletion in a backend-
+        # agnostic way. Callers should explicitly clear known date keys instead.
+        pass
 
 
 def get_cache_stats() -> dict:
     """
-    Get cache hit/miss statistics and metrics.
+    Get cache hit/miss statistics and metrics (Redis only).
 
     Returns:
-        Dictionary with cache statistics (backend-dependent).
+        Dictionary with cache statistics, or empty dict if Redis is not available.
     """
-    # This would need Redis-specific implementation to track hits/misses
-    # For now, return placeholder structure
+    # Relies on django-redis library's client interface for stable API access
     try:
-        info = cache._cache.conn.info()  # Requires redis backend
-        return {
-            "connected": True,
-            "memory_used_mb": info.get("used_memory", 0) / (1024 * 1024),
-            "connected_clients": info.get("connected_clients", 0),
-            "total_commands_processed": info.get("total_commands_processed", 0),
-        }
-    except (AttributeError, Exception):
-        # Not a Redis cache or Redis unavailable
-        return {
-            "connected": False,
-            "message": "Cache stats not available for current backend",
-        }
+        # django-redis backend exposes cache.client which has get_client() method
+        client = cache.client  # type: ignore
+        if hasattr(client, "get_client"):
+            redis_client = client.get_client()
+            info = redis_client.info()
+            return {
+                "connected": True,
+                "memory_used_mb": info.get("used_memory", 0) / (1024 * 1024),
+                "connected_clients": info.get("connected_clients", 0),
+                "total_commands_processed": info.get("total_commands_processed", 0),
+            }
+    except (AttributeError, Exception):  # noqa: BLE001
+        pass
+    # Not a Redis cache or Redis unavailable
+    return {}
