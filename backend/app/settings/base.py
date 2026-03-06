@@ -28,6 +28,8 @@ INSTALLED_APPS = [
     "django_celery_beat",
     # Local apps
     "api",
+    # API documentation
+    "drf_spectacular",
 ]
 
 MIDDLEWARE = [
@@ -157,4 +159,51 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# drf-spectacular – OpenAPI / Swagger configuration
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Zdravý projekt API",
+    "DESCRIPTION": (
+        "REST API for the Zdravý projekt catering order management system.\n\n"
+        "## Authentication\n"
+        "All protected endpoints require a JWT **Bearer** token obtained from "
+        "`POST /api/token/`.  Include it in the `Authorization` header:\n"
+        "```\nAuthorization: Bearer <access_token>\n```"
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": False,
+    "TAGS": [
+        {
+            "name": "auth",
+            "description": "Authentication – token obtain/refresh, password reset",
+        },
+        {
+            "name": "registration",
+            "description": "User registration and email verification",
+        },
+        {"name": "orders", "description": "Daily and planned order management"},
+        {"name": "user", "description": "User profile and client settings"},
+        {"name": "diets", "description": "Diet catalogue"},
+        {
+            "name": "admin",
+            "description": "Admin-only endpoints (users, reports, settings)",
+        },
+    ],
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayOperationId": False,
+    },
+    "SECURITY": [{"jwtAuth": []}],
+    "SECURITY_DEFINITIONS": {
+        "jwtAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+        }
+    },
 }

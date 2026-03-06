@@ -1,5 +1,6 @@
 import logging
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,6 +10,7 @@ from ..services import RegistrationError, UserService
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["registration"])
 class RegistrationView(APIView):
     """
     POST /api/auth/register/
@@ -31,6 +33,13 @@ class RegistrationView(APIView):
         return ip
 
     def post(self, request):
+        """
+        Register a new user account.
+
+        Creates a user with *pending* status and sends an email-verification
+        link.  Returns HTTP 201 on success.  Rate-limited by IP to prevent
+        spam registrations (HTTP 429 when exceeded).
+        """
         from ..rate_limit import RateLimitExceeded
 
         client_ip = self._get_client_ip(request)

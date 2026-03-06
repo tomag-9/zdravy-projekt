@@ -11,13 +11,35 @@ logger = logging.getLogger(__name__)
 
 
 class DailyOrderSerializer(serializers.ModelSerializer):
+    """
+    Serializer for the DailyOrder model.
+
+    Handles create/update with idempotent upsert semantics:
+    - Submitting a ``draft`` status deletes any existing order for that date.
+    - Any other status performs an atomic upsert (update or create) guarded
+      against concurrent writes using ``SELECT FOR UPDATE``.
+    """
+
     class Meta:
         model = DailyOrder
         fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
         read_only_fields = ["id", "is_auto", "updated_at"]
 
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
-        # User is passed via serializer.save(user=...) in views.py
+        """
+        Upsert a DailyOrder for (user, date).
+
+        - ``status='draft'`` → delete any existing order and return an
+          unsaved placeholder (drafts are never persisted).
+        - Any other status → update or create the order using a
+          ``SELECT FOR UPDATE`` lock to prevent concurrent-write races.
+
+        Args:
+            validated_data: Validated fields from the serializer.
+
+        Returns:
+            The saved (or placeholder) DailyOrder instance.
+        """
         user = validated_data.get("user") or self.context["request"].user
         input_status = validated_data.get("status", "submitted")
 
@@ -79,6 +101,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
 
 class GlobalSettingsSerializer(serializers.ModelSerializer):
+    """
+    Serializer for GlobalSettings (singleton model).
+
+    Non-admin users receive the response without the
+    ``report_email_recipients`` field (stripped in ``to_representation``).
+    """
+
     report_email_recipients = serializers.ListField(
         child=serializers.EmailField(),
         required=False,
@@ -97,6 +126,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         ]
 
     def to_representation(self, instance: Any) -> Dict[str, Any]:
+        """Strip ``report_email_recipients`` for non-admin callers."""
         data = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)

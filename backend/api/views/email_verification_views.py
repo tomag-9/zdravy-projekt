@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -8,6 +9,7 @@ from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["registration"])
 class EmailVerificationView(APIView):
     """
     POST /api/auth/verify-email/
@@ -19,6 +21,15 @@ class EmailVerificationView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Verify a user's email address using a one-time token.
+
+        Args (request body):
+            token: The verification token from the registration email.
+
+        Returns HTTP 200 with ``{detail, email}`` on success, HTTP 400 when
+        the token is missing, expired, or already used.
+        """
         from ..email_verification_service import verify_email_token
 
         token = request.data.get("token", "").strip()
@@ -46,6 +57,7 @@ class EmailVerificationView(APIView):
         )
 
 
+@extend_schema(tags=["registration"])
 class ResendVerificationEmailView(APIView):
     """
     POST /api/auth/resend-verification/
@@ -58,6 +70,14 @@ class ResendVerificationEmailView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Resend the email-verification link to the given address.
+
+        The response is always HTTP 200 with a generic message to avoid
+        disclosing whether an email is registered.  Rate-limited to prevent
+        spam: returns HTTP 429 with ``Retry-After`` when the cooldown has
+        not elapsed.
+        """
         from ..email_verification_service import resend_verification_email
         from ..rate_limit import (
             TooSoonError,

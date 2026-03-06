@@ -2,6 +2,7 @@ import datetime
 from typing import Optional
 
 from django.db.models import QuerySet
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -13,6 +14,15 @@ from ..serializers import DailyOrderSerializer
 from ..services import OrderService
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["orders"]),
+    retrieve=extend_schema(tags=["orders"]),
+    create=extend_schema(tags=["orders"]),
+    update=extend_schema(tags=["orders"]),
+    partial_update=extend_schema(tags=["orders"]),
+    destroy=extend_schema(tags=["orders"]),
+    by_date=extend_schema(tags=["orders"]),
+)
 class DailyOrderViewSet(viewsets.ModelViewSet):
     """
     ViewSet for managing daily orders.
@@ -54,6 +64,12 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         return queryset
 
     def perform_create(self, serializer: DailyOrderSerializer) -> None:
+        """
+        Attach the requesting user to the order and reject staff submissions.
+
+        Raises:
+            PermissionDenied: When the authenticated user is a staff member.
+        """
         if self.request.user.is_staff:
             raise PermissionDenied("Administrators cannot place orders.")
         # The serializer.save() will call create() which enables update_or_create logic
@@ -61,6 +77,12 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request: Request, date: Optional[str] = None) -> Response:
+        """
+        Return the order for a specific date, or ``{"data": {}}`` when none exists.
+
+        Args:
+            date: ISO-8601 date string (``YYYY-MM-DD``) captured from the URL.
+        """
         try:
             order = self.get_queryset().get(date=date)
             serializer = self.get_serializer(order)
@@ -71,6 +93,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             )  # Return empty struct if not found
 
 
+@extend_schema(tags=["orders"])
 class PlannedOrdersViewSet(viewsets.ViewSet):
     """
     Returns the 5 upcoming workdays with order status for the logged-in client.
@@ -88,6 +111,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         return Response(result)
 
 
+@extend_schema(tags=["admin"])
 class AdminAutoOrderViewSet(viewsets.ViewSet):
     """
     Admin endpoint to manually trigger auto-order for a given date.

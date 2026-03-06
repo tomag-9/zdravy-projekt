@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,6 +11,11 @@ from ..services import RegistrationError, UserService
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(tags=["admin"]),
+    approve=extend_schema(tags=["admin"]),
+    deny=extend_schema(tags=["admin"]),
+)
 class PendingRegistrationsViewSet(viewsets.ViewSet):
     """
     ViewSet for managing pending user registrations (admin only).

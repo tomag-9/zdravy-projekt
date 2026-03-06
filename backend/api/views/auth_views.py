@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth.models import User
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
@@ -18,6 +19,19 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = "email"
 
     def validate(self, attrs):
+        """
+        Authenticate by email + password and return JWT access/refresh tokens.
+
+        Args:
+            attrs: Dict containing ``email`` and ``password``.
+
+        Returns:
+            Dict with ``access`` and ``refresh`` JWT strings.
+
+        Raises:
+            AuthenticationFailed: When credentials are invalid or the account
+                is inactive.
+        """
         email = attrs.get("email", "").strip().lower()
         password = attrs.get("password", "")
 
@@ -44,12 +58,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         }
 
 
+@extend_schema(tags=["auth"])
 class EmailTokenObtainPairView(TokenObtainPairView):
     """JWT token view that authenticates via email instead of username."""
 
     serializer_class = EmailTokenObtainPairSerializer
 
 
+@extend_schema(tags=["auth"])
 class PasswordResetRequestView(APIView):
     """
     POST /api/auth/password-reset/
@@ -63,6 +79,12 @@ class PasswordResetRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Initiate a password-reset flow for the given email address.
+
+        Always returns HTTP 200 even when the email is not registered to
+        avoid user-enumeration. Returns HTTP 429 when rate-limited.
+        """
         from ..password_reset_service import (
             RateLimitExceeded,
             TooSoonError,
@@ -125,6 +147,7 @@ class PasswordResetRequestView(APIView):
         )
 
 
+@extend_schema(tags=["auth"])
 class PasswordResetConfirmView(APIView):
     """
     POST /api/auth/password-reset/confirm/
@@ -136,6 +159,16 @@ class PasswordResetConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
+        """
+        Confirm a password reset by validating the token and setting a new password.
+
+        Args (request body):
+            token: The reset token sent to the user's email.
+            new_password: The desired new password.
+
+        Returns HTTP 200 on success, HTTP 400 when the token is invalid or
+        the password fails validation.
+        """
         from ..password_reset_service import confirm_password_reset
 
         token = request.data.get("token", "").strip()

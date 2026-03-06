@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -13,6 +14,12 @@ from .report_helpers import build_user_meal_row, merge_meal_totals
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    daily_stats=extend_schema(tags=["admin"]),
+    daily_report=extend_schema(tags=["admin"]),
+    daily_report_xlsx=extend_schema(tags=["admin"]),
+    daily_report_pdf=extend_schema(tags=["admin"]),
+)
 class AdminSummaryViewSet(viewsets.ViewSet):
     """
     Admin ViewSet for Dashboard Summaries.
