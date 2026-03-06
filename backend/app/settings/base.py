@@ -219,7 +219,7 @@ SPECTACULAR_SETTINGS = {
         "displayOperationId": False,
     },
     "SECURITY": [{"jwtAuth": []}],
-    "SECURITY_DEFINITIONS": {
+    "SECURITY_SCHEMES": {
         "jwtAuth": {
             "type": "http",
             "scheme": "bearer",

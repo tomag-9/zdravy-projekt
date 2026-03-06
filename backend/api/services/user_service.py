@@ -155,7 +155,6 @@ class UserService:
 
         with transaction.atomic():
             profile.registration_status = UserProfile.REGISTRATION_DENIED
-            profile.approval_date = timezone.now()
             profile.approved_by = admin_user
             profile.denial_reason = reason
             profile.save()

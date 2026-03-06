@@ -109,9 +109,9 @@ class TestApproveRegistration:
         admin = User.objects.create_user(username="adm4", email="adm4@example.com")
 
         with patch.object(NotificationService, "send_approval_email") as mock_send:
-            UserService.approve_registration(user.id, admin)
+            result = UserService.approve_registration(user.id, admin)
 
-        mock_send.assert_called_once_with(user, user.profile.company_name)
+        mock_send.assert_called_once_with(result, result.profile.company_name)
 
 
 # ---------------------------------------------------------------------------

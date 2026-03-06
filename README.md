@@ -232,7 +232,6 @@ pre-commit run --all-files
 | `isort` | isort 5.13.2 | Sorts imports (black-compatible) |
 | `flake8` | flake8 7.0.0 | Lints for style/logic errors |
 | `mypy` | mypy 1.11.2 | Static type checking |
-| `backend-pytest-coverage` | pytest | Runs tests and enforces ≥ 60 % coverage |
 
 **Via Docker (without local Python):**
 

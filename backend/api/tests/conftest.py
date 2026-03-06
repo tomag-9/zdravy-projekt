@@ -37,18 +37,13 @@ def user(db):
 
 @pytest.fixture
 def admin_user(db):
-    user, created = User.objects.get_or_create(
+    return User.objects.create_user(
         username="admin@example.com",
-        defaults={
-            "email": "admin@example.com",
-            "is_staff": True,
-            "is_superuser": True,
-        },
+        email="admin@example.com",
+        password="admin123",
+        is_staff=True,
+        is_superuser=True,
     )
-    if created:
-        user.set_password("admin123")
-        user.save()
-    return user
 
 
 @pytest.fixture
