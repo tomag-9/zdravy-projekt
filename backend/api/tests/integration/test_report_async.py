@@ -19,7 +19,7 @@ def today_str():
 def daily_order(db, user, today_str):
     return DailyOrder.objects.create(
         user=user,
-        date=today_str,
+        date=date.fromisoformat(today_str),
         status="submitted",
         data={
             "breakfast": {"Dospelý": {"menuCounts": {"A": 2}, "diets": {}}},

@@ -1,13 +1,13 @@
 from rest_framework import permissions, viewsets
 
-from api.cache_service import (
+from ..cache_service import (
     DIET_LIST_TIMEOUT,
     get_cached,
     get_diet_list_cache_key,
     set_cached,
 )
-from api.models import Diet
-from api.serializers_user import DietSerializer
+from ..models import Diet
+from ..serializers_user import DietSerializer
 
 
 class DietViewSet(viewsets.ModelViewSet):

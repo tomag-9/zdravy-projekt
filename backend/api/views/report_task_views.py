@@ -65,9 +65,17 @@ class ReportTaskViewSet(viewsets.ViewSet):
                 {"error": "date parameter is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Validate date_str is a string and valid ISO format
+        if not isinstance(date_str, str):
+            return Response(
+                {"error": "date must be a string in YYYY-MM-DD format"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             datetime.date.fromisoformat(date_str)
-        except ValueError:
+        except (TypeError, ValueError):
             return Response(
                 {"error": "invalid date format, expected YYYY-MM-DD"},
                 status=status.HTTP_400_BAD_REQUEST,

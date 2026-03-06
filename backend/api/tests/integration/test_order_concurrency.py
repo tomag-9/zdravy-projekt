@@ -14,13 +14,11 @@ the logical paths by:
 
 import datetime
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
 from django.db import IntegrityError
-from django.test import RequestFactory
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
