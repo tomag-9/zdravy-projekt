@@ -209,6 +209,33 @@ docker compose -f docker-compose.dev.yml exec frontend npm run lint
 
 ### Code Quality
 
+Pre-commit hooks enforce formatting and linting automatically on every commit.
+
+**Setup (once per clone):**
+
+```bash
+pip install pre-commit   # or: brew install pre-commit
+pre-commit install
+```
+
+**Run against all files manually:**
+
+```bash
+pre-commit run --all-files
+```
+
+**Hooks configured:**
+
+| Hook | Tool | What it does |
+|------|------|-------------|
+| `black` | black 25.1.0 | Formats Python code |
+| `isort` | isort 5.13.2 | Sorts imports (black-compatible) |
+| `flake8` | flake8 7.0.0 | Lints for style/logic errors |
+| `mypy` | mypy 1.11.2 | Static type checking |
+| `backend-pytest-coverage` | pytest | Runs tests and enforces ≥ 60 % coverage |
+
+**Via Docker (without local Python):**
+
 ```bash
 # Backend: Format code with black
 docker compose -f docker-compose.dev.yml exec backend black .

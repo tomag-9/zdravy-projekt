@@ -44,11 +44,7 @@ class UserService:
             generate_verification_token,
             send_verification_email,
         )
-        from ..rate_limit import (
-            RateLimitExceeded,
-            check_registration_rate_limit,
-            record_verification_sent,
-        )
+        from ..rate_limit import check_registration_rate_limit, record_verification_sent
         from ..serializers_user import RegistrationSerializer
 
         check_registration_rate_limit(client_ip)  # raises RateLimitExceeded

@@ -2,7 +2,7 @@
 Middleware for API security and caching control.
 """
 
-from typing import Any, Callable
+from typing import Callable
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect

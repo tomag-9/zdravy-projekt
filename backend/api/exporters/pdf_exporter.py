@@ -114,18 +114,8 @@ class PDFReportExporter:
             PDF file content as bytes
         """
         # Lazy-import reportlab to avoid startup overhead
-        from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import cm
-        from reportlab.platypus import (
-            HRFlowable,
-            Paragraph,
-            SimpleDocTemplate,
-            Spacer,
-            Table,
-            TableStyle,
-        )
 
         styles = self._setup_styles()
         story = self._build_story(styles, cm)

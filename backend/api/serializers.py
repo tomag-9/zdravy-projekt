@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from django.db import IntegrityError, transaction
 from rest_framework import serializers

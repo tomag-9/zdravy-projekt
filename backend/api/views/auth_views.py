@@ -1,7 +1,7 @@
 import logging
 
 from django.contrib.auth.models import User
-from drf_spectacular.utils import extend_schema, extend_schema_view
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
