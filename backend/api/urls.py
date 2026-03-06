@@ -17,6 +17,7 @@ from .views import (
     PendingRegistrationsViewSet,
     PlannedOrdersViewSet,
     RegistrationView,
+    ReportTaskViewSet,
     ResendVerificationEmailView,
     UserProfileViewSet,
 )
@@ -44,6 +45,11 @@ router.register(
     r"admin/pending-registrations",
     PendingRegistrationsViewSet,
     basename="pending-registrations",
+)
+router.register(
+    r"admin/report-tasks",
+    ReportTaskViewSet,
+    basename="report-task",
 )
 
 urlpatterns = [
