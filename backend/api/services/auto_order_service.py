@@ -5,6 +5,7 @@ import logging
 from typing import Any, Dict, List
 
 from django.contrib.auth.models import User
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ..models import DailyOrder
@@ -149,13 +150,31 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             skipped += 1
             continue
 
-        DailyOrder.objects.create(
-            user=client,
-            date=target_date,
-            status="submitted",
-            is_auto=True,
-            data=auto_data,
-        )
+        # Use get_or_create inside an atomic block to be idempotent when the
+        # auto-order task is triggered concurrently (e.g. duplicate Celery tasks).
+        # select_for_update on the lookup prevents two concurrent tasks from
+        # both seeing DoesNotExist and racing to INSERT.
+        try:
+            with transaction.atomic():
+                _, auto_created = DailyOrder.objects.get_or_create(
+                    user=client,
+                    date=target_date,
+                    defaults={
+                        "status": "submitted",
+                        "is_auto": True,
+                        "data": auto_data,
+                    },
+                )
+        except IntegrityError:
+            # Concurrent task already created the row; treat as skipped.
+            skipped += 1
+            continue
+
+        if not auto_created:
+            # A manual order appeared between the preload query and now.
+            skipped += 1
+            continue
+
         created.append(client.email)
         logger.info(
             "Auto-order created for user=%s date=%s (template from %s)",

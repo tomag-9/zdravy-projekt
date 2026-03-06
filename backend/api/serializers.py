@@ -1,8 +1,13 @@
+import logging
+import time
 from typing import Any, Dict, Optional
 
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 from .models import DailyOrder
+
+logger = logging.getLogger(__name__)
 
 
 class DailyOrderSerializer(serializers.ModelSerializer):
@@ -25,16 +30,51 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 user=user, date=validated_data["date"], status="draft", data={}
             )
 
-        status_val = "submitted"  # Always confirmed
+        new_data = validated_data.get("data", {})
 
-        order, created = DailyOrder.objects.update_or_create(
-            user=user,
-            date=validated_data["date"],
-            defaults={
-                "data": validated_data.get("data", {}),
-                "status": status_val,
-            },
-        )
+        # Use select_for_update inside an atomic block to prevent race conditions
+        # when multiple concurrent requests submit an order for the same (user, date).
+        # The SELECT ... FOR UPDATE acquires a row lock so only one writer proceeds
+        # at a time; the outer transaction.atomic() ensures the lock is held for the
+        # full read-modify-write cycle.
+        with transaction.atomic():
+            try:
+                t0 = time.monotonic()
+                order = DailyOrder.objects.select_for_update(nowait=False).get(
+                    user=user, date=validated_data["date"]
+                )
+                wait_ms = (time.monotonic() - t0) * 1000
+                if wait_ms > 100:
+                    logger.warning(
+                        "select_for_update lock wait %.1f ms for user=%s date=%s",
+                        wait_ms,
+                        user.pk,
+                        validated_data["date"],
+                    )
+                order.data = new_data
+                order.status = "submitted"
+                order.save(update_fields=["data", "status", "updated_at"])
+            except DailyOrder.DoesNotExist:
+                # Wrap create() in its own savepoint so that if IntegrityError is
+                # raised (another request raced us to INSERT), only this savepoint
+                # is rolled back and the outer atomic block remains usable.
+                try:
+                    with transaction.atomic():
+                        order = DailyOrder.objects.create(
+                            user=user,
+                            date=validated_data["date"],
+                            data=new_data,
+                            status="submitted",
+                        )
+                except IntegrityError:
+                    # Another request won the INSERT race; retry with a lock.
+                    order = DailyOrder.objects.select_for_update(nowait=False).get(
+                        user=user, date=validated_data["date"]
+                    )
+                    order.data = new_data
+                    order.status = "submitted"
+                    order.save(update_fields=["data", "status", "updated_at"])
+
         return order
 
 
