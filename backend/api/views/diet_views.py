@@ -1,5 +1,3 @@
-from django.utils.decorators import method_decorator
-from django.views.decorators.cache import cache_page
 from rest_framework import permissions, viewsets
 
 from api.cache_service import (
@@ -36,8 +34,13 @@ class DietViewSet(viewsets.ModelViewSet):
 
         Cache is automatically invalidated when Diet instances are
         created/updated/deleted via signal handlers (clear_diet_list_cache).
+
+        Note: Caching is per-page via pagination aware keys. This avoids returning
+        stale pages when filtering/sorting query params change.
         """
-        cache_key = get_diet_list_cache_key()
+        # Build cache key including pagination params to handle different pages
+        page_num = request.query_params.get("page", "1")
+        cache_key = f"{get_diet_list_cache_key()}:page={page_num}"
 
         # Try to get cached serialized data
         cached_data = get_cached(cache_key)

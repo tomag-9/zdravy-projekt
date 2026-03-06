@@ -48,9 +48,17 @@ class ReportTaskViewSet(viewsets.ViewSet):
         Returns 202 with task_id and a status_url for polling.
         """
         date_str = request.data.get("date") or request.query_params.get("date")
-        fmt = (
-            request.data.get("format") or request.query_params.get("format", "pdf")
-        ).lower()
+
+        # Validate format parameter (must be a string)
+        fmt_raw = request.data.get("format")
+        if fmt_raw is None:
+            fmt_raw = request.query_params.get("format", "pdf")
+        if not isinstance(fmt_raw, str):
+            return Response(
+                {"error": "format must be a string"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        fmt = fmt_raw.lower()
 
         if not date_str:
             return Response(
@@ -139,7 +147,7 @@ class ReportTaskViewSet(viewsets.ViewSet):
         cache_key = task_result.get("cache_key") or f"report_task:{pk}"
         file_bytes = cache.get(cache_key)
 
-        if not file_bytes:
+        if file_bytes is None:
             return Response(
                 {"error": "Report expired. Please generate a new one."},
                 status=status.HTTP_404_NOT_FOUND,

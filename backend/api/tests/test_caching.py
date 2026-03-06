@@ -225,7 +225,7 @@ class TestClientSettingsCaching:
 
 
 class TestDietListCaching:
-    """Test Diet list caching via @cache_page decorator."""
+    """Test Diet list caching via custom cache_service helpers."""
 
     def setup_method(self):
         """Clear cache before each test."""

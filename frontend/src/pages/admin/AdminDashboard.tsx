@@ -270,7 +270,14 @@ const AdminDashboard: React.FC = () => {
           const statusRes = await apiFetch(
             `${apiBase}/admin/report-tasks/${task_id}/`,
           );
-          if (!statusRes.ok) break;
+          if (!statusRes.ok) {
+            toastError(
+              fmt === "pdf"
+                ? "Chyba pri kontrole stavu generovania PDF súboru."
+                : "Chyba pri kontrole stavu generovania XLSX súboru.",
+            );
+            return;
+          }
           const { status: taskStatus } = (await statusRes.json()) as {
             status: string;
           };

@@ -119,22 +119,39 @@ def get_cache_stats() -> dict:
     Get cache hit/miss statistics and metrics (Redis only).
 
     Returns:
-        Dictionary with cache statistics, or empty dict if Redis is not available.
+        Dictionary with cache statistics, or empty dict if Redis is unavailable.
+
+    Works with both django-redis and Django's built-in RedisCache backends.
     """
-    # Relies on django-redis library's client interface for stable API access
     try:
-        # django-redis backend exposes cache.client which has get_client() method
-        client = cache.client  # type: ignore
-        if hasattr(client, "get_client"):
+        redis_client = None
+
+        # Try django-redis: cache.client.get_client()
+        client = getattr(cache, "client", None)
+        if client is not None and hasattr(client, "get_client"):
             redis_client = client.get_client()
-            info = redis_client.info()
-            return {
-                "connected": True,
-                "memory_used_mb": info.get("used_memory", 0) / (1024 * 1024),
-                "connected_clients": info.get("connected_clients", 0),
-                "total_commands_processed": info.get("total_commands_processed", 0),
-            }
-    except (AttributeError, Exception):  # noqa: BLE001
+        # For Django's built-in RedisCache, cache.client may be a redis client
+        elif client is not None and hasattr(client, "info"):
+            redis_client = client
+        # Some backends may expose get_client() directly on the cache
+        elif hasattr(cache, "get_client"):
+            redis_client = cache.get_client()  # type: ignore[call-arg]
+        # As last resort, treat the cache itself as a redis client if it has info()
+        elif hasattr(cache, "info"):
+            redis_client = cache  # type: ignore[assignment]
+
+        if redis_client is None or not hasattr(redis_client, "info"):
+            # Not a Redis cache or unsupported backend
+            return {}
+
+        info = redis_client.info()
+        return {
+            "connected": True,
+            "memory_used_mb": info.get("used_memory", 0) / (1024 * 1024),
+            "connected_clients": info.get("connected_clients", 0),
+            "total_commands_processed": info.get("total_commands_processed", 0),
+        }
+    except Exception:  # noqa: BLE001
+        # Redis unavailable or unexpected backend behavior
         pass
-    # Not a Redis cache or Redis unavailable
     return {}
