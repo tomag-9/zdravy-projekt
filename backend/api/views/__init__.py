@@ -32,6 +32,7 @@ from .pending_registrations_views import PendingRegistrationsViewSet
 from .registration_views import RegistrationView
 
 # Report views
+from .report_task_views import ReportTaskViewSet
 from .report_views import AdminSummaryViewSet
 
 # Settings views
@@ -55,6 +56,7 @@ __all__ = [
     "AdminUserViewSet",
     # Reports
     "AdminSummaryViewSet",
+    "ReportTaskViewSet",
     # Settings
     "UserProfileViewSet",
     "GlobalSettingsViewSet",

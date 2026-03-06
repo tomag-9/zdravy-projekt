@@ -2,14 +2,16 @@
 Django signals for the api app.
 
 GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
-- auto-orders: fires at max(deadline_breakfast, deadline_lunch, deadline_olovrant)
-- daily reports: fires at breakfast deadline (breakfast only) and olovrant deadline (all meals)
+- auto-orders: fires at max(deadline_breakfast, deadline_lunch,
+  deadline_olovrant)
+- daily reports: fires at breakfast deadline (breakfast only) and
+  olovrant deadline (all meals)
 """
 
 import json
 import logging
 
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – skipping auto-order schedule sync."
+            "django_celery_beat not installed – " "skipping auto-order schedule sync."
         )
         return
 
@@ -80,17 +82,19 @@ def _sync_auto_order_schedule(settings_instance) -> None:
 def _sync_daily_report_schedule(settings_instance) -> None:
     """
     Create or update two Celery Beat PeriodicTasks for daily reports:
+
     1. Breakfast-only report at breakfast deadline (Monday–Friday)
     2. Full report (all meals) at olovrant deadline (Monday–Friday)
 
-    Tasks are only created if report_email_recipients is configured (non-empty).
+    Tasks are only created if report_email_recipients is configured
+    (non-empty).
     """
     try:
         from django.conf import settings
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – skipping daily report schedule sync."
+            "django_celery_beat not installed – " "skipping daily report schedule sync."
         )
         return
 
@@ -98,7 +102,8 @@ def _sync_daily_report_schedule(settings_instance) -> None:
     if not settings_instance.report_email_recipients:
         logger.debug(
             "Skipping daily report task creation: no recipients configured. "
-            "Add recipients to GlobalSettings.report_email_recipients to enable automatic email sending."
+            "Add recipients to GlobalSettings.report_email_recipients to "
+            "enable automatic email sending."
         )
         return
 
@@ -122,7 +127,9 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "args": json.dumps([]),
                 "kwargs": json.dumps({"meals": ["breakfast"]}),
                 "enabled": True,
-                "description": "Daily report: breakfast only, sent at breakfast deadline.",
+                "description": (
+                    "Daily report: breakfast only, sent at breakfast deadline."
+                ),
             },
         )
 
@@ -152,7 +159,10 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "args": json.dumps([]),
                 "kwargs": json.dumps({"meals": ["breakfast", "lunch", "olovrant"]}),
                 "enabled": True,
-                "description": "Daily report: all meals (breakfast, lunch, olovrant), sent at olovrant deadline.",
+                "description": (
+                    "Daily report: all meals (breakfast, lunch, olovrant), "
+                    "sent at olovrant deadline."
+                ),
             },
         )
 
@@ -172,11 +182,46 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
 
     This signal handler ensures PeriodicTasks are created or updated whenever
     the GlobalSettings (deadlines, recipients, etc.) change.
+
+    Also invalidates the GlobalSettings cache to ensure fresh data.
     """
     try:
         _sync_auto_order_schedule(instance)
         _sync_daily_report_schedule(instance)
+
+        # Invalidate GlobalSettings cache
+        from api.cache_service import clear_global_settings_cache
+
+        clear_global_settings_cache()
+
         action = "created" if created else "updated"
-        logger.debug("GlobalSettings %s – periodic tasks synced", action)
+        logger.debug(
+            "GlobalSettings %s – periodic tasks synced and cache cleared", action
+        )
     except Exception as exc:
         logger.exception("Error syncing periodic tasks for GlobalSettings: %s", exc)
+
+
+@receiver(post_save, sender="api.ClientSettings")
+def on_client_settings_saved(sender, instance, created=False, **kwargs):
+    """Invalidate ClientSettings cache when saved."""
+    try:
+        from api.cache_service import clear_client_settings_cache
+
+        clear_client_settings_cache(instance.user_id)
+        logger.debug("ClientSettings cache cleared for user_id=%s", instance.user_id)
+    except Exception as exc:
+        logger.exception("Error clearing ClientSettings cache: %s", exc)
+
+
+@receiver(post_save, sender="api.Diet")
+@receiver(post_delete, sender="api.Diet")
+def on_diet_changed(sender, instance, **kwargs):
+    """Invalidate Diet list cache when Diet is saved or deleted."""
+    try:
+        from api.cache_service import clear_diet_list_cache
+
+        clear_diet_list_cache()
+        logger.debug("Diet list cache cleared")
+    except Exception as exc:
+        logger.exception("Error clearing Diet list cache: %s", exc)

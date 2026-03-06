@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 
@@ -229,6 +229,102 @@ const AdminDashboard: React.FC = () => {
   const [pdfLoading, setPdfLoading] = useState(false);
 
   const isAtMax = date >= maxDate;
+  const { error: toastError } = useToast();
+  // Keep a ref so polling loops can be cancelled on unmount
+  const cancelPollRef = useRef(false);
+  useEffect(() => {
+    cancelPollRef.current = false;
+    return () => {
+      cancelPollRef.current = true;
+    };
+  }, []);
+
+  const POLL_INTERVAL_MS = 1500;
+  const POLL_MAX_ATTEMPTS = 200; // ~5 minutes max
+
+  const downloadViaTask = useCallback(
+    async (fmt: "pdf" | "xlsx", setLoading: (v: boolean) => void) => {
+      setLoading(true);
+      const apiBase = import.meta.env.VITE_API_URL || "/api";
+      try {
+        const initRes = await apiFetch(
+          `${apiBase}/admin/report-tasks/?date=${date}&format=${fmt}`,
+          { method: "POST" },
+        );
+        if (!initRes.ok) {
+          toastError(
+            fmt === "pdf"
+              ? "Chyba pri spúšťaní generovania PDF."
+              : "Chyba pri spúšťaní generovania XLSX.",
+          );
+          return;
+        }
+        const { task_id } = (await initRes.json()) as { task_id: string };
+
+        for (let attempt = 0; attempt < POLL_MAX_ATTEMPTS; attempt++) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, POLL_INTERVAL_MS),
+          );
+          if (cancelPollRef.current) return;
+
+          const statusRes = await apiFetch(
+            `${apiBase}/admin/report-tasks/${task_id}/`,
+          );
+          if (!statusRes.ok) {
+            toastError(
+              fmt === "pdf"
+                ? "Chyba pri kontrole stavu generovania PDF súboru."
+                : "Chyba pri kontrole stavu generovania XLSX súboru.",
+            );
+            return;
+          }
+          const { status: taskStatus } = (await statusRes.json()) as {
+            status: string;
+          };
+
+          if (taskStatus === "complete") {
+            const dlRes = await apiFetch(
+              `${apiBase}/admin/report-tasks/${task_id}/download/`,
+            );
+            if (!dlRes.ok) {
+              toastError("Chyba pri sťahovaní súboru.");
+              return;
+            }
+            const blob = await dlRes.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `prehlad_${date}.${fmt}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            return;
+          }
+
+          if (taskStatus === "failed") {
+            toastError(
+              fmt === "pdf"
+                ? "Chyba pri generovaní PDF súboru."
+                : "Chyba pri generovaní XLSX súboru.",
+            );
+            return;
+          }
+        }
+        toastError("Generovanie súboru trvalo príliš dlho.");
+      } catch (e) {
+        console.error(e);
+        toastError(
+          fmt === "pdf"
+            ? "Chyba pri generovaní PDF súboru."
+            : "Chyba pri generovaní XLSX súboru.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [apiFetch, date, toastError],
+  );
 
   const fetchReport = useCallback(async () => {
     setLoading(true);
@@ -261,61 +357,9 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
-  const handleDownloadXlsx = async () => {
-    setXlsxLoading(true);
-    try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/summary/daily-report-xlsx/?date=${date}`,
-      );
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `prehlad_${date}.xlsx`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } else {
-        toastError("Chyba pri generovaní XLSX súboru.");
-      }
-    } catch (e) {
-      console.error(e);
-      toastError("Chyba pri generovaní XLSX súboru.");
-    } finally {
-      setXlsxLoading(false);
-    }
-  };
+  const handleDownloadXlsx = () => downloadViaTask("xlsx", setXlsxLoading);
 
-  const handleDownloadPdf = async () => {
-    setPdfLoading(true);
-    try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/summary/daily-report-pdf/?date=${date}`,
-      );
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `prehlad_${date}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } else {
-        toastError("Chyba pri generovaní PDF súboru.");
-      }
-    } catch (e) {
-      console.error(e);
-      toastError("Chyba pri generovaní PDF súboru.");
-    } finally {
-      setPdfLoading(false);
-    }
-  };
-
-  const { error: toastError } = useToast();
+  const handleDownloadPdf = () => downloadViaTask("pdf", setPdfLoading);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">

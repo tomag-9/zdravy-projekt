@@ -8,6 +8,90 @@ from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
+REPORT_CACHE_TIMEOUT = 3600  # 1 hour
+
+
+@shared_task(
+    bind=True,
+    max_retries=0,
+    time_limit=600,
+    soft_time_limit=590,
+    name="api.tasks.generate_report_pdf",
+)
+def generate_report_pdf_task(self, date_str: str):
+    """Generate a PDF report in the background and store it in cache.
+
+    Args:
+        date_str: Target date in YYYY-MM-DD format.
+
+    Returns:
+        dict with status, format, and date on success.
+    """
+    import datetime
+
+    from django.core.cache import cache
+
+    from api.exporters import PDFReportExporter
+    from api.models import DailyOrder
+
+    target_date = datetime.date.fromisoformat(date_str)
+    orders = (
+        DailyOrder.objects.filter(date=target_date)
+        .select_related("user", "user__settings")
+        .order_by("user__email")
+    )
+    pdf_bytes = PDFReportExporter(orders, date_str).generate()
+    # Use task id in cache key to ensure concurrent requests for the same date/format
+    # don't overwrite each other. The download endpoint uses this key from the task result.
+    cache_key = f"report_task:{self.request.id}"
+    cache.set(cache_key, pdf_bytes, timeout=REPORT_CACHE_TIMEOUT)
+    logger.info("generate_report_pdf_task complete for %s", date_str)
+    return {
+        "status": "complete",
+        "format": "pdf",
+        "date": date_str,
+        "cache_key": cache_key,
+    }
+
+
+@shared_task(
+    bind=True,
+    max_retries=0,
+    time_limit=600,
+    soft_time_limit=590,
+    name="api.tasks.generate_report_xlsx",
+)
+def generate_report_xlsx_task(self, date_str: str):
+    """Generate an XLSX report in the background and store it in cache.
+
+    Args:
+        date_str: Target date in YYYY-MM-DD format.
+
+    Returns:
+        dict with status, format, and date on success.
+    """
+    import datetime
+
+    from django.core.cache import cache
+
+    from api.exporters import XLSXReportExporter
+    from api.services import ReportService
+
+    target_date = datetime.date.fromisoformat(date_str)
+    rows_data = ReportService.get_orders_for_export(target_date)
+    xlsx_bytes = XLSXReportExporter(rows_data, date_str).generate()
+    # Use task id in cache key to ensure concurrent requests for the same date/format
+    # don't overwrite each other. The download endpoint uses this key from the task result.
+    cache_key = f"report_task:{self.request.id}"
+    cache.set(cache_key, xlsx_bytes, timeout=REPORT_CACHE_TIMEOUT)
+    logger.info("generate_report_xlsx_task complete for %s", date_str)
+    return {
+        "status": "complete",
+        "format": "xlsx",
+        "date": date_str,
+        "cache_key": cache_key,
+    }
+
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def apply_auto_orders_task(self, date_str: str | None = None):
