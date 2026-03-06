@@ -12,7 +12,6 @@ Verifies that all endpoints return standardized error format:
 """
 
 import pytest
-from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 

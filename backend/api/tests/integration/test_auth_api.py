@@ -24,17 +24,6 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from api.models import EmailVerificationToken, PasswordResetToken, UserProfile
-from api.password_reset_service import (
-    RateLimitExceeded,
-    TooSoonError,
-    request_password_reset,
-)
-from api.rate_limit import RateLimitExceeded as RateLimitRegistration
-from api.rate_limit import TooSoonError as TooSoonRegistration
-from api.rate_limit import (
-    check_registration_rate_limit,
-    check_verification_resend_rate_limit,
-)
 
 pytestmark = pytest.mark.integration
 
@@ -114,7 +103,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_duplicate_email(self, api_client, user):
         """Test registration fails with duplicate email."""
@@ -129,7 +118,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_password_mismatch(self, api_client):
         """Test registration fails when passwords don't match."""
@@ -144,7 +133,7 @@ class TestRegistrationFlow:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password_confirm" in response.data
+        assert "password_confirm" in response.data["error"]["details"]
 
     def test_register_weak_password(self, api_client):
         """Test registration fails with weak password."""

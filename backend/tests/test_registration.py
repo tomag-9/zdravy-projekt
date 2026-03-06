@@ -83,7 +83,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password" in response.data
+        assert "password" in response.data["error"]["details"]
 
     def test_register_password_no_number(self, api_client):
         """Test registration fails with password without a number."""
@@ -98,7 +98,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password" in response.data
+        assert "password" in response.data["error"]["details"]
 
     def test_register_passwords_dont_match(self, api_client):
         """Test registration fails when passwords don't match."""
@@ -113,7 +113,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "password_confirm" in response.data
+        assert "password_confirm" in response.data["error"]["details"]
 
     def test_register_duplicate_email(self, api_client, user):
         """Test registration fails with existing email."""
@@ -128,7 +128,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_duplicate_email_case_insensitive(self, api_client, user):
         """Registration must reject the same email even with different casing."""
@@ -143,7 +143,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "email" in response.data
+        assert "email" in response.data["error"]["details"]
 
     def test_register_missing_company_name(self, api_client):
         """Test registration fails without company_name."""
@@ -157,7 +157,7 @@ class TestRegistration:
         response = api_client.post(url, data, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "company_name" in response.data
+        assert "company_name" in response.data["error"]["details"]
 
 
 @pytest.mark.django_db

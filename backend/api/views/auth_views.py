@@ -34,8 +34,9 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
             Dict with ``access`` and ``refresh`` JWT strings.
 
         Raises:
-            AuthenticationFailed: When credentials are invalid or the account
-                is inactive.
+            InvalidCredentialsError: When the email is missing or credentials
+                are invalid.
+            InactiveAccountError: When the user account exists but is inactive.
         """
         email = attrs.get("email", "").strip().lower()
         password = attrs.get("password", "")

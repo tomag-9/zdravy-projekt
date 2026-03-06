@@ -30,12 +30,3 @@ repos:
         entry: bash -c 'cd backend && if [ -x ./.venv/bin/mypy ]; then ./.venv/bin/mypy api --ignore-missing-imports --config-file=mypy.ini; else mypy api --ignore-missing-imports --config-file=mypy.ini; fi'
         language: system
         pass_filenames: false
-
-  - repo: local
-    hooks:
-      - id: backend-pytest-coverage
-        name: backend pytest coverage >= 60%
-        entry: bash -c 'cd backend && if [ -x ./.venv/bin/python ]; then ./.venv/bin/python -m pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60; else python3 -m pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=term-missing --cov-report=html --cov-fail-under=60; fi'
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]

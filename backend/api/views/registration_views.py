@@ -40,21 +40,22 @@ class RegistrationView(APIView):
         link.  Returns HTTP 201 on success.  Rate-limited by IP to prevent
         spam registrations (HTTP 429 when exceeded).
         """
-        from ..rate_limit import RateLimitExceeded
-
         client_ip = self._get_client_ip(request)
         try:
             user = UserService.register_user(request.data, client_ip)
-        except RateLimitExceeded as e:
-            return Response(
-                {
-                    "detail": f"Príliš veľa pokusov o registráciu. Skúste znova o {e.retry_after_seconds} sekúnd."
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-                headers={"Retry-After": str(e.retry_after_seconds)},
-            )
         except RegistrationError as e:
-            return Response(e.args[0], status=status.HTTP_400_BAD_REQUEST)
+            # Normalize registration errors to the standardized error format.
+            raw_details = e.args[0] if e.args else None
+            if not isinstance(raw_details, dict):
+                raw_details = {"non_field_errors": [str(e)]}
+            error_payload = {
+                "error": {
+                    "code": "registration_error",
+                    "message": "Registration failed due to invalid input.",
+                    "details": raw_details,
+                }
+            }
+            return Response(error_payload, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(
             {

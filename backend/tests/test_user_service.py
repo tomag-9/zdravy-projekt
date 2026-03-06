@@ -1,6 +1,6 @@
 """Unit tests for UserService and NotificationService."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
@@ -27,7 +27,7 @@ def _make_pending_user(email="pending@example.com", email_verified=True):
             "email_verified": email_verified,
         },
     )[0]
-    if not profile.registration_status == UserProfile.REGISTRATION_PENDING:
+    if profile.registration_status != UserProfile.REGISTRATION_PENDING:
         profile.registration_status = UserProfile.REGISTRATION_PENDING
         profile.email_verified = email_verified
         profile.save()
@@ -209,12 +209,7 @@ class TestNotificationService:
                 NotificationService.send_approval_email(user, "ACME Corp")
 
         mock_send.assert_called_once()
-        call_kwargs = mock_send.call_args
-        assert user.email in call_kwargs.kwargs.get(
-            "recipient_list", []
-        ) or user.email in call_kwargs[1].get(
-            "recipient_list", call_kwargs[0][3] if len(call_kwargs[0]) > 3 else []
-        )
+        assert user.email in mock_send.call_args.kwargs["recipient_list"]
 
     def test_send_denial_email_calls_send_mail(self):
         user = self._user("d@example.com")

@@ -9,6 +9,7 @@ Tests cover:
 - Cache hit/miss tracking
 """
 
+# flake8: noqa: F401
 import json
 from datetime import date, datetime, time
 

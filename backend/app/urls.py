@@ -13,15 +13,25 @@ from drf_spectacular.views import (
 
 urlpatterns = [
     path("api/", include("api.urls")),  # Add your API urls here
-    # OpenAPI schema + interactive docs
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
-        name="swagger-ui",
-    ),
-    path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
 ]
+
+# Only expose API schema and documentation in development
+if settings.DEBUG:
+    urlpatterns.extend(
+        [
+            path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+            path(
+                "api/docs/",
+                SpectacularSwaggerView.as_view(url_name="schema"),
+                name="swagger-ui",
+            ),
+            path(
+                "api/redoc/",
+                SpectacularRedocView.as_view(url_name="schema"),
+                name="redoc",
+            ),
+        ]
+    )
 
 # Only expose Django admin in development
 if settings.DEBUG:
