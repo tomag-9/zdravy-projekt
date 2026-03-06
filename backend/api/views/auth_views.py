@@ -3,12 +3,17 @@ import logging
 from django.contrib.auth.models import User
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
-from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+
+from ..exceptions import (
+    InactiveAccountError,
+    InvalidCredentialsError,
+    MissingRequiredFieldError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +41,20 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         password = attrs.get("password", "")
 
         if not email:
-            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+            raise InvalidCredentialsError()
 
         try:
             user = User.objects.get(email__iexact=email)
         except User.DoesNotExist:
-            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+            raise InvalidCredentialsError()
         except User.MultipleObjectsReturned:
-            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+            raise InvalidCredentialsError()
 
         if not user.check_password(password):
-            raise AuthenticationFailed("Nesprávny email alebo heslo.")
+            raise InvalidCredentialsError()
 
         if not user.is_active:
-            raise AuthenticationFailed("Tento účet je neaktívny.")
+            raise InactiveAccountError()
 
         refresh = RefreshToken.for_user(user)
         return {
@@ -85,43 +90,18 @@ class PasswordResetRequestView(APIView):
         Always returns HTTP 200 even when the email is not registered to
         avoid user-enumeration. Returns HTTP 429 when rate-limited.
         """
-        from ..password_reset_service import (
-            RateLimitExceeded,
-            TooSoonError,
-            request_password_reset,
-        )
+        from ..exceptions import RateLimitExceeded, TooSoonError
+        from ..password_reset_service import request_password_reset
 
         email = request.data.get("email", "").strip()
         if not email:
-            return Response(
-                {"detail": "Pole e-mail je povinné."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("email", detail="Pole e-mail je povinné.")
 
         try:
             request_password_reset(email)
-        except RateLimitExceeded as exc:
-            minutes = round(exc.retry_after_seconds / 60)
-            return Response(
-                {
-                    "detail": (
-                        f"Príliš veľa pokusov. Skúste to znova za {minutes} minút."
-                    ),
-                    "retry_after_seconds": exc.retry_after_seconds,
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
-        except TooSoonError as exc:
-            return Response(
-                {
-                    "detail": (
-                        f"E-mail bol práve odoslaný. "
-                        f"Opätovné odoslanie bude možné za {exc.wait_seconds} sekúnd."
-                    ),
-                    "wait_seconds": exc.wait_seconds,
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-            )
+        except (RateLimitExceeded, TooSoonError):
+            # Re-raise to let exception handler handle it
+            raise
         except Exception:
             logger.exception(
                 "Unexpected error during password reset request for %s", email
@@ -174,10 +154,11 @@ class PasswordResetConfirmView(APIView):
         token = request.data.get("token", "").strip()
         new_password = request.data.get("new_password", "")
 
-        if not token or not new_password:
-            return Response(
-                {"detail": "Polia token a new_password sú povinné."},
-                status=status.HTTP_400_BAD_REQUEST,
+        if not token:
+            raise MissingRequiredFieldError("token", detail="Token je povinný.")
+        if not new_password:
+            raise MissingRequiredFieldError(
+                "new_password", detail="Nové heslo je povinné."
             )
 
         try:

@@ -6,6 +6,8 @@ from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from ..exceptions import MissingRequiredFieldError, TooSoonError
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,10 +37,7 @@ class EmailVerificationView(APIView):
         token = request.data.get("token", "").strip()
 
         if not token:
-            return Response(
-                {"detail": "Token je povinný."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("token", detail="Token je povinný.")
 
         success, message, user = verify_email_token(token)
 
@@ -80,7 +79,6 @@ class ResendVerificationEmailView(APIView):
         """
         from ..email_verification_service import resend_verification_email
         from ..rate_limit import (
-            TooSoonError,
             check_verification_resend_rate_limit,
             record_verification_sent,
         )
@@ -88,22 +86,14 @@ class ResendVerificationEmailView(APIView):
         email = request.data.get("email", "").strip().lower()
 
         if not email:
-            return Response(
-                {"detail": "Email je povinný."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("email", detail="Email je povinný.")
 
         # Check rate limit for this email
         try:
             check_verification_resend_rate_limit(email)
-        except TooSoonError as e:
-            return Response(
-                {
-                    "detail": f"Počkajte {e.wait_seconds} sekúnd pred opätovným odoslaním."
-                },
-                status=status.HTTP_429_TOO_MANY_REQUESTS,
-                headers={"Retry-After": str(e.wait_seconds)},
-            )
+        except TooSoonError:
+            # Re-raise to let exception handler format it
+            raise
 
         try:
             user = User.objects.get(username__iexact=email)

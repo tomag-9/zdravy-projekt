@@ -11,6 +11,11 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from api.exceptions import (
+    InvalidDateFormatError,
+    InvalidReportFormatError,
+    MissingRequiredFieldError,
+)
 from api.tasks import generate_report_pdf_task, generate_report_xlsx_task
 
 logger = logging.getLogger(__name__)
@@ -54,39 +59,23 @@ class ReportTaskViewSet(viewsets.ViewSet):
         if fmt_raw is None:
             fmt_raw = request.query_params.get("format", "pdf")
         if not isinstance(fmt_raw, str):
-            return Response(
-                {"error": "format must be a string"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise InvalidReportFormatError()
         fmt = fmt_raw.lower()
 
         if not date_str:
-            return Response(
-                {"error": "date parameter is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise MissingRequiredFieldError("date", detail="date parameter is required")
 
         # Validate date_str is a string and valid ISO format
         if not isinstance(date_str, str):
-            return Response(
-                {"error": "date must be a string in YYYY-MM-DD format"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise InvalidDateFormatError()
 
         try:
             datetime.date.fromisoformat(date_str)
         except (TypeError, ValueError):
-            return Response(
-                {"error": "invalid date format, expected YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise InvalidDateFormatError()
+
         if fmt not in _VALID_FORMATS:
-            return Response(
-                {
-                    "error": f"format must be one of: {', '.join(sorted(_VALID_FORMATS))}"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise InvalidReportFormatError(valid_formats=_VALID_FORMATS)
 
         if fmt == "xlsx":
             task = generate_report_xlsx_task.delay(date_str)

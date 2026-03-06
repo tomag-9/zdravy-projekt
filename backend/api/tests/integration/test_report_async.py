@@ -77,7 +77,9 @@ class TestReportTaskCreate:
     def test_missing_date_returns_400(self, admin_client):
         res = admin_client.post(self.URL, {}, format="json")
         assert res.status_code == status.HTTP_400_BAD_REQUEST
-        assert "date" in res.json()["error"]
+        assert "error" in res.json()
+        assert res.json()["error"]["code"] == "missing_required_field"
+        assert res.json()["error"]["details"]["field"] == "date"
 
     def test_invalid_date_returns_400(self, admin_client):
         res = admin_client.post(self.URL, {"date": "not-a-date"}, format="json")
@@ -88,7 +90,9 @@ class TestReportTaskCreate:
             self.URL, {"date": today_str, "format": "docx"}, format="json"
         )
         assert res.status_code == status.HTTP_400_BAD_REQUEST
-        assert "format" in res.json()["error"]
+        assert "error" in res.json()
+        assert res.json()["error"]["code"] == "invalid_report_format"
+        assert "valid_formats" in res.json()["error"]["details"]
 
     def test_non_admin_is_forbidden(self, authenticated_client, today_str):
         res = authenticated_client.post(self.URL, {"date": today_str}, format="json")

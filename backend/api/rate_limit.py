@@ -11,29 +11,12 @@ from typing import Optional
 
 from django.core.cache import cache
 
+from .exceptions import RateLimitExceeded, TooSoonError
+
 # ── Configuration ──────────────────────────────────────────────────────────────
 REGISTRATION_MAX_ATTEMPTS = 5  # max registration attempts per IP/email
 REGISTRATION_BLOCK_DURATION = 60 * 60  # 1 hour block after max attempts
 RESEND_VERIFICATION_COOLDOWN = 60  # 1 minute between verification email resends
-
-
-# ── Custom exceptions ──────────────────────────────────────────────────────────
-
-
-class RateLimitExceeded(Exception):
-    """Raised when rate limit is exceeded."""
-
-    def __init__(self, retry_after_seconds: int) -> None:
-        self.retry_after_seconds = retry_after_seconds
-        super().__init__(f"Rate limit exceeded. Retry after {retry_after_seconds}s.")
-
-
-class TooSoonError(Exception):
-    """Raised when action is attempted too soon after previous attempt."""
-
-    def __init__(self, wait_seconds: int) -> None:
-        self.wait_seconds = wait_seconds
-        super().__init__(f"Please wait {wait_seconds}s before trying again.")
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────

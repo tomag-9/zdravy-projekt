@@ -160,6 +160,7 @@ REST_FRAMEWORK = {
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "api.exception_handlers.custom_exception_handler",
 }
 
 # drf-spectacular – OpenAPI / Swagger configuration
@@ -170,7 +171,26 @@ SPECTACULAR_SETTINGS = {
         "## Authentication\n"
         "All protected endpoints require a JWT **Bearer** token obtained from "
         "`POST /api/token/`.  Include it in the `Authorization` header:\n"
-        "```\nAuthorization: Bearer <access_token>\n```"
+        "```\nAuthorization: Bearer <access_token>\n```\n\n"
+        "## Error Response Format\n"
+        "All API errors follow a standardized format:\n"
+        "```json\n"
+        "{\n"
+        '  "error": {\n'
+        '    "code": "error_code",\n'
+        '    "message": "Human-readable error message",\n'
+        '    "details": {\n'
+        '      "field": "additional context"\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "```\n\n"
+        "The `error.code` field contains a machine-readable error code (e.g., "
+        "`invalid_credentials`, `rate_limit_exceeded`) that you can use for "
+        "programmatic error handling. The `error.message` field contains a "
+        "human-readable message that may be localized. The `error.details` "
+        "object provides additional context specific to the error type.\n\n"
+        "For a complete reference of error codes, see the project documentation."
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,

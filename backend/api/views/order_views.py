@@ -5,10 +5,10 @@ from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ..exceptions import ClientOnlyError
 from ..models import DailyOrder
 from ..serializers import DailyOrderSerializer
 from ..services import OrderService
@@ -68,10 +68,10 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         Attach the requesting user to the order and reject staff submissions.
 
         Raises:
-            PermissionDenied: When the authenticated user is a staff member.
+            ClientOnlyError: When the authenticated user is a staff member.
         """
         if self.request.user.is_staff:
-            raise PermissionDenied("Administrators cannot place orders.")
+            raise ClientOnlyError()
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
 
