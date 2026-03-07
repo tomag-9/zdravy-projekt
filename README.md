@@ -304,7 +304,6 @@ Swarm deployment now targets the **whole application** with this boundary:
 - External: PostgreSQL, Sentry, Grafana
 
 **Important:** Staging uses Cloudflare Tunnel (DNS challenge), Production uses direct IP (TLS challenge).
-For staging setup, see [deploy/swarm/CLOUDFLARE_SETUP.md](deploy/swarm/CLOUDFLARE_SETUP.md).
 
 Quick start:
 
@@ -317,8 +316,6 @@ source deploy/swarm/swarm.env
 set +a
 docker stack deploy -c deploy/swarm/stack.yml zdravy
 ```
-
-Full runbook: `SWARM_DEPLOYMENT.md`.
 
 ### CI/CD Pipeline
 

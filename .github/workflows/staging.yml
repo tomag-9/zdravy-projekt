@@ -102,7 +102,7 @@ jobs:
           ACME_TLS_CHALLENGE: "false"
           ACME_DNS_PROVIDER: "cloudflare"
           CF_API_EMAIL: ${{ secrets.STAGING_CLOUDFLARE_EMAIL }}
-          CF_DNS_API_TOKEN_FILE: "/run/secrets/cloudflare_api_token"
+          CF_DNS_API_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_API_TOKEN }}
           POSTGRES_DB: ${{ secrets.STAGING_POSTGRES_DB }}
           POSTGRES_USER: ${{ secrets.STAGING_POSTGRES_USER }}
           POSTGRES_HOST: ${{ secrets.STAGING_POSTGRES_HOST || 'db' }}
@@ -115,7 +115,6 @@ jobs:
           SECRET_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
           SECRET_EMAIL_HOST_PASSWORD: ${{ secrets.STAGING_EMAIL_HOST_PASSWORD }}
           SECRET_SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN }}
-          SECRET_CLOUDFLARE_API_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
 
@@ -141,7 +140,8 @@ jobs:
             fi
 
             if docker secret inspect "$name" >/dev/null 2>&1; then
-              docker secret rm "$name" >/dev/null 2>&1 || true
+              echo "ℹ️ Secret '$name' already exists; keeping current value."
+              return 0
             fi
             printf '%s' "$value" | docker secret create "$name" - >/dev/null
           }
@@ -150,7 +150,6 @@ jobs:
           create_or_update_secret "postgres_password" "$SECRET_POSTGRES_PASSWORD"
           create_or_update_secret "email_host_password" "$SECRET_EMAIL_HOST_PASSWORD"
           create_or_update_secret "sentry_dsn" "$SECRET_SENTRY_DSN"
-          create_or_update_secret "cloudflare_api_token" "$SECRET_CLOUDFLARE_API_TOKEN"
 
           echo "🚀 Deploying stack..."
           docker stack deploy -c deploy/swarm/stack.yml zdravy

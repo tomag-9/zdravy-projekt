@@ -17,8 +17,10 @@ def env(name, default=None):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return f.read().strip()
-        except OSError:
-            return default
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to read secret file for {name}: {file_path}"
+            ) from exc
 
     return default
 

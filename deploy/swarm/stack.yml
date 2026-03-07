@@ -17,13 +17,7 @@ services:
     environment:
       # Only needed for DNS challenge (staging)
       CF_API_EMAIL: ${CF_API_EMAIL:-}
-      CF_DNS_API_TOKEN_FILE: ${CF_DNS_API_TOKEN_FILE:-}
-    secrets:
-      - source: cloudflare_api_token
-        target: /run/secrets/cloudflare_api_token
-        uid: '0'
-        gid: '0'
-        mode: 0400
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
     ports:
       - target: 80
         published: 80
@@ -46,7 +40,7 @@ services:
       placement:
         constraints:
           - node.role == manager
-      replicas: 2
+      replicas: 1
       update_config:
         order: start-first
         parallelism: 1
@@ -67,6 +61,7 @@ services:
   frontend:
     image: ${REGISTRY_URL}/zdravy-projekt-frontend:${APP_IMAGE_TAG:-latest}
     networks:
+      - public
       - app
     deploy:
       replicas: 2
@@ -123,6 +118,7 @@ services:
       - email_host_password
       - sentry_dsn
     networks:
+      - public
       - app
       - observability
     healthcheck:
@@ -361,8 +357,6 @@ secrets:
   email_host_password:
     external: true
   sentry_dsn:
-    external: true
-  cloudflare_api_token:
     external: true
 
 volumes:

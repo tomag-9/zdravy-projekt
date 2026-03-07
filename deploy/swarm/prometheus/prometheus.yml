@@ -13,9 +13,3 @@ scrape_configs:
       - names: ["tasks.backend"]
         type: A
         port: 8000
-
-  - job_name: redis
-    dns_sd_configs:
-      - names: ["tasks.redis"]
-        type: A
-        port: 6379
