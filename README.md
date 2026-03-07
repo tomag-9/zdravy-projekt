@@ -296,6 +296,30 @@ Key variables:
 
 ## 🚢 Deployment
 
+### Docker Swarm Baseline (Issue #117)
+
+Swarm deployment now targets the **whole application** with this boundary:
+
+- In Swarm: frontend, backend API, Redis, Celery worker/beat, Traefik, Prometheus, Loki/Promtail
+- External: PostgreSQL, Sentry, Grafana
+
+**Important:** Staging uses Cloudflare Tunnel (DNS challenge), Production uses direct IP (TLS challenge).
+For staging setup, see [deploy/swarm/CLOUDFLARE_SETUP.md](deploy/swarm/CLOUDFLARE_SETUP.md).
+
+Quick start:
+
+```bash
+cp deploy/swarm/swarm.env.example deploy/swarm/swarm.env
+./deploy/swarm/validate-stack.sh deploy/swarm/stack.yml
+
+set -a
+source deploy/swarm/swarm.env
+set +a
+docker stack deploy -c deploy/swarm/stack.yml zdravy
+```
+
+Full runbook: `SWARM_DEPLOYMENT.md`.
+
 ### CI/CD Pipeline
 
 GitHub Actions automatically:
@@ -304,7 +328,7 @@ GitHub Actions automatically:
 3. Deploys to staging on push to `staging` branch
 4. Deploys to production on push to `main` branch
 
-### Manual Deployment
+### Manual Deployment (Docker Compose)
 
 1. Build and push Docker images
 2. SSH to server

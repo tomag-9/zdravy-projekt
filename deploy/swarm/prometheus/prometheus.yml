@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: backend
+    metrics_path: /metrics
+    dns_sd_configs:
+      - names: ["tasks.backend"]
+        type: A
+        port: 8000
+
+  - job_name: redis
+    dns_sd_configs:
+      - names: ["tasks.redis"]
+        type: A
+        port: 6379

@@ -5,11 +5,29 @@ Django base settings for all environments.
 import os
 from pathlib import Path
 
+
+def env(name, default=None):
+    """Read env var directly or from <NAME>_FILE for Docker Swarm secrets."""
+    value = os.environ.get(name)
+    if value not in (None, ""):
+        return value
+
+    file_path = os.environ.get(f"{name}_FILE")
+    if file_path:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError:
+            return default
+
+    return default
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
+SECRET_KEY = env(
     "DJANGO_SECRET_KEY", "django-insecure-development-key-change-in-production"
 )
 
@@ -72,7 +90,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("POSTGRES_DB", "zdravy_projekt_db"),
         "USER": os.environ.get("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "postgres"),
+        "PASSWORD": env("POSTGRES_PASSWORD", "postgres"),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": int(os.environ.get("CONN_MAX_AGE", 600)),

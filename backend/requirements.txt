@@ -39,6 +39,10 @@ python-decouple==3.8
 # API Documentation
 drf-spectacular==0.28.0
 
+# Observability
+django-prometheus==2.3.1
+sentry-sdk==2.27.0
+
 # Code quality
 black==25.1.0
 flake8==7.0.0
