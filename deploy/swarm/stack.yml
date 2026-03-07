@@ -148,7 +148,7 @@ services:
       labels:
         - traefik.enable=true
         - traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
-        - traefik.http.routers.backend.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/admin`) || PathPrefix(`/static`))
+        - traefik.http.routers.backend.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/static`))
         - traefik.http.routers.backend.entrypoints=websecure
         - traefik.http.routers.backend.tls.certresolver=letsencrypt
         - traefik.http.services.backend.loadbalancer.server.port=8000

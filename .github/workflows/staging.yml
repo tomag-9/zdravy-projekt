@@ -90,7 +90,7 @@ jobs:
           DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
           DOCKER_CERT_PATH: /home/runner/.docker
           DOCKER_TLS_VERIFY: "1"
-          REGISTRY_URL: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
           APP_IMAGE_TAG: staging
           DJANGO_SETTINGS_MODULE: app.settings.staging
           APP_HOST: ${{ secrets.STAGING_HOST }}
@@ -140,7 +140,8 @@ jobs:
             fi
 
             if docker secret inspect "$name" >/dev/null 2>&1; then
-              echo "ℹ️ Secret '$name' already exists; keeping current value."
+              echo "⚠️ Secret '$name' already exists and cannot be updated while in use."
+              echo "   If you need to rotate this secret, version it (e.g., ${name}_v2) or remove the stack first."
               return 0
             fi
             printf '%s' "$value" | docker secret create "$name" - >/dev/null
@@ -191,4 +192,4 @@ jobs:
           docker exec "$BACKEND_CONTAINER" python manage.py migrate --noinput
 
           echo "✅ Deployment complete!"
-          docker system prune -f
+          docker system prune -f --filter "until=24h"
