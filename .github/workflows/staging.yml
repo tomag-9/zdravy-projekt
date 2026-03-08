@@ -90,7 +90,7 @@ jobs:
           DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
           DOCKER_CERT_PATH: /home/runner/.docker
           DOCKER_TLS_VERIFY: "1"
-          REGISTRY_URL: ${{ secrets.REGISTRY_URL || secrets.REGISTRY_USERNAME }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           APP_IMAGE_TAG: staging
           DJANGO_SETTINGS_MODULE: app.settings.staging
           APP_HOST: ${{ secrets.STAGING_HOST }}
@@ -117,6 +117,17 @@ jobs:
           SECRET_SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN }}
         run: |
           set -euo pipefail
+
+          # Deploy expects image prefix in REGISTRY_URL; for Docker Hub this is the namespace/user.
+          REGISTRY_URL="${REGISTRY_USERNAME:-}"
+
+          if [ -z "${REGISTRY_URL}" ]; then
+            echo "❌ REGISTRY_USERNAME is empty. Expected Docker Hub namespace like 'magi9'."
+            exit 1
+          fi
+
+          echo "📦 Deploying images from Docker Hub namespace: ${REGISTRY_URL}"
+          export REGISTRY_URL
 
           echo "🔎 Checking Docker Swarm status..."
           SWARM_STATE=$(docker info --format '{{.Swarm.LocalNodeState}}')
