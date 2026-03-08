@@ -106,7 +106,7 @@ jobs:
           CF_DNS_API_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_API_TOKEN }}
           POSTGRES_DB: ${{ vars.STAGING_POSTGRES_DB }}
           POSTGRES_USER: ${{ vars.STAGING_POSTGRES_USER }}
-          POSTGRES_HOST: ${{ vars.STAGING_POSTGRES_HOST || 'db' }}
+          POSTGRES_HOST: ${{ vars.STAGING_POSTGRES_HOST }}
           POSTGRES_PORT: ${{ vars.STAGING_POSTGRES_PORT || '5432' }}
           EMAIL_HOST: ${{ vars.STAGING_EMAIL_HOST }}
           EMAIL_PORT: ${{ vars.STAGING_EMAIL_PORT || '587' }}
@@ -121,6 +121,17 @@ jobs:
 
           if [ -z "${REGISTRY_URL}" ]; then
             echo "❌ REGISTRY_URL is empty. Expected Docker Hub namespace like 'magi9'."
+            exit 1
+          fi
+
+          if [ -z "${POSTGRES_HOST}" ]; then
+            echo "❌ POSTGRES_HOST is empty. Set vars.STAGING_POSTGRES_HOST to your reachable PostgreSQL host."
+            exit 1
+          fi
+
+          if [ "${POSTGRES_HOST}" = "db" ]; then
+            echo "❌ POSTGRES_HOST is set to 'db', but no 'db' service exists in this Swarm stack."
+            echo "   Use your external PostgreSQL hostname/IP in vars.STAGING_POSTGRES_HOST."
             exit 1
           fi
 
