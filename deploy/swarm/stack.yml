@@ -5,7 +5,7 @@ services:
     image: traefik:v3.3
     command:
       - --configFile=/etc/traefik/traefik.yml
-      - --providers.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+      - --providers.swarm.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
       - --api.insecure=false
       - --entrypoints.metrics.address=:8082
       - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
