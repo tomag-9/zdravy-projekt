@@ -343,13 +343,13 @@ services:
 
 configs:
   traefik_static_config:
-    file: ./deploy/swarm/traefik/traefik.yml
+    file: ./traefik/traefik.yml
   prometheus_config:
-    file: ./deploy/swarm/prometheus/prometheus.yml
+    file: ./prometheus/prometheus.yml
   loki_config:
-    file: ./deploy/swarm/loki/loki-config.yml
+    file: ./loki/loki-config.yml
   promtail_config:
-    file: ./deploy/swarm/promtail/promtail-config.yml
+    file: ./promtail/promtail-config.yml
 
 secrets:
   django_secret_key:
