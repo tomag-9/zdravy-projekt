@@ -6,6 +6,8 @@ services:
     command:
       - --configFile=/etc/traefik/traefik.yml
       - --providers.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+      - --api.insecure=false
+      - --entrypoints.metrics.address=:8082
       - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
       - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
       # DNS challenge for staging (Cloudflare tunnel), TLS challenge for production
@@ -13,7 +15,7 @@ services:
       - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${ACME_DNS_PROVIDER:-cloudflare}
       - --certificatesresolvers.letsencrypt.acme.tlschallenge=${ACME_TLS_CHALLENGE:-true}
       - --metrics.prometheus=true
-      - --metrics.prometheus.entrypoint=web
+      - --metrics.prometheus.entrypoint=metrics
     environment:
       # Only needed for DNS challenge (staging)
       CF_API_EMAIL: ${CF_API_EMAIL:-}
