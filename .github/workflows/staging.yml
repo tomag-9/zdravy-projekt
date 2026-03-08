@@ -92,7 +92,7 @@ jobs:
           DOCKER_TLS_VERIFY: "1"
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_URL: ${{ secrets.REGISTRY_USERNAME }}
-          STACK_CONFIG_VERSION: ${{ github.sha }}
+          STACK_CONFIG_VERSION: staging-${{ github.run_number }}
           APP_IMAGE_TAG: staging
           DJANGO_SETTINGS_MODULE: app.settings.staging
           APP_HOST: ${{ vars.STAGING_HOST }}
