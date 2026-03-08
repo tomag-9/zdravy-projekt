@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           sparse-checkout: |
-            docker-compose.staging.yml
+            deploy/swarm
           sparse-checkout-cone-mode: false
 
       - name: Setup Docker certificates
@@ -85,38 +85,82 @@ jobs:
           echo "${{ secrets.STAGING_DOCKER_KEY }}" | base64 -d > /home/runner/.docker/key.pem
           chmod 600 /home/runner/.docker/{ca,cert,key}.pem
 
-      - name: Deploy via remote Docker context
+      - name: Deploy stack to Swarm via remote Docker context
         env:
           DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
           DOCKER_CERT_PATH: /home/runner/.docker
           DOCKER_TLS_VERIFY: "1"
+          REGISTRY_URL: ${{ secrets.REGISTRY_URL }}
+          APP_IMAGE_TAG: staging
           DJANGO_SETTINGS_MODULE: app.settings.staging
-          DJANGO_SECRET_KEY: ${{ secrets.STAGING_DJANGO_SECRET_KEY }}
+          APP_HOST: ${{ secrets.STAGING_HOST }}
+          APP_HOST_WWW: ""
+          TRAEFIK_DOCKER_NETWORK: ${{ secrets.STAGING_TRAEFIK_DOCKER_NETWORK || 'zdravy_public' }}
+          LETSENCRYPT_EMAIL: ${{ secrets.STAGING_LETSENCRYPT_EMAIL || secrets.STAGING_EMAIL_HOST_USER }}
+          # Use DNS challenge for staging (Cloudflare tunnel)
+          ACME_DNS_CHALLENGE: "true"
+          ACME_TLS_CHALLENGE: "false"
+          ACME_DNS_PROVIDER: "cloudflare"
+          CF_API_EMAIL: ${{ secrets.STAGING_CLOUDFLARE_EMAIL }}
+          CF_DNS_API_TOKEN: ${{ secrets.STAGING_CLOUDFLARE_API_TOKEN }}
           POSTGRES_DB: ${{ secrets.STAGING_POSTGRES_DB }}
           POSTGRES_USER: ${{ secrets.STAGING_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
-          POSTGRES_HOST: db
+          POSTGRES_HOST: ${{ secrets.STAGING_POSTGRES_HOST || 'db' }}
           POSTGRES_PORT: "5432"
-          STAGING_HOST: ${{ secrets.STAGING_HOST }}
-          FRONTEND_URL: https://${{ secrets.STAGING_HOST }}
-          VITE_API_URL: https://${{ secrets.STAGING_HOST }}/api
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           EMAIL_HOST: ${{ secrets.STAGING_EMAIL_HOST }}
           EMAIL_PORT: ${{ secrets.STAGING_EMAIL_PORT }}
           EMAIL_HOST_USER: ${{ secrets.STAGING_EMAIL_HOST_USER }}
-          EMAIL_HOST_PASSWORD: ${{ secrets.STAGING_EMAIL_HOST_PASSWORD }}
           DEFAULT_FROM_EMAIL: ${{ secrets.STAGING_DEFAULT_FROM_EMAIL }}
+          SECRET_DJANGO_SECRET_KEY: ${{ secrets.STAGING_DJANGO_SECRET_KEY }}
+          SECRET_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
+          SECRET_EMAIL_HOST_PASSWORD: ${{ secrets.STAGING_EMAIL_HOST_PASSWORD }}
+          SECRET_SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN }}
         run: |
-          echo "🔄 Pulling latest images on staging server..."
-          docker compose -f docker-compose.staging.yml pull
+          set -euo pipefail
 
-          echo "🚀 Starting services on staging server..."
-          docker compose -f docker-compose.staging.yml up -d --remove-orphans
+          echo "🔎 Checking Docker Swarm status..."
+          SWARM_STATE=$(docker info --format '{{.Swarm.LocalNodeState}}')
+          if [ "$SWARM_STATE" != "active" ]; then
+            echo "❌ Remote Docker is not in Swarm mode (state: $SWARM_STATE)."
+            exit 1
+          fi
+
+          echo "🌐 Ensuring public overlay network exists..."
+          docker network inspect "$TRAEFIK_DOCKER_NETWORK" >/dev/null 2>&1 || \
+            docker network create --driver overlay --attachable "$TRAEFIK_DOCKER_NETWORK"
+
+          echo "🔐 Creating/updating Docker secrets from GitHub Secrets..."
+          create_or_update_secret() {
+            local name="$1"
+            local value="$2"
+
+            if [ -z "$value" ]; then
+              echo "❌ Required secret '$name' is empty"
+              exit 1
+            fi
+
+            if docker secret inspect "$name" >/dev/null 2>&1; then
+              echo "⚠️ Secret '$name' already exists and cannot be updated while in use."
+              echo "   If you need to rotate this secret, version it (e.g., ${name}_v2) or remove the stack first."
+              return 0
+            fi
+            printf '%s' "$value" | docker secret create "$name" - >/dev/null
+          }
+
+          create_or_update_secret "django_secret_key" "$SECRET_DJANGO_SECRET_KEY"
+          create_or_update_secret "postgres_password" "$SECRET_POSTGRES_PASSWORD"
+          create_or_update_secret "email_host_password" "$SECRET_EMAIL_HOST_PASSWORD"
+          create_or_update_secret "sentry_dsn" "$SECRET_SENTRY_DSN"
+
+          echo "🚀 Deploying stack..."
+          docker stack deploy -c deploy/swarm/stack.yml zdravy
 
           echo "⏳ Waiting for backend to be healthy..."
           BACKEND_HEALTHY=false
           for i in $(seq 1 24); do
-            BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.ID}}" | head -1)
+            BACKEND_CONTAINER=$(docker ps \
+              --filter "label=com.docker.swarm.service.name=zdravy_backend" \
+              --format "{{.ID}}" | head -1)
             if [ -n "$BACKEND_CONTAINER" ]; then
               STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$BACKEND_CONTAINER" 2>/dev/null)
               if [ "$STATUS" = "healthy" ]; then
@@ -130,22 +174,22 @@ jobs:
           done
           if [ "$BACKEND_HEALTHY" != "true" ]; then
             echo "❌ Backend failed to become healthy after 120s"
-            docker compose -f docker-compose.staging.yml logs backend --tail=50
+            docker service ps zdravy_backend --no-trunc
+            docker service logs --tail=100 zdravy_backend || true
             exit 1
           fi
 
-          echo "🔁 Restarting nginx to pick up new upstream containers..."
-          docker compose -f docker-compose.staging.yml restart nginx
-
           echo "📊 Running database migrations..."
-          BACKEND_CONTAINER=$(docker ps --filter "name=backend" --format "{{.ID}}" | head -1)
+          BACKEND_CONTAINER=$(docker ps \
+            --filter "label=com.docker.swarm.service.name=zdravy_backend" \
+            --format "{{.ID}}" | head -1)
           if [ -z "$BACKEND_CONTAINER" ]; then
             echo "❌ Backend container not found!"
             docker ps
             exit 1
           fi
 
-          docker exec $BACKEND_CONTAINER python manage.py migrate --noinput
+          docker exec "$BACKEND_CONTAINER" python manage.py migrate --noinput
 
           echo "✅ Deployment complete!"
-          docker system prune -f
+          docker system prune -f --filter "until=24h"

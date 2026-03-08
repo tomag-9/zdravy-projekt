@@ -13,6 +13,7 @@ from drf_spectacular.views import (
 
 urlpatterns = [
     path("api/", include("api.urls")),  # Add your API urls here
+    path("", include("django_prometheus.urls")),
 ]
 
 # Only expose API schema and documentation in development
