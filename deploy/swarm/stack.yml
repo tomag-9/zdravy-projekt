@@ -371,8 +371,7 @@ volumes:
 networks:
   public:
     name: ${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
-    driver: overlay
-    attachable: true
+    external: true
   app:
     driver: overlay
     attachable: true
