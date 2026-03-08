@@ -343,12 +343,16 @@ services:
 
 configs:
   traefik_static_config:
+    name: zdravy_traefik_static_config_${STACK_CONFIG_VERSION:-latest}
     file: ./traefik/traefik.yml
   prometheus_config:
+    name: zdravy_prometheus_config_${STACK_CONFIG_VERSION:-latest}
     file: ./prometheus/prometheus.yml
   loki_config:
+    name: zdravy_loki_config_${STACK_CONFIG_VERSION:-latest}
     file: ./loki/loki-config.yml
   promtail_config:
+    name: zdravy_promtail_config_${STACK_CONFIG_VERSION:-latest}
     file: ./promtail/promtail-config.yml
 
 secrets:
