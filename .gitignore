@@ -84,6 +84,8 @@ agents.md
 .agent/
 *.txt
 docs/
+*.md
+*.MD
 
 scripts/
 .venv/

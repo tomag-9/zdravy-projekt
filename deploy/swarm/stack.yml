@@ -1,0 +1,384 @@
+version: "3.9"
+
+services:
+  traefik:
+    image: traefik:v3.1
+    command:
+      - --configFile=/etc/traefik/traefik.yml
+      - --providers.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+      - --api.insecure=false
+      - --entrypoints.metrics.address=:8082
+      - --certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      # DNS challenge for staging (Cloudflare tunnel), TLS challenge for production
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge=${ACME_DNS_CHALLENGE:-false}
+      - --certificatesresolvers.letsencrypt.acme.dnschallenge.provider=${ACME_DNS_PROVIDER:-cloudflare}
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=${ACME_TLS_CHALLENGE:-true}
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entrypoint=metrics
+    environment:
+      # Only needed for DNS challenge (staging)
+      CF_API_EMAIL: ${CF_API_EMAIL:-}
+      CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: ingress
+      - target: 443
+        published: 443
+        protocol: tcp
+        mode: ingress
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    configs:
+      - source: traefik_static_config
+        target: /etc/traefik/traefik.yml
+    networks:
+      - public
+      - app
+    deploy:
+      placement:
+        constraints:
+          - node.role == manager
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        delay: 10s
+      rollback_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+        limits:
+          cpus: "0.50"
+          memory: 256M
+
+  frontend:
+    image: ${REGISTRY_URL}/zdravy-projekt-frontend:${APP_IMAGE_TAG:-latest}
+    networks:
+      - public
+      - app
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        delay: 10s
+      rollback_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 64M
+        limits:
+          cpus: "0.50"
+          memory: 256M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+        - traefik.http.routers.frontend.rule=Host(`${APP_HOST}`)
+        - traefik.http.routers.frontend.entrypoints=websecure
+        - traefik.http.routers.frontend.tls.certresolver=letsencrypt
+        - traefik.http.services.frontend.loadbalancer.server.port=80
+
+  backend:
+    image: ${REGISTRY_URL}/zdravy-projekt-backend:${APP_IMAGE_TAG:-latest}
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-app.settings.prod}
+      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      PROD_HOST: ${APP_HOST}
+      PROD_HOST_WWW: ${APP_HOST_WWW:-}
+      STAGING_HOST: ${APP_HOST}
+      FRONTEND_URL: https://${APP_HOST}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      REDIS_URL: redis://redis:6379/1
+      SENTRY_DSN_FILE: /run/secrets/sentry_dsn
+    secrets:
+      - django_secret_key
+      - postgres_password
+      - email_host_password
+      - sentry_dsn
+    networks:
+      - public
+      - app
+      - observability
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      replicas: 1
+      update_config:
+        order: start-first
+        parallelism: 1
+        delay: 15s
+      rollback_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+        limits:
+          cpus: "1.00"
+          memory: 1024M
+      labels:
+        - traefik.enable=true
+        - traefik.docker.network=${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+        - traefik.http.routers.backend.rule=Host(`${APP_HOST}`) && (PathPrefix(`/api`) || PathPrefix(`/static`))
+        - traefik.http.routers.backend.entrypoints=websecure
+        - traefik.http.routers.backend.tls.certresolver=letsencrypt
+        - traefik.http.services.backend.loadbalancer.server.port=8000
+        - logging.job=backend
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.05"
+          memory: 64M
+        limits:
+          cpus: "0.50"
+          memory: 256M
+      labels:
+        - logging.job=redis
+
+  celery:
+    image: ${REGISTRY_URL}/zdravy-projekt-backend:${APP_IMAGE_TAG:-latest}
+    command: celery -A app worker -l info
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-app.settings.prod}
+      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN_FILE: /run/secrets/sentry_dsn
+    secrets:
+      - django_secret_key
+      - postgres_password
+      - email_host_password
+      - sentry_dsn
+    networks:
+      - app
+      - observability
+    deploy:
+      replicas: 2
+      update_config:
+        order: start-first
+        parallelism: 1
+        delay: 15s
+      rollback_config:
+        order: stop-first
+        parallelism: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.20"
+          memory: 256M
+        limits:
+          cpus: "1.00"
+          memory: 768M
+      labels:
+        - logging.job=celery
+
+  celery-beat:
+    image: ${REGISTRY_URL}/zdravy-projekt-backend:${APP_IMAGE_TAG:-latest}
+    command: celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-app.settings.prod}
+      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      SENTRY_DSN_FILE: /run/secrets/sentry_dsn
+    secrets:
+      - django_secret_key
+      - postgres_password
+      - sentry_dsn
+    networks:
+      - app
+      - observability
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "0.50"
+          memory: 384M
+      labels:
+        - logging.job=celery-beat
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    configs:
+      - source: prometheus_config
+        target: /etc/prometheus/prometheus.yml
+    volumes:
+      - prometheus_data:/prometheus
+    networks:
+      - observability
+      - app
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "0.75"
+          memory: 768M
+      labels:
+        - logging.job=prometheus
+
+  loki:
+    image: grafana/loki:3.1.1
+    command: -config.file=/etc/loki/loki-config.yml
+    configs:
+      - source: loki_config
+        target: /etc/loki/loki-config.yml
+    volumes:
+      - loki_data:/loki
+    networks:
+      - observability
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+        limits:
+          cpus: "0.75"
+          memory: 768M
+      labels:
+        - logging.job=loki
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    command: -config.file=/etc/promtail/promtail-config.yml
+    configs:
+      - source: promtail_config
+        target: /etc/promtail/promtail-config.yml
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/tmp
+    networks:
+      - observability
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.02"
+          memory: 64M
+        limits:
+          cpus: "0.20"
+          memory: 256M
+
+configs:
+  traefik_static_config:
+    name: zdravy_traefik_static_config_${STACK_CONFIG_VERSION:-latest}
+    file: ./traefik/traefik.yml
+  prometheus_config:
+    name: zdravy_prometheus_config_${STACK_CONFIG_VERSION:-latest}
+    file: ./prometheus/prometheus.yml
+  loki_config:
+    name: zdravy_loki_config_${STACK_CONFIG_VERSION:-latest}
+    file: ./loki/loki-config.yml
+  promtail_config:
+    name: zdravy_promtail_config_${STACK_CONFIG_VERSION:-latest}
+    file: ./promtail/promtail-config.yml
+
+secrets:
+  django_secret_key:
+    external: true
+  postgres_password:
+    external: true
+  email_host_password:
+    external: true
+  sentry_dsn:
+    external: true
+
+volumes:
+  redis_data:
+  prometheus_data:
+  loki_data:
+  promtail_positions:
+  traefik_letsencrypt:
+
+networks:
+  public:
+    name: ${TRAEFIK_DOCKER_NETWORK:-zdravy_public}
+    external: true
+  app:
+    driver: overlay
+    attachable: true
+  observability:
+    driver: overlay
+    attachable: true
