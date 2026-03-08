@@ -9,7 +9,5 @@ scrape_configs:
 
   - job_name: backend
     metrics_path: /metrics/
-    dns_sd_configs:
-      - names: ["tasks.backend"]
-        type: A
-        port: 8000
+    static_configs:
+      - targets: ["backend:8000"]
