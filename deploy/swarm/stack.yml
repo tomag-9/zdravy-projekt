@@ -17,6 +17,8 @@ services:
       - --metrics.prometheus=true
       - --metrics.prometheus.entrypoint=metrics
     environment:
+      # Force Docker API version ≥1.44 (required by Docker Engine 26+/29+)
+      DOCKER_API_VERSION: "1.44"
       # Only needed for DNS challenge (staging)
       CF_API_EMAIL: ${CF_API_EMAIL:-}
       CF_DNS_API_TOKEN: ${CF_DNS_API_TOKEN:-}
