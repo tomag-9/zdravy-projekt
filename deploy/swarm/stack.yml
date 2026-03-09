@@ -1,24 +1,65 @@
 services:
-  nginx:
-    image: nginx:1.27-alpine
+  docker-api-rewrite:
+    image: nginx:alpine
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    configs:
+      - source: traefik_nginx_main
+        target: /etc/nginx/nginx.conf
+      - source: traefik_nginx_proxy
+        target: /etc/nginx/conf.d/default.conf
+    networks:
+      - docker_proxy
+    deploy:
+      endpoint_mode: dnsrr
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+      resources:
+        reservations:
+          cpus: "0.02"
+          memory: 32M
+        limits:
+          cpus: "0.10"
+          memory: 64M
+
+  traefik:
+    image: traefik:v3.3
+    command:
+      - --configFile=/etc/traefik/traefik.yml
     ports:
       - target: 80
         published: 80
         protocol: tcp
         mode: host
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: host
     configs:
-      - source: nginx_config
-        target: /etc/nginx/conf.d/default.conf
+      - source: traefik_config
+        target: /etc/traefik/traefik.yml
     networks:
       - app
+      - docker_proxy
     deploy:
       replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      update_config:
+        order: stop-first
+        parallelism: 1
       restart_policy:
         condition: on-failure
+        delay: 5s
       resources:
         reservations:
           cpus: "0.05"
-          memory: 32M
+          memory: 64M
         limits:
           cpus: "0.25"
           memory: 128M
@@ -46,6 +87,16 @@ services:
         limits:
           cpus: "0.50"
           memory: 256M
+      labels:
+        - traefik.enable=true
+        - traefik.http.routers.frontend.rule=PathPrefix(`/`)
+        - traefik.http.routers.frontend.entrypoints=web
+        - traefik.http.routers.frontend.priority=1
+        - traefik.http.routers.frontend.middlewares=gzip,bodylimit
+        - traefik.http.services.frontend.loadbalancer.server.port=80
+        # shared middleware definitions (defined here once, reused everywhere)
+        - traefik.http.middlewares.gzip.compress=true
+        - traefik.http.middlewares.bodylimit.buffering.maxRequestBodyBytes=104857600
 
   backend:
     image: ${REGISTRY_URL}/zdravy-projekt-backend:${APP_IMAGE_TAG:-latest}
@@ -105,6 +156,19 @@ services:
           memory: 1024M
       labels:
         - logging.job=backend
+        - traefik.enable=true
+        - traefik.http.routers.backend.rule=PathPrefix(`/api/`) || PathPrefix(`/admin/`)
+        - traefik.http.routers.backend.entrypoints=web
+        - traefik.http.routers.backend.priority=10
+        - traefik.http.routers.backend.middlewares=gzip,bodylimit
+        - traefik.http.services.backend.loadbalancer.server.port=8000
+        # static/media: separate router with cache headers
+        - traefik.http.routers.static.rule=PathPrefix(`/static/`) || PathPrefix(`/media/`)
+        - traefik.http.routers.static.entrypoints=web
+        - traefik.http.routers.static.priority=20
+        - traefik.http.routers.static.service=backend
+        - traefik.http.routers.static.middlewares=gzip,static-cache
+        - traefik.http.middlewares.static-cache.headers.customResponseHeaders.Cache-Control=public, max-age=31536000, immutable
 
   redis:
     image: redis:7-alpine
@@ -297,9 +361,15 @@ services:
           memory: 256M
 
 configs:
-  nginx_config:
-    name: zdravy_nginx_config_${STACK_CONFIG_VERSION:-latest}
-    file: ./nginx/nginx.conf
+  traefik_nginx_main:
+    name: zdravy_traefik_nginx_main_${STACK_CONFIG_VERSION:-latest}
+    file: ./docker-proxy/nginx-main.conf
+  traefik_nginx_proxy:
+    name: zdravy_traefik_nginx_proxy_${STACK_CONFIG_VERSION:-latest}
+    file: ./docker-proxy/nginx.conf
+  traefik_config:
+    name: zdravy_traefik_config_${STACK_CONFIG_VERSION:-latest}
+    file: ./traefik/traefik.yml
   prometheus_config:
     name: zdravy_prometheus_config_${STACK_CONFIG_VERSION:-latest}
     file: ./prometheus/prometheus.yml
@@ -333,6 +403,11 @@ networks:
     driver_opts:
       com.docker.network.driver.mtu: 1400
   observability:
+    driver: overlay
+    attachable: true
+    driver_opts:
+      com.docker.network.driver.mtu: 1400
+  docker_proxy:
     driver: overlay
     attachable: true
     driver_opts:
