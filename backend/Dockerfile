@@ -25,8 +25,8 @@ RUN pip install --upgrade pip && \
 # Copy project
 COPY . /app/
 
-# Make manage.py executable
-RUN chmod +x /app/manage.py
+# Make scripts executable
+RUN chmod +x /app/manage.py /app/wait-for-redis.sh
 
 # Create a dedicated non-root user for runtime processes.
 RUN groupadd --system appuser && useradd --system --gid appuser --create-home appuser
@@ -44,4 +44,8 @@ USER appuser
 EXPOSE 8000
 
 # Run migrations, seed roles, and start server
-CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && gunicorn app.wsgi:application --bind 0.0.0.0:8000"]
+CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && gunicorn -c gunicorn.conf.py app.wsgi:application"]
+
+# Healthcheck for the main app
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
+  CMD curl -f http://localhost:8000/api/health/ || exit 1

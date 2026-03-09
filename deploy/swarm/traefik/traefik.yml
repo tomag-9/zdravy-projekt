@@ -1,0 +1,16 @@
+entryPoints:
+  web:
+    address: ":80"
+
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    swarmMode: true
+    network: "zdravy_public"
+    exposedByDefault: false
+
+api:
+  dashboard: true

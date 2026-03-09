@@ -3,11 +3,17 @@ Cache service for managing application-level caching.
 
 Provides centralized cache key management and TTL configuration
 for frequently accessed data: GlobalSettings, ClientSettings, Diet, and daily stats.
+
+Includes fallback handling for Redis timeouts/connection failures to prevent
+cache errors from crashing the application.
 """
 
+import logging
 from typing import Any, Optional
 
 from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
 
 # Cache key constants
 GLOBAL_SETTINGS_CACHE_KEY = "global_settings"
@@ -44,38 +50,74 @@ def get_daily_stats_cache_key(date_str: str) -> str:
 
 def get_cached(key: str) -> Optional[Any]:
     """
-    Retrieve a value from cache.
+    Retrieve a value from cache with graceful fallback on connection errors.
+
+    If Redis is unavailable or times out, returns None instead of raising an
+    exception. This prevents cache errors from crashing the application.
 
     Args:
         key: The cache key.
 
     Returns:
-        The cached value or None if not found.
+        The cached value, None if not found or on connection error.
     """
-    return cache.get(key)
+    try:
+        return cache.get(key)
+    except Exception as exc:
+        # Log Redis connection/timeout errors but don't crash
+        logger.warning(
+            "Cache get failed for key '%s': %s (%s). Falling back to None.",
+            key,
+            exc.__class__.__name__,
+            exc,
+        )
+        return None
 
 
 def set_cached(key: str, value: Any, timeout: Optional[int] = None) -> None:
     """
-    Set a value in cache.
+    Set a value in cache with graceful fallback on connection errors.
+
+    If Redis is unavailable or times out, logs the error but continues
+    without caching. This prevents cache errors from crashing the application.
 
     Args:
         key: The cache key.
         value: The value to cache.
         timeout: TTL in seconds. If None, uses cache backend's default.
     """
-    # Pass timeout as-is to cache.set(); Django will handle None by using the backend default
-    cache.set(key, value, timeout=timeout)
+    try:
+        # Pass timeout as-is; Django will use backend default if None
+        cache.set(key, value, timeout=timeout)
+    except Exception as exc:
+        # Log Redis connection/timeout errors but don't crash
+        logger.warning(
+            "Cache set failed for key '%s': %s (%s). " "Data will not be cached.",
+            key,
+            exc.__class__.__name__,
+            exc,
+        )
 
 
 def delete_cached(key: str) -> None:
     """
-    Delete a value from cache.
+    Delete a value from cache with graceful fallback on connection errors.
+
+    If Redis is unavailable, logs the error but continues.
 
     Args:
         key: The cache key.
     """
-    cache.delete(key)
+    try:
+        cache.delete(key)
+    except Exception as exc:
+        # Log but continue – cache delete failures shouldn't crash the app
+        logger.warning(
+            "Cache delete failed for key '%s': %s (%s)",
+            key,
+            exc.__class__.__name__,
+            exc,
+        )
 
 
 def clear_global_settings_cache() -> None:

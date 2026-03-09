@@ -5,11 +5,31 @@ Django base settings for all environments.
 import os
 from pathlib import Path
 
+
+def env(name, default=None):
+    """Read env var directly or from <NAME>_FILE for Docker Swarm secrets."""
+    value = os.environ.get(name)
+    if value not in (None, ""):
+        return value
+
+    file_path = os.environ.get(f"{name}_FILE")
+    if file_path:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError as exc:
+            raise RuntimeError(
+                f"Failed to read secret file for {name}: {file_path}"
+            ) from exc
+
+    return default
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get(
+SECRET_KEY = env(
     "DJANGO_SECRET_KEY", "django-insecure-development-key-change-in-production"
 )
 
@@ -72,7 +92,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.postgresql",
         "NAME": os.environ.get("POSTGRES_DB", "zdravy_projekt_db"),
         "USER": os.environ.get("POSTGRES_USER", "postgres"),
-        "PASSWORD": os.environ.get("POSTGRES_PASSWORD", "postgres"),
+        "PASSWORD": env("POSTGRES_PASSWORD", "postgres"),
         "HOST": os.environ.get("POSTGRES_HOST", "localhost"),
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
         "CONN_MAX_AGE": int(os.environ.get("CONN_MAX_AGE", 600)),
@@ -123,6 +143,18 @@ if REDIS_URL:
             "LOCATION": REDIS_URL,
             "KEY_PREFIX": "zdravy_projekt",
             "TIMEOUT": 300,  # Default 5-minute timeout
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "CONNECTION_POOL_CLASS": "redis.connection.BlockingConnectionPool",
+                "CONNECTION_POOL_KWARGS": {
+                    "max_connections": 50,
+                    "timeout": 20,  # Socket connect timeout: 20s
+                },
+                "SOCKET_CONNECT_TIMEOUT": 20,  # Connection timeout
+                "SOCKET_TIMEOUT": 20,  # Read/write timeout
+                "RETRY_ON_TIMEOUT": True,
+                "HEALTH_CHECK_INTERVAL": 30,  # Periodic connection check
+            },
         }
     }
 else:
@@ -134,7 +166,8 @@ else:
         }
     }
 
-# Celery
+# Celery – with Redis connection pooling, extended timeouts for Docker Swarm DNS
+# On Docker Swarm, DNS resolution can be slow due to overlay network delays.
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = os.environ.get(
     "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
@@ -144,6 +177,28 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Europe/Bratislava"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# Startup retry logic: keep retrying indefinitely on startup until Redis is available
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+CELERY_BROKER_CONNECTION_RETRY = True
+CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Infinite retries on startup
+
+# Transport options with extended timeouts for slow Docker Swarm DNS
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_connect_timeout": 30,  # Increased for Docker Swarm DNS delays
+    "socket_timeout": 30,  # Read/write timeout
+    "max_retries": 100,  # Retry up to 100 times before giving up
+    "interval_start": 1,  # Start retry backoff at 1s
+    "interval_step": 1,  # Increase by 1s each retry
+    "interval_max": 10,  # Cap retry interval at 10s
+}
+
+# Result backend with same timeout settings
+CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
+    "socket_connect_timeout": 30,
+    "socket_timeout": 30,
+    "master_name": "mymaster",
+}
 
 # Frontend URL – used for building links inside transactional emails.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
