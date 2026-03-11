@@ -86,6 +86,7 @@ agents.md
 docs/
 *.md
 *.MD
+!README.md
 
 scripts/
 .venv/
@@ -94,3 +95,14 @@ venv/
 #sh
 rebuild-dev.sh
 check-all.sh
+
+# Prometheus data directories (exclude persistent data)
+prometheus_data/
+**/prometheus_data_*
+
+# Note: Documentation and scripts ARE tracked in git
+# If you see docs/ or scripts/ in gitignore, they should be removed
+# The following patterns should NOT be in gitignore:
+# - docs/
+# - scripts/
+# - *.md files (except specific ones like agents.md)

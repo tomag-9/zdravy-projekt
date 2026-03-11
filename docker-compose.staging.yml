@@ -138,6 +138,26 @@ services:
       - app
     restart: always
 
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    volumes:
+      - ./prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus/rules:/etc/prometheus/rules
+      - prometheus_data_staging:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - app
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+
 configs:
   nginx_config:
     content: |
@@ -171,6 +191,7 @@ configs:
           # Variables force nginx to use the resolver on each request cycle
           set $$upstream_backend "http://backend:8000";
           set $$upstream_frontend "http://frontend:80";
+          set $$upstream_prometheus "http://prometheus:9090";
 
           location /api/ {
               proxy_pass $$upstream_backend;
@@ -194,6 +215,18 @@ configs:
               proxy_pass $$upstream_backend;
           }
 
+            # Expose Prometheus through the existing Cloudflare tunnel entrypoint.
+            # Keep this path protected by Cloudflare Access/service tokens.
+            location /prometheus/ {
+              rewrite ^/prometheus/(.*) /$$1 break;
+              proxy_pass $$upstream_prometheus;
+              proxy_set_header Host $$host;
+              proxy_set_header X-Real-IP $$remote_addr;
+              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
+              proxy_set_header X-Forwarded-Proto https;
+              proxy_redirect off;
+            }
+
           location / {
               proxy_pass $$upstream_frontend;
               proxy_set_header Host $$host;
@@ -215,3 +248,6 @@ secrets:
 networks:
   app:
     name: zdravy_staging_app
+
+volumes:
+  prometheus_data_staging:

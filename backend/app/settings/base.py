@@ -35,6 +35,8 @@ SECRET_KEY = env(
 
 # Application definition
 INSTALLED_APPS = [
+    # Prometheus metrics monitoring
+    "django_prometheus",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -53,6 +55,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # Prometheus metrics - must be first to measure all requests
+    "django_prometheus.middleware.PrometheusBeforeMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -64,6 +68,8 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "api.middleware.NoCacheMiddleware",
     "api.middleware.UnauthorizedAccessRedirectMiddleware",
+    # Prometheus metrics - must be last to complete measurement
+    "django_prometheus.middleware.PrometheusAfterMiddleware",
 ]
 
 ROOT_URLCONF = "app.urls"
@@ -89,7 +95,7 @@ WSGI_APPLICATION = "app.wsgi.application"
 # Database
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
+        "ENGINE": "django_prometheus.db.backends.postgresql",
         "NAME": os.environ.get("POSTGRES_DB", "zdravy_projekt_db"),
         "USER": os.environ.get("POSTGRES_USER", "postgres"),
         "PASSWORD": env("POSTGRES_PASSWORD", "postgres"),
@@ -139,7 +145,7 @@ REDIS_URL = os.environ.get("REDIS_URL")
 if REDIS_URL:
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "BACKEND": "django_prometheus.cache.backends.redis.RedisCache",
             "LOCATION": REDIS_URL,
             "KEY_PREFIX": "zdravy_projekt",
             "TIMEOUT": 300,  # Default 5-minute timeout
@@ -160,7 +166,7 @@ if REDIS_URL:
 else:
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "BACKEND": "django_prometheus.cache.backends.locmem.LocMemCache",
             "KEY_PREFIX": "zdravy_projekt",
             "TIMEOUT": 300,  # Default 5-minute timeout
         }
