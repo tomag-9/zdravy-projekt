@@ -8,27 +8,11 @@ on:
 jobs:
   build-and-push:
     name: Build and Push Docker Images
-    runs-on: [self-hosted, builder]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          clean: true
-
-      - name: Disable sparse checkout
-        run: |
-          git sparse-checkout disable || true
-          git checkout .
-
-      - name: Debug - show workspace structure
-        run: |
-          echo "Current directory: $(pwd)"
-          echo "Workspace: ${{ github.workspace }}"
-          echo "Listing root:"
-          ls -la
-          echo "Backend directory:"
-          ls -la backend/ || echo "backend/ not found"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -42,7 +26,7 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ github.workspace }}/backend
+          context: ./backend
           push: true
           tags: |
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging
@@ -53,7 +37,7 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v5
         with:
-          context: ${{ github.workspace }}/frontend
+          context: ./frontend
           push: true
           build-args: |
             VITE_API_URL=${{ vars.STAGING_VITE_API_URL || '/api' }}
@@ -64,138 +48,14 @@ jobs:
           cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-cache,mode=max
 
   deploy-staging:
-    name: Deploy to Staging Server
-    runs-on: [self-hosted, builder]
+    name: Trigger Dokploy Deploy
+    runs-on: ubuntu-latest
     needs: build-and-push
     environment:
       name: staging
       url: https://zp.tomag.xyz
 
     steps:
-      - name: Checkout compose files
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            deploy/swarm
-          sparse-checkout-cone-mode: false
-
-      - name: Setup Docker certificates
+      - name: Trigger Dokploy deployment
         run: |
-          mkdir -p /home/runner/.docker
-          echo "${{ secrets.STAGING_DOCKER_CA }}" | base64 -d > /home/runner/.docker/ca.pem
-          echo "${{ secrets.STAGING_DOCKER_CERT }}" | base64 -d > /home/runner/.docker/cert.pem
-          echo "${{ secrets.STAGING_DOCKER_KEY }}" | base64 -d > /home/runner/.docker/key.pem
-          chmod 600 /home/runner/.docker/{ca,cert,key}.pem
-
-      - name: Deploy stack to Swarm via remote Docker context
-        env:
-          DOCKER_HOST: ${{ secrets.STAGING_DOCKER_HOST }}
-          DOCKER_CERT_PATH: /home/runner/.docker
-          DOCKER_TLS_VERIFY: "1"
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_URL: ${{ secrets.REGISTRY_USERNAME }}
-          STACK_CONFIG_VERSION: staging-${{ github.run_number }}
-          APP_IMAGE_TAG: staging
-          DJANGO_SETTINGS_MODULE: app.settings.staging
-          APP_HOST: ${{ vars.STAGING_HOST }}
-          APP_HOST_WWW: ""
-          POSTGRES_DB: ${{ vars.STAGING_POSTGRES_DB }}
-          POSTGRES_USER: ${{ vars.STAGING_POSTGRES_USER }}
-          POSTGRES_HOST: ${{ vars.STAGING_POSTGRES_HOST }}
-          POSTGRES_PORT: ${{ vars.STAGING_POSTGRES_PORT || '5432' }}
-          EMAIL_HOST: ${{ vars.STAGING_EMAIL_HOST }}
-          EMAIL_PORT: ${{ vars.STAGING_EMAIL_PORT || '587' }}
-          EMAIL_HOST_USER: ${{ secrets.STAGING_EMAIL_HOST_USER }}
-          DEFAULT_FROM_EMAIL: ${{ secrets.STAGING_DEFAULT_FROM_EMAIL }}
-          SECRET_DJANGO_SECRET_KEY: ${{ secrets.STAGING_DJANGO_SECRET_KEY }}
-          SECRET_POSTGRES_PASSWORD: ${{ secrets.STAGING_POSTGRES_PASSWORD }}
-          SECRET_EMAIL_HOST_PASSWORD: ${{ secrets.STAGING_EMAIL_HOST_PASSWORD }}
-          SECRET_SENTRY_DSN: ${{ secrets.STAGING_SENTRY_DSN }}
-        run: |
-          set -euo pipefail
-
-          if [ -z "${REGISTRY_URL}" ]; then
-            echo "❌ REGISTRY_URL is empty. Expected Docker Hub namespace like 'magi9'."
-            exit 1
-          fi
-
-          if [ -z "${POSTGRES_HOST}" ]; then
-            echo "❌ POSTGRES_HOST is empty. Set vars.STAGING_POSTGRES_HOST to your reachable PostgreSQL host."
-            exit 1
-          fi
-
-          if [ "${POSTGRES_HOST}" = "db" ]; then
-            echo "❌ POSTGRES_HOST is set to 'db', but no 'db' service exists in this Swarm stack."
-            echo "   Use your external PostgreSQL hostname/IP in vars.STAGING_POSTGRES_HOST."
-            exit 1
-          fi
-
-          echo "📦 Deploying images from Docker Hub namespace: ${REGISTRY_URL}"
-
-          echo "🔎 Checking Docker Swarm status..."
-          SWARM_STATE=$(docker info --format '{{.Swarm.LocalNodeState}}')
-          if [ "$SWARM_STATE" != "active" ]; then
-            echo "❌ Remote Docker is not in Swarm mode (state: $SWARM_STATE)."
-            exit 1
-          fi
-
-          echo "🔐 Creating/updating Docker secrets from GitHub Secrets..."
-          create_or_update_secret() {
-            local name="$1"
-            local value="$2"
-
-            if [ -z "$value" ]; then
-              echo "❌ Required secret '$name' is empty"
-              exit 1
-            fi
-
-            if docker secret inspect "$name" >/dev/null 2>&1; then
-              echo "⚠️ Secret '$name' already exists and cannot be updated while in use."
-              echo "   If you need to rotate this secret, version it (e.g., ${name}_v2) or remove the stack first."
-              return 0
-            fi
-            printf '%s' "$value" | docker secret create "$name" - >/dev/null
-          }
-
-          create_or_update_secret "django_secret_key" "$SECRET_DJANGO_SECRET_KEY"
-          create_or_update_secret "postgres_password" "$SECRET_POSTGRES_PASSWORD"
-          create_or_update_secret "email_host_password" "$SECRET_EMAIL_HOST_PASSWORD"
-          create_or_update_secret "sentry_dsn" "$SECRET_SENTRY_DSN"
-
-          echo "🚀 Deploying stack..."
-          docker stack deploy -c deploy/swarm/stack.yml zdravy
-
-          echo "⏳ Waiting for backend to be healthy..."
-          BACKEND_HEALTHY=false
-          for i in $(seq 1 24); do
-            BACKEND_CONTAINER=$(docker ps \
-              --filter "label=com.docker.swarm.service.name=zdravy_backend" \
-              --format "{{.ID}}" | head -1)
-            if [ -n "$BACKEND_CONTAINER" ]; then
-              STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$BACKEND_CONTAINER" 2>/dev/null)
-              if [ "$STATUS" = "healthy" ]; then
-                echo "✅ Backend is healthy after $((i * 5))s"
-                BACKEND_HEALTHY=true
-                break
-              fi
-            fi
-            echo "  ⏳ Still waiting... ($((i * 5))s)"
-            sleep 5
-          done
-          if [ "$BACKEND_HEALTHY" != "true" ]; then
-            echo "❌ Backend failed to become healthy after 120s"
-            docker service ps zdravy_backend --no-trunc
-            docker service logs --tail=100 zdravy_backend || true
-            exit 1
-          fi
-
-          echo "🧹 Cleaning unused versioned staging configs..."
-          CURRENT_SUFFIX="_${STACK_CONFIG_VERSION}"
-          for cfg in $(docker config ls --format '{{.Name}}' | grep -E '^zdravy_(nginx|prometheus|loki|promtail)_config_staging-' || true); do
-            if [[ "$cfg" != *"${CURRENT_SUFFIX}" ]]; then
-              docker config rm "$cfg" >/dev/null 2>&1 || true
-            fi
-          done
-
-          echo "✅ Deployment complete!"
-          docker system prune -f --filter "until=24h"
+          curl -fsSL -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}"

@@ -3,40 +3,59 @@ services:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       STAGING_HOST: ${STAGING_HOST}
-      FRONTEND_URL: ${FRONTEND_URL}
+      FRONTEND_URL: https://${STAGING_HOST}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/1}
+      REDIS_URL: redis://redis:6379/1
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.backend.rule=Host(`${STAGING_HOST}`) && (PathPrefix(`/api/`) || PathPrefix(`/admin/`))"
+      - traefik.http.routers.backend.entrypoints=web
+      - traefik.http.routers.backend.priority=10
+      - traefik.http.routers.backend.middlewares=gzip,bodylimit
+      - traefik.http.services.backend.loadbalancer.server.port=8000
+      - "traefik.http.routers.static.rule=Host(`${STAGING_HOST}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
+      - traefik.http.routers.static.entrypoints=web
+      - traefik.http.routers.static.priority=20
+      - traefik.http.routers.static.service=backend
+      - traefik.http.routers.static.middlewares=gzip,static-cache
+      - traefik.http.middlewares.static-cache.headers.customResponseHeaders.Cache-Control=public, max-age=31536000, immutable
+      - traefik.http.middlewares.gzip.compress=true
+      - traefik.http.middlewares.bodylimit.buffering.maxRequestBodyBytes=104857600
+      - logging.job=backend
     depends_on:
       redis:
         condition: service_healthy
-    secrets:
-      - django_secret_key
-      - postgres_password
-      - email_host_password
     networks:
       - app
+      - dokploy-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
     networks:
       - app
     restart: unless-stopped
@@ -45,16 +64,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    labels:
+      - logging.job=redis
 
   celery:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
-    command: sh -c "echo 'Waiting for Redis...' && until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null; do echo 'Redis not ready, retrying in 2s...'; sleep 2; done && echo 'Redis is up!' && celery -A app worker -l info"
+    command: >
+      sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
+             do echo 'Waiting for Redis...'; sleep 2; done &&
+             celery -A app worker -l info"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       CELERY_BROKER_URL: redis://redis:6379/0
@@ -62,58 +86,65 @@ services:
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       redis:
         condition: service_healthy
-    secrets:
-      - django_secret_key
-      - postgres_password
-      - email_host_password
     networks:
       - app
+      - dokploy-network
+    restart: unless-stopped
     healthcheck:
       disable: true
-    restart: unless-stopped
+    labels:
+      - logging.job=celery
 
   celery-beat:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
-    command: sh -c "echo 'Waiting for Redis...' && until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null; do echo 'Redis not ready, retrying in 2s...'; sleep 2; done && echo 'Redis is up!' && celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+    command: >
+      sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
+             do echo 'Waiting for Redis...'; sleep 2; done &&
+             celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY_FILE: /run/secrets/django_secret_key
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
-      EMAIL_HOST: ${EMAIL_HOST}
-      EMAIL_PORT: ${EMAIL_PORT:-587}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD_FILE: /run/secrets/email_host_password
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       redis:
         condition: service_healthy
       backend:
         condition: service_healthy
-    secrets:
-      - django_secret_key
-      - postgres_password
-      - email_host_password
     networks:
       - app
+      - dokploy-network
+    restart: unless-stopped
     healthcheck:
       disable: true
-    restart: unless-stopped
+    labels:
+      - logging.job=celery-beat
 
   frontend:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:staging
+    labels:
+      - traefik.enable=true
+      - "traefik.http.routers.frontend.rule=Host(`${STAGING_HOST}`)"
+      - traefik.http.routers.frontend.entrypoints=web
+      - traefik.http.routers.frontend.priority=1
+      - traefik.http.routers.frontend.middlewares=gzip,bodylimit
+      - traefik.http.services.frontend.loadbalancer.server.port=80
+      - logging.job=frontend
     networks:
       - app
+      - dokploy-network
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
@@ -122,132 +153,52 @@ services:
       retries: 5
       start_period: 15s
 
-  nginx:
-    image: nginx:1.27-alpine
-    ports:
-      - "80:80"
-    configs:
-      - source: nginx_config
-        target: /etc/nginx/conf.d/default.conf
-    depends_on:
-      backend:
-        condition: service_healthy
-      frontend:
-        condition: service_healthy
-    networks:
-      - app
-    restart: always
-
   prometheus:
-    image: prom/prometheus:v2.48.0
-    volumes:
-      - ./prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml
-      - ./prometheus/rules:/etc/prometheus/rules
-      - prometheus_data_staging:/prometheus
+    image: prom/prometheus:v2.54.1
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=30d'
-      - '--web.enable-lifecycle'
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
     networks:
       - app
     restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_healthy
+    labels:
+      - logging.job=prometheus
 
-configs:
-  nginx_config:
-    content: |
-      server {
-          listen 80;
-          server_name zp.tomag.xyz;
+  loki:
+    image: grafana/loki:3.1.1
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    networks:
+      - app
+    restart: unless-stopped
+    labels:
+      - logging.job=loki
 
-          # Docker's internal DNS resolver with 5s TTL so nginx re-resolves
-          # container IPs after every restart instead of caching them at startup.
-          resolver 127.0.0.11 valid=5s ipv6=off;
+  promtail:
+    image: grafana/promtail:3.1.1
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/tmp
+    networks:
+      - app
+    restart: unless-stopped
 
-          real_ip_header CF-Connecting-IP;
-          set_real_ip_from 103.21.244.0/22;
-          set_real_ip_from 103.22.200.0/22;
-          set_real_ip_from 103.31.4.0/22;
-          set_real_ip_from 104.16.0.0/13;
-          set_real_ip_from 104.24.0.0/14;
-          set_real_ip_from 108.162.192.0/18;
-          set_real_ip_from 131.0.72.0/22;
-          set_real_ip_from 141.101.64.0/18;
-          set_real_ip_from 162.158.0.0/15;
-          set_real_ip_from 172.64.0.0/13;
-          set_real_ip_from 173.245.48.0/20;
-          set_real_ip_from 188.114.96.0/20;
-          set_real_ip_from 190.93.240.0/20;
-          set_real_ip_from 197.234.240.0/22;
-          set_real_ip_from 198.41.128.0/17;
-
-          client_max_body_size 10M;
-
-          # Variables force nginx to use the resolver on each request cycle
-          set $$upstream_backend "http://backend:8000";
-          set $$upstream_frontend "http://frontend:80";
-          set $$upstream_prometheus "http://prometheus:9090";
-
-          location /api/ {
-              proxy_pass $$upstream_backend;
-              proxy_set_header Host $$host;
-              proxy_set_header X-Real-IP $$remote_addr;
-              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto https;
-              proxy_redirect off;
-          }
-
-          location /admin/ {
-              proxy_pass $$upstream_backend;
-              proxy_set_header Host $$host;
-              proxy_set_header X-Real-IP $$remote_addr;
-              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto https;
-              proxy_redirect off;
-          }
-
-          location /static/ {
-              proxy_pass $$upstream_backend;
-          }
-
-            # Expose Prometheus through the existing Cloudflare tunnel entrypoint.
-            # Keep this path protected by Cloudflare Access/service tokens.
-            location /prometheus/ {
-              rewrite ^/prometheus/(.*) /$$1 break;
-              proxy_pass $$upstream_prometheus;
-              proxy_set_header Host $$host;
-              proxy_set_header X-Real-IP $$remote_addr;
-              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto https;
-              proxy_redirect off;
-            }
-
-          location / {
-              proxy_pass $$upstream_frontend;
-              proxy_set_header Host $$host;
-              proxy_set_header X-Real-IP $$remote_addr;
-              proxy_set_header X-Forwarded-For $$proxy_add_x_forwarded_for;
-              proxy_set_header X-Forwarded-Proto https;
-              proxy_redirect off;
-          }
-      }
-
-secrets:
-  django_secret_key:
-    file: ${DJANGO_SECRET_KEY_FILE}
-  postgres_password:
-    file: ${POSTGRES_PASSWORD_FILE}
-  email_host_password:
-    file: ${EMAIL_HOST_PASSWORD_FILE}
+volumes:
+  redis_data:
+  prometheus_data:
+  loki_data:
+  promtail_positions:
 
 networks:
   app:
-    name: zdravy_staging_app
-
-volumes:
-  prometheus_data_staging:
+  dokploy-network:
+    external: true
