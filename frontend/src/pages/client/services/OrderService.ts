@@ -25,6 +25,13 @@ export interface DailyOrder {
 }
 
 class OrderService {
+    private static toLocalDateString(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     static getServerNow(): Date {
         const offsetRaw = sessionStorage.getItem('server_time_offset_ms');
         const offsetMs = offsetRaw ? Number(offsetRaw) : 0;
@@ -160,9 +167,12 @@ class OrderService {
     // Deadline logic
     static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, breakfast_day_before?: boolean, lunch: string, lunch_day_before?: boolean, olovrant: string, olovrant_day_before?: boolean }): boolean {
         const now = this.getServerNow();
-        const todayStr = now.toISOString().split('T')[0];
+        const todayStr = this.toLocalDateString(now);
 
-        if (!deadlines) return false;
+        if (!deadlines) {
+            if (dateStr > todayStr) return true;
+            return false;
+        }
 
         const defaultTime = "10:00";
         let deadlineStr = defaultTime;
@@ -177,7 +187,7 @@ class OrderService {
             const mealDate = new Date(dateStr + 'T00:00:00');
             const deadlineDate = new Date(mealDate);
             deadlineDate.setDate(deadlineDate.getDate() - 1);
-            const deadlineDateStr = deadlineDate.toISOString().split('T')[0];
+            const deadlineDateStr = this.toLocalDateString(deadlineDate);
 
             if (deadlineDateStr > todayStr) return true;   // deadline day is in the future
             if (deadlineDateStr < todayStr) return false;  // deadline day has passed

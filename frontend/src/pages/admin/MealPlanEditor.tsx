@@ -160,7 +160,6 @@ const MealPlanEditor: React.FC = () => {
       items_write: draft.items
         .filter((i) => i.templateId > 0)
         .map((i) => ({ template_id: i.templateId, menu_variant: i.menuVariant })),
-      enrolled_counts_write: [],
     };
     try {
       const url = planId

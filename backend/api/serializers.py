@@ -121,7 +121,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 datetime.datetime.combine(deadline_date, deadline_time),
                 current_tz,
             )
-            if current_dt > deadline_dt:
+            if current_dt >= deadline_dt:
                 label = cls.MEAL_LABELS[meal_key]
                 raise OrderDeadlinePassedError(
                     deadline_time=deadline_dt.strftime("%d.%m.%Y %H:%M"),

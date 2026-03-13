@@ -91,6 +91,11 @@ class MealPlanItemWriteSerializer(serializers.Serializer):
     template_id = serializers.IntegerField()
     menu_variant = serializers.CharField(max_length=10, allow_blank=True, default="")
 
+    def validate_template_id(self, value: int) -> int:
+        if not MealTemplate.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Zadaná šablóna jedla neexistuje.")
+        return value
+
 
 class MealPlanItemSerializer(serializers.ModelSerializer):
     template_detail = MealTemplateSerializer(source="template", read_only=True)
@@ -143,8 +148,8 @@ class DailyMealPlanSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         from .services.meal_plan_service import MealPlanService
 
-        items_data = validated_data.pop("items_write", [])
-        enrolled_data = validated_data.pop("enrolled_counts_write", [])
+        items_data = validated_data.pop("items_write", None)
+        enrolled_data = validated_data.pop("enrolled_counts_write", None)
         request = self.context.get("request")
         user = request.user if request else None
         return MealPlanService.create_or_replace_plan(
@@ -158,8 +163,8 @@ class DailyMealPlanSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         from .services.meal_plan_service import MealPlanService
 
-        items_data = validated_data.pop("items_write", [])
-        enrolled_data = validated_data.pop("enrolled_counts_write", [])
+        items_data = validated_data.pop("items_write", None)
+        enrolled_data = validated_data.pop("enrolled_counts_write", None)
         request = self.context.get("request")
         user = request.user if request else None
         return MealPlanService.create_or_replace_plan(

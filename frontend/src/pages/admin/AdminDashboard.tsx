@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 
@@ -97,12 +97,6 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
-  const cancelRef = useRef(false);
-
-  useEffect(() => {
-    cancelRef.current = false;
-    return () => { cancelRef.current = true; };
-  }, []);
 
   const fetchData = useCallback(async () => {
     setLoading(true);

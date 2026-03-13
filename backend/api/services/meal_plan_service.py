@@ -17,8 +17,8 @@ class MealPlanService:
     @staticmethod
     def create_or_replace_plan(
         date: datetime.date,
-        items_data: list,
-        enrolled_data: list,
+        items_data: list | None,
+        enrolled_data: list | None,
         notes: str,
         user,
     ) -> DailyMealPlan:
@@ -35,24 +35,25 @@ class MealPlanService:
             plan.notes = notes
             plan.save(update_fields=["notes", "updated_at"])
 
-            MealPlanItem.objects.filter(meal_plan=plan).delete()
-            EnrolledCount.objects.filter(meal_plan=plan).delete()
+            if items_data is not None:
+                MealPlanItem.objects.filter(meal_plan=plan).delete()
+                for item in items_data:
+                    template = MealTemplate.objects.get(pk=item["template_id"])
+                    MealPlanItem.objects.create(
+                        meal_plan=plan,
+                        template=template,
+                        category=template.category,
+                        menu_variant=item.get("menu_variant", template.menu_variant),
+                    )
 
-            for item in items_data:
-                template = MealTemplate.objects.get(pk=item["template_id"])
-                MealPlanItem.objects.create(
-                    meal_plan=plan,
-                    template=template,
-                    category=template.category,
-                    menu_variant=item.get("menu_variant", template.menu_variant),
-                )
-
-            for ec in enrolled_data:
-                EnrolledCount.objects.create(
-                    meal_plan=plan,
-                    portion_type_id=ec["portion_type_id"],
-                    count=ec["count"],
-                )
+            if enrolled_data is not None:
+                EnrolledCount.objects.filter(meal_plan=plan).delete()
+                for ec in enrolled_data:
+                    EnrolledCount.objects.create(
+                        meal_plan=plan,
+                        portion_type_id=ec["portion_type_id"],
+                        count=ec["count"],
+                    )
 
         return plan
 

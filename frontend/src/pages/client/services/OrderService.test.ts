@@ -3,6 +3,13 @@ import OrderService, { DailyOrder } from './OrderService';
 import { CATEGORIES } from '../config/constants';
 
 describe('OrderService', () => {
+    const localDateStr = (date: Date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
     describe('createEmptyMeal', () => {
         it('should create a meal with all categories', () => {
             const meal = OrderService.createEmptyMeal();
@@ -77,19 +84,20 @@ describe('OrderService', () => {
     describe('checkDeadline', () => {
         afterEach(() => {
             vi.useRealTimers();
+            sessionStorage.removeItem('server_time_offset_ms');
         });
 
         it('should allow future dates', () => {
             const futureDate = new Date();
             futureDate.setDate(futureDate.getDate() + 1);
-            const dateStr = futureDate.toISOString().split('T')[0];
+            const dateStr = localDateStr(futureDate);
             expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(true);
         });
 
         it('should block past dates', () => {
             const pastDate = new Date();
             pastDate.setDate(pastDate.getDate() - 1);
-            const dateStr = pastDate.toISOString().split('T')[0];
+            const dateStr = localDateStr(pastDate);
             expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(false);
         });
 
@@ -97,7 +105,7 @@ describe('OrderService', () => {
             const today = new Date();
             today.setHours(2, 59, 0, 0);
             vi.setSystemTime(today);
-            const dateStr = today.toISOString().split('T')[0];
+            const dateStr = localDateStr(today);
             // Must pass deadlines matching test conditions
             expect(OrderService.checkDeadline(dateStr, 'breakfast', { breakfast: '03:00', lunch: '03:00', olovrant: '03:00' })).toBe(true);
         });
@@ -106,7 +114,7 @@ describe('OrderService', () => {
             const today = new Date();
             today.setHours(3, 1, 0, 0);
             vi.setSystemTime(today);
-            const dateStr = today.toISOString().split('T')[0];
+            const dateStr = localDateStr(today);
             expect(OrderService.checkDeadline(dateStr, 'breakfast', { breakfast: '03:00', lunch: '03:00', olovrant: '03:00' })).toBe(false);
         });
 
@@ -114,7 +122,7 @@ describe('OrderService', () => {
             const today = new Date();
             today.setHours(7, 29, 0, 0);
             vi.setSystemTime(today);
-            const dateStr = today.toISOString().split('T')[0];
+            const dateStr = localDateStr(today);
             expect(OrderService.checkDeadline(dateStr, 'lunch', { breakfast: '07:30', lunch: '07:30', olovrant: '07:30' })).toBe(true);
         });
 
@@ -122,7 +130,7 @@ describe('OrderService', () => {
             const today = new Date();
             today.setHours(7, 31, 0, 0);
             vi.setSystemTime(today);
-            const dateStr = today.toISOString().split('T')[0];
+            const dateStr = localDateStr(today);
             expect(OrderService.checkDeadline(dateStr, 'lunch', { breakfast: '07:30', lunch: '07:30', olovrant: '07:30' })).toBe(false);
         });
 
@@ -130,8 +138,71 @@ describe('OrderService', () => {
             const today = new Date();
             today.setHours(9, 0, 0, 0);
             vi.setSystemTime(today);
-            const dateStr = today.toISOString().split('T')[0];
+            const dateStr = localDateStr(today);
             expect(OrderService.checkDeadline(dateStr, 'lunch')).toBe(false);
+        });
+
+        it('should use local date for day-before deadlines', () => {
+            const now = new Date();
+            now.setHours(7, 0, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 1);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkDeadline(dateStr, 'lunch', {
+                    breakfast: '10:00',
+                    lunch: '08:00',
+                    lunch_day_before: true,
+                    olovrant: '10:00',
+                })
+            ).toBe(true);
+        });
+
+        it('should block day-before deadline when current time is at or after cutoff', () => {
+            const now = new Date();
+            now.setHours(8, 0, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 1);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkDeadline(dateStr, 'lunch', {
+                    breakfast: '10:00',
+                    lunch: '08:00',
+                    lunch_day_before: true,
+                    olovrant: '10:00',
+                })
+            ).toBe(false);
+        });
+    });
+
+    describe('getServerNow', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+            sessionStorage.removeItem('server_time_offset_ms');
+        });
+
+        it('should apply numeric server offset from sessionStorage', () => {
+            const base = new Date('2026-03-14T10:00:00');
+            vi.useFakeTimers();
+            vi.setSystemTime(base);
+            sessionStorage.setItem('server_time_offset_ms', '60000');
+
+            expect(OrderService.getServerNow().getTime()).toBe(base.getTime() + 60000);
+        });
+
+        it('should ignore non-finite offsets', () => {
+            const base = new Date('2026-03-14T10:00:00');
+            vi.useFakeTimers();
+            vi.setSystemTime(base);
+            sessionStorage.setItem('server_time_offset_ms', 'Infinity');
+
+            expect(OrderService.getServerNow().getTime()).toBe(base.getTime());
         });
     });
 
