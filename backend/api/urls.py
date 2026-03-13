@@ -7,15 +7,18 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminSummaryViewSet,
     AdminUserViewSet,
+    DailyMealPlanViewSet,
     DailyOrderViewSet,
     DietViewSet,
     EmailTokenObtainPairView,
     EmailVerificationView,
     GlobalSettingsViewSet,
+    MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PendingRegistrationsViewSet,
     PlannedOrdersViewSet,
+    PortionTypeViewSet,
     RegistrationView,
     ReportTaskViewSet,
     ResendVerificationEmailView,
@@ -51,6 +54,9 @@ router.register(
     ReportTaskViewSet,
     basename="report-task",
 )
+router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")
+router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
+router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
 
 urlpatterns = [
     path("", include(router.urls)),

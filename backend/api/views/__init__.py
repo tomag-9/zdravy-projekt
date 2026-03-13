@@ -22,6 +22,13 @@ from .diet_views import DietViewSet
 # Email verification views
 from .email_verification_views import EmailVerificationView, ResendVerificationEmailView
 
+# Meal plan views
+from .meal_plan_views import (
+    DailyMealPlanViewSet,
+    MealTemplateViewSet,
+    PortionTypeViewSet,
+)
+
 # Order views
 from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrdersViewSet
 
@@ -62,4 +69,8 @@ __all__ = [
     "GlobalSettingsViewSet",
     # Diet
     "DietViewSet",
+    # Meal plan
+    "MealTemplateViewSet",
+    "PortionTypeViewSet",
+    "DailyMealPlanViewSet",
 ]
