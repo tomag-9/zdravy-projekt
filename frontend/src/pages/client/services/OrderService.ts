@@ -25,6 +25,12 @@ export interface DailyOrder {
 }
 
 class OrderService {
+    static getServerNow(): Date {
+        const offsetRaw = sessionStorage.getItem('server_time_offset_ms');
+        const offsetMs = offsetRaw ? Number(offsetRaw) : 0;
+        return new Date(Date.now() + (Number.isFinite(offsetMs) ? offsetMs : 0));
+    }
+
     static createEmptyCategory(categoryName: string): CategoryData {
         const availableMenus = GROUP_CONFIG[categoryName] || ['A'];
         const menuCounts = availableMenus.reduce((acc, menu) => ({ ...acc, [menu]: 0 }), {} as MenuCounts);
@@ -153,7 +159,7 @@ class OrderService {
 
     // Deadline logic
     static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, breakfast_day_before?: boolean, lunch: string, lunch_day_before?: boolean, olovrant: string, olovrant_day_before?: boolean }): boolean {
-        const now = new Date();
+        const now = this.getServerNow();
         const todayStr = now.toISOString().split('T')[0];
 
         if (!deadlines) return false;

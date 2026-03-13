@@ -5,6 +5,33 @@ import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+type ApiErrorPayload = {
+    error?: {
+        code?: string;
+        message?: string;
+    };
+};
+
+export class OrderRequestError extends Error {
+    code?: string;
+
+    constructor(message: string, code?: string) {
+        super(message);
+        this.name = 'OrderRequestError';
+        this.code = code;
+    }
+}
+
+const parseApiError = async (response: Response) => {
+    try {
+        const payload = await response.clone().json() as ApiErrorPayload;
+        return new OrderRequestError(payload.error?.message || 'Request failed', payload.error?.code);
+    } catch {
+        const text = await response.text();
+        return new OrderRequestError(text || 'Request failed');
+    }
+};
+
 // Helper for safe localStorage parsing
 // Now using OrderService.enforceStructure
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -372,8 +399,7 @@ export const useOrder = () => {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text);
+                throw await parseApiError(response);
             }
 
             // Only update local state AFTER successful API call

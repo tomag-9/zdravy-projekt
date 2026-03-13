@@ -10,6 +10,7 @@ import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
+import { OrderRequestError } from "../hooks/useOrder";
 
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
@@ -110,6 +111,17 @@ const OrderPage = () => {
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
 
+  const getFriendlyOrderErrorMessage = (error: unknown) => {
+    if (
+      error instanceof OrderRequestError &&
+      error.code === "order_deadline_passed"
+    ) {
+      return "Objednavku uz nie je mozne odoslat, termin uplynul.";
+    }
+
+    return "Nepodarilo sa odoslat objednavku. Skuste to znova.";
+  };
+
   const handleSubmit = async () => {
     try {
       await submitOrder(selectedDate);
@@ -117,7 +129,7 @@ const OrderPage = () => {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       console.error(e);
-      toast.error("Nepodarilo sa odoslať objednávku. Skúste to znova.");
+      toast.error(getFriendlyOrderErrorMessage(e));
     }
   };
   const handleReset = () => {
