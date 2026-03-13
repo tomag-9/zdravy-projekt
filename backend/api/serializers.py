@@ -120,8 +120,11 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         model = GlobalSettings
         fields = [
             "deadline_breakfast",
+            "deadline_breakfast_is_day_before",
             "deadline_lunch",
+            "deadline_lunch_is_day_before",
             "deadline_olovrant",
+            "deadline_olovrant_is_day_before",
             "report_email_recipients",
         ]
 

@@ -166,7 +166,7 @@ export const useOrder = () => {
         return () => { isMounted = false; };
     }, [selectedDate, apiFetch, user]); // Depend on selectedDate
 
-    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', lunch: '10:00', olovrant: '10:00' });
+    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
 
     // Fetch Global Settings
     useEffect(() => {
@@ -177,9 +177,12 @@ export const useOrder = () => {
                     const data = await res.json();
                     // Map backend fields (deadline_*) to expected state structure
                     const mapped = {
-                        breakfast: data.deadline_breakfast || data.breakfast || '10:00',
-                        lunch: data.deadline_lunch || data.lunch || '10:00',
-                        olovrant: data.deadline_olovrant || data.olovrant || '10:00',
+                        breakfast: data.deadline_breakfast || '10:00',
+                        breakfast_day_before: !!data.deadline_breakfast_is_day_before,
+                        lunch: data.deadline_lunch || '10:00',
+                        lunch_day_before: !!data.deadline_lunch_is_day_before,
+                        olovrant: data.deadline_olovrant || '10:00',
+                        olovrant_day_before: !!data.deadline_olovrant_is_day_before,
                     };
                     setGlobalDeadlines(mapped);
                 }

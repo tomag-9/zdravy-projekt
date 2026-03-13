@@ -79,6 +79,8 @@ const HomePage = () => {
     if (!globalDeadlines) return false;
     const now = new Date();
     return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
+      // When this meal uses "day before" mode, today's version of this meal is past deadline
+      if ((globalDeadlines as Record<string, unknown>)[`${meal}_day_before`]) return false;
       const rawTime = globalDeadlines[meal] || "10:00";
       const [hourStr, minuteStr] = rawTime.split(":");
       const hours = Number.isFinite(Number(hourStr)) ? Number(hourStr) : 10;
