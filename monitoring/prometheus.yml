@@ -8,6 +8,7 @@ scrape_configs:
       - targets: ["localhost:9090"]
 
   - job_name: backend
-    metrics_path: /metrics/
+    metrics_path: /metrics
+    follow_redirects: false
     static_configs:
       - targets: ["backend:8000"]

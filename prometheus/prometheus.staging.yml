@@ -19,6 +19,7 @@ scrape_configs:
         labels:
           service: 'backend'
     metrics_path: '/metrics'
+    follow_redirects: false
     scrape_interval: 10s
     scrape_timeout: 5s
 

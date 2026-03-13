@@ -5,6 +5,7 @@ URL configuration for the project.
 from django.conf import settings
 from django.conf.urls.static import static
 from django.urls import include, path
+from django_prometheus.exports import ExportToDjangoView
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -14,6 +15,9 @@ from drf_spectacular.views import (
 urlpatterns = [
     path("api/", include("api.urls")),  # Add your API urls here
     path("", include("django_prometheus.urls")),
+    path(
+        "metrics/", ExportToDjangoView
+    ),  # handle trailing slash (APPEND_SLASH redirect target)
 ]
 
 # Only expose API schema and documentation in development

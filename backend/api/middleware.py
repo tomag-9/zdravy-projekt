@@ -47,8 +47,11 @@ class UnauthorizedAccessRedirectMiddleware:
         )
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
-        # Allow all API routes through
-        if request.path.startswith("/api/"):
+        # Allow all API routes and Prometheus metrics through
+        if request.path.startswith("/api/") or request.path in (
+            "/metrics",
+            "/metrics/",
+        ):
             return self.get_response(request)
 
         # Block only the Django admin root in production (/admin/ and /admin)
