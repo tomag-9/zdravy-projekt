@@ -6,7 +6,7 @@ Full-stack web application with Django backend and React frontend, containerized
 
 - **Backend**: Django 5.0 + Django REST Framework + PostgreSQL
 - **Frontend**: React 18 + Vite + Tailwind CSS + TypeScript
-- **Reverse Proxy**: Nginx
+- **Reverse Proxy**: Traefik (managed by Dokploy)
 - **Containerization**: Docker + Docker Compose
 - **CI/CD**: GitHub Actions
 
@@ -275,9 +275,7 @@ docker compose -f docker-compose.staging.yml up -d
 
 ### Production
 
-```bash
-docker compose -f docker-compose.prod.yml up -d
-```
+Deployment is managed by Dokploy (Traefik + Swarm stack).
 
 - DEBUG disabled
 - SSL/TLS required
@@ -317,21 +315,16 @@ GitHub Actions automatically:
 2. Checks code quality (linting, formatting)
 3. Builds staging images and triggers Dokploy deploy on push to `develop` branch
 
-### Manual Deployment (Docker Compose)
+### Production Deployment
 
-1. Build and push Docker images
-2. SSH to server
-3. Pull latest images
-4. Run migrations
-5. Restart containers
+Production deployment is handled via Dokploy similarly to staging:
 
-```bash
-# On production server
-cd /opt/heltum
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
-docker compose -f docker-compose.prod.yml exec backend python manage.py migrate
-```
+1. GitHub Actions builds and pushes Docker images on push to the production branch
+2. Workflow triggers Dokploy webhook from secret `DOKPLOY_WEBHOOK_URL_PROD`
+3. Dokploy pulls fresh images and deploys production services routed by Traefik
+
+> Note: Legacy `docker-compose.prod.yml` + Nginx deployment is not the recommended
+> production path and may not match the current Dokploy/Traefik architecture.
 
 ## 🐛 Troubleshooting
 
