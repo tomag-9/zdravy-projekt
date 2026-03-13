@@ -9,8 +9,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_HOST: ${POSTGRES_HOST}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      STAGING_HOST: ${STAGING_HOST}
-      FRONTEND_URL: https://${STAGING_HOST}
+      STAGING_HOST: ${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
+      FRONTEND_URL: https://${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       REDIS_URL: redis://redis:6379/1
@@ -23,19 +23,19 @@ services:
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
     labels:
       - traefik.enable=true
-      - "traefik.http.routers.backend.rule=Host(`${STAGING_HOST}`) && (PathPrefix(`/api/`) || PathPrefix(`/admin/`))"
-      - traefik.http.routers.backend.entrypoints=web
-      - traefik.http.routers.backend.priority=10
-      - traefik.http.routers.backend.middlewares=gzip,bodylimit
-      - traefik.http.services.backend.loadbalancer.server.port=8000
-      - "traefik.http.routers.static.rule=Host(`${STAGING_HOST}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
-      - traefik.http.routers.static.entrypoints=web
-      - traefik.http.routers.static.priority=20
-      - traefik.http.routers.static.service=backend
-      - traefik.http.routers.static.middlewares=gzip,static-cache
-      - traefik.http.middlewares.static-cache.headers.customResponseHeaders.Cache-Control=public, max-age=31536000, immutable
-      - traefik.http.middlewares.gzip.compress=true
-      - traefik.http.middlewares.bodylimit.buffering.maxRequestBodyBytes=104857600
+      - "traefik.http.routers.zdravy-staging-backend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/api/`) || PathPrefix(`/admin/`))"
+      - traefik.http.routers.zdravy-staging-backend.entrypoints=web
+      - traefik.http.routers.zdravy-staging-backend.priority=10
+      - traefik.http.routers.zdravy-staging-backend.middlewares=zdravy-staging-gzip,zdravy-staging-bodylimit
+      - traefik.http.services.zdravy-staging-backend.loadbalancer.server.port=8000
+      - "traefik.http.routers.zdravy-staging-static.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
+      - traefik.http.routers.zdravy-staging-static.entrypoints=web
+      - traefik.http.routers.zdravy-staging-static.priority=20
+      - traefik.http.routers.zdravy-staging-static.service=zdravy-staging-backend
+      - traefik.http.routers.zdravy-staging-static.middlewares=zdravy-staging-gzip,zdravy-staging-static-cache
+      - traefik.http.middlewares.zdravy-staging-static-cache.headers.customResponseHeaders.Cache-Control=public, max-age=31536000, immutable
+      - traefik.http.middlewares.zdravy-staging-gzip.compress=true
+      - traefik.http.middlewares.zdravy-staging-bodylimit.buffering.maxRequestBodyBytes=104857600
       - logging.job=backend
     depends_on:
       redis:
@@ -136,11 +136,11 @@ services:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:staging
     labels:
       - traefik.enable=true
-      - "traefik.http.routers.frontend.rule=Host(`${STAGING_HOST}`)"
-      - traefik.http.routers.frontend.entrypoints=web
-      - traefik.http.routers.frontend.priority=1
-      - traefik.http.routers.frontend.middlewares=gzip,bodylimit
-      - traefik.http.services.frontend.loadbalancer.server.port=80
+      - "traefik.http.routers.zdravy-staging-frontend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`)"
+      - traefik.http.routers.zdravy-staging-frontend.entrypoints=web
+      - traefik.http.routers.zdravy-staging-frontend.priority=1
+      - traefik.http.routers.zdravy-staging-frontend.middlewares=zdravy-staging-gzip,zdravy-staging-bodylimit
+      - traefik.http.services.zdravy-staging-frontend.loadbalancer.server.port=80
       - logging.job=frontend
     networks:
       - app

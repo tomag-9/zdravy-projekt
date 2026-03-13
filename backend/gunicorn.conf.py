@@ -41,7 +41,7 @@ accesslog = "-"  # Log to stdout
 errorlog = "-"  # Log to stderr
 loglevel = os.environ.get("GUNICORN_LOG_LEVEL", "info")
 access_log_format = (
-    '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" response_time=%(M)ms'
+    '%(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" response_time=%(M)sms'
 )
 
 # Pre-fork settings
