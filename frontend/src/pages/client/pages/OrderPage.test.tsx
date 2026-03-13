@@ -13,13 +13,23 @@ import { MemoryRouter } from "react-router-dom";
 import OrderService from "../services/OrderService";
 import { ReactNode } from "react";
 import { ToastProvider } from "../../../context/ToastContext";
+
+const mockApiFetch = vi.fn();
+
+const makeMockResponse = (payload: unknown, ok = true) => ({
+  ok,
+  json: () => Promise.resolve(payload),
+  text: () => Promise.resolve(typeof payload === "string" ? payload : JSON.stringify(payload)),
+  clone() {
+    return makeMockResponse(payload, ok);
+  },
+});
+
 // Mock Auth Context
 vi.mock("../../../context/auth", () => ({
   useAuth: vi.fn(() => ({
     logout: vi.fn(),
-    apiFetch: vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: () => Promise.resolve([]) }),
+    apiFetch: mockApiFetch,
   })),
   AuthProvider: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -82,6 +92,32 @@ describe("OrderPage Logic & Triggers", () => {
     vi.clearAllMocks();
     localStorageMock.clear();
     (OrderService.checkDeadline as Mock).mockReturnValue(true);
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            deadline_breakfast: "10:00",
+            deadline_breakfast_is_day_before: false,
+            deadline_lunch: "10:00",
+            deadline_lunch_is_day_before: false,
+            deadline_olovrant: "10:00",
+            deadline_olovrant_is_day_before: false,
+          }),
+        );
+      }
+
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({ id: 1, status: "draft", data: {} }),
+        );
+      }
+
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+
+      return Promise.resolve(makeMockResponse([]));
+    });
 
     // Setup default settings to avoid auto-trigger interference unless tested
     localStorageMock.setItem(
@@ -249,6 +285,62 @@ describe("OrderPage Logic & Triggers", () => {
       screen.queryByText(
         "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul).",
       ),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a friendly message when submit fails after deadline", async () => {
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            deadline_breakfast: "10:00",
+            deadline_breakfast_is_day_before: false,
+            deadline_lunch: "10:00",
+            deadline_lunch_is_day_before: false,
+            deadline_olovrant: "10:00",
+            deadline_olovrant_is_day_before: false,
+          }),
+        );
+      }
+
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({ id: 1, status: "draft", data: {} }),
+        );
+      }
+
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(
+          makeMockResponse(
+            {
+              error: {
+                code: "order_deadline_passed",
+                message: "Technicky detail zo servera",
+                details: {
+                  deadline: "13.03.2026 10:00",
+                  current_time: "13.03.2026 10:01",
+                },
+              },
+            },
+            false,
+          ),
+        );
+      }
+
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    expect(
+      await screen.findByText(
+        "Objednavku uz nie je mozne odoslat, termin uplynul.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Technicky detail zo servera"),
     ).not.toBeInTheDocument();
   });
 });
