@@ -4,6 +4,8 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
+FUTURE_ORDER_DATE = date(2099, 1, 5)
+
 
 @pytest.mark.django_db
 class TestFullFlow:
@@ -64,7 +66,7 @@ class TestFullFlow:
 
         # 3. Create Order
         orders_url = reverse("dailyorder-list")
-        today = str(date.today())
+        today = str(FUTURE_ORDER_DATE)
 
         order_payload = {
             "date": today,
@@ -77,7 +79,8 @@ class TestFullFlow:
         # 4. Fetch Order by Date
         # Note: Need to make sure the by-date endpoint matches the implemented URL regex
         # Assuming URL like /api/orders/by-date/YYYY-MM-DD/
-        # Check urls.py: url_path="by-date/(?P<date>[^/.]+)" -> reverse('dailyorder-by-date', args=[today])
+        # Check urls.py: url_path="by-date/(?P<date>[^/.]+)"
+        # -> reverse('dailyorder-by-date', args=[today])
 
         by_date_url = reverse("dailyorder-by-date", args=[today])
         get_resp = api_client.get(by_date_url)

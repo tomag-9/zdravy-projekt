@@ -27,7 +27,7 @@ from api.serializers import DailyOrderSerializer
 
 pytestmark = pytest.mark.integration
 
-TARGET_DATE = datetime.date(2025, 3, 10)
+TARGET_DATE = datetime.date(2099, 1, 5)
 
 ORDER_DATA = {
     "breakfast": {"Dospelý": {"menuCounts": {"A": 2}, "diets": {}}},
