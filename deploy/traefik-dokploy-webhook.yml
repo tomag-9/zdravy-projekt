@@ -1,0 +1,15 @@
+http:
+  routers:
+    dokploy-webhook:
+      rule: "Host(`zp.tomag.xyz`) && PathPrefix(`/api/deploy/compose/`)"
+      entryPoints:
+        - web
+        - websecure
+      service: dokploy-api
+      priority: 1000
+
+  services:
+    dokploy-api:
+      loadBalancer:
+        servers:
+          - url: "http://dokploy:3000"
