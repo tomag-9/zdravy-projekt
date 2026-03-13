@@ -136,8 +136,27 @@ def clear_client_settings_cache(user_id: int) -> None:
 
 
 def clear_diet_list_cache() -> None:
-    """Clear the Diet list cache."""
-    delete_cached(get_diet_list_cache_key())
+    """Clear the Diet list cache (all paginated variants)."""
+    base_key = get_diet_list_cache_key()
+
+    # django-redis supports wildcard invalidation via delete_pattern.
+    # Use it when available so keys like diet_list:page=1 are all removed.
+    try:
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern(f"{base_key}*")
+            return
+    except Exception as exc:
+        logger.warning(
+            "Cache delete_pattern failed for key prefix '%s*': %s (%s)",
+            base_key,
+            exc.__class__.__name__,
+            exc,
+        )
+
+    # Backend-agnostic fallback: clear known keys.
+    # (Safe fallback when wildcard delete is unsupported.)
+    delete_cached(base_key)
+    delete_cached(f"{base_key}:page=1")
 
 
 def clear_daily_stats_cache(date_str: Optional[str] = None) -> None:

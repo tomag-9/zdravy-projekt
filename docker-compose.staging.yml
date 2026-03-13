@@ -28,11 +28,10 @@ services:
       - "traefik.http.middlewares.zdravy-staging-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.zdravy-staging-https-redirect.redirectscheme.permanent=true"
       # Backend: HTTP router (redirect only)
-      - "traefik.http.routers.zdravy-staging-backend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && ((PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`)) || PathPrefix(`/admin/`))"
+      - "traefik.http.routers.zdravy-staging-backend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`))"
       - traefik.http.routers.zdravy-staging-backend.entrypoints=web
-      - traefik.http.routers.zdravy-staging-backend.middlewares=zdravy-staging-https-redirect
       # Backend: HTTPS router
-      - "traefik.http.routers.zdravy-staging-backend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && ((PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`)) || PathPrefix(`/admin/`))"
+      - "traefik.http.routers.zdravy-staging-backend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`))"
       - traefik.http.routers.zdravy-staging-backend-secure.entrypoints=websecure
       - traefik.http.routers.zdravy-staging-backend-secure.tls=true
       - traefik.http.routers.zdravy-staging-backend-secure.tls.certresolver=letsencrypt
@@ -47,7 +46,6 @@ services:
       # Static files: HTTP router (redirect only)
       - "traefik.http.routers.zdravy-staging-static.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
       - traefik.http.routers.zdravy-staging-static.entrypoints=web
-      - traefik.http.routers.zdravy-staging-static.middlewares=zdravy-staging-https-redirect
       # Static files: HTTPS router
       - "traefik.http.routers.zdravy-staging-static-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
       - traefik.http.routers.zdravy-staging-static-secure.entrypoints=websecure
@@ -165,7 +163,6 @@ services:
       # Frontend: HTTP router (redirect only)
       - "traefik.http.routers.zdravy-staging-frontend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && !PathPrefix(`/api/deploy/compose/`)"
       - traefik.http.routers.zdravy-staging-frontend.entrypoints=web
-      - traefik.http.routers.zdravy-staging-frontend.middlewares=zdravy-staging-https-redirect
       # Frontend: HTTPS router (excludes Prometheus scrapers — external noise from 192.168.0.254)
       - "traefik.http.routers.zdravy-staging-frontend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && !PathPrefix(`/api/deploy/compose/`) && !HeadersRegexp(`User-Agent`, `Prometheus`)"
       - traefik.http.routers.zdravy-staging-frontend-secure.entrypoints=websecure
