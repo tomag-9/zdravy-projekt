@@ -28,10 +28,10 @@ services:
       - "traefik.http.middlewares.zdravy-staging-https-redirect.redirectscheme.scheme=https"
       - "traefik.http.middlewares.zdravy-staging-https-redirect.redirectscheme.permanent=true"
       # Backend: HTTP router (redirect only)
-      - "traefik.http.routers.zdravy-staging-backend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && ((PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`)) || PathPrefix(`/admin/`))"
+      - "traefik.http.routers.zdravy-staging-backend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`))"
       - traefik.http.routers.zdravy-staging-backend.entrypoints=web
       # Backend: HTTPS router
-      - "traefik.http.routers.zdravy-staging-backend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && ((PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`)) || PathPrefix(`/admin/`))"
+      - "traefik.http.routers.zdravy-staging-backend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/api/`) && !PathPrefix(`/api/deploy/compose/`))"
       - traefik.http.routers.zdravy-staging-backend-secure.entrypoints=websecure
       - traefik.http.routers.zdravy-staging-backend-secure.tls=true
       - traefik.http.routers.zdravy-staging-backend-secure.tls.certresolver=letsencrypt
