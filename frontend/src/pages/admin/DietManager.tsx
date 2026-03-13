@@ -64,6 +64,11 @@ const DietManager: React.FC = () => {
         },
       );
       if (res.ok) {
+        const created = (await res.json()) as Diet;
+        setDiets((prev) => {
+          if (prev.some((d) => d.id === created.id)) return prev;
+          return [created, ...prev];
+        });
         setNewDietName("");
         fetchDiets();
         success("Diéta bola úspešne pridaná");
