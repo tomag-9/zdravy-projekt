@@ -1,13 +1,13 @@
 services:
   backend:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       STAGING_HOST: ${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
       FRONTEND_URL: https://${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
@@ -17,7 +17,7 @@ services:
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
@@ -28,6 +28,9 @@ services:
       - traefik.http.routers.zdravy-staging-backend.priority=10
       - traefik.http.routers.zdravy-staging-backend.middlewares=zdravy-staging-gzip,zdravy-staging-bodylimit
       - traefik.http.services.zdravy-staging-backend.loadbalancer.server.port=8000
+      - traefik.http.services.zdravy-staging-backend.loadbalancer.healthcheck.path=/api/health/
+      - traefik.http.services.zdravy-staging-backend.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.zdravy-staging-backend.loadbalancer.healthcheck.timeout=3s
       - "traefik.http.routers.zdravy-staging-static.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && (PathPrefix(`/static/`) || PathPrefix(`/media/`))"
       - traefik.http.routers.zdravy-staging-static.entrypoints=web
       - traefik.http.routers.zdravy-staging-static.priority=20
@@ -68,25 +71,25 @@ services:
       - logging.job=redis
 
   celery:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     command: >
       sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app worker -l info"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
-      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
       SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
@@ -102,18 +105,18 @@ services:
       - logging.job=celery
 
   celery-beat:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     command: >
       sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/0
@@ -133,7 +136,7 @@ services:
       - logging.job=celery-beat
 
   frontend:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:staging
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-staging}
     labels:
       - traefik.enable=true
       - "traefik.http.routers.zdravy-staging-frontend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`)"
@@ -141,13 +144,16 @@ services:
       - traefik.http.routers.zdravy-staging-frontend.priority=1
       - traefik.http.routers.zdravy-staging-frontend.middlewares=zdravy-staging-gzip,zdravy-staging-bodylimit
       - traefik.http.services.zdravy-staging-frontend.loadbalancer.server.port=80
+      - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.path=/healthz
+      - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.interval=10s
+      - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.timeout=3s
       - logging.job=frontend
     networks:
       - app
       - dokploy-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/healthz || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

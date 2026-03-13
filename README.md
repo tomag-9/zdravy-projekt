@@ -296,34 +296,26 @@ Key variables:
 
 ## 🚢 Deployment
 
-### Docker Swarm Baseline (Issue #117)
+### Staging Deployment (Dokploy)
 
-Swarm deployment now targets the **whole application** with this boundary:
+Staging deploy flow:
 
-- In Swarm: frontend, backend API, Redis, Celery worker/beat, Traefik, Prometheus, Loki/Promtail
-- External: PostgreSQL, Sentry, Grafana
+1. GitHub Actions builds and pushes Docker images on push to `develop`
+2. Workflow calls Dokploy webhook from secret `DOKPLOY_WEBHOOK_URL`
+3. Dokploy pulls fresh images and deploys `docker-compose.staging.yml`
 
-**Important:** Staging uses Cloudflare Tunnel (DNS challenge), Production uses direct IP (TLS challenge).
+Required setup:
 
-Quick start:
-
-```bash
-cp deploy/swarm/swarm.env.example deploy/swarm/swarm.env
-./deploy/swarm/validate-stack.sh deploy/swarm/stack.yml
-
-set -a
-source deploy/swarm/swarm.env
-set +a
-docker stack deploy -c deploy/swarm/stack.yml zdravy
-```
+- GitHub Secrets: `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`, `DOKPLOY_WEBHOOK_URL`
+- Dokploy app envs: `DJANGO_SECRET_KEY`, `POSTGRES_*`, `EMAIL_*`, `STAGING_HOST`, etc.
+- Dokploy network available as `dokploy-network`
 
 ### CI/CD Pipeline
 
 GitHub Actions automatically:
 1. Runs tests on every pull request
 2. Checks code quality (linting, formatting)
-3. Deploys to staging on push to `staging` branch
-4. Deploys to production on push to `main` branch
+3. Builds staging images and triggers Dokploy deploy on push to `develop` branch
 
 ### Manual Deployment (Docker Compose)
 

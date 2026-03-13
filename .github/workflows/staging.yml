@@ -5,6 +5,10 @@ on:
     branches:
       - develop
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     name: Build and Push Docker Images
@@ -47,6 +51,11 @@ jobs:
           cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-cache
           cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-cache,mode=max
 
+      - name: Print rollback tags
+        run: |
+          echo "Backend rollback tag: staging-${{ github.sha }}"
+          echo "Frontend rollback tag: staging-${{ github.sha }}"
+
   deploy-staging:
     name: Trigger Dokploy Deploy
     runs-on: ubuntu-latest
@@ -58,4 +67,20 @@ jobs:
     steps:
       - name: Trigger Dokploy deployment
         run: |
-          curl -fsSL -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}"
+          curl -fsS --retry 5 --retry-delay 3 --retry-all-errors -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}"
+
+      - name: Wait for staging health
+        env:
+          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL || 'https://zp.tomag.xyz/api/health/' }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
+              echo "✅ Staging is healthy"
+              exit 0
+            fi
+            echo "⏳ Waiting for healthcheck ($i/30)"
+            sleep 10
+          done
+          echo "❌ Staging healthcheck failed: $HEALTHCHECK_URL"
+          exit 1

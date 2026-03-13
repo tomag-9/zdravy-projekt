@@ -1,6 +1,8 @@
 http:
   routers:
     dokploy-webhook:
+      # Staging-specific host.
+      # If domain changes, update this value or create a separate per-environment file.
       rule: "Host(`zp.tomag.xyz`) && PathPrefix(`/api/deploy/compose/`)"
       entryPoints:
         - web
