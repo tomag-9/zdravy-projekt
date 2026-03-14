@@ -12,6 +12,7 @@ interface UserSettings {
   visible_menus: string[];
   visible_meals: string[];
   visible_diets: number[]; // IDs
+  admin_order_note?: string;
 }
 
 interface AdminUser {
@@ -56,7 +57,9 @@ const ClientDetail: React.FC = () => {
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings">(
+  const [activeTab, setActiveTab] = useState<
+    "dashboard" | "settings" | "order_note"
+  >(
     "dashboard",
   );
 
@@ -64,6 +67,7 @@ const ClientDetail: React.FC = () => {
   const [menus, setMenus] = useState<Set<string>>(new Set());
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
+  const [adminOrderNote, setAdminOrderNote] = useState("");
 
   // Dashboard State
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
@@ -90,6 +94,7 @@ const ClientDetail: React.FC = () => {
           ),
         );
         setUserDiets(new Set(settings.visible_diets || []));
+        setAdminOrderNote(settings.admin_order_note || "");
       }
     } catch (e) {
       console.error(e);
@@ -158,6 +163,7 @@ const ClientDetail: React.FC = () => {
           visible_menus: Array.from(menus),
           visible_meals: Array.from(meals),
           visible_diets: Array.from(userDiets),
+          admin_order_note: adminOrderNote,
         },
       };
 
@@ -250,6 +256,16 @@ const ClientDetail: React.FC = () => {
           }`}
         >
           Nastavenia
+        </button>
+        <button
+          onClick={() => setActiveTab("order_note")}
+          className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === "order_note"
+              ? "bg-white text-gray-900 shadow-sm"
+              : "text-gray-500 hover:text-gray-900"
+          }`}
+        >
+          Poznámka k objednávke
         </button>
       </div>
 
@@ -640,6 +656,37 @@ const ClientDetail: React.FC = () => {
               className="px-8 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-teal-700 shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5 disabled:opacity-50"
             >
               {saving ? "Ukladám..." : "Uložiť nastavenia"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "order_note" && (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Poznámka k objednávke
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Táto poznámka sa zobrazuje iba v admin dashboarde po rozkliknutí
+              klienta, nad súhrnnými číslami.
+            </p>
+            <textarea
+              value={adminOrderNote}
+              onChange={(e) => setAdminOrderNote(e.target.value)}
+              rows={6}
+              placeholder="Sem zadajte internú poznámku k objednávkam klienta..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
+          <div className="flex justify-end pt-8">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-8 py-3 bg-gradient-to-r from-blue-600 to-teal-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-teal-700 shadow-lg shadow-blue-200 transition-all transform hover:-translate-y-0.5 disabled:opacity-50"
+            >
+              {saving ? "Ukladám..." : "Uložiť poznámku"}
             </button>
           </div>
         </div>

@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from api.models import (
+    ClientSettings,
     DailyMealPlan,
     DailyOrder,
     EnrolledCount,
@@ -548,6 +549,9 @@ class AdminMealPlanApiTest(APITestCase):
 
     def test_diet_summary_and_gramage_dashboard_return_expected_contract(self):
         self._create_plan()
+        settings, _ = ClientSettings.objects.get_or_create(user=self.client_user)
+        settings.admin_order_note = "Bez cibule v pondelok"
+        settings.save(update_fields=["admin_order_note"])
         DailyOrder.objects.create(
             user=self.client_user,
             date="2026-03-16",
@@ -588,6 +592,10 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(len(dashboard_payload["rows"]), 1)
         self.assertEqual(
             dashboard_payload["rows"][0]["diet_summary_rows"][0]["name"], "Bezlepková"
+        )
+        self.assertEqual(
+            dashboard_payload["rows"][0]["admin_order_note"],
+            "Bez cibule v pondelok",
         )
 
     def test_gramage_dashboard_exports_return_files(self):

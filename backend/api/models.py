@@ -54,6 +54,8 @@ class ClientSettings(models.Model):
     visible_meals = models.JSONField(default=_default_all_meals, blank=True)
     # ManyToMany to allow dynamic diet selection
     visible_diets = models.ManyToManyField(Diet, blank=True)
+    # Admin-only note displayed in admin gramage dashboard after expanding client row.
+    admin_order_note = models.TextField(blank=True, default="")
 
     def __str__(self) -> str:
         return f"Settings for {self.user.email}"

@@ -355,7 +355,7 @@ class MealPlanService:
         rows = []
         orders = (
             DailyOrder.objects.filter(date=date_str)
-            .select_related("user", "user__profile")
+            .select_related("user", "user__profile", "user__settings")
             .order_by("user__email")
         )
 
@@ -466,6 +466,10 @@ class MealPlanService:
                         diet_summary_counts[diet_name] += diet_count
 
             if sub_rows:
+                settings = getattr(order.user, "settings", None)
+                admin_order_note = str(
+                    getattr(settings, "admin_order_note", "") or ""
+                ).strip()
                 diet_summary_rows = [
                     {
                         "name": name,
@@ -485,6 +489,7 @@ class MealPlanService:
                             client_standard_totals
                         ),
                         "diet_summary_rows": diet_summary_rows,
+                        "admin_order_note": admin_order_note,
                         "sub_rows": sub_rows,
                     }
                 )
