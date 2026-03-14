@@ -41,8 +41,9 @@ def generate_report_pdf_task(self, date_str: str):
         .order_by("user__email")
     )
     pdf_bytes = PDFReportExporter(orders, date_str).generate()
-    # Use task id in cache key to ensure concurrent requests for the same date/format
-    # don't overwrite each other. The download endpoint uses this key from the task result.
+    # Use task id in cache key to ensure concurrent requests for the same
+    # date/format don't overwrite each other. The download endpoint uses
+    # this key from the task result.
     cache_key = f"report_task:{self.request.id}"
     cache.set(cache_key, pdf_bytes, timeout=REPORT_CACHE_TIMEOUT)
     logger.info("generate_report_pdf_task complete for %s", date_str)
@@ -80,8 +81,9 @@ def generate_report_xlsx_task(self, date_str: str):
     target_date = datetime.date.fromisoformat(date_str)
     rows_data = ReportService.get_orders_for_export(target_date)
     xlsx_bytes = XLSXReportExporter(rows_data, date_str).generate()
-    # Use task id in cache key to ensure concurrent requests for the same date/format
-    # don't overwrite each other. The download endpoint uses this key from the task result.
+    # Use task id in cache key to ensure concurrent requests for the same
+    # date/format don't overwrite each other. The download endpoint uses
+    # this key from the task result.
     cache_key = f"report_task:{self.request.id}"
     cache.set(cache_key, xlsx_bytes, timeout=REPORT_CACHE_TIMEOUT)
     logger.info("generate_report_xlsx_task complete for %s", date_str)
@@ -91,6 +93,98 @@ def generate_report_xlsx_task(self, date_str: str):
         "date": date_str,
         "cache_key": cache_key,
     }
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    name="api.tasks.send_push_deadline_reminder_task",
+)
+def send_push_deadline_reminder_task(self, meal_type: str):
+    """
+    Send push notifications to users who haven't submitted an order yet,
+    fired 15 minutes before the meal deadline.
+
+    Args:
+        meal_type: one of 'breakfast', 'lunch', 'olovrant'
+
+    Target date logic mirrors apply_auto_orders:
+    - If the is_day_before flag is set → target_date = next workday
+    - Otherwise → target_date = today
+    """
+    try:
+        from django.utils import timezone
+
+        from api.models import DailyOrder, GlobalSettings, PushSubscription
+        from api.services import _next_workday
+        from api.services.push_notification_service import PushNotificationService
+
+        gs = GlobalSettings.objects.get(pk=1)
+        is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
+
+        today = timezone.localdate()
+        if is_day_before:
+            target_date = _next_workday(today)
+        else:
+            target_date = today
+
+        # Skip weekends
+        if target_date.weekday() >= 5:
+            logger.info(
+                "send_push_deadline_reminder_task: weekend skip for meal=%s date=%s",
+                meal_type,
+                target_date,
+            )
+            return {"skipped": "weekend", "meal_type": meal_type}
+
+        # Users who have active push subscriptions
+        subscribed_user_ids = set(
+            PushSubscription.objects.values_list("user_id", flat=True).distinct()
+        )
+        # Users who already have an order for target_date
+        ordered_user_ids = set(
+            DailyOrder.objects.filter(date=target_date).values_list(
+                "user_id", flat=True
+            )
+        )
+        missing_user_ids = subscribed_user_ids - ordered_user_ids
+
+        meal_labels = {
+            "breakfast": "raňajky",
+            "lunch": "obed",
+            "olovrant": "olovrant",
+        }
+        label = meal_labels.get(meal_type, meal_type)
+        date_fmt = target_date.strftime("%d.%m.%Y")
+
+        total_sent = 0
+        for user_id in missing_user_ids:
+            result = PushNotificationService.send_to_user(
+                user_id=user_id,
+                title="Pripomienka objednávky",
+                body=(
+                    f"Nezabudnite objednať {label} na {date_fmt}. "
+                    "Uzávierka je o chvíľu!"
+                ),
+                url="/order",
+            )
+            total_sent += result.get("sent", 0)
+
+        logger.info(
+            "send_push_deadline_reminder_task: meal=%s date=%s sent=%d",
+            meal_type,
+            target_date,
+            total_sent,
+        )
+        return {
+            "sent": total_sent,
+            "meal_type": meal_type,
+            "date": str(target_date),
+        }
+    except Exception as exc:
+        logger.exception("send_push_deadline_reminder_task failed, retrying...")
+        raise self.retry(exc=exc)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

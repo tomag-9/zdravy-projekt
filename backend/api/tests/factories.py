@@ -13,6 +13,7 @@ from api.models import (
     Diet,
     EmailVerificationToken,
     PasswordResetToken,
+    PushSubscription,
     UserProfile,
 )
 
@@ -106,3 +107,15 @@ class PasswordResetTokenFactory(DjangoModelFactory):
         lambda: timezone.now() + datetime.timedelta(hours=2)
     )
     used = False
+
+
+class PushSubscriptionFactory(DjangoModelFactory):
+    class Meta:
+        model = PushSubscription
+
+    user = factory.SubFactory(UserFactory)
+    endpoint = factory.Sequence(
+        lambda n: f"https://fcm.googleapis.com/fcm/send/fake-endpoint-{n}"
+    )
+    p256dh = factory.Sequence(lambda n: f"fake-p256dh-key-{n}")
+    auth = factory.Sequence(lambda n: f"fake-auth-{n}")

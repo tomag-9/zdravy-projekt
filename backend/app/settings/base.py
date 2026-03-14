@@ -209,6 +209,12 @@ CELERY_RESULT_BACKEND_TRANSPORT_OPTIONS = {
 # Frontend URL – used for building links inside transactional emails.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+# Push Notifications (VAPID)
+# Generate keys with: python manage.py generate_vapid_keys
+VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "admin@example.com")
+
 # Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

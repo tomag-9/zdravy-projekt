@@ -362,3 +362,29 @@ class EnrolledCount(models.Model):
 
     def __str__(self) -> str:
         return f"{self.meal_plan.date} {self.portion_type.name}: {self.count}"
+
+
+class PushSubscription(models.Model):
+    """
+    Web Push subscription for a user device/browser.
+    Stores the endpoint and ECDH keys needed to send push messages via VAPID.
+    One user can have multiple subscriptions (multi-device support).
+    """
+
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="push_subscriptions"
+    )
+    endpoint = models.TextField()
+    p256dh = models.TextField()
+    auth = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["user", "endpoint"]
+        indexes = [
+            models.Index(fields=["user"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"PushSubscription({self.user.email}, …{self.endpoint[-20:]})"

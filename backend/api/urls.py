@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .health import health_check
 from .views import (
     AdminAutoOrderViewSet,
+    AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
     DailyMealPlanViewSet,
@@ -19,10 +20,12 @@ from .views import (
     PendingRegistrationsViewSet,
     PlannedOrdersViewSet,
     PortionTypeViewSet,
+    PushSubscribeView,
     RegistrationView,
     ReportTaskViewSet,
     ResendVerificationEmailView,
     UserProfileViewSet,
+    VapidPublicKeyView,
 )
 
 router = DefaultRouter()
@@ -85,5 +88,21 @@ urlpatterns = [
         "auth/password-reset/confirm/",
         PasswordResetConfirmView.as_view(),
         name="password_reset_confirm",
+    ),
+    # Push notifications
+    path(
+        "push/vapid-public-key/",
+        VapidPublicKeyView.as_view(),
+        name="vapid_public_key",
+    ),
+    path(
+        "push/subscribe/",
+        PushSubscribeView.as_view(),
+        name="push_subscribe",
+    ),
+    path(
+        "admin/push/send/",
+        AdminSendPushView.as_view(),
+        name="admin_push_send",
     ),
 ]
