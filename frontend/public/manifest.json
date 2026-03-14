@@ -1,0 +1,31 @@
+{
+  "name": "Zdravý Projekt",
+  "short_name": "Zdravý",
+  "description": "Objednávanie jedla pre zdravú firmu",
+  "start_url": "/home",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "lang": "sk",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Objednávka",
+      "short_name": "Objednávka",
+      "url": "/order",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Domov",
+      "short_name": "Domov",
+      "url": "/home",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

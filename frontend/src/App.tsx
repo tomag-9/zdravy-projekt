@@ -8,6 +8,8 @@ import {
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
 import { ToastProvider } from "./context/ToastContext";
+import { PWAProvider } from "./context/PWAContext";
+import NotificationGuard from "./components/NotificationGuard";
 import HomePage from "./pages/client/pages/HomePage";
 import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
@@ -31,6 +33,7 @@ import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
 import MealPlanEditor from "./pages/admin/MealPlanEditor";
 import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
 import PortionTypes from "./pages/admin/PortionTypes";
+import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -61,7 +64,9 @@ const ProtectedRoute = () => {
 
   return (
     <AppProvider>
-      <Outlet />
+      <NotificationGuard>
+        <Outlet />
+      </NotificationGuard>
     </AppProvider>
   );
 };
@@ -95,8 +100,9 @@ const AdminRoute = () => {
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <ToastProvider>
+      <PWAProvider>
+        <AuthProvider>
+          <ToastProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
@@ -126,6 +132,7 @@ export default function App() {
               <Route path="meal-plan-templates" element={<MealPlanTemplates />} />
               <Route path="portion-types" element={<PortionTypes />} />
               <Route path="settings" element={<SystemSettings />} />
+              <Route path="push-notifications" element={<PushNotificationsAdmin />} />
             </Route>
 
             {/* Client Routes */}
@@ -151,8 +158,9 @@ export default function App() {
               />
             </Route>
           </Routes>
-        </ToastProvider>
-      </AuthProvider>
+          </ToastProvider>
+        </AuthProvider>
+      </PWAProvider>
     </BrowserRouter>
   );
 }

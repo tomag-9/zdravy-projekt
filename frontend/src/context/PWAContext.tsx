@@ -1,0 +1,125 @@
+/**
+ * PWA Context
+ *
+ * Provides:
+ *  - isStandalone  – true when running as installed PWA (display-mode: standalone)
+ *  - isIOS         – true on iPhone/iPad (affects install instructions)
+ *  - canInstall    – true when beforeinstallprompt event fired (Android/Chrome)
+ *  - installPrompt – call to show the OS install dialog
+ *  - swRegistration
+ *  - updateAvailable – a new SW version is waiting
+ *  - applyUpdate   – activates the waiting SW and reloads
+ */
+
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  applyUpdate,
+  registerServiceWorker,
+  setUpdateCallback,
+} from '../lib/registerSW';
+
+interface PWAContextType {
+  isStandalone: boolean;
+  isIOS: boolean;
+  canInstall: boolean;
+  installPrompt: () => void;
+  swRegistration: ServiceWorkerRegistration | null;
+  updateAvailable: boolean;
+  applyUpdate: () => void;
+}
+
+const PWAContext = createContext<PWAContextType>({
+  isStandalone: false,
+  isIOS: false,
+  canInstall: false,
+  installPrompt: () => {},
+  swRegistration: null,
+  updateAvailable: false,
+  applyUpdate: () => {},
+});
+
+export function usePWA(): PWAContextType {
+  return useContext(PWAContext);
+}
+
+function detectIOS(): boolean {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+    !(window as Window & { MSStream?: unknown }).MSStream
+  );
+}
+
+function detectStandalone(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
+export function PWAProvider({ children }: { children: React.ReactNode }) {
+  const [isStandalone] = useState(detectStandalone);
+  const [isIOS] = useState(detectIOS);
+  const [deferredPrompt, setDeferredPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
+  const [swRegistration, setSwRegistration] =
+    useState<ServiceWorkerRegistration | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  // Keep a stable ref to registration for applyUpdate
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
+  registrationRef.current = swRegistration;
+
+  useEffect(() => {
+    // Capture the install prompt (Android/Chrome only)
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+
+    // Wire up SW update detection
+    setUpdateCallback(() => setUpdateAvailable(true));
+    registerServiceWorker().then((reg) => {
+      setSwRegistration(reg);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const installPrompt = useCallback(() => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then(() => setDeferredPrompt(null));
+  }, [deferredPrompt]);
+
+  const handleApplyUpdate = useCallback(() => {
+    if (registrationRef.current) {
+      applyUpdate(registrationRef.current);
+    }
+  }, []);
+
+  return (
+    <PWAContext.Provider
+      value={{
+        isStandalone,
+        isIOS,
+        canInstall: !!deferredPrompt,
+        installPrompt,
+        swRegistration,
+        updateAvailable,
+        applyUpdate: handleApplyUpdate,
+      }}
+    >
+      {children}
+    </PWAContext.Provider>
+  );
+}
