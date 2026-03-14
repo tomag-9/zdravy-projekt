@@ -212,7 +212,10 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 # Push Notifications (VAPID)
 # Generate keys with: python manage.py generate_vapid_keys
 VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
-VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
+_raw_vapid_private_key = env("VAPID_PRIVATE_KEY", "")
+VAPID_PRIVATE_KEY = (
+    _raw_vapid_private_key.replace("\\n", "\n") if _raw_vapid_private_key else ""
+)
 VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "admin@example.com")
 
 # Django REST Framework

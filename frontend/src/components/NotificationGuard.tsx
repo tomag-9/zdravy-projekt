@@ -21,13 +21,18 @@ interface NotificationGuardProps {
 
 export default function NotificationGuard({ children }: NotificationGuardProps) {
   const { isStandalone } = usePWA();
-  const { permission, subscribe, error } = usePushNotifications();
-  const [requesting, setRequesting] = useState(false);
 
   // In browser mode (not standalone), skip the guard entirely
   if (!isStandalone) {
     return <>{children}</>;
   }
+
+  return <StandaloneNotificationGuard>{children}</StandaloneNotificationGuard>;
+}
+
+function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
+  const { permission, subscribe, error } = usePushNotifications();
+  const [requesting, setRequesting] = useState(false);
 
   // API not supported – degrade gracefully
   if (permission === 'unsupported') {

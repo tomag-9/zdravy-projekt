@@ -53,6 +53,17 @@ self.addEventListener('fetch', (event) => {
   // Never intercept API calls – always hit the network
   if (url.pathname.startsWith('/api/')) return;
 
+  // Let non-GET requests pass through untouched.
+  if (event.request.method !== 'GET') return;
+
+  // Avoid cache API errors for browser-internal requests.
+  if (
+    event.request.cache === 'only-if-cached' &&
+    event.request.mode !== 'same-origin'
+  ) {
+    return;
+  }
+
   // Navigation: network-first, fallback to offline page
   if (event.request.mode === 'navigate') {
     event.respondWith(

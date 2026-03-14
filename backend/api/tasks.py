@@ -5,6 +5,7 @@ Celery tasks for the api app.
 import logging
 
 from celery import shared_task
+from django.db import DatabaseError
 from django.utils import timezone
 
 from api.services.push_notification_service import PushNotificationService
@@ -116,28 +117,51 @@ def send_push_deadline_reminder_task(self, meal_type: str):
     - If the is_day_before flag is set → target_date = next workday
     - Otherwise → target_date = today
     """
+    from api.models import DailyOrder, GlobalSettings, PushSubscription
+    from api.services import _next_workday
+
+    valid_meal_types = {"breakfast", "lunch", "olovrant"}
+    if meal_type not in valid_meal_types:
+        logger.error(
+            "send_push_deadline_reminder_task: invalid meal_type=%s, no retry",
+            meal_type,
+        )
+        return {"error": "invalid_meal_type", "meal_type": meal_type}
+
     try:
-        from api.models import DailyOrder, GlobalSettings, PushSubscription
-        from api.services import _next_workday
-
         gs = GlobalSettings.objects.get(pk=1)
-        is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
+    except GlobalSettings.DoesNotExist:
+        logger.error(
+            "send_push_deadline_reminder_task: GlobalSettings(pk=1) missing, no retry"
+        )
+        return {"error": "missing_global_settings", "meal_type": meal_type}
 
-        today = timezone.localdate()
-        if is_day_before:
-            target_date = _next_workday(today)
-        else:
-            target_date = today
+    is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
+    today = timezone.localdate()
+    if is_day_before:
+        target_date = _next_workday(today)
+    else:
+        target_date = today
 
-        # Skip weekends
-        if target_date.weekday() >= 5:
-            logger.info(
-                "send_push_deadline_reminder_task: weekend skip for meal=%s date=%s",
-                meal_type,
-                target_date,
-            )
-            return {"skipped": "weekend", "meal_type": meal_type}
+    # Skip weekends
+    if target_date.weekday() >= 5:
+        logger.info(
+            "send_push_deadline_reminder_task: weekend skip for meal=%s date=%s",
+            meal_type,
+            target_date,
+        )
+        return {"skipped": "weekend", "meal_type": meal_type}
 
+    meal_labels = {
+        "breakfast": "raňajky",
+        "lunch": "obed",
+        "olovrant": "olovrant",
+    }
+    label = meal_labels[meal_type]
+    date_fmt = target_date.strftime("%d.%m.%Y")
+
+    total_sent = 0
+    try:
         # Users who have active push subscriptions
         subscribed_user_ids = set(
             PushSubscription.objects.values_list("user_id", flat=True).distinct()
@@ -150,15 +174,6 @@ def send_push_deadline_reminder_task(self, meal_type: str):
         )
         missing_user_ids = subscribed_user_ids - ordered_user_ids
 
-        meal_labels = {
-            "breakfast": "raňajky",
-            "lunch": "obed",
-            "olovrant": "olovrant",
-        }
-        label = meal_labels.get(meal_type, meal_type)
-        date_fmt = target_date.strftime("%d.%m.%Y")
-
-        total_sent = 0
         for user_id in missing_user_ids:
             result = PushNotificationService.send_to_user(
                 user_id=user_id,
@@ -170,21 +185,29 @@ def send_push_deadline_reminder_task(self, meal_type: str):
                 url="/order",
             )
             total_sent += result.get("sent", 0)
-
-        logger.info(
-            "send_push_deadline_reminder_task: meal=%s date=%s sent=%d",
-            meal_type,
-            target_date,
-            total_sent,
+    except DatabaseError as exc:
+        logger.exception(
+            "send_push_deadline_reminder_task: database error, retrying..."
         )
-        return {
-            "sent": total_sent,
-            "meal_type": meal_type,
-            "date": str(target_date),
-        }
-    except Exception as exc:
-        logger.exception("send_push_deadline_reminder_task failed, retrying...")
         raise self.retry(exc=exc)
+    except Exception:
+        logger.exception(
+            "send_push_deadline_reminder_task failed with non-transient error, "
+            "no retry"
+        )
+        raise
+
+    logger.info(
+        "send_push_deadline_reminder_task: meal=%s date=%s sent=%d",
+        meal_type,
+        target_date,
+        total_sent,
+    )
+    return {
+        "sent": total_sent,
+        "meal_type": meal_type,
+        "date": str(target_date),
+    }
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)

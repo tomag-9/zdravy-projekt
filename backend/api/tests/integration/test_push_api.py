@@ -65,8 +65,8 @@ class TestVapidPublicKeyView:
 
 @pytest.mark.django_db
 class TestPushSubscribePost:
-    def test_unauthenticated_returns_401(self, api_client):
-        """Unauthenticated requests are rejected."""
+    def test_unauthenticated_returns_403_forbidden(self, api_client):
+        """Unauthenticated requests are rejected with 403 FORBIDDEN."""
         response = api_client.post(SUBSCRIBE_URL, VALID_SUBSCRIPTION, format="json")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
@@ -159,7 +159,7 @@ class TestPushSubscribePost:
 
 @pytest.mark.django_db
 class TestPushSubscribeDelete:
-    def test_unauthenticated_returns_401(self, api_client):
+    def test_unauthenticated_returns_403_forbidden(self, api_client):
         response = api_client.delete(
             SUBSCRIBE_URL,
             {"endpoint": "https://example.com/ep"},
@@ -228,7 +228,7 @@ class TestAdminSendPushView:
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_unauthenticated_returns_401(self, api_client):
+    def test_unauthenticated_returns_403_forbidden(self, api_client):
         response = api_client.post(
             ADMIN_SEND_URL, {"title": "Test", "body": "Hello"}, format="json"
         )
