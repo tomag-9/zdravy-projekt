@@ -75,10 +75,10 @@ const HomePage = () => {
       error instanceof OrderRequestError &&
       error.code === "order_deadline_passed"
     ) {
-      return "Objednavku uz nie je mozne menit, termin uplynul.";
+      return "Objednávku už nie je možné meniť, termín uplynul.";
     }
 
-    return "Nepodarilo sa upravit objednavku. Skuste to znova.";
+    return "Nepodarilo sa upraviť objednávku. Skúste to znova.";
   };
 
   const parseOrderActionError = async (response: Response) => {

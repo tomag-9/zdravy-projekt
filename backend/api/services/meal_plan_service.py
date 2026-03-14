@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
-from typing import List
+from typing import Any, List
 
 from django.db import transaction
 
@@ -100,7 +100,13 @@ class MealPlanService:
         # Pre-load enrolled counts as a lookup {portion_type_id: (count, portion_type)}
         enrolled_lookup: dict[int, tuple] = {}
         enrolled_summary = []
-        for ec in plan.enrolled_counts.select_related("portion_type").all():
+        for ec in (
+            plan.enrolled_counts.select_related("portion_type")
+            .order_by(
+                "portion_type__sort_order", "portion_type__name", "portion_type_id"
+            )
+            .all()
+        ):
             enrolled_lookup[ec.portion_type_id] = (ec.count, ec.portion_type)
             enrolled_summary.append(
                 {
@@ -230,6 +236,13 @@ class MealPlanService:
             if variant.lower().startswith("menu "):
                 variant = variant[5:].strip()
             return variant
+
+        def _safe_nonneg_int(value: Any) -> int:
+            try:
+                result = int(value)
+            except (TypeError, ValueError):
+                return 0
+            return result if result >= 0 else 0
 
         # ── Meal plan & column definitions ──────────────────────────────────────
         try:
@@ -384,18 +397,21 @@ class MealPlanService:
                         continue
 
                     coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
-                    menu_counts = portion_data.get("menuCounts", {})
-                    diets = portion_data.get("diets", {})
+                    raw_menu_counts = portion_data.get("menuCounts", {})
+                    menu_counts = (
+                        raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
+                    )
+                    raw_diets = portion_data.get("diets", {})
+                    diets = raw_diets if isinstance(raw_diets, dict) else {}
+
                     total_diet_count = sum(
-                        int(raw_count)
-                        for raw_count in diets.values()
-                        if int(raw_count) > 0
+                        _safe_nonneg_int(raw_count) for raw_count in diets.values()
                     )
 
                     if meal == "lunch":
                         variant_counts = sorted(
                             (
-                                (_normalize_variant(v), int(cnt))
+                                (_normalize_variant(v), _safe_nonneg_int(cnt))
                                 for v, cnt in menu_counts.items()
                             ),
                             key=lambda kv: (
@@ -406,7 +422,8 @@ class MealPlanService:
                         )
                     else:
                         total = (
-                            sum(int(c) for c in menu_counts.values()) - total_diet_count
+                            sum(_safe_nonneg_int(c) for c in menu_counts.values())
+                            - total_diet_count
                         )
                         variant_counts = [("", total)]
 
@@ -446,7 +463,7 @@ class MealPlanService:
                         client_total_count += count
 
                     for diet_name, diet_count_raw in sorted(diets.items()):
-                        diet_count = int(diet_count_raw)
+                        diet_count = _safe_nonneg_int(diet_count_raw)
                         if diet_count <= 0:
                             continue
                         diet_grams = _col_grams_diet(meal, coeff, diet_count)

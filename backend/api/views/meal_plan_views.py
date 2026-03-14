@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+from typing import Any
 from urllib.parse import quote
 
 from django.http import HttpResponse
@@ -209,6 +210,12 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
         from ..models import DailyOrder
 
+        def _safe_int(value: Any) -> int:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return 0
+
         orders = DailyOrder.objects.filter(date=date_str)
 
         # {meal: {diet_name: count}}
@@ -217,19 +224,44 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         menu_totals: dict[str, dict[str, int]] = {}
 
         for order in orders:
-            for meal, meal_data in order.data.items():
+            data = getattr(order, "data", None)
+            if not isinstance(data, dict):
+                continue
+
+            for meal, meal_data in data.items():
+                if not isinstance(meal, str) or not isinstance(meal_data, dict):
+                    continue
                 if meal not in diet_by_meal:
                     diet_by_meal[meal] = {}
                     menu_totals[meal] = {}
+
                 for cat_data in meal_data.values():
-                    for variant, count in cat_data.get("menuCounts", {}).items():
-                        menu_totals[meal][variant] = (
-                            menu_totals[meal].get(variant, 0) + count
-                        )
-                    for diet_name, count in cat_data.get("diets", {}).items():
-                        diet_by_meal[meal][diet_name] = (
-                            diet_by_meal[meal].get(diet_name, 0) + count
-                        )
+                    if not isinstance(cat_data, dict):
+                        continue
+
+                    menu_counts = cat_data.get("menuCounts")
+                    if isinstance(menu_counts, dict):
+                        for variant, count in menu_counts.items():
+                            if not isinstance(variant, str):
+                                continue
+                            count_int = _safe_int(count)
+                            if count_int <= 0:
+                                continue
+                            menu_totals[meal][variant] = (
+                                menu_totals[meal].get(variant, 0) + count_int
+                            )
+
+                    diets = cat_data.get("diets")
+                    if isinstance(diets, dict):
+                        for diet_name, count in diets.items():
+                            if not isinstance(diet_name, str):
+                                continue
+                            count_int = _safe_int(count)
+                            if count_int <= 0:
+                                continue
+                            diet_by_meal[meal][diet_name] = (
+                                diet_by_meal[meal].get(diet_name, 0) + count_int
+                            )
 
         return Response(
             {

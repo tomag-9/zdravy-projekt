@@ -116,10 +116,10 @@ const OrderPage = () => {
       error instanceof OrderRequestError &&
       error.code === "order_deadline_passed"
     ) {
-      return "Objednavku uz nie je mozne odoslat, termin uplynul.";
+      return "Objednávku už nie je možné odoslať, termín uplynul.";
     }
 
-    return "Nepodarilo sa odoslat objednavku. Skuste to znova.";
+    return "Nepodarilo sa odoslať objednávku. Skúste to znova.";
   };
 
   const handleSubmit = async () => {

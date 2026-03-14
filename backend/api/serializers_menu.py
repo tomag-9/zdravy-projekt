@@ -27,7 +27,7 @@ def parse_composition_grams(composition: str) -> Decimal:
     """
     # Match numbers followed by 'g' but NOT 'gl', 'gr', 'gal', 'g/…'
     # (avoid false matches)
-    matches = re.findall(r"(\d+(?:[.,]\d+)?)\s*g(?![a-z])", composition, re.IGNORECASE)
+    matches = re.findall(r"(\d+(?:[.,]\d+)?)\s*g(?![a-z/])", composition, re.IGNORECASE)
     if not matches:
         raise ValueError(
             "Nepodarilo sa rozpoznať gramáž. "
