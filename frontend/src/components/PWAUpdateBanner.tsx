@@ -5,7 +5,7 @@
  * Clicking "Aktualizovať" triggers skipWaiting and reloads the page.
  */
 
-import { usePWA } from '../context/PWAContext';
+import { usePWA } from '../hooks/usePWA';
 
 export default function PWAUpdateBanner() {
   const { updateAvailable, applyUpdate } = usePWA();

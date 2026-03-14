@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { usePWA } from '../context/PWAContext';
+import { usePWA } from '../hooks/usePWA';
 
 const DISMISS_KEY = 'zdravy-install-banner-dismissed';
 

@@ -5,6 +5,9 @@ Celery tasks for the api app.
 import logging
 
 from celery import shared_task
+from django.utils import timezone
+
+from api.services.push_notification_service import PushNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +117,8 @@ def send_push_deadline_reminder_task(self, meal_type: str):
     - Otherwise → target_date = today
     """
     try:
-        from django.utils import timezone
-
         from api.models import DailyOrder, GlobalSettings, PushSubscription
         from api.services import _next_workday
-        from api.services.push_notification_service import PushNotificationService
 
         gs = GlobalSettings.objects.get(pk=1)
         is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)

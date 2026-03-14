@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/auth';
-import { usePWA } from '../context/PWAContext';
+import { usePWA } from './usePWA';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 

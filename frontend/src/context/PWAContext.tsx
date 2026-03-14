@@ -12,9 +12,7 @@
  */
 
 import React, {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -24,30 +22,7 @@ import {
   registerServiceWorker,
   setUpdateCallback,
 } from '../lib/registerSW';
-
-interface PWAContextType {
-  isStandalone: boolean;
-  isIOS: boolean;
-  canInstall: boolean;
-  installPrompt: () => void;
-  swRegistration: ServiceWorkerRegistration | null;
-  updateAvailable: boolean;
-  applyUpdate: () => void;
-}
-
-const PWAContext = createContext<PWAContextType>({
-  isStandalone: false,
-  isIOS: false,
-  canInstall: false,
-  installPrompt: () => {},
-  swRegistration: null,
-  updateAvailable: false,
-  applyUpdate: () => {},
-});
-
-export function usePWA(): PWAContextType {
-  return useContext(PWAContext);
-}
+import { PWAContext } from './pwaContext';
 
 function detectIOS(): boolean {
   return (

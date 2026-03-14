@@ -21,6 +21,8 @@ from api.models import (
 class UserFactory(DjangoModelFactory):
     class Meta:
         model = User
+        # factory_boy 4 will no longer auto-save in _after_postgeneration.
+        skip_postgeneration_save = True
 
     username = factory.Sequence(lambda n: f"user{n}@example.com")
     email = factory.LazyAttribute(lambda obj: obj.username)

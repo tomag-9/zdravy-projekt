@@ -37,6 +37,9 @@ pywebpush==2.0.0
 gunicorn==23.0.0
 whitenoise==6.9.0
 
+# requests compatibility: avoid RequestsDependencyWarning with chardet>=6
+chardet==5.2.0
+
 # Environment variables
 python-decouple==3.8
 

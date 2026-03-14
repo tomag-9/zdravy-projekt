@@ -5,6 +5,8 @@ import { useApp } from "../../context/AppContext";
 import { DailyOrder, CategoryData } from "../../services/OrderService";
 import { getSlovakPlural } from "../../../../lib/utils";
 
+type MealKey = keyof Pick<DailyOrder, "breakfast" | "lunch" | "olovrant">;
+
 interface OrderSummaryProps {
   onSubmit: () => void;
   onReset?: () => void;
@@ -20,7 +22,7 @@ const OrderSummary = ({
 }: OrderSummaryProps) => {
   const { currentOrder, activeMeals, selectedDate } = useApp();
 
-  const getMealTotal = (mealKey: keyof DailyOrder) => {
+  const getMealTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
 
     return Object.values(currentOrder[mealKey]).reduce(
@@ -36,7 +38,7 @@ const OrderSummary = ({
     );
   };
 
-  const getDietTotal = (mealKey: keyof DailyOrder) => {
+  const getDietTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
 
     return Object.values(currentOrder[mealKey]).reduce(

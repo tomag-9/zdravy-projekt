@@ -10,6 +10,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from pywebpush import WebPushException, webpush
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,6 @@ class PushNotificationService:
         Returns False and deletes the record when the push server returns 404/410
         (subscription is no longer valid).
         """
-        from pywebpush import WebPushException, webpush
-
         payload = json.dumps({"title": title, "body": body, "url": url})
         claims = {"sub": f"mailto:{settings.VAPID_ADMIN_EMAIL}"}
 

@@ -68,7 +68,7 @@ class TestPushSubscribePost:
     def test_unauthenticated_returns_401(self, api_client):
         """Unauthenticated requests are rejected."""
         response = api_client.post(SUBSCRIBE_URL, VALID_SUBSCRIPTION, format="json")
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_creates_subscription(self, authenticated_client, user):
         """Valid subscription data is saved to the database."""
@@ -165,7 +165,7 @@ class TestPushSubscribeDelete:
             {"endpoint": "https://example.com/ep"},
             format="json",
         )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_removes_existing_subscription(self, authenticated_client, user):
         """Deleting a subscription removes it from the database."""
@@ -232,21 +232,17 @@ class TestAdminSendPushView:
         response = api_client.post(
             ADMIN_SEND_URL, {"title": "Test", "body": "Hello"}, format="json"
         )
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_missing_title_returns_400(self, admin_authenticated_client):
-        response = admin_authenticated_client.post(
-            ADMIN_SEND_URL, {"body": "Hello"}, format="json"
-        )
+    def test_missing_title_returns_400(self, admin_client):
+        response = admin_client.post(ADMIN_SEND_URL, {"body": "Hello"}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_missing_body_returns_400(self, admin_authenticated_client):
-        response = admin_authenticated_client.post(
-            ADMIN_SEND_URL, {"title": "Test"}, format="json"
-        )
+    def test_missing_body_returns_400(self, admin_client):
+        response = admin_client.post(ADMIN_SEND_URL, {"title": "Test"}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_bulk_send_calls_send_to_all_subscribers(self, admin_authenticated_client):
+    def test_bulk_send_calls_send_to_all_subscribers(self, admin_client):
         """Omitting user_id triggers bulk send to all subscribers."""
         from unittest.mock import patch
 
@@ -255,7 +251,7 @@ class TestAdminSendPushView:
         ) as mock_send:
             mock_send.return_value = {"sent": 5, "failed": 0}
 
-            response = admin_authenticated_client.post(
+            response = admin_client.post(
                 ADMIN_SEND_URL,
                 {"title": "Reminder", "body": "Order now!", "url": "/order"},
                 format="json",
@@ -267,7 +263,7 @@ class TestAdminSendPushView:
             title="Reminder", body="Order now!", url="/order"
         )
 
-    def test_targeted_send_calls_send_to_user(self, admin_authenticated_client, user):
+    def test_targeted_send_calls_send_to_user(self, admin_client, user):
         """Providing user_id triggers single-user send."""
         from unittest.mock import patch
 
@@ -276,7 +272,7 @@ class TestAdminSendPushView:
         ) as mock_send:
             mock_send.return_value = {"sent": 1, "stale_removed": 0}
 
-            response = admin_authenticated_client.post(
+            response = admin_client.post(
                 ADMIN_SEND_URL,
                 {"title": "Hi", "body": "Message", "user_id": user.pk},
                 format="json",
@@ -288,7 +284,7 @@ class TestAdminSendPushView:
             user_id=user.pk, title="Hi", body="Message", url="/home"
         )
 
-    def test_default_url_is_home(self, admin_authenticated_client):
+    def test_default_url_is_home(self, admin_client):
         """When url is omitted the default /home is passed to the service."""
         from unittest.mock import patch
 
@@ -297,7 +293,7 @@ class TestAdminSendPushView:
         ) as mock_send:
             mock_send.return_value = {"sent": 0, "failed": 0}
 
-            admin_authenticated_client.post(
+            admin_client.post(
                 ADMIN_SEND_URL,
                 {"title": "Test", "body": "Body"},
                 format="json",

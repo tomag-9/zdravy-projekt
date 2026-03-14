@@ -13,7 +13,7 @@
  */
 
 import React, { useState } from 'react';
-import { usePWA } from '../context/PWAContext';
+import { usePWA } from '../hooks/usePWA';
 import { usePushNotifications } from '../hooks/usePushNotifications';
 
 interface NotificationGuardProps {

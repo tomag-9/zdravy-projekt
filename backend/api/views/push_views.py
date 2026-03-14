@@ -19,6 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.models import PushSubscription
+from api.services.push_notification_service import PushNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +94,6 @@ class AdminSendPushView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request: Request) -> Response:
-        from api.services.push_notification_service import PushNotificationService
-
         title = request.data.get("title", "").strip()
         body_text = request.data.get("body", "").strip()
         url = request.data.get("url", "/home").strip() or "/home"
