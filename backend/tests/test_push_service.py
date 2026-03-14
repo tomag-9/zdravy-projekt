@@ -40,7 +40,7 @@ class TestSendToSubscription:
                 sub, title="Hello", body="World"
             )
 
-        assert result is True
+        assert result == (True, False)
         mock_wp.assert_called_once()
 
     def test_returns_false_and_deletes_on_410(self, settings):
@@ -58,7 +58,7 @@ class TestSendToSubscription:
                 sub, title="Test", body="Body"
             )
 
-        assert result is False
+        assert result == (False, True)
         assert not PushSubscription.objects.filter(pk=sub_pk).exists()
 
     def test_returns_false_and_deletes_on_404(self, settings):
@@ -76,7 +76,7 @@ class TestSendToSubscription:
                 sub, title="Test", body="Body"
             )
 
-        assert result is False
+        assert result == (False, True)
         assert not PushSubscription.objects.filter(pk=sub_pk).exists()
 
     def test_returns_false_but_keeps_record_on_other_http_error(self, settings):
@@ -94,7 +94,7 @@ class TestSendToSubscription:
                 sub, title="Test", body="Body"
             )
 
-        assert result is False
+        assert result == (False, False)
         # Record should still be present
         assert PushSubscription.objects.filter(pk=sub_pk).exists()
 
@@ -112,7 +112,7 @@ class TestSendToSubscription:
                 sub, title="Test", body="Body"
             )
 
-        assert result is False
+        assert result == (False, False)
 
     def test_webpush_receives_correct_subscription_info(self, settings):
         """send_to_subscription passes endpoint and keys correctly to webpush."""
@@ -147,7 +147,7 @@ class TestSendToUser:
         with patch.object(
             PushNotificationService,
             "send_to_subscription",
-            return_value=True,
+            return_value=(True, False),
         ) as mock_send:
             result = PushNotificationService.send_to_user(
                 user_id=user.pk, title="T", body="B"
@@ -169,7 +169,7 @@ class TestSendToUser:
         with patch.object(
             PushNotificationService,
             "send_to_subscription",
-            side_effect=[True, False],
+            side_effect=[(True, False), (False, True)],
         ):
             result = PushNotificationService.send_to_user(
                 user_id=user.pk, title="T", body="B"
@@ -204,7 +204,7 @@ class TestSendToAllSubscribers:
         with patch.object(
             PushNotificationService,
             "send_to_subscription",
-            return_value=True,
+            return_value=(True, False),
         ) as mock_send:
             result = PushNotificationService.send_to_all_subscribers(
                 title="Broadcast", body="Hello all"
@@ -223,7 +223,7 @@ class TestSendToAllSubscribers:
         with patch.object(
             PushNotificationService,
             "send_to_subscription",
-            side_effect=[True, False],
+            side_effect=[(True, False), (False, False)],
         ):
             result = PushNotificationService.send_to_all_subscribers(
                 title="T", body="B"

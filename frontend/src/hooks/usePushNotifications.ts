@@ -7,14 +7,12 @@
  *   3. subscribe() – requests permission + subscribes + saves to backend
  *   4. unsubscribe() – unsubscribes browser + removes from backend
  *
- * Background sync fallback:
- *   If the backend request fails offline, the subscription is stored in
- *   IndexedDB and the SW will retry via the 'push-subscribe' sync tag.
+ * Note:
+ *   Subscription is considered successful only after backend registration.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../context/auth';
-import { usePWA } from './usePWA';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -54,30 +52,8 @@ function serializeSubscription(sub: PushSubscription): {
   };
 }
 
-/** Persist pending subscription in IndexedDB for background sync fallback. */
-async function storePendingSubscription(
-  serialized: { endpoint: string; p256dh: string; auth: string },
-  token: string
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('zdravy-push', 1);
-    req.onupgradeneeded = (e) => {
-      (e.target as IDBOpenDBRequest).result.createObjectStore('meta');
-    };
-    req.onerror = () => reject(req.error);
-    req.onsuccess = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      const tx = db.transaction('meta', 'readwrite');
-      tx.objectStore('meta').put({ subscription: serialized, token }, 'pending_subscription');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    };
-  });
-}
-
 export function usePushNotifications(): UsePushNotificationsReturn {
   const { apiFetch } = useAuth();
-  const { swRegistration } = usePWA();
 
   const [permission, setPermission] = useState<PermissionState>(() => {
     if (!('Notification' in window)) return 'unsupported';
@@ -140,24 +116,18 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         setIsSubscribed(true);
         return true;
       } catch (fetchErr) {
-        // Offline: store for background sync
-        const token = sessionStorage.getItem('access_token') ?? '';
-        await storePendingSubscription(serialized, token);
-        if ('serviceWorker' in navigator && 'SyncManager' in window) {
-          const swReg = swRegistration ?? (await navigator.serviceWorker.ready);
-          await (swReg as unknown as {
-            sync: { register: (tag: string) => Promise<void> };
-          }).sync.register('push-subscribe');
-        }
-        setIsSubscribed(true);
-        return true;
+        // Keep browser and server subscription state consistent.
+        await pushSub.unsubscribe().catch(() => { });
+        setIsSubscribed(false);
+        setError('Nepodarilo sa aktivovať notifikácie. Skúste to znova online.');
+        return false;
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Chyba pri prihlasovaní na notifikácie: ${msg}`);
       return false;
     }
-  }, [vapidPublicKey, apiFetch, swRegistration]);
+  }, [vapidPublicKey, apiFetch]);
 
   const unsubscribe = useCallback(async (): Promise<void> => {
     setError(null);

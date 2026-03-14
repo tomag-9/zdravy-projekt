@@ -11,7 +11,7 @@
  *  - notificationclick → focus existing window or open new one
  *
  * Lifecycle:
- *  - install  → skipWaiting (take control immediately after update)
+ *  - install  → precache only
  *  - activate → clients.claim + prune old caches
  */
 
@@ -27,7 +27,6 @@ self.addEventListener('install', (event) => {
     caches
       .open(STATIC_CACHE)
       .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting()) // activate immediately, don't wait for tabs to close
   );
 });
 
@@ -134,76 +133,6 @@ self.addEventListener('notificationclick', (event) => {
       })
   );
 });
-
-// ── Background Sync ───────────────────────────────────────────────────────────
-// Re-sends a pending push subscription after connectivity is restored.
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'push-subscribe') {
-    event.waitUntil(syncPendingSubscription());
-  }
-});
-
-async function syncPendingSubscription() {
-  const db = await openIDB();
-  const pending = await db.get('pending_subscription');
-  if (!pending) return;
-
-  try {
-    const response = await fetch('/api/push/subscribe/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${pending.token}`,
-      },
-      body: JSON.stringify(pending.subscription),
-    });
-    if (response.ok) {
-      await db.delete('pending_subscription');
-    }
-  } catch (_) {
-    // Will be retried on next sync
-  }
-}
-
-// ── Minimal IndexedDB helper ──────────────────────────────────────────────────
-function openIDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('zdravy-push', 1);
-    req.onupgradeneeded = (e) => {
-      e.target.result.createObjectStore('meta');
-    };
-    req.onerror = () => reject(req.error);
-    req.onsuccess = (e) => {
-      const db = e.target.result;
-      resolve({
-        get(key) {
-          return new Promise((res, rej) => {
-            const tx = db.transaction('meta', 'readonly');
-            const r = tx.objectStore('meta').get(key);
-            r.onsuccess = () => res(r.result);
-            r.onerror = () => rej(r.error);
-          });
-        },
-        set(key, val) {
-          return new Promise((res, rej) => {
-            const tx = db.transaction('meta', 'readwrite');
-            const r = tx.objectStore('meta').put(val, key);
-            r.onsuccess = () => res();
-            r.onerror = () => rej(r.error);
-          });
-        },
-        delete(key) {
-          return new Promise((res, rej) => {
-            const tx = db.transaction('meta', 'readwrite');
-            const r = tx.objectStore('meta').delete(key);
-            r.onsuccess = () => res();
-            r.onerror = () => rej(r.error);
-          });
-        },
-      });
-    };
-  });
-}
 
 // ── SKIP_WAITING message ──────────────────────────────────────────────────────
 // Allow the app to trigger an immediate update.

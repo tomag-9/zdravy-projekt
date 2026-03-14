@@ -22,7 +22,7 @@ import {
   registerServiceWorker,
   setUpdateCallback,
 } from '../lib/registerSW';
-import { PWAContext } from './pwaContext';
+import { PWAContext } from './pwa-context';
 
 function detectIOS(): boolean {
   return (

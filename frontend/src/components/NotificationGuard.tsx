@@ -9,7 +9,6 @@
  *  2. 'granted'      → render children normally
  *  3. 'denied'       → blocking screen with instructions to reset permission
  *  4. 'default'      → blocking screen with "Allow notifications" button
- *  5. iOS in browser → blocking screen with "Add to Home Screen" instructions
  */
 
 import React, { useState } from 'react';
@@ -21,7 +20,7 @@ interface NotificationGuardProps {
 }
 
 export default function NotificationGuard({ children }: NotificationGuardProps) {
-  const { isStandalone, isIOS } = usePWA();
+  const { isStandalone } = usePWA();
   const { permission, subscribe, error } = usePushNotifications();
   const [requesting, setRequesting] = useState(false);
 
@@ -38,11 +37,6 @@ export default function NotificationGuard({ children }: NotificationGuardProps) 
   // Notifications granted – all good
   if (permission === 'granted') {
     return <>{children}</>;
-  }
-
-  // iOS in browser mode: can't request permission, must add to home screen first
-  if (isIOS && !isStandalone) {
-    return <IOSInstallScreen />;
   }
 
   // Permission denied: user needs to reset it in browser settings
@@ -116,25 +110,3 @@ function PermissionDeniedScreen() {
   );
 }
 
-function IOSInstallScreen() {
-  return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-      <div className="max-w-sm w-full bg-white rounded-2xl shadow-lg p-8 space-y-4">
-        <div className="text-5xl">📱</div>
-        <h1 className="text-xl font-bold text-slate-800">
-          Pridajte aplikáciu na plochu
-        </h1>
-        <p className="text-slate-500 text-sm">
-          Na iOS je potrebné pridať aplikáciu na plochu, aby bolo možné
-          používať push notifikácie (vyžaduje iOS 16.4+).
-        </p>
-        <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-          <p>1. Klepnite na ikonu <strong>Zdieľať</strong> ↑ v Safari</p>
-          <p>2. Vyberte „<strong>Pridať na plochu</strong>"</p>
-          <p>3. Potvrďte tlačidlom „<strong>Pridať</strong>"</p>
-          <p>4. Otvorte aplikáciu z plochy</p>
-        </div>
-      </div>
-    </div>
-  );
-}

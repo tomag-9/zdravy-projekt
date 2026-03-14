@@ -106,8 +106,16 @@ class AdminSendPushView(APIView):
             )
 
         if user_id:
+            try:
+                parsed_user_id = int(user_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "user_id must be a valid integer."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             result = PushNotificationService.send_to_user(
-                user_id=int(user_id), title=title, body=body_text, url=url
+                user_id=parsed_user_id, title=title, body=body_text, url=url
             )
             return Response(result)
 

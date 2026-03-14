@@ -34,13 +34,14 @@ class PushNotificationService:
         title: str,
         body: str,
         url: str = "/home",
-    ) -> bool:
+    ) -> tuple[bool, bool]:
         """
         Send a single push message to one subscription.
 
-        Returns True on success.
-        Returns False and deletes the record when the push server returns 404/410
-        (subscription is no longer valid).
+                Returns (sent, stale_removed):
+                        - sent=True when delivery succeeded
+                        - stale_removed=True when a stale subscription
+                            (404/410) was deleted
         """
         payload = json.dumps({"title": title, "body": body, "url": url})
         claims = {"sub": f"mailto:{settings.VAPID_ADMIN_EMAIL}"}
@@ -54,7 +55,7 @@ class PushNotificationService:
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
                 vapid_claims=claims,
             )
-            return True
+            return True, False
         except WebPushException as exc:
             response = exc.response
             status = response.status_code if response is not None else None
@@ -65,20 +66,21 @@ class PushNotificationService:
                     status,
                 )
                 subscription.delete()
+                return False, True
             else:
                 logger.warning(
                     "Push delivery failed for subscription pk=%s: %s",
                     subscription.pk,
                     exc,
                 )
-            return False
+            return False, False
         except Exception as exc:
             logger.exception(
                 "Unexpected error sending push to subscription pk=%s: %s",
                 subscription.pk,
                 exc,
             )
-            return False
+            return False, False
 
     @staticmethod
     def send_to_user(
@@ -99,11 +101,12 @@ class PushNotificationService:
         stale_removed = 0
 
         for sub in subscriptions:
-            result = PushNotificationService.send_to_subscription(sub, title, body, url)
-            if result:
+            delivered, removed = PushNotificationService.send_to_subscription(
+                sub, title, body, url
+            )
+            if delivered:
                 sent += 1
-            else:
-                # send_to_subscription already deletes stale records
+            if removed:
                 stale_removed += 1
 
         return {"sent": sent, "stale_removed": stale_removed}
@@ -126,8 +129,10 @@ class PushNotificationService:
         failed = 0
 
         for sub in subscriptions:
-            result = PushNotificationService.send_to_subscription(sub, title, body, url)
-            if result:
+            delivered, _ = PushNotificationService.send_to_subscription(
+                sub, title, body, url
+            )
+            if delivered:
                 sent += 1
             else:
                 failed += 1
