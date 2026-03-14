@@ -10,6 +10,8 @@ import { AuthProvider, useAuth } from "./context/auth";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
 import NotificationGuard from "./components/NotificationGuard";
+import PWAInstallBanner from "./components/PWAInstallBanner";
+import PWAUpdateBanner from "./components/PWAUpdateBanner";
 import HomePage from "./pages/client/pages/HomePage";
 import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
@@ -103,7 +105,9 @@ export default function App() {
       <PWAProvider>
         <AuthProvider>
           <ToastProvider>
-          <Routes>
+            <PWAInstallBanner />
+            <PWAUpdateBanner />
+            <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route
@@ -157,7 +161,7 @@ export default function App() {
                 }
               />
             </Route>
-          </Routes>
+            </Routes>
           </ToastProvider>
         </AuthProvider>
       </PWAProvider>

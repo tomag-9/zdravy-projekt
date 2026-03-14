@@ -118,6 +118,7 @@ def send_push_deadline_reminder_task(self, meal_type: str):
     - Otherwise → target_date = today
     """
     from api.models import DailyOrder, GlobalSettings, PushSubscription
+    from api.serializers import DailyOrderSerializer
     from api.services import _next_workday
 
     valid_meal_types = {"breakfast", "lunch", "olovrant"}
@@ -162,16 +163,22 @@ def send_push_deadline_reminder_task(self, meal_type: str):
 
     total_sent = 0
     try:
-        # Users who have active push subscriptions
+        # Users who have active subscriptions and are actual client accounts.
         subscribed_user_ids = set(
-            PushSubscription.objects.values_list("user_id", flat=True).distinct()
-        )
-        # Users who already have an order for target_date
-        ordered_user_ids = set(
-            DailyOrder.objects.filter(date=target_date).values_list(
-                "user_id", flat=True
+            PushSubscription.objects.filter(
+                user__is_staff=False,
+                user__is_active=True,
             )
+            .values_list("user_id", flat=True)
+            .distinct()
         )
+        # Users who already submitted content for this specific meal on target_date.
+        ordered_user_ids = set()
+        for order in DailyOrder.objects.filter(date=target_date):
+            meal_payload = (order.data or {}).get(meal_type)
+            if DailyOrderSerializer._meal_has_content(meal_payload):
+                ordered_user_ids.add(order.user_id)
+
         missing_user_ids = subscribed_user_ids - ordered_user_ids
 
         for user_id in missing_user_ids:

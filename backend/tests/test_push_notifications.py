@@ -218,7 +218,7 @@ class TestSendPushDeadlineReminderTask:
         DailyOrder.objects.create(
             user=ordered_user,
             date=FUTURE_TUESDAY,
-            data={"lunch": {}},
+            data={"lunch": {"menuCounts": {"A": 1}, "diets": {}}},
         )
 
         GlobalSettings.objects.get_or_create(
@@ -274,6 +274,63 @@ class TestSendPushDeadlineReminderTask:
             call.kwargs["user_id"] for call in mock_svc.send_to_user.call_args_list
         }
         assert user_no_sub.pk not in called_ids
+
+    def test_ignores_staff_accounts_even_with_subscription(self):
+        """Reminder targets client accounts only, not staff/admin users."""
+        staff_user = _make_user_with_subscription("staff")
+        staff_user.is_staff = True
+        staff_user.save(update_fields=["is_staff"])
+
+        GlobalSettings.objects.get_or_create(
+            pk=1,
+            defaults={
+                "deadline_lunch": datetime.time(10, 0),
+                "deadline_breakfast": datetime.time(8, 0),
+                "deadline_olovrant": datetime.time(9, 0),
+            },
+        )
+
+        with patch("api.tasks.timezone") as mock_tz, patch(
+            "api.tasks.PushNotificationService"
+        ) as mock_svc:
+            mock_tz.localdate.return_value = FUTURE_TUESDAY
+            send_push_deadline_reminder_task("lunch")
+
+        called_ids = {
+            call.kwargs["user_id"] for call in mock_svc.send_to_user.call_args_list
+        }
+        assert staff_user.pk not in called_ids
+
+    def test_reminds_user_when_other_meal_exists_but_target_meal_is_empty(self):
+        """Order rows with an empty target meal should still get a reminder."""
+        subscribed_user = _make_user_with_subscription("partial-order")
+
+        DailyOrder.objects.create(
+            user=subscribed_user,
+            date=FUTURE_TUESDAY,
+            data={"breakfast": {"menuCounts": {"A": 1}, "diets": {}}, "lunch": {}},
+        )
+
+        GlobalSettings.objects.get_or_create(
+            pk=1,
+            defaults={
+                "deadline_breakfast": datetime.time(8, 0),
+                "deadline_lunch": datetime.time(10, 0),
+                "deadline_olovrant": datetime.time(9, 0),
+            },
+        )
+
+        with patch("api.tasks.timezone") as mock_tz, patch(
+            "api.tasks.PushNotificationService"
+        ) as mock_svc:
+            mock_tz.localdate.return_value = FUTURE_TUESDAY
+            mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
+            send_push_deadline_reminder_task("lunch")
+
+        called_ids = {
+            call.kwargs["user_id"] for call in mock_svc.send_to_user.call_args_list
+        }
+        assert subscribed_user.pk in called_ids
 
     def test_uses_next_workday_when_is_day_before_set(self):
         """With is_day_before=True, the target date is the next workday."""

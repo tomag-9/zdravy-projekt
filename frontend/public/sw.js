@@ -125,6 +125,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/home';
+  const absoluteTargetUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(
     self.clients
@@ -134,12 +135,12 @@ self.addEventListener('notificationclick', (event) => {
         for (const client of clients) {
           if ('focus' in client && 'navigate' in client) {
             client.focus();
-            return client.navigate(targetUrl);
+            return client.navigate(absoluteTargetUrl);
           }
         }
         // No open window – open a new one
         if (self.clients.openWindow) {
-          return self.clients.openWindow(targetUrl);
+          return self.clients.openWindow(absoluteTargetUrl);
         }
       })
   );

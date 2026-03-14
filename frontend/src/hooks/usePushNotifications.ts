@@ -108,14 +108,32 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       const serialized = serializeSubscription(pushSub);
 
       try {
-        await apiFetch(`${API_URL}/push/subscribe/`, {
+        const response = await apiFetch(`${API_URL}/push/subscribe/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(serialized),
         });
+
+        if (!response.ok) {
+          let message = 'Nepodarilo sa aktivovať notifikácie. Skúste to znova online.';
+          try {
+            const data = await response.json();
+            if (typeof data?.detail === 'string' && data.detail) {
+              message = data.detail;
+            }
+          } catch {
+            // Ignore invalid/non-JSON error responses.
+          }
+
+          await pushSub.unsubscribe().catch(() => { });
+          setIsSubscribed(false);
+          setError(message);
+          return false;
+        }
+
         setIsSubscribed(true);
         return true;
-      } catch (fetchErr) {
+      } catch {
         // Keep browser and server subscription state consistent.
         await pushSub.unsubscribe().catch(() => { });
         setIsSubscribed(false);
