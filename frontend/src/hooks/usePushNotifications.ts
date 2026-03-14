@@ -101,7 +101,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     navigator.serviceWorker.ready
       .then((reg) => reg.pushManager.getSubscription())
       .then((sub) => setIsSubscribed(!!sub))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   const subscribe = useCallback(async (): Promise<boolean> => {
@@ -173,7 +173,7 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint }),
-      }).catch(() => {}); // Best-effort
+      }).catch(() => { }); // Best-effort
 
       setIsSubscribed(false);
     } catch (err) {
