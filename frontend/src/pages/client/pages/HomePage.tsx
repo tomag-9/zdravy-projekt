@@ -47,10 +47,10 @@ interface HistoryOrder {
 
 /** First workday strictly after today (Mon–Fri). */
 function firstNextWorkday(): string {
-  const d = new Date();
+  const d = OrderService.getServerNow();
   d.setDate(d.getDate() + 1);
   while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  return OrderService.toLocalDateString(d);
 }
 
 const HomePage = () => {
@@ -141,7 +141,7 @@ const HomePage = () => {
         // DRF may return paginated { count, results } or plain array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const items: any[] = Array.isArray(json) ? json : (json.results ?? []);
-        const today = new Date().toISOString().split("T")[0];
+        const today = OrderService.toLocalDateString(OrderService.getServerNow());
         const history: HistoryOrder[] = [];
 
         const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];

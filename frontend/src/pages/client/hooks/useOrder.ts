@@ -48,6 +48,7 @@ const safeParse = (key: string, fallback: any) => {
 
 export const useOrder = () => {
     const { apiFetch, user } = useAuth();
+    const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     // Settings
 
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
@@ -78,7 +79,9 @@ export const useOrder = () => {
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
 
     // State
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(
+        OrderService.toLocalDateString(OrderService.getServerNow())
+    );
     // Ref mirrors selectedDate synchronously so persistence effects never write
     // the previous day's currentOrder under the new date key (race condition fix)
     const selectedDateRef = useRef(selectedDate);
@@ -104,9 +107,9 @@ export const useOrder = () => {
 
     // Load prev day lunches
     useEffect(() => {
-        const prevDate = new Date(selectedDate);
+        const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().split('T')[0];
+        const prevDateStr = OrderService.toLocalDateString(prevDate);
         const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
         if (prevOrderSaved) {
             try {
@@ -247,9 +250,9 @@ export const useOrder = () => {
         const history: (DailyOrder & { date: string })[] = [];
         // Use loop to avoid mutation of single Date object
         for (let i = 1; i <= 30; i++) {
-            const curr = new Date(selectedDate);
+            const curr = parseDate(selectedDate);
             curr.setDate(curr.getDate() - i);
-            const dStr = curr.toISOString().split('T')[0];
+            const dStr = OrderService.toLocalDateString(curr);
             const raw = localStorage.getItem(`order_${dStr}`);
             if (raw) {
                 try {
@@ -320,9 +323,9 @@ export const useOrder = () => {
     useEffect(() => {
         if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast && !touchedMeals.has('breakfast')) {
             // Only auto-copy if user hasn't touched breakfast
-            const prevDate = new Date(selectedDate);
+            const prevDate = parseDate(selectedDate);
             prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = prevDate.toISOString().split('T')[0];
+            const prevDateStr = OrderService.toLocalDateString(prevDate);
             const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
             if (prevOrderSaved) {
                 try {
@@ -491,9 +494,9 @@ export const useOrder = () => {
 
     /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
     const loadBreakfastFromPrevLunch = (): boolean => {
-        const prevDate = new Date(selectedDate);
+        const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().split('T')[0];
+        const prevDateStr = OrderService.toLocalDateString(prevDate);
         const raw = localStorage.getItem(`order_${prevDateStr}`);
         if (raw) {
             try {

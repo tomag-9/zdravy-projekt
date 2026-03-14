@@ -60,6 +60,8 @@ vi.mock("../services/OrderService", async (importOriginal) => {
       updateDiet: originalDefault.updateDiet,
       enforceStructure: originalDefault.enforceStructure,
       calculatePrevDayLunches: originalDefault.calculatePrevDayLunches,
+      getServerNow: originalDefault.getServerNow,
+      toLocalDateString: originalDefault.toLocalDateString,
       isMealEmpty: originalDefault.isMealEmpty,
       findLastNonZeroDay: originalDefault.findLastNonZeroDay,
       mergeOrders: originalDefault.mergeOrders,
