@@ -338,7 +338,7 @@ describe("OrderPage Logic & Triggers", () => {
 
     expect(
       await screen.findByText(
-        "Objednavku uz nie je mozne odoslat, termin uplynul.",
+        "Objednávku už nie je možné odoslať, termín uplynul.",
       ),
     ).toBeInTheDocument();
     expect(
