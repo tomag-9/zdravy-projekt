@@ -144,7 +144,12 @@ class ClientSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClientSettings
-        fields = ["visible_menus", "visible_meals", "visible_diets"]
+        fields = [
+            "visible_menus",
+            "visible_meals",
+            "visible_diets",
+            "admin_order_note",
+        ]
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
@@ -216,13 +221,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return None
 
     def get_settings(self, obj: User) -> Dict[str, Any]:
-        """Return client settings; fall back to sensible defaults when no settings row exists."""
+        """Return client settings; use defaults when no settings row exists."""
         if hasattr(obj, "settings"):
             return ClientSettingsSerializer(obj.settings).data
         return {
             "visible_menus": ["A"],
             "visible_meals": ["breakfast", "lunch", "olovrant"],
             "visible_diets": [],
+            "admin_order_note": "",
         }
 
 
@@ -235,7 +241,12 @@ class AdminClientSettingsSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClientSettings
-        fields = ["visible_menus", "visible_meals", "visible_diets"]
+        fields = [
+            "visible_menus",
+            "visible_meals",
+            "visible_diets",
+            "admin_order_note",
+        ]
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
@@ -253,7 +264,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     M2M `visible_diets` relation (N+1 query pattern).
 
     The ViewSet should eagerly load these relations using:
-      - select_related('profile', 'settings')               # single-valued (OneToOne) relations
+            - select_related('profile', 'settings')
+                # single-valued (OneToOne) relations
       - prefetch_related('settings__visible_diets')         # M2M relation
 
     In general, prefer select_related for single-valued relations such as
@@ -261,7 +273,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     prefetch_related for many-to-many relations like `settings__visible_diets`,
     which are fetched in a separate targeted query and assembled in Python.
     Using prefetch_related('profile', 'settings', ...) would add unnecessary
-    extra queries for these single-valued relations. The key requirement is
+    extra queries for these single-valued relations.
+    The key requirement is
     that these relations are eagerly loaded to avoid N+1 queries.
     """
 
@@ -304,7 +317,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data: Dict[str, Any]) -> User:
         password = validated_data.pop("password", None)
-        # Normalize and use email as internal username so Django's unique constraint is satisfied
+        # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
         if User.objects.filter(
@@ -385,6 +398,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 settings_obj.visible_menus = validated_settings["visible_menus"]
             if "visible_meals" in validated_settings:
                 settings_obj.visible_meals = validated_settings["visible_meals"]
+            if "admin_order_note" in validated_settings:
+                settings_obj.admin_order_note = validated_settings["admin_order_note"]
 
             settings_obj.save()
 

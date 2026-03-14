@@ -1,11 +1,21 @@
+import io
 from datetime import date
 
+import openpyxl
 import pytest
 from django.contrib.auth.models import User
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from api.models import DailyOrder
+from api.models import (
+    ClientSettings,
+    DailyMealPlan,
+    DailyOrder,
+    EnrolledCount,
+    MealPlanItem,
+    MealTemplate,
+    PortionType,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -338,3 +348,295 @@ class AdminDailyReportTest(APITestCase):
                 status.HTTP_400_BAD_REQUEST,
                 msg=f"Expected 400 for bad date: {bad_date!r}",
             )
+
+
+class AdminMealPlanByDateTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="mealplan-admin@example.com",
+            password="password",
+            email="mealplan-admin@example.com",
+            is_staff=True,
+        )
+
+    def test_by_date_returns_empty_payload_when_plan_missing(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get("/api/admin/meal-plans/by-date/?date=2026-03-16")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.json(),
+            {
+                "exists": False,
+                "date": "2026-03-16",
+                "notes": "",
+                "items": [],
+            },
+        )
+
+    def test_by_date_returns_existing_plan_payload(self):
+        DailyMealPlan.objects.create(date="2026-03-16", created_by=self.admin)
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get("/api/admin/meal-plans/by-date/?date=2026-03-16")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.json()["exists"])
+
+
+class AdminMealPlanApiTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="mealplan-admin2@example.com",
+            password="password",
+            email="mealplan-admin2@example.com",
+            is_staff=True,
+        )
+        self.client_user = User.objects.create_user(
+            username="mealplan-client@example.com",
+            password="password",
+            email="mealplan-client@example.com",
+        )
+        self.kindergarten = PortionType.objects.create(
+            name="Škôlka", coefficient="0.5000", sort_order=1
+        )
+        self.adult = PortionType.objects.create(
+            name="Dospelý (SŠ)", coefficient="1.0000", sort_order=2
+        )
+        self.breakfast_template = MealTemplate.objects.create(
+            category="breakfast",
+            name="Chlieb + maslo",
+            weight_label="80g + 20g",
+            base_weight_grams="100.00",
+        )
+        self.lunch_template = MealTemplate.objects.create(
+            category="lunch",
+            name="Kuracie prsia + ryža",
+            weight_label="120g + 80g",
+            base_weight_grams="200.00",
+            menu_variant="A",
+        )
+        self.snack_template = MealTemplate.objects.create(
+            category="snack",
+            name="Jablko",
+            weight_label="50g",
+            base_weight_grams="50.00",
+        )
+        self.client.force_authenticate(user=self.admin)
+
+    def _create_plan(self, target_date="2026-03-16", notes="Plan notes"):
+        plan = DailyMealPlan.objects.create(
+            date=target_date,
+            notes=notes,
+            created_by=self.admin,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.breakfast_template,
+            category="breakfast",
+            menu_variant="",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="lunch",
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.snack_template,
+            category="snack",
+            menu_variant="",
+        )
+        EnrolledCount.objects.create(
+            meal_plan=plan,
+            portion_type=self.kindergarten,
+            count=10,
+        )
+        EnrolledCount.objects.create(
+            meal_plan=plan,
+            portion_type=self.adult,
+            count=2,
+        )
+        return plan
+
+    def test_create_meal_plan_via_api_persists_nested_data(self):
+        response = self.client.post(
+            "/api/admin/meal-plans/",
+            {
+                "date": "2026-03-16",
+                "notes": "Novy plan",
+                "items_write": [
+                    {"template_id": self.breakfast_template.id, "menu_variant": ""},
+                    {"template_id": self.lunch_template.id, "menu_variant": "A"},
+                ],
+                "enrolled_counts_write": [
+                    {"portion_type_id": self.kindergarten.id, "count": 12},
+                    {"portion_type_id": self.adult.id, "count": 3},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        plan = DailyMealPlan.objects.get(date="2026-03-16")
+        self.assertEqual(plan.created_by, self.admin)
+        self.assertEqual(plan.notes, "Novy plan")
+        self.assertEqual(plan.items.count(), 2)
+        self.assertEqual(plan.enrolled_counts.count(), 2)
+        self.assertEqual(
+            plan.enrolled_counts.get(portion_type=self.kindergarten).count,
+            12,
+        )
+
+    def test_gramage_report_returns_computed_totals(self):
+        plan = self._create_plan()
+
+        response = self.client.get(f"/api/admin/meal-plans/{plan.id}/gramage-report/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(payload["date"], "2026-03-16")
+        self.assertEqual(
+            payload["sections"]["breakfast"]["section_total_grams"], "700.00"
+        )
+        self.assertEqual(
+            payload["sections"]["lunch"]["A"]["section_total_grams"], "1400.00"
+        )
+        self.assertEqual(payload["sections"]["snack"]["section_total_grams"], "350.00")
+        self.assertEqual(payload["grand_total_grams"], "2450.00")
+
+    def test_meal_plan_exports_return_downloadable_files(self):
+        plan = self._create_plan()
+
+        xlsx_response = self.client.get(f"/api/admin/meal-plans/{plan.id}/export-xlsx/")
+        self.assertEqual(xlsx_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            xlsx_response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = openpyxl.load_workbook(io.BytesIO(xlsx_response.content))
+        self.assertIn("2026-03-16", workbook.sheetnames)
+        self.assertEqual(workbook.active["A1"].value, "Jedálniček — 2026-03-16")
+
+        pdf_response = self.client.get(f"/api/admin/meal-plans/{plan.id}/export-pdf/")
+        self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+    def test_range_report_and_range_export_xlsx_cover_multiple_days(self):
+        self._create_plan("2026-03-16", "Prvy plan")
+        self._create_plan("2026-03-17", "Druhy plan")
+
+        range_response = self.client.get(
+            "/api/admin/meal-plans/range-report/?from=2026-03-16&to=2026-03-17"
+        )
+        self.assertEqual(range_response.status_code, status.HTTP_200_OK)
+        payload = range_response.json()
+        self.assertEqual(len(payload), 2)
+        self.assertEqual(
+            {item["date"] for item in payload}, {"2026-03-16", "2026-03-17"}
+        )
+
+        xlsx_response = self.client.get(
+            "/api/admin/meal-plans/range-export-xlsx/?from=2026-03-16&to=2026-03-17"
+        )
+        self.assertEqual(xlsx_response.status_code, status.HTTP_200_OK)
+        workbook = openpyxl.load_workbook(io.BytesIO(xlsx_response.content))
+        self.assertEqual(workbook.sheetnames[0], "Súhrn")
+        self.assertIn("2026-03-16", workbook.sheetnames)
+        self.assertIn("2026-03-17", workbook.sheetnames)
+
+    def test_diet_summary_and_gramage_dashboard_return_expected_contract(self):
+        self._create_plan()
+        settings, _ = ClientSettings.objects.get_or_create(user=self.client_user)
+        settings.admin_order_note = "Bez cibule v pondelok"
+        settings.save(update_fields=["admin_order_note"])
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-16",
+            status="submitted",
+            data={
+                "breakfast": {
+                    "Škôlka": {"menuCounts": {"A": 4}, "diets": {"Vegan": 1}}
+                },
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 6},
+                        "diets": {"Bezlepková": 2},
+                    }
+                },
+                "olovrant": {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}},
+            },
+        )
+
+        diet_summary = self.client.get(
+            "/api/admin/meal-plans/diet-summary/?date=2026-03-16"
+        )
+        self.assertEqual(diet_summary.status_code, status.HTTP_200_OK)
+        diet_payload = diet_summary.json()
+        self.assertEqual(diet_payload["diet_by_meal"]["breakfast"]["Vegan"], 1)
+        self.assertEqual(diet_payload["diet_by_meal"]["lunch"]["Bezlepková"], 2)
+        self.assertEqual(diet_payload["menu_totals"]["lunch"]["A"], 6)
+
+        dashboard = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-16"
+        )
+        self.assertEqual(dashboard.status_code, status.HTTP_200_OK)
+        dashboard_payload = dashboard.json()
+        self.assertEqual(
+            dashboard_payload["meal_plan_id"],
+            DailyMealPlan.objects.get(date="2026-03-16").id,
+        )
+        self.assertEqual(len(dashboard_payload["col_groups"]), 3)
+        self.assertEqual(len(dashboard_payload["rows"]), 1)
+        self.assertEqual(
+            dashboard_payload["rows"][0]["diet_summary_rows"][0]["name"], "Bezlepková"
+        )
+        self.assertEqual(
+            dashboard_payload["rows"][0]["admin_order_note"],
+            "Bez cibule v pondelok",
+        )
+
+    def test_gramage_dashboard_exports_return_files(self):
+        self._create_plan()
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-16",
+            status="submitted",
+            data={
+                "breakfast": {"Škôlka": {"menuCounts": {"A": 2}, "diets": {}}},
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 4},
+                        "diets": {"Bezlepková": 1},
+                    }
+                },
+                "olovrant": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}},
+            },
+        )
+
+        xlsx_response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard-xlsx/?date=2026-03-16"
+        )
+        self.assertEqual(xlsx_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            xlsx_response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        workbook = openpyxl.load_workbook(io.BytesIO(xlsx_response.content))
+        self.assertEqual(workbook.active["A1"].value, "Gramáž jedál — 2026-03-16")
+
+        pdf_response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard-pdf/?date=2026-03-16"
+        )
+        self.assertEqual(pdf_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(pdf_response["Content-Type"], "application/pdf")
+        self.assertTrue(pdf_response.content.startswith(b"%PDF"))
+
+    def test_meal_plan_endpoints_require_admin(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.get("/api/admin/meal-plans/by-date/?date=2026-03-16")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

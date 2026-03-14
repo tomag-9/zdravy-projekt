@@ -1,10 +1,14 @@
+import datetime
 import logging
 import time
 from typing import Any, Dict
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework import serializers
 
+from .cached_settings_service import get_global_settings
+from .exceptions import OrderDeadlinePassedError
 from .models import DailyOrder
 
 logger = logging.getLogger(__name__)
@@ -24,6 +28,109 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         model = DailyOrder
         fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
         read_only_fields = ["id", "is_auto", "updated_at"]
+
+    MEAL_FIELD_CONFIG = {
+        "breakfast": ("deadline_breakfast", "deadline_breakfast_is_day_before"),
+        "lunch": ("deadline_lunch", "deadline_lunch_is_day_before"),
+        "olovrant": ("deadline_olovrant", "deadline_olovrant_is_day_before"),
+    }
+
+    MEAL_LABELS = {
+        "breakfast": "raňajky",
+        "lunch": "obed",
+        "olovrant": "olovrant",
+    }
+
+    @staticmethod
+    def _is_positive(value: Any) -> bool:
+        try:
+            return int(value) > 0
+        except (TypeError, ValueError):
+            return bool(value)
+
+    @classmethod
+    def _meal_has_content(cls, meal_data: Any) -> bool:
+        if not isinstance(meal_data, dict) or not meal_data:
+            return False
+
+        if "menuCounts" in meal_data:
+            menu_counts = meal_data.get("menuCounts") or {}
+            diets = meal_data.get("diets") or {}
+            return any(cls._is_positive(v) for v in menu_counts.values()) or any(
+                cls._is_positive(v) for v in diets.values()
+            )
+
+        for details in meal_data.values():
+            if not isinstance(details, dict):
+                continue
+            menu_counts = details.get("menuCounts") or {}
+            diets = details.get("diets") or {}
+            if any(cls._is_positive(v) for v in menu_counts.values()) or any(
+                cls._is_positive(v) for v in diets.values()
+            ):
+                return True
+        return False
+
+    @classmethod
+    def _changed_meals(
+        cls,
+        new_data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None = None,
+        input_status: str = "submitted",
+    ) -> list[str]:
+        existing_data = existing_data or {}
+        changed: list[str] = []
+        for meal_key in cls.MEAL_FIELD_CONFIG:
+            previous = existing_data.get(meal_key, {}) or {}
+            current = new_data.get(meal_key, {}) or {}
+            if input_status == "draft":
+                if cls._meal_has_content(previous) or cls._meal_has_content(current):
+                    changed.append(meal_key)
+                continue
+            if previous != current and (
+                cls._meal_has_content(previous) or cls._meal_has_content(current)
+            ):
+                changed.append(meal_key)
+        return changed
+
+    @classmethod
+    def _validate_deadlines(
+        cls,
+        target_date: datetime.date,
+        new_data: Dict[str, Any],
+        input_status: str,
+        existing_data: Dict[str, Any] | None = None,
+    ) -> None:
+        changed_meals = cls._changed_meals(new_data, existing_data, input_status)
+        if not changed_meals:
+            return
+
+        settings = get_global_settings()
+        current_dt = timezone.localtime()
+        current_tz = timezone.get_current_timezone()
+
+        for meal_key in changed_meals:
+            deadline_field, day_before_field = cls.MEAL_FIELD_CONFIG[meal_key]
+            deadline_time = getattr(settings, deadline_field)
+            deadline_date = (
+                target_date - datetime.timedelta(days=1)
+                if getattr(settings, day_before_field)
+                else target_date
+            )
+            deadline_dt = timezone.make_aware(
+                datetime.datetime.combine(deadline_date, deadline_time),
+                current_tz,
+            )
+            if current_dt >= deadline_dt:
+                label = cls.MEAL_LABELS[meal_key]
+                raise OrderDeadlinePassedError(
+                    deadline_time=deadline_dt.strftime("%d.%m.%Y %H:%M"),
+                    current_time=current_dt.strftime("%d.%m.%Y %H:%M"),
+                    detail=(
+                        f"Objednávku pre {label} už nie je možné meniť. "
+                        f"Termín: {deadline_dt.strftime('%d.%m.%Y %H:%M')}"
+                    ),
+                )
 
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
@@ -46,6 +153,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
         if input_status == "draft":
+            existing_order = DailyOrder.objects.filter(
+                user=user, date=validated_data["date"]
+            ).first()
+            self._validate_deadlines(
+                validated_data["date"],
+                validated_data.get("data", {}),
+                input_status,
+                existing_order.data if existing_order else None,
+            )
             DailyOrder.objects.filter(user=user, date=validated_data["date"]).delete()
             # Return an unsaved instance for the response
             return DailyOrder(
@@ -53,6 +169,17 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         new_data = validated_data.get("data", {})
+        existing_order = (
+            DailyOrder.objects.filter(user=user, date=validated_data["date"])
+            .only("data")
+            .first()
+        )
+        self._validate_deadlines(
+            validated_data["date"],
+            new_data,
+            input_status,
+            existing_order.data if existing_order else None,
+        )
 
         # Use select_for_update inside an atomic block to prevent race conditions
         # when multiple concurrent requests submit an order for the same (user, date).
@@ -99,6 +226,25 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         return order
 
+    def update(
+        self, instance: DailyOrder, validated_data: Dict[str, Any]
+    ) -> DailyOrder:
+        input_status = validated_data.get("status", instance.status)
+        new_data = validated_data.get("data", instance.data)
+
+        self._validate_deadlines(instance.date, new_data, input_status, instance.data)
+
+        if input_status == "draft":
+            instance.delete()
+            return DailyOrder(
+                user=instance.user, date=instance.date, status="draft", data={}
+            )
+
+        instance.data = new_data
+        instance.status = input_status
+        instance.save(update_fields=["data", "status", "updated_at"])
+        return instance
+
 
 class GlobalSettingsSerializer(serializers.ModelSerializer):
     """
@@ -120,8 +266,11 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         model = GlobalSettings
         fields = [
             "deadline_breakfast",
+            "deadline_breakfast_is_day_before",
             "deadline_lunch",
+            "deadline_lunch_is_day_before",
             "deadline_olovrant",
+            "deadline_olovrant_is_day_before",
             "report_email_recipients",
         ]
 

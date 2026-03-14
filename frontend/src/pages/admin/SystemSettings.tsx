@@ -4,8 +4,11 @@ import { useToast } from '../../context/ToastContext';
 
 interface GlobalSettings {
     deadline_breakfast: string;
+    deadline_breakfast_is_day_before: boolean;
     deadline_lunch: string;
+    deadline_lunch_is_day_before: boolean;
     deadline_olovrant: string;
+    deadline_olovrant_is_day_before: boolean;
     report_email_recipients: string[];
 }
 
@@ -14,8 +17,11 @@ const SystemSettings: React.FC = () => {
     const { success, error } = useToast();
     const [settings, setSettings] = useState<GlobalSettings>({
         deadline_breakfast: '10:00',
+        deadline_breakfast_is_day_before: false,
         deadline_lunch: '10:00',
+        deadline_lunch_is_day_before: false,
         deadline_olovrant: '10:00',
+        deadline_olovrant_is_day_before: false,
         report_email_recipients: [],
     });
     const [loading, setLoading] = useState(true);
@@ -158,6 +164,15 @@ const SystemSettings: React.FC = () => {
                                 onChange={(e) => setSettings({...settings, deadline_breakfast: e.target.value})}
                                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             />
+                            <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={settings.deadline_breakfast_is_day_before}
+                                    onChange={(e) => setSettings({ ...settings, deadline_breakfast_is_day_before: e.target.checked })}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs text-gray-600">Uzávierka deň vopred</span>
+                            </label>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -169,6 +184,15 @@ const SystemSettings: React.FC = () => {
                                 onChange={(e) => setSettings({...settings, deadline_lunch: e.target.value})}
                                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             />
+                            <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={settings.deadline_lunch_is_day_before}
+                                    onChange={(e) => setSettings({ ...settings, deadline_lunch_is_day_before: e.target.checked })}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs text-gray-600">Uzávierka deň vopred</span>
+                            </label>
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -180,6 +204,15 @@ const SystemSettings: React.FC = () => {
                                 onChange={(e) => setSettings({...settings, deadline_olovrant: e.target.value})}
                                 className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                             />
+                            <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={settings.deadline_olovrant_is_day_before}
+                                    onChange={(e) => setSettings({ ...settings, deadline_olovrant_is_day_before: e.target.checked })}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                />
+                                <span className="text-xs text-gray-600">Uzávierka deň vopred</span>
+                            </label>
                         </div>
                     </div>
 

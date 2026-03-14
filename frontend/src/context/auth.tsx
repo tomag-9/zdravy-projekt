@@ -50,6 +50,10 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function isNetworkFetchError(error: unknown): boolean {
+  return error instanceof TypeError && error.message === "Failed to fetch";
+}
+
 /** Remove all per-user order data from localStorage so a newly logged-in
  *  user never sees data that belonged to the previous session. */
 function clearOrderLocalStorage() {
@@ -147,6 +151,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       // First attempt
       let response = await fetch(input, config);
 
+      const syncServerTimeOffset = (res: Response) => {
+        const serverDate = res.headers.get("Date");
+        if (!serverDate) return;
+        const serverMs = Date.parse(serverDate);
+        if (Number.isNaN(serverMs)) return;
+        sessionStorage.setItem(
+          "server_time_offset_ms",
+          String(serverMs - Date.now()),
+        );
+      };
+
+      syncServerTimeOffset(response);
+
       // If unauthorized, try to refresh and retry
       if (response.status === 401) {
         const refreshed = await refreshToken();
@@ -158,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             headers,
             cache: "no-store" as RequestCache,
           });
+          syncServerTimeOffset(response);
         }
       } else if (response.status === 403) {
         // Forbidden — may be caused by an expired JWT that the backend returns as 403.
@@ -172,6 +190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             headers,
             cache: "no-store" as RequestCache,
           });
+          syncServerTimeOffset(retried);
           if (retried.status === 403) {
             // Valid token but still forbidden → session/account issue, force logout.
             logout();
@@ -195,7 +214,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       }
       return null;
     } catch (e) {
-      console.error("Failed to fetch user profile", e);
+      if (!isNetworkFetchError(e)) {
+        console.error("Failed to fetch user profile", e);
+      }
       return null;
     } finally {
       setIsLoading(false);

@@ -40,6 +40,14 @@ class PDFFontManager:
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                 ),
+                (
+                    "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+                ),
+                (
+                    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+                ),
                 ("/Library/Fonts/DejaVuSans.ttf", "/Library/Fonts/DejaVuSans-Bold.ttf"),
             ]
             for reg_path, bold_path in candidates:

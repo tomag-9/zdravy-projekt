@@ -20,7 +20,7 @@ interface OrderSummaryModalProps {
   onClose: () => void;
   orderDate: string;
   orderData?: DailyOrder;
-  globalDeadlines: { breakfast: string; lunch: string; olovrant: string };
+  globalDeadlines: { breakfast: string; breakfast_day_before?: boolean; lunch: string; lunch_day_before?: boolean; olovrant: string; olovrant_day_before?: boolean };
   onDelete?: () => void;
   /** When true the order is not yet in DB – it's an auto-prediction */
   isPredicted?: boolean;

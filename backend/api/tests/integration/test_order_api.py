@@ -22,14 +22,15 @@ EMPTY_DATA = {
     "olovrant": {},
 }
 
-# Reference dates
-MONDAY = datetime.date(2025, 1, 6)
-TUESDAY = datetime.date(2025, 1, 7)
-WEDNESDAY = datetime.date(2025, 1, 8)
-THURSDAY = datetime.date(2025, 1, 9)
-FRIDAY = datetime.date(2025, 1, 10)
-SATURDAY = datetime.date(2025, 1, 11)
-SUNDAY = datetime.date(2025, 1, 12)
+# Reference dates kept in the future so unrelated tests are not blocked by
+# runtime deadline enforcement.
+MONDAY = datetime.date(2099, 1, 5)
+TUESDAY = datetime.date(2099, 1, 6)
+WEDNESDAY = datetime.date(2099, 1, 7)
+THURSDAY = datetime.date(2099, 1, 8)
+FRIDAY = datetime.date(2099, 1, 9)
+SATURDAY = datetime.date(2099, 1, 10)
+SUNDAY = datetime.date(2099, 1, 11)
 
 
 @pytest.mark.django_db

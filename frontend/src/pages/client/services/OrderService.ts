@@ -25,6 +25,19 @@ export interface DailyOrder {
 }
 
 class OrderService {
+    static toLocalDateString(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
+    static getServerNow(): Date {
+        const offsetRaw = sessionStorage.getItem('server_time_offset_ms');
+        const offsetMs = offsetRaw ? Number(offsetRaw) : 0;
+        return new Date(Date.now() + (Number.isFinite(offsetMs) ? offsetMs : 0));
+    }
+
     static createEmptyCategory(categoryName: string): CategoryData {
         const availableMenus = GROUP_CONFIG[categoryName] || ['A'];
         const menuCounts = availableMenus.reduce((acc, menu) => ({ ...acc, [menu]: 0 }), {} as MenuCounts);
@@ -152,30 +165,45 @@ class OrderService {
     }
 
     // Deadline logic
-    static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, lunch: string, olovrant: string }): boolean {
-        // const orderDate = new Date(dateStr); // unused
-        const now = new Date();
-        const todayStr = now.toISOString().split('T')[0];
+    static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, breakfast_day_before?: boolean, lunch: string, lunch_day_before?: boolean, olovrant: string, olovrant_day_before?: boolean }): boolean {
+        const now = this.getServerNow();
+        const todayStr = this.toLocalDateString(now);
 
-        // Future dates are always editable
-        if (dateStr > todayStr) return true;
-
-        // Past dates are never editable
-        if (dateStr < todayStr) return false;
-
-        // Today: specific deadlines. If not loaded yet, be conservative and block edits.
-        if (!deadlines) return false;
+        if (!deadlines) {
+            if (dateStr > todayStr) return true;
+            return false;
+        }
 
         const defaultTime = "10:00";
-
         let deadlineStr = defaultTime;
-        if (mealKey === 'breakfast') deadlineStr = deadlines.breakfast || defaultTime;
-        if (mealKey === 'lunch') deadlineStr = deadlines.lunch || defaultTime;
-        if (mealKey === 'olovrant') deadlineStr = deadlines.olovrant || defaultTime;
+        let isDayBefore = false;
+        if (mealKey === 'breakfast') { deadlineStr = deadlines.breakfast || defaultTime; isDayBefore = !!deadlines.breakfast_day_before; }
+        if (mealKey === 'lunch') { deadlineStr = deadlines.lunch || defaultTime; isDayBefore = !!deadlines.lunch_day_before; }
+        if (mealKey === 'olovrant') { deadlineStr = deadlines.olovrant || defaultTime; isDayBefore = !!deadlines.olovrant_day_before; }
+
+        if (isDayBefore) {
+            // Deadline is 1 calendar day before the meal date at deadlineStr time.
+            // e.g. to order for Tuesday, you must order by Monday at deadlineStr.
+            const mealDate = new Date(dateStr + 'T00:00:00');
+            const deadlineDate = new Date(mealDate);
+            deadlineDate.setDate(deadlineDate.getDate() - 1);
+            const deadlineDateStr = this.toLocalDateString(deadlineDate);
+
+            if (deadlineDateStr > todayStr) return true;   // deadline day is in the future
+            if (deadlineDateStr < todayStr) return false;  // deadline day has passed
+
+            // Deadline day is today – check the time
+            const [h, m] = deadlineStr.split(':').map(Number);
+            const currentMinutes = now.getHours() * 60 + now.getMinutes();
+            return currentMinutes < h * 60 + m;
+        }
+
+        // Original same-day deadline behaviour
+        if (dateStr > todayStr) return true;
+        if (dateStr < todayStr) return false;
 
         const [h, m] = deadlineStr.split(':').map(Number);
         const deadlineMinutes = h * 60 + m;
-
         const currentHour = now.getHours();
         const currentMinute = now.getMinutes();
         const currentTime = currentHour * 60 + currentMinute;

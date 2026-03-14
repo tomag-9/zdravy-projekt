@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
+import OrderService from '../../services/OrderService';
 
 interface DaySelectorProps {
     selectedDate: string;
@@ -8,7 +9,7 @@ interface DaySelectorProps {
 }
 
 const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
-    const dateObj = new Date(selectedDate);
+    const dateObj = new Date(`${selectedDate}T12:00:00`);
 
     const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
 
@@ -18,7 +19,7 @@ const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
         while (isWeekend(newDate)) {
             newDate.setDate(newDate.getDate() - 1);
         }
-        onChange(newDate.toISOString().split('T')[0]);
+        onChange(OrderService.toLocalDateString(newDate));
     };
 
     const handleNext = () => {
@@ -27,7 +28,7 @@ const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
         while (isWeekend(newDate)) {
             newDate.setDate(newDate.getDate() + 1);
         }
-        onChange(newDate.toISOString().split('T')[0]);
+        onChange(OrderService.toLocalDateString(newDate));
     };
 
     const dateFormatter = new Intl.DateTimeFormat('sk-SK', {

@@ -43,8 +43,8 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Run migrations, seed roles, and start server
-CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && gunicorn -c gunicorn.conf.py app.wsgi:application"]
+# Run migrations, seed roles, seed reference data, and start server
+CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && python manage.py init_reference_data && gunicorn -c gunicorn.conf.py app.wsgi:application"]
 
 # Healthcheck for the main app
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \

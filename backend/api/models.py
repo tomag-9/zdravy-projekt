@@ -10,7 +10,7 @@ class DailyOrder(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
     date = models.DateField(db_index=True)
     # Status removed/deprecated effectively. All orders in DB are considered submitted.
-    # We keep the field for now to avoid massive migration breakage but default to 'submitted'
+    # We keep the field for now to avoid massive migration breakage but default to 'submitted'  # noqa: E501
     # or we can remove it. Let's start by defaulting to submitted and ignoring draft.
     status = models.CharField(max_length=20, default="submitted")
     data = models.JSONField(default=dict)
@@ -54,6 +54,8 @@ class ClientSettings(models.Model):
     visible_meals = models.JSONField(default=_default_all_meals, blank=True)
     # ManyToMany to allow dynamic diet selection
     visible_diets = models.ManyToManyField(Diet, blank=True)
+    # Admin-only note displayed in admin gramage dashboard after expanding client row.
+    admin_order_note = models.TextField(blank=True, default="")
 
     def __str__(self) -> str:
         return f"Settings for {self.user.email}"
@@ -68,6 +70,25 @@ class GlobalSettings(models.Model):
     )
     deadline_olovrant = models.TimeField(
         default=datetime.time(10, 0), help_text="Deadline for olovrant orders"
+    )
+    deadline_breakfast_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, breakfast deadline applies to the day"
+            " before the meal date"
+        ),
+    )
+    deadline_lunch_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, lunch deadline applies to the day" " before the meal date"
+        ),
+    )
+    deadline_olovrant_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "When enabled, olovrant deadline applies to the day" " before the meal date"
+        ),
     )
     report_email_recipients = models.JSONField(
         default=list,
@@ -207,3 +228,137 @@ class PasswordResetToken(models.Model):
     @property
     def is_valid(self) -> bool:
         return not self.used and not self.is_expired
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Jedálniček (Meal Plan) module
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class MealCategory(models.TextChoices):
+    BREAKFAST = "breakfast", "Raňajky"
+    LUNCH = "lunch", "Obed"
+    SNACK = "snack", "Olovrant"
+
+
+class MealTemplate(models.Model):
+    """
+    Reusable meal template selected when building a daily plan.
+    E.g. "Mäso + Príloha + Šalát" with base_weight_grams=225 (200+25).
+    """
+
+    category = models.CharField(
+        max_length=20, choices=MealCategory.choices, db_index=True
+    )
+    name = models.CharField(max_length=200)
+    # Human-readable composition label, e.g. "200g + 25g"
+    weight_label = models.CharField(max_length=100, blank=True)
+    # Base weight in grams used for calculations (Adult 100% portion)
+    base_weight_grams = models.DecimalField(max_digits=8, decimal_places=2)
+    # Lunch can have variants A / B / C …
+    menu_variant = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Leave empty for breakfast/snack. E.g. 'A', 'B', 'C'.",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "menu_variant", "name"]
+        indexes = [
+            models.Index(fields=["category", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        variant = f" [{self.menu_variant}]" if self.menu_variant else ""
+        return f"{self.get_category_display()}{variant}: {self.name}"
+
+
+class PortionType(models.Model):
+    """
+    Defines a consumer group and their weight coefficient.
+    Seeded with: Škôlka (0.50), Škola (0.75), Dospelý (1.00).
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    coefficient = models.DecimalField(
+        max_digits=5,
+        decimal_places=4,
+        help_text="Multiplier applied to template base_weight_grams. 1.0 = 100%.",
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self) -> str:
+        pct = int(self.coefficient * 100)
+        return f"{self.name} ({pct}%)"
+
+
+class DailyMealPlan(models.Model):
+    """
+    The meal plan for one calendar day.
+    Contains the template selections and the enrolled person counts.
+    """
+
+    date = models.DateField(unique=True, db_index=True)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="meal_plans_created"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date"]
+
+    def __str__(self) -> str:
+        return f"Jedálniček {self.date}"
+
+
+class MealPlanItem(models.Model):
+    """
+    One meal slot within a DailyMealPlan.
+    One item per (meal_plan, category, menu_variant) combination.
+    """
+
+    meal_plan = models.ForeignKey(
+        DailyMealPlan, on_delete=models.CASCADE, related_name="items"
+    )
+    template = models.ForeignKey(
+        MealTemplate, on_delete=models.PROTECT, related_name="plan_items"
+    )
+    # Denormalised for query convenience
+    category = models.CharField(max_length=20, choices=MealCategory.choices)
+    menu_variant = models.CharField(max_length=10, blank=True)
+
+    class Meta:
+        unique_together = ["meal_plan", "category", "menu_variant"]
+
+    def __str__(self) -> str:
+        return f"{self.meal_plan.date} {self.category} {self.menu_variant}"
+
+
+class EnrolledCount(models.Model):
+    """
+    How many persons of a given PortionType are enrolled on a specific DailyMealPlan.
+    Used to compute total gramage per day.
+    """
+
+    meal_plan = models.ForeignKey(
+        DailyMealPlan, on_delete=models.CASCADE, related_name="enrolled_counts"
+    )
+    portion_type = models.ForeignKey(
+        PortionType, on_delete=models.PROTECT, related_name="enrolled_counts"
+    )
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ["meal_plan", "portion_type"]
+
+    def __str__(self) -> str:
+        return f"{self.meal_plan.date} {self.portion_type.name}: {self.count}"

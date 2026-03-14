@@ -117,6 +117,17 @@ const AdminLayout: React.FC = () => {
                         Správa diét
                     </Link>
                     <Link
+                        to="/admin/meal-plan"
+                        className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                            isActive('/admin/meal-plan')
+                                ? 'bg-teal-50 text-teal-700 font-medium translate-x-1'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                    >
+                        <span className="mr-3">🗓️</span>
+                        Jedálniček
+                    </Link>
+                    <Link
                         to="/admin/settings"
                         className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
                             isActive('/admin/settings')

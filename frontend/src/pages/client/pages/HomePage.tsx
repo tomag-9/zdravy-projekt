@@ -20,6 +20,8 @@ import { useAuth } from "../../../context/auth";
 import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
+import OrderService from "../services/OrderService";
+import { OrderRequestError } from "../hooks/useOrder";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -45,10 +47,10 @@ interface HistoryOrder {
 
 /** First workday strictly after today (Mon–Fri). */
 function firstNextWorkday(): string {
-  const d = new Date();
+  const d = OrderService.getServerNow();
   d.setDate(d.getDate() + 1);
   while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return d.toISOString().split("T")[0];
+  return OrderService.toLocalDateString(d);
 }
 
 const HomePage = () => {
@@ -68,8 +70,36 @@ const HomePage = () => {
   const toast = useToast();
   const navigate = useNavigate();
 
+  const getFriendlyOrderErrorMessage = (error: unknown) => {
+    if (
+      error instanceof OrderRequestError &&
+      error.code === "order_deadline_passed"
+    ) {
+      return "Objednávku už nie je možné meniť, termín uplynul.";
+    }
+
+    return "Nepodarilo sa upraviť objednávku. Skúste to znova.";
+  };
+
+  const parseOrderActionError = async (response: Response) => {
+    try {
+      const payload = await response.clone().json();
+      throw new OrderRequestError(
+        payload?.error?.message || "Request failed",
+        payload?.error?.code,
+      );
+    } catch (error) {
+      if (error instanceof OrderRequestError) {
+        throw error;
+      }
+
+      const text = await response.text();
+      throw new OrderRequestError(text || "Request failed");
+    }
+  };
+
   const firstWorkday = firstNextWorkday();
-  const _now = new Date();
+  const _now = OrderService.getServerNow();
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
   // Today derived from planned days (no extra fetch needed)
   const todayDay = plannedDays.find((d) => d.date === todayStr) ?? null;
@@ -77,8 +107,10 @@ const HomePage = () => {
   // Check whether any meal deadline for today hasn't passed yet
   const isTodayEditable = (() => {
     if (!globalDeadlines) return false;
-    const now = new Date();
+    const now = OrderService.getServerNow();
     return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
+      // When this meal uses "day before" mode, today's version of this meal is past deadline
+      if ((globalDeadlines as Record<string, unknown>)[`${meal}_day_before`]) return false;
       const rawTime = globalDeadlines[meal] || "10:00";
       const [hourStr, minuteStr] = rawTime.split(":");
       const hours = Number.isFinite(Number(hourStr)) ? Number(hourStr) : 10;
@@ -109,7 +141,7 @@ const HomePage = () => {
         // DRF may return paginated { count, results } or plain array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const items: any[] = Array.isArray(json) ? json : (json.results ?? []);
-        const today = new Date().toISOString().split("T")[0];
+        const today = OrderService.toLocalDateString(OrderService.getServerNow());
         const history: HistoryOrder[] = [];
 
         const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];
@@ -250,10 +282,7 @@ const HomePage = () => {
         }),
       });
       if (!res.ok) {
-        const msg = await res.text().catch(() => "");
-        console.error("Failed to zero predicted order:", msg);
-        toast.error("Nepodarilo sa vynulovať objednávku.");
-        return;
+        await parseOrderActionError(res);
       }
       setPlannedDays((prev) =>
         prev.map((d) =>
@@ -272,7 +301,7 @@ const HomePage = () => {
       toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
       console.error(e);
-      toast.error("Nepodarilo sa vynulovať objednávku.");
+      toast.error(getFriendlyOrderErrorMessage(e));
     } finally {
       setPredictedModalDay(null);
     }
@@ -290,8 +319,7 @@ const HomePage = () => {
         }),
       });
       if (!res.ok) {
-        toast.error("Nepodarilo sa vynulovať objednávku.");
-        return;
+        await parseOrderActionError(res);
       }
       const date = selectedDate;
       setPlannedDays((prev) =>
@@ -313,7 +341,7 @@ const HomePage = () => {
       toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
       console.error(e);
-      toast.error("Nepodarilo sa vynulovať objednávku.");
+      toast.error(getFriendlyOrderErrorMessage(e));
     }
   };
 

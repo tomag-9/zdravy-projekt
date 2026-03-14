@@ -5,6 +5,33 @@ import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+type ApiErrorPayload = {
+    error?: {
+        code?: string;
+        message?: string;
+    };
+};
+
+export class OrderRequestError extends Error {
+    code?: string;
+
+    constructor(message: string, code?: string) {
+        super(message);
+        this.name = 'OrderRequestError';
+        this.code = code;
+    }
+}
+
+const parseApiError = async (response: Response) => {
+    try {
+        const payload = await response.clone().json() as ApiErrorPayload;
+        return new OrderRequestError(payload.error?.message || 'Request failed', payload.error?.code);
+    } catch {
+        const text = await response.text();
+        return new OrderRequestError(text || 'Request failed');
+    }
+};
+
 // Helper for safe localStorage parsing
 // Now using OrderService.enforceStructure
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -21,6 +48,7 @@ const safeParse = (key: string, fallback: any) => {
 
 export const useOrder = () => {
     const { apiFetch, user } = useAuth();
+    const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     // Settings
 
     const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
@@ -51,7 +79,9 @@ export const useOrder = () => {
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
 
     // State
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedDate, setSelectedDate] = useState(
+        OrderService.toLocalDateString(OrderService.getServerNow())
+    );
     // Ref mirrors selectedDate synchronously so persistence effects never write
     // the previous day's currentOrder under the new date key (race condition fix)
     const selectedDateRef = useRef(selectedDate);
@@ -77,9 +107,9 @@ export const useOrder = () => {
 
     // Load prev day lunches
     useEffect(() => {
-        const prevDate = new Date(selectedDate);
+        const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().split('T')[0];
+        const prevDateStr = OrderService.toLocalDateString(prevDate);
         const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
         if (prevOrderSaved) {
             try {
@@ -166,7 +196,7 @@ export const useOrder = () => {
         return () => { isMounted = false; };
     }, [selectedDate, apiFetch, user]); // Depend on selectedDate
 
-    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', lunch: '10:00', olovrant: '10:00' });
+    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
 
     // Fetch Global Settings
     useEffect(() => {
@@ -177,9 +207,12 @@ export const useOrder = () => {
                     const data = await res.json();
                     // Map backend fields (deadline_*) to expected state structure
                     const mapped = {
-                        breakfast: data.deadline_breakfast || data.breakfast || '10:00',
-                        lunch: data.deadline_lunch || data.lunch || '10:00',
-                        olovrant: data.deadline_olovrant || data.olovrant || '10:00',
+                        breakfast: data.deadline_breakfast || '10:00',
+                        breakfast_day_before: !!data.deadline_breakfast_is_day_before,
+                        lunch: data.deadline_lunch || '10:00',
+                        lunch_day_before: !!data.deadline_lunch_is_day_before,
+                        olovrant: data.deadline_olovrant || '10:00',
+                        olovrant_day_before: !!data.deadline_olovrant_is_day_before,
                     };
                     setGlobalDeadlines(mapped);
                 }
@@ -217,9 +250,9 @@ export const useOrder = () => {
         const history: (DailyOrder & { date: string })[] = [];
         // Use loop to avoid mutation of single Date object
         for (let i = 1; i <= 30; i++) {
-            const curr = new Date(selectedDate);
+            const curr = parseDate(selectedDate);
             curr.setDate(curr.getDate() - i);
-            const dStr = curr.toISOString().split('T')[0];
+            const dStr = OrderService.toLocalDateString(curr);
             const raw = localStorage.getItem(`order_${dStr}`);
             if (raw) {
                 try {
@@ -290,9 +323,9 @@ export const useOrder = () => {
     useEffect(() => {
         if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast && !touchedMeals.has('breakfast')) {
             // Only auto-copy if user hasn't touched breakfast
-            const prevDate = new Date(selectedDate);
+            const prevDate = parseDate(selectedDate);
             prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = prevDate.toISOString().split('T')[0];
+            const prevDateStr = OrderService.toLocalDateString(prevDate);
             const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
             if (prevOrderSaved) {
                 try {
@@ -369,8 +402,7 @@ export const useOrder = () => {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text);
+                throw await parseApiError(response);
             }
 
             // Only update local state AFTER successful API call
@@ -462,9 +494,9 @@ export const useOrder = () => {
 
     /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
     const loadBreakfastFromPrevLunch = (): boolean => {
-        const prevDate = new Date(selectedDate);
+        const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
-        const prevDateStr = prevDate.toISOString().split('T')[0];
+        const prevDateStr = OrderService.toLocalDateString(prevDate);
         const raw = localStorage.getItem(`order_${prevDateStr}`);
         if (raw) {
             try {

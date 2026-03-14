@@ -27,6 +27,10 @@ import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
 import PendingRegistrations from "./pages/admin/PendingRegistrations";
+import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
+import MealPlanEditor from "./pages/admin/MealPlanEditor";
+import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
+import PortionTypes from "./pages/admin/PortionTypes";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -42,6 +46,12 @@ const ProtectedRoute = () => {
         <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
+  }
+
+  // Never treat an authenticated user with an unresolved/failed profile load
+  // as a client user. That could send admins into the client UI after reload.
+  if (user === null) {
+    return <Navigate to="/login" replace />;
   }
 
   // If user is admin (is_staff), they shouldn't be accessing client routes
@@ -69,6 +79,10 @@ const AdminRoute = () => {
         <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
+  }
+
+  if (user === null) {
+    return <Navigate to="/login" replace />;
   }
 
   if (!user?.is_staff) {
@@ -107,6 +121,10 @@ export default function App() {
               <Route path="roles" element={<AdminUserList />} />
               <Route path="roles/:id" element={<AdminUserDetail />} />
               <Route path="diets" element={<DietManager />} />
+              <Route path="meal-plan" element={<MealPlanCalendar />} />
+              <Route path="meal-plan/:date" element={<MealPlanEditor />} />
+              <Route path="meal-plan-templates" element={<MealPlanTemplates />} />
+              <Route path="portion-types" element={<PortionTypes />} />
               <Route path="settings" element={<SystemSettings />} />
             </Route>
 
