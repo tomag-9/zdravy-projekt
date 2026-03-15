@@ -13,6 +13,7 @@ from api.models import (
     Diet,
     EmailVerificationToken,
     PasswordResetToken,
+    PushSubscription,
     UserProfile,
 )
 
@@ -20,6 +21,8 @@ from api.models import (
 class UserFactory(DjangoModelFactory):
     class Meta:
         model = User
+        # factory_boy 4 will no longer auto-save in _after_postgeneration.
+        skip_postgeneration_save = True
 
     username = factory.Sequence(lambda n: f"user{n}@example.com")
     email = factory.LazyAttribute(lambda obj: obj.username)
@@ -106,3 +109,15 @@ class PasswordResetTokenFactory(DjangoModelFactory):
         lambda: timezone.now() + datetime.timedelta(hours=2)
     )
     used = False
+
+
+class PushSubscriptionFactory(DjangoModelFactory):
+    class Meta:
+        model = PushSubscription
+
+    user = factory.SubFactory(UserFactory)
+    endpoint = factory.Sequence(
+        lambda n: f"https://fcm.googleapis.com/fcm/send/fake-endpoint-{n}"
+    )
+    p256dh = factory.Sequence(lambda n: f"fake-p256dh-key-{n}")
+    auth = factory.Sequence(lambda n: f"fake-auth-{n}")

@@ -35,6 +35,9 @@ from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrders
 # Pending registrations views
 from .pending_registrations_views import PendingRegistrationsViewSet
 
+# Push notification views
+from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
+
 # Registration views
 from .registration_views import RegistrationView
 
@@ -73,4 +76,8 @@ __all__ = [
     "MealTemplateViewSet",
     "PortionTypeViewSet",
     "DailyMealPlanViewSet",
+    # Push notifications
+    "VapidPublicKeyView",
+    "PushSubscribeView",
+    "AdminSendPushView",
 ]
