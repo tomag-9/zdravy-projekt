@@ -113,26 +113,55 @@ const ProfilePage = () => {
     const handleEnableNotifications = async () => {
         setPushLoading(true);
         setPushMessage(null);
+        try {
+            const ok = await subscribe();
+            const currentPermission =
+                typeof Notification !== 'undefined' ? Notification.permission : permission;
 
-        const ok = await subscribe();
-        if (ok) {
-            setPushMessage({ type: 'success', text: 'Notifikácie boli úspešne aktivované.' });
-        } else if (permission === 'denied') {
+            if (ok) {
+                setPushMessage({ type: 'success', text: 'Notifikácie boli úspešne aktivované.' });
+            } else if (currentPermission === 'denied') {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky.',
+                });
+            } else {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sa nepodarilo aktivovať. Skúste to prosím znova.',
+                });
+            }
+        } catch {
             setPushMessage({
                 type: 'error',
-                text: 'Notifikácie sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky.',
+                text: 'Nepodarilo sa aktivovať notifikácie.',
             });
+        } finally {
+            setPushLoading(false);
         }
-
-        setPushLoading(false);
     };
 
     const handleDisableNotifications = async () => {
         setPushLoading(true);
         setPushMessage(null);
-        await unsubscribe();
-        setPushMessage({ type: 'success', text: 'Notifikácie boli vypnuté.' });
-        setPushLoading(false);
+        try {
+            const ok = await unsubscribe();
+            if (ok) {
+                setPushMessage({ type: 'success', text: 'Notifikácie boli vypnuté.' });
+            } else {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.',
+                });
+            }
+        } catch {
+            setPushMessage({
+                type: 'error',
+                text: 'Nepodarilo sa vypnúť notifikácie.',
+            });
+        } finally {
+            setPushLoading(false);
+        }
     };
 
     if (loading) {
