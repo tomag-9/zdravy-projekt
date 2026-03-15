@@ -368,6 +368,33 @@ class TestLoginFlow:
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
 
+    def test_login_with_duplicate_email_prefers_matching_active_account(
+        self, api_client
+    ):
+        """Login should succeed if one duplicate email account is active and matches password."""
+        User.objects.create_user(
+            username="dup-inactive",
+            email="duplicate@example.com",
+            password="inactive-pass",
+            is_active=False,
+        )
+        User.objects.create_user(
+            username="dup-active",
+            email="DUPLICATE@example.com",
+            password="active-pass",
+            is_active=True,
+        )
+
+        url = reverse("token_obtain_pair")
+        response = api_client.post(
+            url,
+            {"email": "duplicate@example.com", "password": "active-pass"},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "access" in response.data
+
     def test_login_with_inactive_user(self, api_client, user):
         """Test login fails for inactive user."""
         user.is_active = False

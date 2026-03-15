@@ -2,8 +2,10 @@ import { FileCheck, AlertCircle, Eraser } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { useApp } from "../../context/AppContext";
-import { DailyOrder, CategoryData } from "../../services/OrderService";
+import { CategoryData } from "../../services/OrderService";
 import { getSlovakPlural } from "../../../../lib/utils";
+
+type MealKey = "breakfast" | "lunch" | "olovrant";
 
 interface OrderSummaryProps {
   onSubmit: () => void;
@@ -20,7 +22,7 @@ const OrderSummary = ({
 }: OrderSummaryProps) => {
   const { currentOrder, activeMeals, selectedDate } = useApp();
 
-  const getMealTotal = (mealKey: keyof DailyOrder) => {
+  const getMealTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
 
     return Object.values(currentOrder[mealKey]).reduce(
@@ -36,7 +38,7 @@ const OrderSummary = ({
     );
   };
 
-  const getDietTotal = (mealKey: keyof DailyOrder) => {
+  const getDietTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
 
     return Object.values(currentOrder[mealKey]).reduce(
