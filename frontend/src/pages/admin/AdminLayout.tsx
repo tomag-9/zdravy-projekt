@@ -138,6 +138,17 @@ const AdminLayout: React.FC = () => {
                         <span className="mr-3">⚙️</span>
                         Systém
                     </Link>
+                    <Link
+                        to="/admin/push-notifications"
+                        className={`flex items-center px-4 py-3 rounded-xl transition-all duration-200 ${
+                            isActive('/admin/push-notifications')
+                                ? 'bg-indigo-50 text-indigo-700 font-medium translate-x-1'
+                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                        }`}
+                    >
+                        <span className="mr-3">🔔</span>
+                        Notifikácie
+                    </Link>
                 </nav>
                 <div className="p-4 border-t border-gray-100">
                     <button

@@ -4,12 +4,16 @@ data: users, diets, client settings, orders, meal plan templates and plans.
 
 Usage:
     python manage.py seed_dev_data
-    python manage.py seed_dev_data --flush   # wipe existing seed data first
+    python manage.py seed_dev_data --flush --confirm-flush FLUSH
+                                               # wipe existing seed data first
     python manage.py seed_dev_data --days 10  # seed N past weekdays
                                                # (orders + meal plans)
+    python manage.py seed_dev_data --allow-staging --days 10
+                                               # allow run with staging settings
 """
 
 import datetime
+import os
 import random
 
 from django.contrib.auth.models import Group, User
@@ -187,9 +191,20 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            "--allow-staging",
+            action="store_true",
+            help="Allow running with app.settings.staging (DEBUG=False).",
+        )
+        parser.add_argument(
             "--flush",
             action="store_true",
             help="Delete existing seed users and their orders before seeding",
+        )
+        parser.add_argument(
+            "--confirm-flush",
+            type=str,
+            default="",
+            help="Safety confirmation for --flush. Must be exactly: FLUSH",
         )
         parser.add_argument(
             "--days",
@@ -201,17 +216,36 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from django.conf import settings as django_settings
 
+        settings_module = os.environ.get("DJANGO_SETTINGS_MODULE") or getattr(
+            django_settings, "SETTINGS_MODULE", ""
+        )
+        is_staging = ".staging" in settings_module
+
         if not django_settings.DEBUG:
-            self.stderr.write(
-                self.style.ERROR(
-                    "seed_dev_data must only run with DEBUG=True. "
-                    "Refusing to run in production."
+            if not (is_staging and options["allow_staging"]):
+                self.stderr.write(
+                    self.style.ERROR(
+                        "seed_dev_data is blocked for DEBUG=False environments. "
+                        "For staging use --allow-staging."
+                    )
                 )
-            )
-            return
+                return
 
         flush = options["flush"]
         days = options["days"]
+
+        if days <= 0:
+            self.stderr.write(self.style.ERROR("--days must be a positive integer."))
+            return
+
+        if flush and options["confirm_flush"] != "FLUSH":
+            self.stderr.write(
+                self.style.ERROR(
+                    "Refusing to run --flush without confirmation. "
+                    "Re-run with: --confirm-flush FLUSH"
+                )
+            )
+            return
 
         if flush:
             seed_emails = {u["email"] for u in SEED_USERS}

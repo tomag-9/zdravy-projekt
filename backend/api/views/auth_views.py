@@ -1,6 +1,7 @@
 import logging
 
 from django.contrib.auth.models import User
+from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -23,6 +24,41 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     username_field = "email"
 
+    @staticmethod
+    def _find_user_for_login(email: str, password: str) -> User:
+        """
+        Resolve the login user for an email even if historical duplicate rows exist.
+
+        Priority:
+        1) active account with matching password
+        2) inactive account with matching password (so caller can raise inactive error)
+        """
+        candidates: QuerySet[User] = User.objects.filter(email__iexact=email).order_by(
+            "-is_active", "id"
+        )
+        if not candidates.exists():
+            raise InvalidCredentialsError()
+
+        if candidates.count() > 1:
+            logger.error(
+                "Duplicate user emails detected for %s (count=%s)",
+                email,
+                candidates.count(),
+            )
+
+        inactive_match: User | None = None
+        for candidate in candidates:
+            if not candidate.check_password(password):
+                continue
+            if candidate.is_active:
+                return candidate
+            if inactive_match is None:
+                inactive_match = candidate
+
+        if inactive_match is not None:
+            raise InactiveAccountError()
+        raise InvalidCredentialsError()
+
     def validate(self, attrs):
         """
         Authenticate by email + password and return JWT access/refresh tokens.
@@ -44,18 +80,7 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not email:
             raise InvalidCredentialsError()
 
-        try:
-            user = User.objects.get(email__iexact=email)
-        except User.DoesNotExist:
-            raise InvalidCredentialsError()
-        except User.MultipleObjectsReturned:
-            raise InvalidCredentialsError()
-
-        if not user.check_password(password):
-            raise InvalidCredentialsError()
-
-        if not user.is_active:
-            raise InactiveAccountError()
+        user = self._find_user_for_login(email=email, password=password)
 
         refresh = RefreshToken.for_user(user)
         return {
