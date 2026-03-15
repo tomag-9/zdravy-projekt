@@ -50,7 +50,7 @@ class Command(BaseCommand):
         )
 
         raw_private = private_key.private_bytes(
-            Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption
+            Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()
         ).decode("ascii")
 
         self.stdout.write(
