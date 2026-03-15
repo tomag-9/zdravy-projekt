@@ -11,8 +11,8 @@
 import { useEffect, useState } from 'react';
 import { usePWA } from '../hooks/usePWA';
 
-const DISMISS_KEY = 'zdravy-install-banner-dismissed-until';
-const DISMISS_DAYS = 30;
+const DISMISS_KEY = 'zdravy-install-banner-dismissed-until-v2';
+const DISMISS_DAYS = 7;
 
 function isDismissed(): boolean {
   const until = localStorage.getItem(DISMISS_KEY);
