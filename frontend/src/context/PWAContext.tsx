@@ -31,6 +31,10 @@ function detectIOS(): boolean {
   );
 }
 
+function detectAndroid(): boolean {
+  return /Android/i.test(navigator.userAgent);
+}
+
 function detectStandalone(): boolean {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -41,6 +45,7 @@ function detectStandalone(): boolean {
 export function PWAProvider({ children }: { children: React.ReactNode }) {
   const [isStandalone] = useState(detectStandalone);
   const [isIOS] = useState(detectIOS);
+  const [isAndroid] = useState(detectAndroid);
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [swRegistration, setSwRegistration] =
@@ -87,6 +92,7 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
       value={{
         isStandalone,
         isIOS,
+        isAndroid,
         canInstall: !!deferredPrompt,
         installPrompt,
         swRegistration,
