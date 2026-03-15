@@ -7,16 +7,31 @@ Stale subscriptions (HTTP 410/404 from the push server) are automatically remove
 
 import json
 import logging
+from functools import lru_cache
+from importlib import import_module
 from typing import Any
 
 from django.conf import settings
-from pywebpush import WebPushException, webpush
 
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=1)
+def _load_pywebpush() -> tuple[type[Exception] | None, Any | None]:
+    try:
+        module = import_module("pywebpush")
+    except ImportError:
+        return None, None
+    return getattr(module, "WebPushException", None), getattr(module, "webpush", None)
+
+
 class PushNotificationService:
     """Wraps pywebpush to send Web Push notifications to stored subscriptions."""
+
+    @staticmethod
+    def is_available() -> bool:
+        _, webpush_func = _load_pywebpush()
+        return webpush_func is not None
 
     @staticmethod
     def _build_subscription_info(subscription: Any) -> dict:
@@ -45,9 +60,16 @@ class PushNotificationService:
         """
         payload = json.dumps({"title": title, "body": body, "url": url})
         claims = {"sub": f"mailto:{settings.VAPID_ADMIN_EMAIL}"}
+        webpush_exception_cls, webpush_func = _load_pywebpush()
+
+        if webpush_func is None:
+            logger.error(
+                "pywebpush is not installed; push notifications are unavailable"
+            )
+            return False, False
 
         try:
-            webpush(
+            webpush_func(
                 subscription_info=PushNotificationService._build_subscription_info(
                     subscription
                 ),
@@ -56,25 +78,27 @@ class PushNotificationService:
                 vapid_claims=claims,
             )
             return True, False
-        except WebPushException as exc:
-            response = exc.response
-            status = response.status_code if response is not None else None
-            if status in (404, 410):
-                logger.info(
-                    "Removing stale push subscription pk=%s (HTTP %s)",
-                    subscription.pk,
-                    status,
-                )
-                subscription.delete()
-                return False, True
-            else:
+        except Exception as exc:
+            if webpush_exception_cls is not None and isinstance(
+                exc, webpush_exception_cls
+            ):
+                response = getattr(exc, "response", None)
+                status = response.status_code if response is not None else None
+                if status in (404, 410):
+                    logger.info(
+                        "Removing stale push subscription pk=%s (HTTP %s)",
+                        subscription.pk,
+                        status,
+                    )
+                    subscription.delete()
+                    return False, True
                 logger.warning(
                     "Push delivery failed for subscription pk=%s: %s",
                     subscription.pk,
                     exc,
                 )
-            return False, False
-        except Exception as exc:
+                return False, False
+
             logger.exception(
                 "Unexpected error sending push to subscription pk=%s: %s",
                 subscription.pk,

@@ -30,29 +30,55 @@ def _make_push_exception(status_code: int):
 
 @pytest.mark.django_db
 class TestSendToSubscription:
-    def test_returns_true_on_success(self, settings):
+    def test_returns_false_when_pywebpush_is_unavailable(self, settings):
         settings.VAPID_PRIVATE_KEY = "fake-private-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory()
 
-        with patch("api.services.push_notification_service.webpush") as mock_wp:
+        with patch(
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(None, None),
+        ):
+            result = PushNotificationService.send_to_subscription(
+                sub, title="Hello", body="World"
+            )
+
+        assert result == (False, False)
+
+    def test_returns_true_on_success(self, settings):
+        from pywebpush import WebPushException
+
+        settings.VAPID_PRIVATE_KEY = "fake-private-key"
+        settings.VAPID_ADMIN_EMAIL = "admin@example.com"
+        sub = PushSubscriptionFactory()
+
+        with patch(
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(WebPushException, MagicMock()),
+        ) as mock_loader:
             result = PushNotificationService.send_to_subscription(
                 sub, title="Hello", body="World"
             )
 
         assert result == (True, False)
+        mock_wp = mock_loader.return_value[1]
         mock_wp.assert_called_once()
 
     def test_returns_false_and_deletes_on_410(self, settings):
         """HTTP 410 (Gone) marks subscription as stale and removes it."""
+        from pywebpush import WebPushException
+
         settings.VAPID_PRIVATE_KEY = "fake-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory()
         sub_pk = sub.pk
 
         with patch(
-            "api.services.push_notification_service.webpush",
-            side_effect=_make_push_exception(410),
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(
+                WebPushException,
+                MagicMock(side_effect=_make_push_exception(410)),
+            ),
         ):
             result = PushNotificationService.send_to_subscription(
                 sub, title="Test", body="Body"
@@ -63,14 +89,19 @@ class TestSendToSubscription:
 
     def test_returns_false_and_deletes_on_404(self, settings):
         """HTTP 404 (endpoint not found) also removes the stale subscription."""
+        from pywebpush import WebPushException
+
         settings.VAPID_PRIVATE_KEY = "fake-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory()
         sub_pk = sub.pk
 
         with patch(
-            "api.services.push_notification_service.webpush",
-            side_effect=_make_push_exception(404),
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(
+                WebPushException,
+                MagicMock(side_effect=_make_push_exception(404)),
+            ),
         ):
             result = PushNotificationService.send_to_subscription(
                 sub, title="Test", body="Body"
@@ -81,14 +112,19 @@ class TestSendToSubscription:
 
     def test_returns_false_but_keeps_record_on_other_http_error(self, settings):
         """A 500-class error returns False but does NOT remove the subscription."""
+        from pywebpush import WebPushException
+
         settings.VAPID_PRIVATE_KEY = "fake-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory()
         sub_pk = sub.pk
 
         with patch(
-            "api.services.push_notification_service.webpush",
-            side_effect=_make_push_exception(500),
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(
+                WebPushException,
+                MagicMock(side_effect=_make_push_exception(500)),
+            ),
         ):
             result = PushNotificationService.send_to_subscription(
                 sub, title="Test", body="Body"
@@ -100,13 +136,18 @@ class TestSendToSubscription:
 
     def test_returns_false_on_unexpected_exception(self, settings):
         """Non-WebPushException errors are caught and return False."""
+        from pywebpush import WebPushException
+
         settings.VAPID_PRIVATE_KEY = "fake-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory()
 
         with patch(
-            "api.services.push_notification_service.webpush",
-            side_effect=RuntimeError("unexpected"),
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(
+                WebPushException,
+                MagicMock(side_effect=RuntimeError("unexpected")),
+            ),
         ):
             result = PushNotificationService.send_to_subscription(
                 sub, title="Test", body="Body"
@@ -116,6 +157,8 @@ class TestSendToSubscription:
 
     def test_webpush_receives_correct_subscription_info(self, settings):
         """send_to_subscription passes endpoint and keys correctly to webpush."""
+        from pywebpush import WebPushException
+
         settings.VAPID_PRIVATE_KEY = "fake-key"
         settings.VAPID_ADMIN_EMAIL = "admin@example.com"
         sub = PushSubscriptionFactory(
@@ -124,9 +167,13 @@ class TestSendToSubscription:
             auth="my-auth",
         )
 
-        with patch("api.services.push_notification_service.webpush") as mock_wp:
+        with patch(
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(WebPushException, MagicMock()),
+        ) as mock_loader:
             PushNotificationService.send_to_subscription(sub, title="T", body="B")
 
+        mock_wp = mock_loader.return_value[1]
         call_kwargs = mock_wp.call_args.kwargs
         sub_info = call_kwargs["subscription_info"]
         assert sub_info["endpoint"] == "https://example.com/ep"

@@ -94,6 +94,13 @@ class AdminSendPushView(APIView):
     permission_classes = [IsAdminUser]
 
     def post(self, request: Request) -> Response:
+        if not PushNotificationService.is_available():
+            logger.error("Admin push send attempted while pywebpush is unavailable")
+            return Response(
+                {"detail": "Push notifications are temporarily unavailable."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         title = request.data.get("title", "").strip()
         body_text = request.data.get("body", "").strip()
         url = request.data.get("url", "/home").strip() or "/home"

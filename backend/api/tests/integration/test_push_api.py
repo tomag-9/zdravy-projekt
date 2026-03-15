@@ -302,6 +302,25 @@ class TestAdminSendPushView:
         _, kwargs = mock_send.call_args
         assert kwargs["url"] == "/home"
 
+    def test_returns_503_when_push_dependency_is_unavailable(self, admin_client):
+        from unittest.mock import patch
+
+        with patch(
+            "api.views.push_views.PushNotificationService.is_available",
+            return_value=False,
+        ):
+            response = admin_client.post(
+                ADMIN_SEND_URL,
+                {"title": "Test", "body": "Body"},
+                format="json",
+            )
+
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert (
+            response.json()["detail"]
+            == "Push notifications are temporarily unavailable."
+        )
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PushSubscription model constraints
