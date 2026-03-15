@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Shield, Calendar, Save } from 'lucide-react';
+import { ArrowLeft, User, Mail, Shield, Calendar, Save, Bell } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
+import { usePushNotifications } from '../../../hooks/usePushNotifications';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -26,10 +27,19 @@ interface UserProfile {
 
 const ProfilePage = () => {
     const { apiFetch } = useAuth();
+    const {
+        permission,
+        isSubscribed,
+        subscribe,
+        unsubscribe,
+        error: pushError,
+    } = usePushNotifications();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [pushLoading, setPushLoading] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const [pushMessage, setPushMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     const [formData, setFormData] = useState({
         first_name: '',
@@ -98,6 +108,60 @@ const ProfilePage = () => {
             month: 'long',
             day: 'numeric'
         });
+    };
+
+    const handleEnableNotifications = async () => {
+        setPushLoading(true);
+        setPushMessage(null);
+        try {
+            const ok = await subscribe();
+            const currentPermission =
+                typeof Notification !== 'undefined' ? Notification.permission : permission;
+
+            if (ok) {
+                setPushMessage({ type: 'success', text: 'Notifikácie boli úspešne aktivované.' });
+            } else if (currentPermission === 'denied') {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky.',
+                });
+            } else {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sa nepodarilo aktivovať. Skúste to prosím znova.',
+                });
+            }
+        } catch {
+            setPushMessage({
+                type: 'error',
+                text: 'Nepodarilo sa aktivovať notifikácie.',
+            });
+        } finally {
+            setPushLoading(false);
+        }
+    };
+
+    const handleDisableNotifications = async () => {
+        setPushLoading(true);
+        setPushMessage(null);
+        try {
+            const ok = await unsubscribe();
+            if (ok) {
+                setPushMessage({ type: 'success', text: 'Notifikácie boli vypnuté.' });
+            } else {
+                setPushMessage({
+                    type: 'error',
+                    text: 'Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.',
+                });
+            }
+        } catch {
+            setPushMessage({
+                type: 'error',
+                text: 'Nepodarilo sa vypnúť notifikácie.',
+            });
+        } finally {
+            setPushLoading(false);
+        }
     };
 
     if (loading) {
@@ -232,6 +296,61 @@ const ProfilePage = () => {
                             <div>
                                 <p className="text-sm font-medium text-slate-700">Dátum registrácie</p>
                                 <p className="text-sm text-slate-600">{profile?.date_joined && formatDate(profile.date_joined)}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                                <Bell className="w-5 h-5 text-slate-500" />
+                                <div>
+                                    <p className="text-sm font-medium text-slate-700">Push notifikácie</p>
+                                    <p className="text-sm text-slate-600">
+                                        {isSubscribed
+                                            ? 'Notifikácie sú aktívne.'
+                                            : 'Ak sa výzva nezobrazí automaticky, povoľte notifikácie ručne.'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {permission === 'denied' && (
+                                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                                    Notifikácie sú zamietnuté. V prehliadači otvorte Nastavenia stránky a povoľte notifikácie pre túto doménu.
+                                </p>
+                            )}
+
+                            {pushError && (
+                                <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
+                                    {pushError}
+                                </p>
+                            )}
+
+                            {pushMessage && (
+                                <div className={`p-3 rounded-lg text-sm font-medium ${
+                                    pushMessage.type === 'success'
+                                        ? 'bg-green-50 text-green-700 border border-green-200'
+                                        : 'bg-red-50 text-red-700 border border-red-200'
+                                }`}>
+                                    {pushMessage.text}
+                                </div>
+                            )}
+
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    onClick={handleEnableNotifications}
+                                    disabled={pushLoading || permission === 'unsupported' || isSubscribed}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg transition-colors"
+                                >
+                                    {pushLoading ? 'Spracúvam...' : 'Povoliť notifikácie'}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleDisableNotifications}
+                                    disabled={pushLoading || !isSubscribed}
+                                    className="px-4 py-2 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors"
+                                >
+                                    Vypnúť notifikácie
+                                </button>
                             </div>
                         </div>
 
