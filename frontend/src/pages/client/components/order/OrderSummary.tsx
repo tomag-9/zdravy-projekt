@@ -2,10 +2,10 @@ import { FileCheck, AlertCircle, Eraser } from "lucide-react";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { useApp } from "../../context/AppContext";
-import { DailyOrder, CategoryData } from "../../services/OrderService";
+import { CategoryData } from "../../services/OrderService";
 import { getSlovakPlural } from "../../../../lib/utils";
 
-type MealKey = keyof Pick<DailyOrder, "breakfast" | "lunch" | "olovrant">;
+type MealKey = "breakfast" | "lunch" | "olovrant";
 
 interface OrderSummaryProps {
   onSubmit: () => void;
