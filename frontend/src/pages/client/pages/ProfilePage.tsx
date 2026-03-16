@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Shield, Calendar, Save, Bell, Download } from 'lucide-react';
+import { ArrowLeft, User, Mail, Shield, Calendar, Save, Bell, Download, LogOut } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import { usePushNotifications } from '../../../hooks/usePushNotifications';
 import { usePWA } from '../../../hooks/usePWA';
+import ConfirmationModal from '../components/ui/ConfirmationModal';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -29,7 +30,7 @@ interface UserProfile {
 }
 
 const ProfilePage = () => {
-    const { apiFetch } = useAuth();
+    const { apiFetch, logout } = useAuth();
     const {
         permission,
         isSubscribed,
@@ -48,6 +49,7 @@ const ProfilePage = () => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [pushLoading, setPushLoading] = useState(false);
+    const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [pushMessage, setPushMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
     const [pwaMessage, setPwaMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
@@ -245,10 +247,20 @@ const ProfilePage = () => {
             <div className="max-w-4xl mx-auto p-6">
                 {/* Header */}
                 <div className="mb-8 pt-4">
-                    <Link to="/home" className="inline-flex items-center gap-2 text-slate-600 hover:text-indigo-600 transition-colors mb-4">
-                        <ArrowLeft className="w-4 h-4" />
-                        <span className="text-sm font-medium">Späť na domovskú stránku</span>
-                    </Link>
+                    <div className="flex items-center justify-between gap-3 mb-4">
+                        <Link to="/home" className="inline-flex items-center gap-2 text-slate-600 hover:text-indigo-600 transition-colors">
+                            <ArrowLeft className="w-4 h-4" />
+                            <span className="text-sm font-medium">Späť na domovskú stránku</span>
+                        </Link>
+                        <button
+                            type="button"
+                            onClick={() => setShowLogoutConfirmation(true)}
+                            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
+                        >
+                            <LogOut className="w-4 h-4" />
+                            Odhlásiť sa
+                        </button>
+                    </div>
                     <h1 className="text-3xl font-bold text-slate-900 mb-1">Môj profil</h1>
                     <p className="text-slate-600">Spravujte svoje osobné údaje</p>
                 </div>
@@ -466,6 +478,17 @@ const ProfilePage = () => {
                     </form>
                 </div>
             </div>
+
+            <ConfirmationModal
+                isOpen={showLogoutConfirmation}
+                onClose={() => setShowLogoutConfirmation(false)}
+                onConfirm={logout}
+                title="Odhlásenie"
+                description="Naozaj sa chcete odhlásiť z aplikácie?"
+                confirmText="Odhlásiť sa"
+                cancelText="Zrušiť"
+                variant="danger"
+            />
         </div>
     );
 };

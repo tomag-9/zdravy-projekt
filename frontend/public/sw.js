@@ -56,6 +56,15 @@ self.addEventListener('fetch', (event) => {
   // Never intercept API calls – always hit the network
   if (url.pathname.startsWith('/api/')) return;
 
+  // Let browser fetch installability-critical resources directly.
+  if (
+    url.pathname === '/manifest.json' ||
+    url.pathname === '/sw.js' ||
+    url.pathname.startsWith('/cdn-cgi/')
+  ) {
+    return;
+  }
+
   // Let non-GET requests pass through untouched.
   if (event.request.method !== 'GET') return;
 
