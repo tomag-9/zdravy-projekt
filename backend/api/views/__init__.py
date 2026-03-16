@@ -19,9 +19,6 @@ from .auth_views import (
 # Diet views
 from .diet_views import DietViewSet
 
-# Email verification views
-from .email_verification_views import EmailVerificationView, ResendVerificationEmailView
-
 # Meal plan views
 from .meal_plan_views import (
     DailyMealPlanViewSet,
@@ -32,14 +29,8 @@ from .meal_plan_views import (
 # Order views
 from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrdersViewSet
 
-# Pending registrations views
-from .pending_registrations_views import PendingRegistrationsViewSet
-
 # Push notification views
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
-
-# Registration views
-from .registration_views import RegistrationView
 
 # Report views
 from .report_task_views import ReportTaskViewSet
@@ -54,10 +45,6 @@ __all__ = [
     "EmailTokenObtainPairView",
     "PasswordResetRequestView",
     "PasswordResetConfirmView",
-    "RegistrationView",
-    "EmailVerificationView",
-    "ResendVerificationEmailView",
-    "PendingRegistrationsViewSet",
     # Orders
     "DailyOrderViewSet",
     "PlannedOrdersViewSet",

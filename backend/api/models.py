@@ -111,23 +111,21 @@ class GlobalSettings(models.Model):
 
 class UserProfile(models.Model):
     """
-    Extended user profile with company information.
-    Users register with company details and must be approved by admin.
+    Extended user profile with company information and client type.
+    Accounts are created exclusively by admin.
     """
 
-    REGISTRATION_PENDING = "pending"
-    REGISTRATION_APPROVED = "approved"
-    REGISTRATION_DENIED = "denied"
+    CLIENT_TYPE_APP = "app"
+    CLIENT_TYPE_API = "api"
 
-    REGISTRATION_STATUS_CHOICES = [
-        (REGISTRATION_PENDING, "Pending approval"),
-        (REGISTRATION_APPROVED, "Approved"),
-        (REGISTRATION_DENIED, "Denied"),
+    CLIENT_TYPE_CHOICES = [
+        (CLIENT_TYPE_APP, "Používateľ aplikácie"),
+        (CLIENT_TYPE_API, "API používateľ"),
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
-        max_length=255, help_text="Primary company name (required)"
+        max_length=255, blank=True, help_text="Primary company name"
     )
     ico = models.CharField(
         max_length=20, blank=True, help_text="Company registration number (IČO)"
@@ -135,65 +133,26 @@ class UserProfile(models.Model):
     dic = models.CharField(
         max_length=20, blank=True, help_text="Tax identification number (DIČ)"
     )
-    registration_status = models.CharField(
-        max_length=20,
-        choices=REGISTRATION_STATUS_CHOICES,
-        default=REGISTRATION_PENDING,
+    client_type = models.CharField(
+        max_length=10,
+        choices=CLIENT_TYPE_CHOICES,
+        default=CLIENT_TYPE_APP,
         db_index=True,
     )
-    email_verified = models.BooleanField(default=False)
-    registration_date = models.DateTimeField(auto_now_add=True)
-    approval_date = models.DateTimeField(null=True, blank=True)
-    approved_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
+    api_identifier = models.CharField(
+        max_length=255,
         blank=True,
-        related_name="approved_users",
+        help_text="API key/identifier used for data pairing (API users only)",
     )
-    denial_reason = models.TextField(blank=True)
-
-    class Meta:
-        ordering = ["-registration_date"]
-        indexes = [
-            models.Index(fields=["registration_status", "email_verified"]),
-            models.Index(
-                fields=["registration_status", "registration_date"],
-                name="pending_reg_idx",
-            ),  # For efficient pending registration queries
-        ]
-
-    def __str__(self) -> str:
-        return f"{self.company_name} ({self.user.email})"
-
-
-class EmailVerificationToken(models.Model):
-    """
-    Token for email verification during registration.
-    Expires after 24 hours and is single-use.
-    """
-
-    user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="email_verification_tokens"
-    )
-    token = models.CharField(max_length=128, unique=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    used = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"EmailVerificationToken for {self.user.email}"
-
-    @property
-    def is_expired(self) -> bool:
-        return timezone.now() >= self.expires_at
-
-    @property
-    def is_valid(self) -> bool:
-        return not self.used and not self.is_expired
+        return (
+            f"{self.company_name or self.user.email} ({self.get_client_type_display()})"
+        )
 
 
 class PasswordResetToken(models.Model):

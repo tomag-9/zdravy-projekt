@@ -103,10 +103,17 @@ def request_password_reset(email: str) -> None:
 
     # ── 5. Look up user (silent no-op when unknown) ───────────────────────────
     try:
-        user = User.objects.get(email__iexact=email, is_active=True)
+        user = User.objects.select_related("profile").get(
+            email__iexact=email, is_active=True
+        )
     except User.DoesNotExist:
         # Do NOT raise – we must not leak whether the address is registered.
         logger.debug("Password reset requested for unknown/inactive email: %s", email)
+        return
+
+    # API users never log in – silently skip to avoid leaking their existence.
+    if hasattr(user, "profile") and user.profile.client_type == "api":
+        logger.debug("Password reset skipped for API user: %s", email)
         return
 
     # ── 6. Invalidate any existing tokens ────────────────────────────────────

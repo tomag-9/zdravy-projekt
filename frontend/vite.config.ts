@@ -7,12 +7,20 @@ export default defineConfig({
   server: {
     host: true,
     port: 3000,
+    hmr: {
+      host: 'localhost',
+      port: 3000,
+      protocol: 'ws',
+    },
     proxy: {
       '/api': {
         target: 'http://backend:8000',
         changeOrigin: true,
       },
     },
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
   },
   build: {
     outDir: 'dist',

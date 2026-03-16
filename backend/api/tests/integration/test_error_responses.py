@@ -66,8 +66,8 @@ class TestValidationErrors:
 
     def test_missing_token_field(self, api_client):
         """Test missing token field returns standardized error."""
-        url = reverse("verify_email")
-        response = api_client.post(url, {}, format="json")
+        url = reverse("password_reset_confirm")
+        response = api_client.post(url, {"new_password": "NewPass123"}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"]["code"] == "missing_required_field"
@@ -168,26 +168,6 @@ class TestRateLimitErrors:
                 "retry_after_seconds" in response2.data["error"]["details"]
                 or "wait_seconds" in response2.data["error"]["details"]
             )
-
-    def test_verification_resend_rate_limit(self, api_client, user):
-        """Test email verification resend rate limiting."""
-        url = reverse("resend_verification")
-
-        # First request
-        response1 = api_client.post(url, {"email": user.email}, format="json")
-        # Could be 200 or 429 depending on timing
-        assert response1.status_code in [
-            status.HTTP_200_OK,
-            status.HTTP_429_TOO_MANY_REQUESTS,
-        ]
-
-        # Immediate second request should be rate limited
-        response2 = api_client.post(url, {"email": user.email}, format="json")
-
-        if response2.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-            assert "error" in response2.data
-            assert response2.data["error"]["code"] == "too_soon"
-            assert "wait_seconds" in response2.data["error"]["details"]
 
 
 @pytest.mark.django_db

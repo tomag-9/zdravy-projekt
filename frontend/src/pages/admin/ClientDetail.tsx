@@ -15,6 +15,12 @@ interface UserSettings {
   admin_order_note?: string;
 }
 
+interface UserProfile {
+  client_type: "app" | "api";
+  api_identifier: string;
+  company_name: string;
+}
+
 interface AdminUser {
   id: number;
   email: string;
@@ -23,6 +29,7 @@ interface AdminUser {
   is_active: boolean;
   is_staff: boolean;
   settings: UserSettings | null;
+  profile: UserProfile | null;
 }
 
 interface OrderData {
@@ -209,6 +216,13 @@ const ClientDetail: React.FC = () => {
   if (!user)
     return <div className="p-8 text-center text-red-500">Klient nenájdený</div>;
 
+  const isApiClient = user.profile?.client_type === "api";
+
+  // If the current tab is not valid for this client type, reset to dashboard.
+  if (isApiClient && activeTab !== "dashboard") {
+    setActiveTab("dashboard");
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
       <div>
@@ -230,6 +244,18 @@ const ClientDetail: React.FC = () => {
                   : user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
+              {isApiClient && (
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    API klient
+                  </span>
+                  {user.profile?.api_identifier && (
+                    <span className="text-sm text-gray-500 font-mono">
+                      ID: {user.profile.api_identifier}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -247,26 +273,30 @@ const ClientDetail: React.FC = () => {
         >
           Prehľad objednávok
         </button>
-        <button
-          onClick={() => setActiveTab("settings")}
-          className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === "settings"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-900"
-          }`}
-        >
-          Nastavenia
-        </button>
-        <button
-          onClick={() => setActiveTab("order_note")}
-          className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === "order_note"
-              ? "bg-white text-gray-900 shadow-sm"
-              : "text-gray-500 hover:text-gray-900"
-          }`}
-        >
-          Poznámka k objednávke
-        </button>
+        {!isApiClient && (
+          <>
+            <button
+              onClick={() => setActiveTab("settings")}
+              className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "settings"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              Nastavenia
+            </button>
+            <button
+              onClick={() => setActiveTab("order_note")}
+              className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === "order_note"
+                  ? "bg-white text-gray-900 shadow-sm"
+                  : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              Poznámka k objednávke
+            </button>
+          </>
+        )}
       </div>
 
       {activeTab === "dashboard" && (
@@ -518,7 +548,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "settings" && (
+      {activeTab === "settings" && !isApiClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="grid gap-8 grid-cols-1 md:grid-cols-2">
             {/* Menus Section */}
@@ -661,7 +691,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "order_note" && (
+      {activeTab === "order_note" && !isApiClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
