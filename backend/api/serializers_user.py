@@ -40,101 +40,11 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
             "company_name",
             "ico",
             "dic",
-            "registration_status",
-            "email_verified",
-            "registration_date",
+            "client_type",
+            "api_identifier",
+            "created_at",
         ]
-        read_only_fields = [
-            "registration_status",
-            "email_verified",
-            "registration_date",
-        ]
-
-
-class RegistrationSerializer(serializers.ModelSerializer):
-    """
-    Serializer for new user registration with company details.
-    Creates user with pending status awaiting admin approval.
-    """
-
-    email = serializers.EmailField(required=True)
-    password = serializers.CharField(
-        write_only=True,
-        required=True,
-        style={"input_type": "password"},
-        validators=[validate_password_strength],
-    )
-    password_confirm = serializers.CharField(
-        write_only=True,
-        required=True,
-        style={"input_type": "password"},
-    )
-    company_name = serializers.CharField(required=True, max_length=255)
-    ico = serializers.CharField(required=False, allow_blank=True, max_length=20)
-    dic = serializers.CharField(required=False, allow_blank=True, max_length=20)
-    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-
-    class Meta:
-        model = User
-        fields = [
-            "email",
-            "password",
-            "password_confirm",
-            "first_name",
-            "last_name",
-            "company_name",
-            "ico",
-            "dic",
-        ]
-
-    def validate_email(self, value: str) -> str:
-        """Check that email is unique."""
-        normalized_email = value.lower()
-        if (
-            User.objects.filter(username__iexact=normalized_email).exists()
-            or User.objects.filter(email__iexact=normalized_email).exists()
-        ):
-            raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
-        return normalized_email
-
-    def validate(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate passwords match."""
-        if data["password"] != data["password_confirm"]:
-            raise serializers.ValidationError(
-                {"password_confirm": "Heslá sa nezhodujú."}
-            )
-        return data
-
-    def create(self, validated_data: Dict[str, Any]) -> User:
-        """Create user and profile with pending status."""
-        # Remove fields not for User model
-        password = validated_data.pop("password")
-        validated_data.pop("password_confirm")
-        company_name = validated_data.pop("company_name")
-        ico = validated_data.pop("ico", "")
-        dic = validated_data.pop("dic", "")
-
-        # Create user (inactive until approved)
-        email = validated_data["email"]
-        validated_data["username"] = email
-        validated_data["is_active"] = False  # Inactive until admin approves
-
-        user = User.objects.create(**validated_data)
-        user.set_password(password)
-        user.save()
-
-        # Create profile
-        UserProfile.objects.create(
-            user=user,
-            company_name=company_name,
-            ico=ico,
-            dic=dic,
-            registration_status=UserProfile.REGISTRATION_PENDING,
-            email_verified=False,
-        )
-
-        return user
+        read_only_fields = ["created_at"]
 
 
 class ClientSettingsSerializer(serializers.ModelSerializer):
@@ -303,11 +213,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
     profile = serializers.SerializerMethodField()
     company_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
-    password = serializers.CharField(
+    client_type = serializers.ChoiceField(
+        choices=UserProfile.CLIENT_TYPE_CHOICES,
+        required=False,
         write_only=True,
+    )
+    api_identifier = serializers.CharField(
         required=False,
         allow_blank=True,
-        style={"input_type": "password"},
+        write_only=True,
     )
 
     class Meta:
@@ -322,7 +236,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_staff",
             "settings",
             "profile",
-            "password",
+            "client_type",
+            "api_identifier",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -337,7 +252,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return normalized_email
 
     def create(self, validated_data: Dict[str, Any]) -> User:
-        password = validated_data.pop("password", None)
+        client_type = validated_data.pop("client_type", UserProfile.CLIENT_TYPE_APP)
+        api_identifier = validated_data.pop("api_identifier", "")
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -350,11 +266,16 @@ class AdminUserSerializer(serializers.ModelSerializer):
         validated_data["email"] = normalized_email
         validated_data["username"] = normalized_email
         user = User(**validated_data)
-        if password:
-            user.set_password(password)
-        else:
-            user.set_unusable_password()
+        user.set_unusable_password()
         user.save()
+
+        # Create profile with client type
+        UserProfile.objects.create(
+            user=user,
+            client_type=client_type,
+            api_identifier=api_identifier,
+        )
+
         return user
 
     def get_company_name(self, obj: User) -> str:
@@ -385,6 +306,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         being applied.
         """
         settings_data = self.initial_data.get("settings", None)
+        client_type = validated_data.pop("client_type", serializers.empty)
+        api_identifier = validated_data.pop("api_identifier", serializers.empty)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
@@ -404,6 +327,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
             validated_data["username"] = new_email
 
         instance = super().update(instance, validated_data)
+
+        if (
+            client_type is not serializers.empty
+            or api_identifier is not serializers.empty
+        ):
+            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            if client_type is not serializers.empty:
+                profile.client_type = client_type
+            if api_identifier is not serializers.empty:
+                profile.api_identifier = api_identifier
+            profile.save()
 
         if settings_data is not None:
             settings_serializer = AdminClientSettingsSerializer(data=settings_data)
@@ -429,29 +363,3 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 settings_obj.visible_diets.set(visible_diets)
 
         return instance
-
-
-class PendingRegistrationSerializer(serializers.ModelSerializer):
-    """Serializer for pending user registrations (admin view)."""
-
-    profile = UserProfileDetailSerializer(read_only=True)
-    company_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "email",
-            "first_name",
-            "last_name",
-            "company_name",
-            "profile",
-            "date_joined",
-        ]
-        read_only_fields = fields
-
-    def get_company_name(self, obj: User) -> str:
-        """Return company name from profile."""
-        if hasattr(obj, "profile"):
-            return obj.profile.company_name
-        return ""

@@ -51,6 +51,43 @@ def send_password_reset_email(user: User, token: str) -> None:
         raise
 
 
+def send_account_setup_email(user: User) -> str:
+    """
+    Create a PasswordResetToken with 7-day expiry and send an account-setup email.
+
+    Returns the token value so callers can log it if needed.
+    """
+    import datetime
+    import secrets
+
+    from django.utils import timezone
+
+    from .models import PasswordResetToken
+
+    TOKEN_EXPIRY_DAYS = 7
+
+    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
+
+    # Invalidate any existing unused tokens for this user
+    PasswordResetToken.objects.filter(user=user, used=False).update(used=True)
+
+    token_value = secrets.token_urlsafe(32)
+    expires_at = timezone.now() + datetime.timedelta(days=TOKEN_EXPIRY_DAYS)
+    PasswordResetToken.objects.create(
+        user=user,
+        token=token_value,
+        expires_at=expires_at,
+    )
+
+    setup_url = f"{frontend_url}/set-password?token={token_value}"
+
+    from .services.notification_service import NotificationService
+
+    NotificationService.send_account_setup_email(user=user, setup_url=setup_url)
+
+    return token_value
+
+
 def send_daily_report_email(
     recipients: list[str],
     report_date: str,

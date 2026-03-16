@@ -12,20 +12,32 @@ interface AdUser {
   is_staff: boolean;
 }
 
-interface CreateForm {
+interface AdminCreateForm {
   email: string;
   first_name: string;
   last_name: string;
-  password: string;
-  is_staff: boolean;
 }
 
-const EMPTY_FORM: CreateForm = {
+interface ClientCreateForm {
+  email: string;
+  first_name: string;
+  last_name: string;
+  client_type: "app" | "api";
+  api_identifier: string;
+}
+
+const EMPTY_ADMIN_FORM: AdminCreateForm = {
   email: "",
   first_name: "",
   last_name: "",
-  password: "",
-  is_staff: false,
+};
+
+const EMPTY_CLIENT_FORM: ClientCreateForm = {
+  email: "",
+  first_name: "",
+  last_name: "",
+  client_type: "app",
+  api_identifier: "",
 };
 
 const AdminUserList: React.FC = () => {
@@ -35,9 +47,10 @@ const AdminUserList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
 
-  // Create modal
-  const [showCreate, setShowCreate] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateForm>(EMPTY_FORM);
+  // Create modals
+  const [createMode, setCreateMode] = useState<"admin" | "client" | null>(null);
+  const [adminForm, setAdminForm] = useState<AdminCreateForm>(EMPTY_ADMIN_FORM);
+  const [clientForm, setClientForm] = useState<ClientCreateForm>(EMPTY_CLIENT_FORM);
   const [creating, setCreating] = useState(false);
 
   // Delete confirmation
@@ -67,10 +80,10 @@ const AdminUserList: React.FC = () => {
     fetchUsers();
   }, [fetchUsers]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleCreateAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createForm.email.trim()) {
-      toastError("Email je povinn\u00fd.");
+    if (!adminForm.email.trim()) {
+      toastError("Email je povinný.");
       return;
     }
     setCreating(true);
@@ -80,20 +93,50 @@ const AdminUserList: React.FC = () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...createForm, is_active: true }),
+          body: JSON.stringify({ ...adminForm, is_staff: true, is_active: true }),
         },
       );
       if (res.ok) {
-        success("Účet bol úspešne vytvorený.");
-        setShowCreate(false);
-        setCreateForm(EMPTY_FORM);
+        success("Admin účet bol úspešne vytvorený.");
+        setCreateMode(null);
+        setAdminForm(EMPTY_ADMIN_FORM);
         fetchUsers();
       } else {
         const data = await res.json().catch(() => ({}));
-        const msg =
-          data?.email?.[0] ||
-          "Nepodarilo sa vytvoriť účet.";
-        toastError(msg);
+        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Chyba pri vytváraní účtu.");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!clientForm.email.trim()) {
+      toastError("Email je povinný.");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...clientForm, is_staff: false, is_active: true }),
+        },
+      );
+      if (res.ok) {
+        success("Klient bol úspešne vytvorený.");
+        setCreateMode(null);
+        setClientForm(EMPTY_CLIENT_FORM);
+        fetchUsers();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
       }
     } catch (e) {
       console.error(e);
@@ -144,15 +187,20 @@ const AdminUserList: React.FC = () => {
               Spravujte používateľov, ich osobné údaje a role.
             </p>
           </div>
-          <button
-            onClick={() => {
-              setShowCreate(true);
-              setCreateForm(EMPTY_FORM);
-            }}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
-          >
-            <span className="text-lg leading-none">+</span> Pridať účet
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setCreateMode("admin"); setAdminForm(EMPTY_ADMIN_FORM); }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl shadow-sm border border-gray-200 transition-all"
+            >
+              <span className="text-lg leading-none">+</span> Pridať admina
+            </button>
+            <button
+              onClick={() => { setCreateMode("client"); setClientForm(EMPTY_CLIENT_FORM); }}
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
+            >
+              <span className="text-lg leading-none">+</span> Pridať klienta
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -256,50 +304,36 @@ const AdminUserList: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Create account modal ── */}
-      {showCreate && (
+      {/* ── Create admin modal ── */}
+      {createMode === "admin" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Pridať účet</h3>
+              <h3 className="text-xl font-bold text-gray-900">Pridať admina</h3>
               <button
-                onClick={() => setShowCreate(false)}
+                onClick={() => setCreateMode(null)}
                 className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
               >
                 ×
               </button>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-4">
+            <form onSubmit={handleCreateAdmin} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Meno
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
                   <input
                     type="text"
-                    value={createForm.first_name}
-                    onChange={(e) =>
-                      setCreateForm((f) => ({
-                        ...f,
-                        first_name: e.target.value,
-                      }))
-                    }
+                    value={adminForm.first_name}
+                    onChange={(e) => setAdminForm((f) => ({ ...f, first_name: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Priezvisko
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
                   <input
                     type="text"
-                    value={createForm.last_name}
-                    onChange={(e) =>
-                      setCreateForm((f) => ({
-                        ...f,
-                        last_name: e.target.value,
-                      }))
-                    }
+                    value={adminForm.last_name}
+                    onChange={(e) => setAdminForm((f) => ({ ...f, last_name: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                   />
                 </div>
@@ -311,44 +345,99 @@ const AdminUserList: React.FC = () => {
                 <input
                   type="email"
                   required
-                  value={createForm.email}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, email: e.target.value }))
-                  }
+                  value={adminForm.email}
+                  onChange={(e) => setAdminForm((f) => ({ ...f, email: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
+              <p className="text-xs text-gray-400">
+                Admin dostane email s odkazom na nastavenie hesla.
+              </p>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setCreateMode(null)}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                >
+                  Zrušiť
+                </button>
+                <button
+                  type="submit"
+                  disabled={creating}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
+                >
+                  {creating ? "Vytváram..." : "Vytvoriť"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── Create client modal ── */}
+      {createMode === "client" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900">Pridať klienta</h3>
+              <button
+                onClick={() => setCreateMode(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={handleCreateClient} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
+                  <input
+                    type="text"
+                    value={clientForm.first_name}
+                    onChange={(e) => setClientForm((f) => ({ ...f, first_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
+                  <input
+                    type="text"
+                    value={clientForm.last_name}
+                    onChange={(e) => setClientForm((f) => ({ ...f, last_name: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Heslo
+                  Email <span className="text-red-500">*</span>
                 </label>
                 <input
-                  type="password"
-                  placeholder="Voliteľné; ak ho necháte prázdne, heslo bude potrebné nastaviť neskôr"
-                  value={createForm.password}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, password: e.target.value }))
-                  }
+                  type="email"
+                  required
+                  value={clientForm.email}
+                  onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Rola
+                  Typ klienta <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <select
-                    value={createForm.is_staff ? "admin" : "client"}
+                    value={clientForm.client_type}
                     onChange={(e) =>
-                      setCreateForm((f) => ({
+                      setClientForm((f) => ({
                         ...f,
-                        is_staff: e.target.value === "admin",
+                        client_type: e.target.value as "app" | "api",
+                        api_identifier: "",
                       }))
                     }
                     className="block w-full px-4 py-2.5 pr-8 text-gray-700 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
                   >
-                    <option value="client">Klient</option>
-                    <option value="admin">Administrátor</option>
+                    <option value="app">Používateľ aplikácie</option>
+                    <option value="api">API používateľ</option>
                   </select>
                   <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
                     <svg className="fill-current h-4 w-4" viewBox="0 0 20 20">
@@ -356,11 +445,30 @@ const AdminUserList: React.FC = () => {
                     </svg>
                   </div>
                 </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {clientForm.client_type === "app"
+                    ? "Používateľ sa prihlasuje heslom. Po vytvorení dostane email s odkazom na nastavenie hesla."
+                    : "API používateľ sa neprihlasuje. Po vytvorení dostane notifikačný email."}
+                </p>
               </div>
+              {clientForm.client_type === "api" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    API identifikátor
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Identifikátor pre párovanie dát"
+                    value={clientForm.api_identifier}
+                    onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreate(false)}
+                  onClick={() => setCreateMode(null)}
                   className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
                 >
                   Zrušiť

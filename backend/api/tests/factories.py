@@ -11,7 +11,6 @@ from api.models import (
     ClientSettings,
     DailyOrder,
     Diet,
-    EmailVerificationToken,
     PasswordResetToken,
     PushSubscription,
     UserProfile,
@@ -85,18 +84,6 @@ class UserProfileFactory(DjangoModelFactory):
     company_name = factory.Faker("company")
     ico = factory.Sequence(lambda n: f"ICO{n:08d}")
     dic = factory.Sequence(lambda n: f"DIC{n:08d}")
-
-
-class EmailVerificationTokenFactory(DjangoModelFactory):
-    class Meta:
-        model = EmailVerificationToken
-
-    user = factory.SubFactory(UserFactory)
-    token = factory.Faker("sha1")
-    expires_at = factory.LazyFunction(
-        lambda: timezone.now() + datetime.timedelta(hours=24)
-    )
-    used = False
 
 
 class PasswordResetTokenFactory(DjangoModelFactory):

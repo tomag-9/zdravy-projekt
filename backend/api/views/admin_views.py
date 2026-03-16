@@ -1,8 +1,13 @@
+import logging
+
 from django.contrib.auth.models import User
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
 
+from ..models import UserProfile
 from ..serializers_user import AdminUserSerializer
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -35,3 +40,21 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     )
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
+
+    def perform_create(self, serializer):
+        user = serializer.save()
+
+        try:
+            profile = user.profile
+            if profile.client_type == UserProfile.CLIENT_TYPE_APP:
+                from ..email_utils import send_account_setup_email
+
+                send_account_setup_email(user=user)
+            else:
+                from ..services.notification_service import NotificationService
+
+                NotificationService.send_api_user_registered_email(user=user)
+        except Exception:
+            logger.exception(
+                "Failed to send onboarding email for new user %s", user.email
+            )

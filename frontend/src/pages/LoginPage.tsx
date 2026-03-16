@@ -121,15 +121,6 @@ const LoginPage: React.FC = () => {
           </button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-slate-600">
-          Nemáte účet?{" "}
-          <Link
-            to="/register"
-            className="text-indigo-600 hover:text-indigo-800 font-medium"
-          >
-            Zaregistrovať sa
-          </Link>
-        </div>
       </div>
     </div>
   );

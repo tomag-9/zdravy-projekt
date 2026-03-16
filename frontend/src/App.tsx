@@ -16,11 +16,9 @@ import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
 import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-import EmailVerificationPage from "./pages/EmailVerificationPage";
-import ResendVerificationPage from "./pages/ResendVerificationPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
+import SetPasswordPage from "./pages/SetPasswordPage";
 import AdminLayout from "./pages/admin/AdminLayout";
 import DietManager from "./pages/admin/DietManager";
 import ClientList from "./pages/admin/ClientList";
@@ -29,7 +27,6 @@ import AdminUserList from "./pages/admin/AdminUserList";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
-import PendingRegistrations from "./pages/admin/PendingRegistrations";
 import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
 import MealPlanEditor from "./pages/admin/MealPlanEditor";
 import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
@@ -107,23 +104,17 @@ export default function App() {
             <PWAUpdateBanner />
             <Routes>
             <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route
-              path="/verify-email/:token"
-              element={<EmailVerificationPage />}
-            />
-            <Route
-              path="/resend-verification"
-              element={<ResendVerificationPage />}
-            />
+            <Route path="/register" element={<Navigate to="/login" replace />} />
+            <Route path="/verify-email/:token" element={<Navigate to="/login" replace />} />
+            <Route path="/resend-verification" element={<Navigate to="/login" replace />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/reset-password" element={<ResetPasswordPage />} />
+            <Route path="/set-password" element={<SetPasswordPage />} />
 
             {/* Admin Routes */}
             <Route path="/admin" element={<AdminRoute />}>
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="pending-registrations" element={<PendingRegistrations />} />
               <Route path="clients" element={<ClientList />} />
               <Route path="clients/:id" element={<ClientDetail />} />
               <Route path="roles" element={<AdminUserList />} />

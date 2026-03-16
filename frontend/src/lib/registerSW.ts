@@ -19,6 +19,16 @@ export function setUpdateCallback(cb: UpdateCallback): void {
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!('serviceWorker' in navigator)) return null;
 
+  // In development Vite serves chunks with ?v= timestamps that change on
+  // every restart. A cache-first SW would serve stale chunks alongside fresh
+  // ones, causing duplicate React instances. Unregister any existing SW and
+  // skip registration in dev.
+  if (import.meta.env.DEV) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((r) => r.unregister()));
+    return null;
+  }
+
   try {
     const registration = await navigator.serviceWorker.register('/sw.js', {
       scope: '/',

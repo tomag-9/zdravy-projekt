@@ -12,7 +12,6 @@ from .models import (
     ClientSettings,
     DailyOrder,
     Diet,
-    EmailVerificationToken,
     GlobalSettings,
     PasswordResetToken,
     UserProfile,
@@ -30,14 +29,11 @@ class UserProfileInline(admin.StackedInline):
         "company_name",
         "ico",
         "dic",
-        "registration_status",
-        "email_verified",
-        "registration_date",
-        "approval_date",
-        "approved_by",
-        "denial_reason",
+        "client_type",
+        "api_identifier",
+        "created_at",
     )
-    readonly_fields = ("registration_date", "approval_date")
+    readonly_fields = ("created_at",)
 
 
 class UniqueEmailUserCreationForm(UserCreationForm):
@@ -127,13 +123,12 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = (
         "company_name",
         "user_email",
-        "registration_status",
-        "email_verified",
-        "registration_date",
+        "client_type",
+        "created_at",
     )
-    list_filter = ("registration_status", "email_verified", "registration_date")
-    search_fields = ("company_name", "ico", "dic", "user__email")
-    readonly_fields = ("registration_date", "approval_date")
+    list_filter = ("client_type", "created_at")
+    search_fields = ("company_name", "ico", "dic", "user__email", "api_identifier")
+    readonly_fields = ("created_at",)
 
     fieldsets = (
         (
@@ -143,16 +138,9 @@ class UserProfileAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Registration Status",
+            "Client Type",
             {
-                "fields": (
-                    "registration_status",
-                    "email_verified",
-                    "registration_date",
-                    "approval_date",
-                    "approved_by",
-                    "denial_reason",
-                ),
+                "fields": ("client_type", "api_identifier", "created_at"),
             },
         ),
     )
@@ -162,22 +150,6 @@ class UserProfileAdmin(admin.ModelAdmin):
         return obj.user.email
 
     user_email.short_description = "Email"
-
-
-@admin.register(EmailVerificationToken)
-class EmailVerificationTokenAdmin(admin.ModelAdmin):
-    """Admin for EmailVerificationToken model."""
-
-    list_display = ("user", "token_preview", "created_at", "expires_at", "used")
-    list_filter = ("used", "created_at")
-    search_fields = ("user__email", "token")
-    readonly_fields = ("created_at",)
-
-    def token_preview(self, obj):
-        """Display token preview."""
-        return f"{obj.token[:20]}..."
-
-    token_preview.short_description = "Token"
 
 
 @admin.register(PasswordResetToken)
