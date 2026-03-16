@@ -435,7 +435,7 @@ const ClientDetail: React.FC = () => {
                                         return <span>Áno</span>;
 
                                       // Object data
-                                      const items: JSX.Element[] = [];
+                                      const items: React.JSX.Element[] = [];
                                       Object.entries(data).forEach(
                                         ([catName, catData]) => {
                                           // Skip internal keys if any (like soup sometimes in old structure?) and check for standard structure
