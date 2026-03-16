@@ -306,6 +306,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         being applied.
         """
         settings_data = self.initial_data.get("settings", None)
+        client_type = validated_data.pop("client_type", serializers.empty)
+        api_identifier = validated_data.pop("api_identifier", serializers.empty)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
@@ -325,6 +327,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
             validated_data["username"] = new_email
 
         instance = super().update(instance, validated_data)
+
+        if (
+            client_type is not serializers.empty
+            or api_identifier is not serializers.empty
+        ):
+            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            if client_type is not serializers.empty:
+                profile.client_type = client_type
+            if api_identifier is not serializers.empty:
+                profile.api_identifier = api_identifier
+            profile.save()
 
         if settings_data is not None:
             settings_serializer = AdminClientSettingsSerializer(data=settings_data)
