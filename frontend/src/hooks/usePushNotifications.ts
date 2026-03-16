@@ -22,8 +22,15 @@ interface UsePushNotificationsReturn {
   permission: PermissionState;
   isSubscribed: boolean;
   subscribe: () => Promise<boolean>;
-  unsubscribe: () => Promise<void>;
+  unsubscribe: () => Promise<boolean>;
   error: string | null;
+}
+
+function buildApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(API_URL)) {
+    return `${API_URL}${path}`;
+  }
+  return new URL(`${API_URL}${path}`, window.location.origin).toString();
 }
 
 /** Convert a base64url VAPID public key to a Uint8Array for pushManager. */
@@ -65,7 +72,9 @@ export function usePushNotifications(): UsePushNotificationsReturn {
 
   // Fetch VAPID public key once
   useEffect(() => {
-    fetch(`${API_URL}/push/vapid-public-key/`)
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) return;
+
+    fetch(buildApiUrl('/push/vapid-public-key/'))
       .then((r) => r.json())
       .then((data) => setVapidPublicKey(data.vapid_public_key ?? null))
       .catch(() => setError('Nepodarilo sa načítať VAPID kľúč.'));
@@ -147,12 +156,12 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     }
   }, [vapidPublicKey, apiFetch]);
 
-  const unsubscribe = useCallback(async (): Promise<void> => {
+  const unsubscribe = useCallback(async (): Promise<boolean> => {
     setError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       const pushSub = await reg.pushManager.getSubscription();
-      if (!pushSub) return;
+      if (!pushSub) return true;
 
       const { endpoint } = pushSub;
       await pushSub.unsubscribe();
@@ -164,9 +173,11 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       }).catch(() => { }); // Best-effort
 
       setIsSubscribed(false);
+      return true;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Chyba pri odhlasovaní z notifikácií: ${msg}`);
+      return false;
     }
   }, [apiFetch]);
 

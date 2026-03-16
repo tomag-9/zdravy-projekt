@@ -50,6 +50,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // Only handle same-origin requests; let browser handle third-party resources.
+  if (url.origin !== self.location.origin) return;
+
   // Never intercept API calls – always hit the network
   if (url.pathname.startsWith('/api/')) return;
 
@@ -87,7 +90,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(STATIC_CACHE).then((cache) => cache.put(event.request, clone));
         }
         return response;
-      });
+      }).catch(() => caches.match('/offline.html'));
     })
   );
 });

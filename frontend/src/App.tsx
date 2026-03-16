@@ -10,7 +10,6 @@ import { AuthProvider, useAuth } from "./context/auth";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
 import NotificationGuard from "./components/NotificationGuard";
-import PWAInstallBanner from "./components/PWAInstallBanner";
 import PWAUpdateBanner from "./components/PWAUpdateBanner";
 import HomePage from "./pages/client/pages/HomePage";
 import OrderPage from "./pages/client/pages/OrderPage";
@@ -105,7 +104,6 @@ export default function App() {
       <PWAProvider>
         <AuthProvider>
           <ToastProvider>
-            <PWAInstallBanner />
             <PWAUpdateBanner />
             <Routes>
             <Route path="/login" element={<LoginPage />} />

@@ -31,6 +31,10 @@ function detectIOS(): boolean {
   );
 }
 
+function detectAndroid(): boolean {
+  return /Android/i.test(navigator.userAgent);
+}
+
 function detectStandalone(): boolean {
   return (
     window.matchMedia('(display-mode: standalone)').matches ||
@@ -41,6 +45,7 @@ function detectStandalone(): boolean {
 export function PWAProvider({ children }: { children: React.ReactNode }) {
   const [isStandalone] = useState(detectStandalone);
   const [isIOS] = useState(detectIOS);
+  const [isAndroid] = useState(detectAndroid);
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [swRegistration, setSwRegistration] =
@@ -52,9 +57,9 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
   registrationRef.current = swRegistration;
 
   useEffect(() => {
-    // Capture the install prompt (Android/Chrome only)
+    // Observe installability signal (Android/Chrome). We do not call
+    // preventDefault here so browser-native install UI remains available.
     const handleBeforeInstall = (e: Event) => {
-      e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
     };
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -87,6 +92,7 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
       value={{
         isStandalone,
         isIOS,
+        isAndroid,
         canInstall: !!deferredPrompt,
         installPrompt,
         swRegistration,

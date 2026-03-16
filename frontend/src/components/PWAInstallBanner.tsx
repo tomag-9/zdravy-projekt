@@ -11,23 +11,31 @@
 import { useEffect, useState } from 'react';
 import { usePWA } from '../hooks/usePWA';
 
-const DISMISS_KEY = 'zdravy-install-banner-dismissed';
+const DISMISS_KEY = 'zdravy-install-banner-dismissed-until-v2';
+const DISMISS_DAYS = 7;
+
+function isDismissed(): boolean {
+  const until = localStorage.getItem(DISMISS_KEY);
+  if (!until) return false;
+  return Date.now() < parseInt(until, 10);
+}
 
 export default function PWAInstallBanner() {
-  const { isStandalone, isIOS, canInstall, installPrompt } = usePWA();
+  const { isStandalone, isIOS, isAndroid, canInstall, installPrompt } = usePWA();
   const [dismissed, setDismissed] = useState(true); // start hidden until checked
 
   useEffect(() => {
-    setDismissed(localStorage.getItem(DISMISS_KEY) === 'true');
+    setDismissed(isDismissed());
   }, []);
 
   // Don't show if already installed, not installable, or dismissed
   if (isStandalone) return null;
-  if (!canInstall && !isIOS) return null;
+  if (!canInstall && !isIOS && !isAndroid) return null;
   if (dismissed) return null;
 
   const handleDismiss = () => {
-    localStorage.setItem(DISMISS_KEY, 'true');
+    const until = Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000;
+    localStorage.setItem(DISMISS_KEY, String(until));
     setDismissed(true);
   };
 
@@ -38,6 +46,12 @@ export default function PWAInstallBanner() {
           <p className="text-sm text-slate-700">
             <span className="font-semibold">Nainštalovať aplikáciu:</span> Klepnite na{' '}
             <strong>Zdieľať ↑</strong> → „<strong>Pridať na plochu</strong>"
+          </p>
+        ) : isAndroid && !canInstall ? (
+          <p className="text-sm text-slate-700">
+            <span className="font-semibold">Nainštalovať aplikáciu:</span> Otvorte menu
+            prehliadača <strong>⋮</strong> → <strong>Inštalovať aplikáciu</strong>
+            {" "}(alebo <strong>Pridať na plochu</strong>).
           </p>
         ) : (
           <p className="text-sm text-slate-700">
