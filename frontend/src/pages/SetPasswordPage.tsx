@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
@@ -13,12 +13,17 @@ const SetPasswordPage: React.FC = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!token) {
-      setError("Chybajúci alebo neplatný odkaz na nastavenie hesla.");
-    }
+    setError(token ? "" : "Chybajúci alebo neplatný odkaz na nastavenie hesla.");
   }, [token]);
+
+  useEffect(() => {
+    return () => {
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +57,7 @@ const SetPasswordPage: React.FC = () => {
       }
 
       setSuccess(true);
-      setTimeout(() => navigate("/login", { replace: true }), 3000);
+      redirectTimer.current = setTimeout(() => navigate("/login", { replace: true }), 3000);
     } catch {
       setError("Nepodarilo sa pripojiť k serveru. Skontrolujte pripojenie.");
     } finally {

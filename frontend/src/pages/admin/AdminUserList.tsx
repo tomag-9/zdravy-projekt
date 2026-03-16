@@ -103,7 +103,7 @@ const AdminUserList: React.FC = () => {
         fetchUsers();
       } else {
         const data = await res.json().catch(() => ({}));
-        toastError(data?.email?.[0] || "Nepodarilo sa vytvoriť účet.");
+        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
       }
     } catch (e) {
       console.error(e);
@@ -136,7 +136,7 @@ const AdminUserList: React.FC = () => {
         fetchUsers();
       } else {
         const data = await res.json().catch(() => ({}));
-        toastError(data?.email?.[0] || "Nepodarilo sa vytvoriť účet.");
+        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
       }
     } catch (e) {
       console.error(e);

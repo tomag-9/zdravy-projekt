@@ -218,6 +218,11 @@ const ClientDetail: React.FC = () => {
 
   const isApiClient = user.profile?.client_type === "api";
 
+  // If the current tab is not valid for this client type, reset to dashboard.
+  if (isApiClient && activeTab !== "dashboard") {
+    setActiveTab("dashboard");
+  }
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
       <div>
@@ -543,7 +548,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "settings" && (
+      {activeTab === "settings" && !isApiClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="grid gap-8 grid-cols-1 md:grid-cols-2">
             {/* Menus Section */}
@@ -686,7 +691,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "order_note" && (
+      {activeTab === "order_note" && !isApiClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
