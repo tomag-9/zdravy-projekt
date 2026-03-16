@@ -131,6 +131,7 @@ class OrderService:
                         predicted_data
                     )
                 else:
+                    predicted_data = {"breakfast": {}, "lunch": {}, "olovrant": {}}
                     predicted_total = 0
                     predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
                 result.append(
@@ -143,6 +144,7 @@ class OrderService:
                         "mealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
                         "predictedTotal": predicted_total,
                         "predictedMealCount": predicted_meal_count,
+                        "predictedData": predicted_data,
                     }
                 )
 

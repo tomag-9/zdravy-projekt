@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Calendar,
   UtensilsCrossed,
   History,
   Settings,
-  LogOut,
   User,
   Bot,
   XCircle,
@@ -19,8 +18,7 @@ import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
 import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
-import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService from "../services/OrderService";
+import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
@@ -35,6 +33,7 @@ interface PlannedDay {
   mealCount: { breakfast: number; lunch: number; olovrant: number };
   predictedTotal: number;
   predictedMealCount: { breakfast: number; lunch: number; olovrant: number };
+  predictedData?: DailyOrder;
 }
 
 // Past submitted orders for the history strip
@@ -60,15 +59,13 @@ const HomePage = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [modalOrderId, setModalOrderId] = useState<number | null>(null);
-  const [showLogoutConfirmation, setShowLogoutConfirmation] = useState(false);
   const [predictedModalDay, setPredictedModalDay] = useState<PlannedDay | null>(
     null,
   );
 
-  const { logout, globalDeadlines } = useApp();
+  const { globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
   const toast = useToast();
-  const navigate = useNavigate();
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (
@@ -262,8 +259,10 @@ const HomePage = () => {
       // Auto-predicted: show preview modal with Edit / Vynulovať
       setPredictedModalDay(day);
     } else if (!day.exists) {
-      // No order, no prediction → go directly to order page
-      navigate(`/order?date=${day.date}`);
+      // No order and no prediction: open detail modal so all day cards behave the same
+      setModalOrderData({ breakfast: {}, lunch: {}, olovrant: {} });
+      setModalOrderId(null);
+      setSelectedDate(day.date);
     } else {
       // Has an existing order → show summary modal
       openDayModal(day.date);
@@ -415,15 +414,6 @@ const HomePage = () => {
                 </span>
               </button>
             </Link>
-            <button
-              onClick={() => setShowLogoutConfirmation(true)}
-              className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-red-200 rounded-xl hover:border-red-300 hover:bg-red-50 transition-all shadow-sm hover:shadow-md group"
-            >
-              <LogOut className="w-4 h-4 text-red-500 group-hover:text-red-600 transition-colors" />
-              <span className="hidden md:inline text-sm font-medium text-red-600 group-hover:text-red-700 transition-colors">
-                Odhlásiť sa
-              </span>
-            </button>
           </div>
         </div>
 
@@ -478,11 +468,7 @@ const HomePage = () => {
                   Dnešná objednávka
                 </h2>
                 <div
-                  onClick={() =>
-                    isTodayEditable
-                      ? navigate(`/order?date=${todayStr}`)
-                      : handlePlannedCardClick(day)
-                  }
+                  onClick={() => handlePlannedCardClick(day)}
                   className={[
                     "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
                     isEmpty
@@ -732,7 +718,7 @@ const HomePage = () => {
           orderData={modalOrderData}
           globalDeadlines={globalDeadlines}
           isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
-          onZero={handleZeroExisting}
+          onZero={modalOrderId !== null ? handleZeroExisting : undefined}
           onDelete={() => {
             if (selectedDate) {
               setPlannedDays((prev) =>
@@ -763,6 +749,7 @@ const HomePage = () => {
           isOpen={!!predictedModalDay}
           onClose={() => setPredictedModalDay(null)}
           orderDate={predictedModalDay?.date ?? ""}
+          orderData={predictedModalDay?.predictedData}
           globalDeadlines={globalDeadlines}
           isPredicted
           predictedMealCount={predictedModalDay?.predictedMealCount}
@@ -771,16 +758,6 @@ const HomePage = () => {
           }
         />
 
-        <ConfirmationModal
-          isOpen={showLogoutConfirmation}
-          onClose={() => setShowLogoutConfirmation(false)}
-          onConfirm={logout}
-          title="Odhlásenie"
-          description="Naozaj sa chcete odhlásiť z aplikácie?"
-          confirmText="Odhlásiť sa"
-          cancelText="Zrušiť"
-          variant="danger"
-        />
       </div>
     </div>
   );

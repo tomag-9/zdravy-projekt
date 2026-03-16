@@ -157,7 +157,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
-    company_name = serializers.SerializerMethodField()
+    company_name = serializers.CharField(
+        source="profile.company_name", required=False, allow_blank=True, default=""
+    )
+    ico = serializers.CharField(
+        source="profile.ico", required=False, allow_blank=True, allow_null=True
+    )
+    dic = serializers.CharField(
+        source="profile.dic", required=False, allow_blank=True, allow_null=True
+    )
 
     class Meta:
         model = User
@@ -167,13 +175,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "company_name",
+            "ico",
+            "dic",
             "date_joined",
             "groups",
             "settings",
             "profile",
             "is_staff",
         ]
-        read_only_fields = ["id", "date_joined", "is_staff", "company_name"]
+        read_only_fields = ["id", "date_joined", "is_staff"]
 
     def validate_email(self, value: str) -> str:
         """Enforce unique email for profile updates."""
@@ -187,6 +197,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return normalized_email
 
     def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
+        profile_data = validated_data.pop("profile", None)
+
         # Keep internal username in sync with email
         if "email" in validated_data:
             new_email = validated_data["email"].lower()
@@ -203,16 +215,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
                     {"email": "Používateľ s týmto emailom už existuje."}
                 )
             validated_data["username"] = new_email
-        return super().update(instance, validated_data)
+
+        user = super().update(instance, validated_data)
+
+        if profile_data is not None:
+            profile = getattr(user, "profile", None)
+            if profile is not None:
+                for field in ("company_name", "ico", "dic"):
+                    if field in profile_data:
+                        setattr(profile, field, profile_data[field])
+                profile.save(
+                    update_fields=[
+                        k for k in ("company_name", "ico", "dic") if k in profile_data
+                    ]
+                )
+
+        return user
 
     def get_groups(self, obj: User) -> List[str]:
         return [group.name for group in obj.groups.all()]
-
-    def get_company_name(self, obj: User) -> str:
-        """Return company name from profile, primary identifier."""
-        if hasattr(obj, "profile"):
-            return obj.profile.company_name
-        return ""
 
     def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
