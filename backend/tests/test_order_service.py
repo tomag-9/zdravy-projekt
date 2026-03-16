@@ -150,6 +150,10 @@ class TestGetPlannedOrders:
         monday_result = next(r for r in result if r["date"] == str(MONDAY))
         assert monday_result["exists"] is False
         assert monday_result["predictedTotal"] == 1
+        assert (
+            monday_result["predictedData"]["breakfast"]["Dospelý"]["menuCounts"]["A"]
+            == 1
+        )
 
     @patch("api.services.order_service.timezone")
     def test_visible_meals_filter_prediction(self, mock_tz):

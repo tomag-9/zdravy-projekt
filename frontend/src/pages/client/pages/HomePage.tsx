@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Plus,
   Calendar,
@@ -20,7 +20,7 @@ import { useAuth } from "../../../context/auth";
 import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService from "../services/OrderService";
+import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
@@ -35,6 +35,7 @@ interface PlannedDay {
   mealCount: { breakfast: number; lunch: number; olovrant: number };
   predictedTotal: number;
   predictedMealCount: { breakfast: number; lunch: number; olovrant: number };
+  predictedData?: DailyOrder;
 }
 
 // Past submitted orders for the history strip
@@ -68,7 +69,6 @@ const HomePage = () => {
   const { logout, globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
   const toast = useToast();
-  const navigate = useNavigate();
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (
@@ -262,8 +262,10 @@ const HomePage = () => {
       // Auto-predicted: show preview modal with Edit / Vynulovať
       setPredictedModalDay(day);
     } else if (!day.exists) {
-      // No order, no prediction → go directly to order page
-      navigate(`/order?date=${day.date}`);
+      // No order and no prediction: open detail modal so all day cards behave the same
+      setModalOrderData({ breakfast: {}, lunch: {}, olovrant: {} });
+      setModalOrderId(null);
+      setSelectedDate(day.date);
     } else {
       // Has an existing order → show summary modal
       openDayModal(day.date);
@@ -478,11 +480,7 @@ const HomePage = () => {
                   Dnešná objednávka
                 </h2>
                 <div
-                  onClick={() =>
-                    isTodayEditable
-                      ? navigate(`/order?date=${todayStr}`)
-                      : handlePlannedCardClick(day)
-                  }
+                  onClick={() => handlePlannedCardClick(day)}
                   className={[
                     "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
                     isEmpty
@@ -732,7 +730,7 @@ const HomePage = () => {
           orderData={modalOrderData}
           globalDeadlines={globalDeadlines}
           isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
-          onZero={handleZeroExisting}
+          onZero={modalOrderId !== null ? handleZeroExisting : undefined}
           onDelete={() => {
             if (selectedDate) {
               setPlannedDays((prev) =>
@@ -763,6 +761,7 @@ const HomePage = () => {
           isOpen={!!predictedModalDay}
           onClose={() => setPredictedModalDay(null)}
           orderDate={predictedModalDay?.date ?? ""}
+          orderData={predictedModalDay?.predictedData}
           globalDeadlines={globalDeadlines}
           isPredicted
           predictedMealCount={predictedModalDay?.predictedMealCount}
