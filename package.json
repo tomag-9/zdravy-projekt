@@ -8,8 +8,9 @@
     "prepare": "command -v husky >/dev/null 2>&1 && husky install || true"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.5.0",
-    "@commitlint/config-conventional": "^18.4.3",
+    "@commitlint/cli": "^18.4.3",
+    "@commitlint/config-conventional": "^20.5.0",
+
     "husky": "^8.0.3"
   },
   "commitlint": {
