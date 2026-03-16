@@ -1,13 +1,10 @@
 """Notification service – centralised transactional email sending."""
 
 import logging
-from typing import Optional
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
-from django.template.loader import render_to_string
-from django.utils.html import strip_tags
 
 logger = logging.getLogger(__name__)
 
@@ -16,73 +13,69 @@ class NotificationService:
     """Send transactional notification emails."""
 
     @staticmethod
-    def send_approval_email(user: User, company_name: str) -> None:
+    def send_account_setup_email(user: User, setup_url: str) -> None:
         """
-        Notify *user* that their registration has been approved.
+        Send a new App user an email with a link to set their password.
 
         Failures are logged but not re-raised so the caller's transaction
         is not rolled back when the mail server is temporarily unavailable.
         """
         try:
-            frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-            login_url = f"{frontend_url}/login"
-
-            context = {
-                "user": user,
-                "company_name": company_name,
-                "login_url": login_url,
-            }
-
-            subject = "Účet schválený - Zdravý projekt"
-            html_message = render_to_string("email/registration_approved.html", context)
-            plain_message = strip_tags(html_message)
+            subject = "Vitajte – nastavte si heslo"
+            message = (
+                f"Dobrý deň {user.first_name or user.email},\n\n"
+                "Bol vám vytvorený účet v systéme Zdravý projekt.\n\n"
+                "Pre aktiváciu účtu si prosím nastavte heslo kliknutím na odkaz nižšie:\n"
+                f"{setup_url}\n\n"
+                "Odkaz je platný 7 dní.\n\n"
+                "Ak ste o tento účet nežiadali, tento e-mail ignorujte.\n\n"
+                "S pozdravom, Tím Zdravý projekt"
+            )
 
             send_mail(
                 subject=subject,
-                message=plain_message,
+                message=message,
                 from_email=getattr(
                     settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"
                 ),
                 recipient_list=[user.email],
-                html_message=html_message,
                 fail_silently=False,
             )
 
-            logger.info("Approval email sent to %s", user.email)
+            logger.info("Account setup email sent to %s", user.email)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to send approval email to %s: %s", user.email, exc)
+            logger.error(
+                "Failed to send account setup email to %s: %s", user.email, exc
+            )
 
     @staticmethod
-    def send_denial_email(
-        user: User, company_name: str, denial_reason: Optional[str] = ""
-    ) -> None:
+    def send_api_user_registered_email(user: User) -> None:
         """
-        Notify *user* that their registration has been denied.
+        Notify an API user that their account has been registered.
 
         Failures are logged but not re-raised.
         """
         try:
-            context = {
-                "user": user,
-                "company_name": company_name,
-                "denial_reason": denial_reason or "",
-            }
-
-            subject = "Registrácia zamietnutá - Zdravý projekt"
-            html_message = render_to_string("email/registration_denied.html", context)
-            plain_message = strip_tags(html_message)
+            subject = "Registrácia účtu – Zdravý projekt"
+            message = (
+                f"Dobrý deň {user.first_name or user.email},\n\n"
+                "Bol vám zaregistrovaný API účet v systéme Zdravý projekt.\n\n"
+                "V prípade otázok nás kontaktujte.\n\n"
+                "S pozdravom, Tím Zdravý projekt"
+            )
 
             send_mail(
                 subject=subject,
-                message=plain_message,
+                message=message,
                 from_email=getattr(
                     settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"
                 ),
                 recipient_list=[user.email],
-                html_message=html_message,
                 fail_silently=False,
             )
 
-            logger.info("Denial email sent to %s", user.email)
+            logger.info("API user registered email sent to %s", user.email)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to send denial email to %s: %s", user.email, exc)
+            logger.error(
+                "Failed to send API user registered email to %s: %s", user.email, exc
+            )

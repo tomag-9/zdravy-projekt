@@ -16,7 +16,8 @@ interface CreateForm {
   email: string;
   first_name: string;
   last_name: string;
-  password: string;
+  client_type: "app" | "api";
+  api_identifier: string;
   is_staff: boolean;
 }
 
@@ -24,7 +25,8 @@ const EMPTY_FORM: CreateForm = {
   email: "",
   first_name: "",
   last_name: "",
-  password: "",
+  client_type: "app",
+  api_identifier: "",
   is_staff: false,
 };
 
@@ -319,19 +321,55 @@ const AdminUserList: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Heslo
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Typ klienta <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="password"
-                  placeholder="Voliteľné; ak ho necháte prázdne, heslo bude potrebné nastaviť neskôr"
-                  value={createForm.password}
-                  onChange={(e) =>
-                    setCreateForm((f) => ({ ...f, password: e.target.value }))
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
+                <div className="relative">
+                  <select
+                    value={createForm.client_type}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({
+                        ...f,
+                        client_type: e.target.value as "app" | "api",
+                        api_identifier: "",
+                      }))
+                    }
+                    className="block w-full px-4 py-2.5 pr-8 text-gray-700 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
+                  >
+                    <option value="app">Používateľ aplikácie</option>
+                    <option value="api">API používateľ</option>
+                  </select>
+                  <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
+                    <svg className="fill-current h-4 w-4" viewBox="0 0 20 20">
+                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
+                    </svg>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  {createForm.client_type === "app"
+                    ? "Používateľ sa prihlasuje heslom. Po vytvorení dostane email s odkazom na nastavenie hesla."
+                    : "API používateľ sa neprihlasuje. Po vytvorení dostane notifikačný email."}
+                </p>
               </div>
+              {createForm.client_type === "api" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    API identifikátor
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Identifikátor pre párovanie dát"
+                    value={createForm.api_identifier}
+                    onChange={(e) =>
+                      setCreateForm((f) => ({
+                        ...f,
+                        api_identifier: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Rola

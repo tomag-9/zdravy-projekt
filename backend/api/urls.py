@@ -12,18 +12,14 @@ from .views import (
     DailyOrderViewSet,
     DietViewSet,
     EmailTokenObtainPairView,
-    EmailVerificationView,
     GlobalSettingsViewSet,
     MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
-    PendingRegistrationsViewSet,
     PlannedOrdersViewSet,
     PortionTypeViewSet,
     PushSubscribeView,
-    RegistrationView,
     ReportTaskViewSet,
-    ResendVerificationEmailView,
     UserProfileViewSet,
     VapidPublicKeyView,
 )
@@ -48,11 +44,6 @@ router.register(
     basename="trigger-auto-orders",
 )
 router.register(
-    r"admin/pending-registrations",
-    PendingRegistrationsViewSet,
-    basename="pending-registrations",
-)
-router.register(
     r"admin/report-tasks",
     ReportTaskViewSet,
     basename="report-task",
@@ -66,18 +57,6 @@ urlpatterns = [
     path("token/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("health/", health_check, name="health_check"),
-    # Registration and email verification (unauthenticated)
-    path("auth/register/", RegistrationView.as_view(), name="register"),
-    path(
-        "auth/verify-email/",
-        EmailVerificationView.as_view(),
-        name="verify_email",
-    ),
-    path(
-        "auth/resend-verification/",
-        ResendVerificationEmailView.as_view(),
-        name="resend_verification",
-    ),
     # Password reset (unauthenticated)
     path(
         "auth/password-reset/",

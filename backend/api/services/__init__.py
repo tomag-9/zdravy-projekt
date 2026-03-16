@@ -11,7 +11,7 @@ from .meal_plan_service import MealPlanService
 from .notification_service import NotificationService
 from .order_service import OrderService
 from .report_service import ReportService
-from .user_service import RegistrationError, UserService
+from .user_service import RegistrationError
 
 __all__ = [
     # Auto-order helpers (kept at package level for backwards-compat)
@@ -25,6 +25,5 @@ __all__ = [
     "OrderService",
     "ReportService",
     "RegistrationError",
-    "UserService",
     "MealPlanService",
 ]
