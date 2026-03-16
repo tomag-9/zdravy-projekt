@@ -157,7 +157,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
-    company_name = serializers.CharField(source="profile.company_name", required=False)
+    company_name = serializers.CharField(
+        source="profile.company_name", required=False, allow_blank=True, default=""
+    )
     ico = serializers.CharField(
         source="profile.ico", required=False, allow_blank=True, allow_null=True
     )
