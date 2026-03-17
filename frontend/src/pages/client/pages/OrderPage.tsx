@@ -100,18 +100,6 @@ const OrderPage = () => {
     }
   }, [currentOrder, selectedDate]);
 
-  // ── Tour: auto-expand first meal when reaching the CategoryRow step (7) ─────
-  useEffect(() => {
-    if (!isTourActive || currentStep !== 7) return;
-    const firstMeal = visibleMealsList[0];
-    if (!firstMeal) return;
-    const key = firstMeal.key as "breakfast" | "lunch" | "olovrant";
-    const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
-    if (isEditable && !activeMeals[key]) {
-      toggleMeal(key);
-    }
-  }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
-
   const meals: {
     key: keyof DailyOrder;
     label: string;
@@ -126,6 +114,18 @@ const OrderPage = () => {
     Array.isArray(adminVisibleMeals) && adminVisibleMeals.length > 0
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
+
+  // ── Tour: auto-expand first meal when reaching the CategoryRow step (7) ─────
+  useEffect(() => {
+    if (!isTourActive || currentStep !== 7) return;
+    const firstMeal = visibleMealsList[0];
+    if (!firstMeal) return;
+    const key = firstMeal.key as "breakfast" | "lunch" | "olovrant";
+    const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
+    if (isEditable && !activeMeals[key]) {
+      toggleMeal(key);
+    }
+  }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (
