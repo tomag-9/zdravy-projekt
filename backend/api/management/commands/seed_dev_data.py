@@ -30,6 +30,7 @@ from api.models import (
     MealPlanItem,
     MealTemplate,
     PortionType,
+    PushSubscription,
 )
 
 # ── Meal plan seed data ────────────────────────────────────────────────────────
@@ -342,7 +343,39 @@ class Command(BaseCommand):
                     skipped_orders += 1
 
         # ----------------------------------------------------------------
-        # 6. Reference data (portion types) + meal plan templates/plans
+        # 6. Fake push subscription for the 'client' user
+        #    Points to the dev push echo endpoint so admin push sends
+        #    can be verified without a real browser subscription.
+        # ----------------------------------------------------------------
+        try:
+            client_user = User.objects.get(username="client")
+            _, sub_created = PushSubscription.objects.get_or_create(
+                user=client_user,
+                endpoint="http://localhost:8000/api/dev/push-echo/",
+                defaults={
+                    # Deterministic fake browser EC key pair (dev only)
+                    "p256dh": "BIfyrik-Uerib1Imel4NlNsejC6YRAW3fR1ZAvwBSMVuGb8njTzEdt0ZRVgG2EQeNz1JE-_Bjx8o5_HJbKz43Rw",
+                    "auth": "C21KX39xC-yjZkvpPZCriw",
+                },
+            )
+            if sub_created:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "  Dev push subscription seeded for 'client' → /api/dev/push-echo/"
+                    )
+                )
+            else:
+                self.stdout.write("  Dev push subscription for 'client' already exists")
+        except User.DoesNotExist:
+            self.stdout.write(
+                self.style.WARNING(
+                    "  'client' user not found – skipping push subscription seed. "
+                    "Run init_roles first."
+                )
+            )
+
+        # ----------------------------------------------------------------
+        # 7. Reference data (portion types) + meal plan templates/plans
         # ----------------------------------------------------------------
         call_command("init_reference_data", verbosity=options.get("verbosity", 1))
         mp_templates, mp_plans = self._seed_meal_plan_data(days, flush)
