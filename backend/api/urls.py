@@ -5,6 +5,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .health import health_check
 from .views import (
     AdminAutoOrderViewSet,
+    AdminHolidayViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
@@ -13,6 +14,7 @@ from .views import (
     DietViewSet,
     EmailTokenObtainPairView,
     GlobalSettingsViewSet,
+    HolidayListViewSet,
     MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
@@ -51,6 +53,8 @@ router.register(
 router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")
 router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
+router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
+router.register(r"holidays", HolidayListViewSet, basename="holiday")
 
 urlpatterns = [
     path("", include(router.urls)),

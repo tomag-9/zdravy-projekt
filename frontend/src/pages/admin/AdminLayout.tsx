@@ -38,13 +38,13 @@ const SECTIONS: NavSection[] = [
         id: 'settings',
         label: 'Nastavenia',
         icon: '⚙️',
-        paths: ['/admin/diets', '/admin/meal-plan-templates', '/admin/portion-types', '/admin/settings'],
+        paths: ['/admin/diets', '/admin/meal-plan-templates', '/admin/portion-types', '/admin/settings', '/admin/holidays'],
         items: [
             { to: '/admin/diets', label: 'Diety', icon: '🥗', activeColor: 'text-green-700', activeBg: 'bg-green-50' },
             { to: '/admin/meal-plan-templates', label: 'Šablóny jedál', icon: '📋', activeColor: 'text-lime-700', activeBg: 'bg-lime-50' },
             { to: '/admin/portion-types', label: 'Typy porcií', icon: '🥄', activeColor: 'text-amber-700', activeBg: 'bg-amber-50' },
             { to: '/admin/settings', label: 'Systémové nastavenia', icon: '⚙️', activeColor: 'text-gray-900', activeBg: 'bg-gray-100' },
-            { to: '/admin/holidays', label: 'Voľné dni', icon: '🏖️', activeColor: 'text-sky-700', activeBg: 'bg-sky-50', placeholder: true },
+            { to: '/admin/holidays', label: 'Voľné dni', icon: '🏖️', activeColor: 'text-sky-700', activeBg: 'bg-sky-50' },
         ],
     },
     {
@@ -54,7 +54,6 @@ const SECTIONS: NavSection[] = [
         paths: ['/admin/push-notifications'],
         items: [
             { to: '/admin/push-notifications', label: 'Notifikácie', icon: '🔔', activeColor: 'text-indigo-700', activeBg: 'bg-indigo-50' },
-            { to: '/admin/info', label: 'Info', icon: 'ℹ️', activeColor: 'text-violet-700', activeBg: 'bg-violet-50', placeholder: true },
         ],
     },
     {
@@ -64,8 +63,6 @@ const SECTIONS: NavSection[] = [
         paths: ['/admin/roles'],
         items: [
             { to: '/admin/roles', label: 'Správa adminov', icon: '🛡️', activeColor: 'text-purple-700', activeBg: 'bg-purple-50' },
-            { to: '/admin/admin-notifications', label: 'Admin notifikácie', icon: '🔔', activeColor: 'text-rose-700', activeBg: 'bg-rose-50', placeholder: true },
-            { to: '/admin/roles-permissions', label: 'Roly a oprávnenia', icon: '🔑', activeColor: 'text-pink-700', activeBg: 'bg-pink-50', placeholder: true },
         ],
     },
 ];

@@ -327,6 +327,23 @@ class EnrolledCount(models.Model):
         return f"{self.meal_plan.date} {self.portion_type.name}: {self.count}"
 
 
+class Holiday(models.Model):
+    """
+    A day on which no orders can be placed.
+    Admin can define individual dates or ranges.
+    """
+
+    date = models.DateField(unique=True, db_index=True)
+    reason = models.CharField(max_length=200, blank=True)
+
+    class Meta:
+        ordering = ["date"]
+
+    def __str__(self) -> str:
+        suffix = f" ({self.reason})" if self.reason else ""
+        return f"Voľný deň {self.date}{suffix}"
+
+
 class PushSubscription(models.Model):
     """
     Web Push subscription for a user device/browser.

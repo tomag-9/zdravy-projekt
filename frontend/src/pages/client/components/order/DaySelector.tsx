@@ -6,17 +6,19 @@ import OrderService from '../../services/OrderService';
 interface DaySelectorProps {
     selectedDate: string;
     onChange: (date: string) => void;
+    holidays?: Set<string>;
 }
 
-const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
+const DaySelector = ({ selectedDate, onChange, holidays }: DaySelectorProps) => {
     const dateObj = new Date(`${selectedDate}T12:00:00`);
 
     const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
+    const isBlocked = (d: Date) => isWeekend(d) || (holidays?.has(OrderService.toLocalDateString(d)) ?? false);
 
     const handlePrev = () => {
         const newDate = new Date(dateObj);
         newDate.setDate(newDate.getDate() - 1);
-        while (isWeekend(newDate)) {
+        while (isBlocked(newDate)) {
             newDate.setDate(newDate.getDate() - 1);
         }
         onChange(OrderService.toLocalDateString(newDate));
@@ -25,7 +27,7 @@ const DaySelector = ({ selectedDate, onChange }: DaySelectorProps) => {
     const handleNext = () => {
         const newDate = new Date(dateObj);
         newDate.setDate(newDate.getDate() + 1);
-        while (isWeekend(newDate)) {
+        while (isBlocked(newDate)) {
             newDate.setDate(newDate.getDate() + 1);
         }
         onChange(OrderService.toLocalDateString(newDate));

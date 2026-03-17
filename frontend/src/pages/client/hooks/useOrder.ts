@@ -223,6 +223,25 @@ export const useOrder = () => {
         if (user) fetchSettings();
     }, [apiFetch, user]);
 
+    // Holidays: set of date strings "YYYY-MM-DD" that are blocked
+    const [holidays, setHolidays] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        const fetchHolidays = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/holidays/`);
+                if (res.ok) {
+                    const data = await res.json();
+                    const list: { date: string }[] = data.results ?? data;
+                    setHolidays(new Set(list.map((h) => h.date)));
+                }
+            } catch (e) {
+                console.error("Failed to fetch holidays", e);
+            }
+        };
+        if (user) fetchHolidays();
+    }, [apiFetch, user]);
+
     // Order persistence: no autosave/debounce writes draft orders to the backend.
     // Draft state is kept only in localStorage (see safeParse logic above) to survive page refreshes.
 
@@ -543,5 +562,6 @@ export const useOrder = () => {
         adminVisibleMenus,
         adminVisibleMeals,
         globalDeadlines,
+        holidays,
     };
 };

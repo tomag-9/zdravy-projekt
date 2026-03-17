@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from ..models import DailyOrder
+from ..models import DailyOrder, Holiday
 from .auto_order_service import _build_auto_data, _is_order_empty, _last_non_empty_order
 
 
@@ -18,12 +18,16 @@ class OrderService:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def next_workdays(start: datetime.date, count: int = 5) -> List[datetime.date]:
-        """Return the next *count* Mon–Fri dates starting from *and including* start."""
+    def next_workdays(
+        start: datetime.date,
+        count: int = 5,
+        holidays: Optional[set] = None,
+    ) -> List[datetime.date]:
+        """Return the next *count* Mon–Fri non-holiday dates starting from *and including* start."""
         days: List[datetime.date] = []
         d = start
         while len(days) < count:
-            if d.weekday() < 5:  # 0=Mon … 4=Fri
+            if d.weekday() < 5 and (holidays is None or d not in holidays):
                 days.append(d)
             d += datetime.timedelta(days=1)
         return days
@@ -77,7 +81,14 @@ class OrderService:
         of the number of planned days (no N+1 queries).
         """
         today = timezone.now().astimezone(datetime.timezone.utc).date()
-        workdays = OrderService.next_workdays(today, 5)
+        # Fetch holidays covering the next ~14 days to find 5 workdays safely
+        look_ahead = today + datetime.timedelta(days=14)
+        holiday_set: set = set(
+            Holiday.objects.filter(date__gte=today, date__lte=look_ahead).values_list(
+                "date", flat=True
+            )
+        )
+        workdays = OrderService.next_workdays(today, 5, holiday_set)
 
         existing: Dict[datetime.date, DailyOrder] = {
             o.date: o for o in DailyOrder.objects.filter(user=user, date__in=workdays)

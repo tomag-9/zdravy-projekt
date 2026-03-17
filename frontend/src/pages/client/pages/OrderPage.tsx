@@ -35,6 +35,7 @@ const OrderPage = () => {
     globalDeadlines,
     loadBreakfastFromPrevLunch,
     copyOlovrantFromCurrentLunch,
+    holidays,
   } = useApp();
 
   const { isTourActive, currentStep } = useOnboarding();
@@ -287,10 +288,20 @@ const OrderPage = () => {
 
       <div className="max-w-6xl mx-auto space-y-6">
         <div data-tour-id="tour-day-selector">
-          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} />
+          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
         </div>
 
-        <div className="space-y-6">
+        {holidays?.has(selectedDate) && (
+          <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-2xl px-5 py-4 text-sky-800">
+            <span className="text-2xl">🏖️</span>
+            <div>
+              <div className="font-semibold text-sky-900">Voľný deň</div>
+              <div className="text-sm text-sky-700">Na tento deň nie je možné zadať objednávku.</div>
+            </div>
+          </div>
+        )}
+
+        <div className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}>
           {visibleMealsList.map((mealItem, mealIndex) => {
             const { key: rawKey, label, icon } = mealItem;
             const key = rawKey as "breakfast" | "lunch" | "olovrant";
@@ -370,23 +381,30 @@ const OrderPage = () => {
               : undefined
           }
           disabled={
-            !OrderService.checkDeadline(
-              selectedDate,
-              "breakfast",
-              globalDeadlines,
-            ) &&
-            !OrderService.checkDeadline(
-              selectedDate,
-              "lunch",
-              globalDeadlines,
-            ) &&
-            !OrderService.checkDeadline(
-              selectedDate,
-              "olovrant",
-              globalDeadlines,
+            holidays?.has(selectedDate) ||
+            (
+              !OrderService.checkDeadline(
+                selectedDate,
+                "breakfast",
+                globalDeadlines,
+              ) &&
+              !OrderService.checkDeadline(
+                selectedDate,
+                "lunch",
+                globalDeadlines,
+              ) &&
+              !OrderService.checkDeadline(
+                selectedDate,
+                "olovrant",
+                globalDeadlines,
+              )
             )
           }
-          disabledMessage="Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+          disabledMessage={
+            holidays?.has(selectedDate)
+              ? "Voľný deň – objednávky nie sú dostupné."
+              : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+          }
         />
         </div>
       </div>
