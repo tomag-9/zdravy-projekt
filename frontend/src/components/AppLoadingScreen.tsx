@@ -56,7 +56,7 @@ export default function AppLoadingScreen({ status = 'Načítavam...' }: Props) {
         </div>
 
         {/* Status text */}
-        <p className="text-slate-400 text-sm h-5 text-center">{status}</p>
+        <p role="status" aria-live="polite" className="text-slate-400 text-sm h-5 text-center">{status}</p>
       </div>
     </div>
   );
