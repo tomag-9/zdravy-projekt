@@ -1,10 +1,13 @@
 import datetime
 from typing import Optional
 
+from django.contrib.auth.models import User
 from django.db.models import QuerySet
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -65,13 +68,30 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer: DailyOrderSerializer) -> None:
         """
-        Attach the requesting user to the order and reject staff submissions.
+        Attach the requesting user to the order.
+
+        Staff users may create orders on behalf of a client by supplying a
+        ``user_id`` query parameter (or request body field).  The target user
+        must exist and must not be a staff member.
 
         Raises:
-            ClientOnlyError: When the authenticated user is a staff member.
+            ClientOnlyError: When a staff member attempts to create an order
+                without specifying a ``user_id``.
+            ValidationError: When ``user_id`` refers to another staff account.
         """
         if self.request.user.is_staff:
-            raise ClientOnlyError()
+            user_id = self.request.query_params.get("user_id") or self.request.data.get(
+                "user_id"
+            )
+            if not user_id:
+                raise ClientOnlyError()
+            target_user = get_object_or_404(User, pk=user_id)
+            if target_user.is_staff:
+                raise ValidationError(
+                    {"user_id": "Cannot create orders for staff users."}
+                )
+            serializer.save(user=target_user)
+            return
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
 

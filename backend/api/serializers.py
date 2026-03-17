@@ -147,8 +147,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         Returns:
             The saved (or placeholder) DailyOrder instance.
         """
-        user = validated_data.get("user") or self.context["request"].user
+        request = self.context.get("request")
+        user = validated_data.get("user") or (request and request.user)
         input_status = validated_data.get("status", "submitted")
+        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -156,12 +158,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             existing_order = DailyOrder.objects.filter(
                 user=user, date=validated_data["date"]
             ).first()
-            self._validate_deadlines(
-                validated_data["date"],
-                validated_data.get("data", {}),
-                input_status,
-                existing_order.data if existing_order else None,
-            )
+            if not is_staff:
+                self._validate_deadlines(
+                    validated_data["date"],
+                    validated_data.get("data", {}),
+                    input_status,
+                    existing_order.data if existing_order else None,
+                )
             DailyOrder.objects.filter(user=user, date=validated_data["date"]).delete()
             # Return an unsaved instance for the response
             return DailyOrder(
@@ -174,12 +177,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             .only("data")
             .first()
         )
-        self._validate_deadlines(
-            validated_data["date"],
-            new_data,
-            input_status,
-            existing_order.data if existing_order else None,
-        )
+        if not is_staff:
+            self._validate_deadlines(
+                validated_data["date"],
+                new_data,
+                input_status,
+                existing_order.data if existing_order else None,
+            )
 
         # Use select_for_update inside an atomic block to prevent race conditions
         # when multiple concurrent requests submit an order for the same (user, date).
@@ -231,8 +235,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     ) -> DailyOrder:
         input_status = validated_data.get("status", instance.status)
         new_data = validated_data.get("data", instance.data)
+        request = self.context.get("request")
+        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
-        self._validate_deadlines(instance.date, new_data, input_status, instance.data)
+        if not is_staff:
+            self._validate_deadlines(
+                instance.date, new_data, input_status, instance.data
+            )
 
         if input_status == "draft":
             instance.delete()

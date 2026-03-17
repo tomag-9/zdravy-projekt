@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
+import AdminOrderEditorModal from "./AdminOrderEditorModal";
 
 interface Diet {
   id: number;
@@ -84,6 +85,8 @@ const ClientDetail: React.FC = () => {
   // Order actions
   const [deleteOrderTarget, setDeleteOrderTarget] = useState<DailyOrder | null>(null);
   const [resetOrderTarget, setResetOrderTarget] = useState<DailyOrder | null>(null);
+  const [editOrderTarget, setEditOrderTarget] = useState<DailyOrder | null>(null);
+  const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderActionLoading, setOrderActionLoading] = useState(false);
 
   // Password reset
@@ -184,7 +187,7 @@ const ClientDetail: React.FC = () => {
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/?user_id=${id}`,
         { method: "DELETE" },
       );
       if (res.ok || res.status === 204) {
@@ -207,7 +210,7 @@ const ClientDetail: React.FC = () => {
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/?user_id=${id}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -398,8 +401,19 @@ const ClientDetail: React.FC = () => {
       {activeTab === "dashboard" && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">História objednávok</h3>
+              {!isApiClient && (
+                <button
+                  onClick={() => setShowNewOrderModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                  </svg>
+                  Nová objednávka
+                </button>
+              )}
             </div>
             {ordersLoading ? (
               <div className="p-12 text-center text-gray-400">
@@ -514,6 +528,15 @@ const ClientDetail: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setEditOrderTarget(order)}
+                                title="Upraviť objednávku"
+                                className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
                               <button
                                 onClick={() => setResetOrderTarget(order)}
                                 title="Vynulovať objednávku"
@@ -874,6 +897,27 @@ const ClientDetail: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Create / Edit order modal ── */}
+      {(showNewOrderModal || editOrderTarget) && id && (
+        <AdminOrderEditorModal
+          clientId={id}
+          visibleMenus={Array.from(menus)}
+          visibleMeals={Array.from(meals)}
+          visibleDiets={Array.from(userDiets)}
+          allDiets={allDiets}
+          existingOrder={editOrderTarget ?? null}
+          onClose={() => {
+            setShowNewOrderModal(false);
+            setEditOrderTarget(null);
+          }}
+          onSaved={() => {
+            setShowNewOrderModal(false);
+            setEditOrderTarget(null);
+            fetchOrders();
+          }}
+        />
       )}
 
       {/* ── Reset order confirmation modal ── */}

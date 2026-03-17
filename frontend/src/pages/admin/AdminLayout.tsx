@@ -75,20 +75,28 @@ const AdminLayout: React.FC = () => {
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
-    const [hoveredSectionId, setHoveredSectionId] = React.useState<string | null>(null);
-
-    const isItemActive = (path: string) => location.pathname.startsWith(path);
 
     const getActiveSectionId = () =>
         SECTIONS.find((s) => s.paths.some((p) => location.pathname.startsWith(p)))?.id ?? null;
 
-    const isSectionOpen = (id: string) =>
-        getActiveSectionId() === id || hoveredSectionId === id;
+    const [openSectionId, setOpenSectionId] = React.useState<string | null>(getActiveSectionId);
+
+    const isItemActive = (path: string) => location.pathname.startsWith(path);
+
+    // Auto-expand section when navigating to a child route
+    React.useEffect(() => {
+        const active = SECTIONS.find((s) => s.paths.some((p) => location.pathname.startsWith(p)))?.id ?? null;
+        if (active) setOpenSectionId(active);
+    }, [location.pathname]);
 
     // Close mobile menu when route changes
     React.useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [location.pathname]);
+
+    const toggleSection = (id: string) => {
+        setOpenSectionId((prev) => (prev === id ? null : id));
+    };
 
     const navItemClass = (item: NavItem) => {
         if (item.placeholder) {
@@ -149,7 +157,7 @@ const AdminLayout: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Mobile Close Button */}
+                {/* Mobile header inside sidebar */}
                 <div className="md:hidden p-4 flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-2">
                         <span className="text-lg">🥗</span>
@@ -171,19 +179,17 @@ const AdminLayout: React.FC = () => {
 
                     <div className="border-t border-gray-100 pt-3 space-y-0.5">
                         {SECTIONS.map((section) => {
-                            const isOpen = isSectionOpen(section.id);
-                            const isActive = getActiveSectionId() === section.id;
+                            const isOpen = openSectionId === section.id;
+                            const isActive = section.paths.some((p) => location.pathname.startsWith(p));
+
                             return (
-                                <div
-                                    key={section.id}
-                                    onMouseEnter={() => setHoveredSectionId(section.id)}
-                                    onMouseLeave={() => setHoveredSectionId(null)}
-                                >
-                                    <div
-                                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl select-none cursor-default ${
+                                <div key={section.id}>
+                                    <button
+                                        onClick={() => toggleSection(section.id)}
+                                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-150 ${
                                             isActive
                                                 ? 'text-gray-900'
-                                                : 'text-gray-500'
+                                                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
                                         }`}
                                     >
                                         <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
@@ -191,7 +197,7 @@ const AdminLayout: React.FC = () => {
                                             {section.label}
                                         </span>
                                         <svg
-                                            className={`w-3.5 h-3.5 transition-transform duration-300 ease-in-out ${isOpen ? 'rotate-180' : ''}`}
+                                            className={`w-3.5 h-3.5 transition-transform duration-400 ${isOpen ? 'rotate-180' : ''}`}
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
@@ -199,15 +205,15 @@ const AdminLayout: React.FC = () => {
                                         >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                                         </svg>
-                                    </div>
+                                    </button>
 
                                     {/* Animated accordion content */}
                                     <div
                                         className="overflow-hidden"
                                         style={{
-                                            maxHeight: isOpen ? '300px' : '0px',
+                                            maxHeight: isOpen ? '400px' : '0px',
                                             opacity: isOpen ? 1 : 0,
-                                            transition: 'max-height 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 250ms ease-in-out',
+                                            transition: 'max-height 400ms cubic-bezier(0.4, 0, 0.2, 1), opacity 350ms ease-in-out',
                                         }}
                                     >
                                         <div className="ml-2 pt-0.5 pb-1 space-y-0.5">
@@ -274,10 +280,7 @@ const AdminLayout: React.FC = () => {
                     <h3 className="text-xl font-bold text-gray-900 mb-2">Naozaj sa chcete odhlásiť?</h3>
                     <p className="text-gray-500 mb-6">Budete presmerovaný na prihlasovaciu obrazovku.</p>
                     <div className="flex gap-3 justify-end">
-                        <button
-                            onClick={() => setShowLogoutModal(false)}
-                            className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors"
-                        >
+                        <button onClick={() => setShowLogoutModal(false)} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg font-medium transition-colors">
                             Zrušiť
                         </button>
                         <button
