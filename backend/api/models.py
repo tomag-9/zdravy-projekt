@@ -145,6 +145,10 @@ class UserProfile(models.Model):
         help_text="API key/identifier used for data pairing (API users only)",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    onboarding_completed = models.BooleanField(
+        default=False,
+        help_text="True once the client has completed or dismissed the onboarding tour.",
+    )
 
     class Meta:
         ordering = ["-created_at"]

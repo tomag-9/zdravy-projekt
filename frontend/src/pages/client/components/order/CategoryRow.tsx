@@ -70,6 +70,7 @@ interface CategoryRowProps {
     hasDietsEnabled: boolean;
     disabled?: boolean;
     visibleMenus?: string[];
+    tourId?: string;
 }
 
 const CategoryRow = ({
@@ -80,7 +81,8 @@ const CategoryRow = ({
     onOpenDiets,
     hasDietsEnabled,
     disabled,
-    visibleMenus
+    visibleMenus,
+    tourId,
 }: CategoryRowProps) => {
     // Determine which menus to show based on the keys in menuCounts
     let menus = Object.keys(menuCounts || {});
@@ -96,7 +98,7 @@ const CategoryRow = ({
     });
 
     return (
-        <div className="bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors overflow-hidden">
+        <div data-tour-id={tourId} className="bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors overflow-hidden">
             <div className="bg-slate-100/50 px-4 py-2 border-b border-slate-100">
                 <span className="font-semibold text-slate-700 text-sm">{label}</span>
             </div>

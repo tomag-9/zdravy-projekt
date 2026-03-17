@@ -2,3 +2,12 @@
 
 @source "./index.html";
 @source "./src/**/*.{js,ts,jsx,tsx}";
+
+.tour-highlight {
+  position: relative;
+  z-index: 41;
+  outline: 3px solid #6366f1;
+  outline-offset: 4px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+}

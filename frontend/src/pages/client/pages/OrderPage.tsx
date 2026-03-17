@@ -11,6 +11,8 @@ import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
+import TourOverlay from "../components/onboarding/TourOverlay";
+import { useOnboarding } from "../../../context/OnboardingContext";
 
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
@@ -34,6 +36,8 @@ const OrderPage = () => {
     loadBreakfastFromPrevLunch,
     copyOlovrantFromCurrentLunch,
   } = useApp();
+
+  const { isTourActive, currentStep } = useOnboarding();
 
   const [activeDietModal, setActiveDietModal] = useState<{
     meal: "breakfast" | "lunch" | "olovrant";
@@ -110,6 +114,18 @@ const OrderPage = () => {
     Array.isArray(adminVisibleMeals) && adminVisibleMeals.length > 0
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
+
+  // ── Tour: auto-expand first meal when reaching the CategoryRow step (7) ─────
+  useEffect(() => {
+    if (!isTourActive || currentStep !== 7) return;
+    const firstMeal = visibleMealsList[0];
+    if (!firstMeal) return;
+    const key = firstMeal.key as "breakfast" | "lunch" | "olovrant";
+    const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
+    if (isEditable && !activeMeals[key]) {
+      toggleMeal(key);
+    }
+  }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (
@@ -270,10 +286,12 @@ const OrderPage = () => {
       </div>
 
       <div className="max-w-6xl mx-auto space-y-6">
-        <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} />
+        <div data-tour-id="tour-day-selector">
+          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} />
+        </div>
 
         <div className="space-y-6">
-          {visibleMealsList.map((mealItem) => {
+          {visibleMealsList.map((mealItem, mealIndex) => {
             const { key: rawKey, label, icon } = mealItem;
             const key = rawKey as "breakfast" | "lunch" | "olovrant";
             // Check deadline - assuming OrderService is available
@@ -292,6 +310,7 @@ const OrderPage = () => {
                 onToggle={() => isEditable && toggleMeal(key)} // Block toggle if not editable
                 copyAction={isEditable ? handleCopyTrigger(key) : null} // Hide copy if not editable
                 className={!isEditable ? "opacity-75" : ""} // Visual feedback
+                tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
                 statusMessage={
                   !isEditable ? (
                     <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100 flex items-center gap-2 inline-flex mb-2">
@@ -304,7 +323,7 @@ const OrderPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {CATEGORIES.filter((category) =>
                     enabledCategories.includes(category),
-                  ).map((category) => {
+                  ).map((category, catIndex) => {
                     const data = currentOrder[key]?.[category];
                     if (!data) return null;
 
@@ -330,6 +349,7 @@ const OrderPage = () => {
                         }
                         disabled={!isEditable}
                         visibleMenus={adminVisibleMenus}
+                        tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
                       />
                     );
                   })}
@@ -339,6 +359,7 @@ const OrderPage = () => {
           })}
         </div>
 
+        <div data-tour-id="tour-order-summary">
         <OrderSummary
           onSubmit={handleSubmit}
           onReset={
@@ -367,6 +388,7 @@ const OrderPage = () => {
           }
           disabledMessage="Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
         />
+        </div>
       </div>
 
       {activeDietModal && (
@@ -421,6 +443,7 @@ const OrderPage = () => {
         cancelText="Zostať"
         variant="warning"
       />
+      <TourOverlay />
     </div>
   );
 };

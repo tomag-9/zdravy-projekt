@@ -43,6 +43,7 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
             "client_type",
             "api_identifier",
             "created_at",
+            "onboarding_completed",
         ]
         read_only_fields = ["created_at"]
 
@@ -76,6 +77,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     dic = serializers.CharField(
         source="profile.dic", required=False, allow_blank=True, allow_null=True
     )
+    onboarding_completed = serializers.BooleanField(
+        source="profile.onboarding_completed", required=False
+    )
 
     class Meta:
         model = User
@@ -87,6 +91,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "company_name",
             "ico",
             "dic",
+            "onboarding_completed",
             "date_joined",
             "groups",
             "settings",
@@ -131,12 +136,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if profile_data is not None:
             profile = getattr(user, "profile", None)
             if profile is not None:
-                for field in ("company_name", "ico", "dic"):
+                for field in ("company_name", "ico", "dic", "onboarding_completed"):
                     if field in profile_data:
                         setattr(profile, field, profile_data[field])
                 profile.save(
                     update_fields=[
-                        k for k in ("company_name", "ico", "dic") if k in profile_data
+                        k
+                        for k in ("company_name", "ico", "dic", "onboarding_completed")
+                        if k in profile_data
                     ]
                 )
 

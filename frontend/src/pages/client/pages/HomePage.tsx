@@ -20,6 +20,7 @@ import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
+import TourOverlay from "../components/onboarding/TourOverlay";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -399,7 +400,7 @@ const HomePage = () => {
           </div>
           <div className="flex gap-2 md:gap-3">
             <Link to="/profile">
-              <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
+              <button data-tour-id="tour-profile-btn" className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
                 <User className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
                 <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">
                   Profil
@@ -419,6 +420,7 @@ const HomePage = () => {
 
         {/* New Order CTA — navigates to first next workday */}
         <Link
+          data-tour-id="tour-new-order-btn"
           to={`/order?date=${firstWorkday}`}
           className="group relative block mb-10"
         >
@@ -462,7 +464,7 @@ const HomePage = () => {
                   ? day.predictedMealCount
                   : null;
             return (
-              <div className="mb-8 animate-in slide-in-from-bottom-3 duration-400">
+              <div data-tour-id="tour-today-section" className="mb-8 animate-in slide-in-from-bottom-3 duration-400">
                 <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-orange-500" />
                   Dnešná objednávka
@@ -554,7 +556,7 @@ const HomePage = () => {
           })()}
 
         {/* ── Plánované objednávky – 5 pracovných dní ── */}
-        <div className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
+        <div data-tour-id="tour-planned-section" className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-indigo-600" />
             Plánované objednávky
@@ -666,7 +668,7 @@ const HomePage = () => {
         </div>
 
         {/* ── História – posledných 5 minulých ── */}
-        <div className="animate-in slide-in-from-bottom-10 duration-700">
+        <div data-tour-id="tour-history-section" className="animate-in slide-in-from-bottom-10 duration-700">
           <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
             <History className="w-5 h-5 text-slate-500" />
             História (Posledných 5)
@@ -759,6 +761,7 @@ const HomePage = () => {
         />
 
       </div>
+      <TourOverlay />
     </div>
   );
 };

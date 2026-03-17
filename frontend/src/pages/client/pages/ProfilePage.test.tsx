@@ -24,6 +24,20 @@ vi.mock("../../../context/auth", () => ({
   }),
 }));
 
+vi.mock("../../../context/OnboardingContext", () => ({
+  useOnboarding: () => ({
+    isTourActive: false,
+    currentStep: 0,
+    totalSteps: 9,
+    startTour: vi.fn(),
+    nextStep: vi.fn(),
+    prevStep: vi.fn(),
+    completeTour: vi.fn(),
+    skipTour: vi.fn(),
+    resetTour: vi.fn(),
+  }),
+}));
+
 vi.mock("../../../hooks/usePushNotifications", () => ({
   usePushNotifications: () => ({
     permission: pushState.permission,

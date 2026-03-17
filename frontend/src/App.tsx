@@ -8,6 +8,7 @@ import {
 
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
+import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
 import { usePWA } from "./hooks/usePWA";
@@ -60,9 +61,11 @@ const ProtectedRoute = () => {
 
   return (
     <AppProvider>
-      <NotificationGuard>
-        <Outlet />
-      </NotificationGuard>
+      <OnboardingProvider>
+        <NotificationGuard>
+          <Outlet />
+        </NotificationGuard>
+      </OnboardingProvider>
     </AppProvider>
   );
 };
