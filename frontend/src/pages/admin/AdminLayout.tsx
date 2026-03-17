@@ -76,10 +76,9 @@ const AdminLayout: React.FC = () => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
 
-    const getActiveSectionId = () =>
-        SECTIONS.find((s) => s.paths.some((p) => location.pathname.startsWith(p)))?.id ?? null;
-
-    const [openSectionId, setOpenSectionId] = React.useState<string | null>(getActiveSectionId);
+    const [openSectionId, setOpenSectionId] = React.useState<string | null>(
+        () => SECTIONS.find((s) => s.paths.some((p) => location.pathname.startsWith(p)))?.id ?? null,
+    );
 
     const isItemActive = (path: string) => location.pathname.startsWith(path);
 

@@ -274,6 +274,7 @@ const ClientList: React.FC = () => {
                           <button
                             onClick={() => openEdit(user)}
                             title="Upraviť"
+                            aria-label="Upraviť"
                             className="p-2 text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors"
                           >
                             <IconEdit />
@@ -281,6 +282,7 @@ const ClientList: React.FC = () => {
                           <Link
                             to={`/admin/clients/${user.id}`}
                             title="Nastavenia"
+                            aria-label="Nastavenia"
                             className="p-2 text-gray-500 hover:text-teal-700 hover:bg-teal-50 rounded-lg transition-colors"
                           >
                             <IconGear />
@@ -288,6 +290,7 @@ const ClientList: React.FC = () => {
                           <button
                             onClick={() => setDeleteTarget(user)}
                             title="Odstrániť"
+                            aria-label="Odstrániť"
                             className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <IconTrash />

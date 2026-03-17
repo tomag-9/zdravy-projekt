@@ -107,19 +107,19 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     const handleSave = async () => {
         setSaving(true);
         try {
-            // Build payload: only include active meals, zero-out inactive
-            const data: DailyOrder = OrderService.fastCopy(order);
-            for (const { key } of MEAL_CONFIG) {
-                if (!activeMeals[key]) {
-                    data[key] = OrderService.createEmptyMeal();
-                }
-            }
+            // Build payload: only meal keys, zero-out inactive meals (strip 'status' from DailyOrder type)
+            const snapshot: DailyOrder = OrderService.fastCopy(order);
+            const payloadData = {
+                breakfast: activeMeals.breakfast ? snapshot.breakfast : OrderService.createEmptyMeal(),
+                lunch: activeMeals.lunch ? snapshot.lunch : OrderService.createEmptyMeal(),
+                olovrant: activeMeals.olovrant ? snapshot.olovrant : OrderService.createEmptyMeal(),
+            };
 
             if (existingOrder) {
                 const res = await apiFetch(`${API_URL}/orders/${existingOrder.id}/?user_id=${clientId}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data }),
+                    body: JSON.stringify({ data: payloadData }),
                 });
                 if (!res.ok) throw new Error('save failed');
                 toast.success('Objednávka bola uložená.');
@@ -127,7 +127,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                 const res = await apiFetch(`${API_URL}/orders/?user_id=${clientId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date, data }),
+                    body: JSON.stringify({ date, data: payloadData }),
                 });
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));

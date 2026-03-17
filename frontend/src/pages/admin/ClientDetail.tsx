@@ -531,6 +531,7 @@ const ClientDetail: React.FC = () => {
                               <button
                                 onClick={() => setEditOrderTarget(order)}
                                 title="Upraviť objednávku"
+                                aria-label="Upraviť objednávku"
                                 className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -540,6 +541,7 @@ const ClientDetail: React.FC = () => {
                               <button
                                 onClick={() => setResetOrderTarget(order)}
                                 title="Vynulovať objednávku"
+                                aria-label="Vynulovať objednávku"
                                 className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -549,6 +551,7 @@ const ClientDetail: React.FC = () => {
                               <button
                                 onClick={() => setDeleteOrderTarget(order)}
                                 title="Odstrániť objednávku"
+                                aria-label="Odstrániť objednávku"
                                 className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               >
                                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

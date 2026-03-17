@@ -71,8 +71,8 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         Attach the requesting user to the order.
 
         Staff users may create orders on behalf of a client by supplying a
-        ``user_id`` query parameter (or request body field).  The target user
-        must exist and must not be a staff member.
+        ``user_id`` query parameter.  The target user must exist and must not
+        be a staff member.
 
         Raises:
             ClientOnlyError: When a staff member attempts to create an order
@@ -80,9 +80,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             ValidationError: When ``user_id`` refers to another staff account.
         """
         if self.request.user.is_staff:
-            user_id = self.request.query_params.get("user_id") or self.request.data.get(
-                "user_id"
-            )
+            user_id = self.request.query_params.get("user_id")
             if not user_id:
                 raise ClientOnlyError()
             target_user = get_object_or_404(User, pk=user_id)
