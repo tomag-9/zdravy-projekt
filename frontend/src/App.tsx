@@ -5,12 +5,15 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
+import { useState, useEffect } from "react";
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
+import { usePWA } from "./hooks/usePWA";
 import NotificationGuard from "./components/NotificationGuard";
 import PWAUpdateBanner from "./components/PWAUpdateBanner";
+import AppLoadingScreen from "./components/AppLoadingScreen";
 import HomePage from "./pages/client/pages/HomePage";
 import OrderPage from "./pages/client/pages/OrderPage";
 import Settings from "./pages/client/pages/Settings";
@@ -40,13 +43,8 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // Wait for the profile to load before deciding which layout to show
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   // Never treat an authenticated user with an unresolved/failed profile load
@@ -77,11 +75,7 @@ const AdminRoute = () => {
   }
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <AppLoadingScreen />;
   }
 
   if (user === null) {
@@ -95,62 +89,94 @@ const AdminRoute = () => {
   return <AdminLayout />;
 };
 
+/**
+ * AppContent — shown inside all providers.
+ * Displays AppLoadingScreen while auth is initialising or a SW update is
+ * being applied. In standalone (PWA) mode updates are applied automatically.
+ */
+function AppContent({ children }: { children: React.ReactNode }) {
+  const { isLoading } = useAuth();
+  const { updateAvailable, applyUpdate, isStandalone } = usePWA();
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+
+  // In standalone (installed PWA) mode, apply updates automatically
+  useEffect(() => {
+    if (updateAvailable && isStandalone) {
+      setIsApplyingUpdate(true);
+      applyUpdate();
+    }
+  }, [updateAvailable, isStandalone, applyUpdate]);
+
+  if (isLoading || isApplyingUpdate) {
+    return (
+      <AppLoadingScreen
+        status={isApplyingUpdate ? "Aktualizujem aplikáciu..." : "Načítavam..."}
+      />
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <PWAProvider>
         <AuthProvider>
           <ToastProvider>
-            <PWAUpdateBanner />
-            <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<Navigate to="/login" replace />} />
-            <Route path="/verify-email/:token" element={<Navigate to="/login" replace />} />
-            <Route path="/resend-verification" element={<Navigate to="/login" replace />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/set-password" element={<SetPasswordPage />} />
+            <AppContent>
+              {/* Banner only shown in browser (non-standalone) mode */}
+              <PWAUpdateBanner />
+              <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<Navigate to="/login" replace />} />
+              <Route path="/verify-email/:token" element={<Navigate to="/login" replace />} />
+              <Route path="/resend-verification" element={<Navigate to="/login" replace />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/set-password" element={<SetPasswordPage />} />
 
-            {/* Admin Routes */}
-            <Route path="/admin" element={<AdminRoute />}>
-              <Route index element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard" element={<AdminDashboard />} />
-              <Route path="clients" element={<ClientList />} />
-              <Route path="clients/:id" element={<ClientDetail />} />
-              <Route path="roles" element={<AdminUserList />} />
-              <Route path="roles/:id" element={<AdminUserDetail />} />
-              <Route path="diets" element={<DietManager />} />
-              <Route path="meal-plan" element={<MealPlanCalendar />} />
-              <Route path="meal-plan/:date" element={<MealPlanEditor />} />
-              <Route path="meal-plan-templates" element={<MealPlanTemplates />} />
-              <Route path="portion-types" element={<PortionTypes />} />
-              <Route path="settings" element={<SystemSettings />} />
-              <Route path="push-notifications" element={<PushNotificationsAdmin />} />
-            </Route>
+              {/* Admin Routes */}
+              <Route path="/admin" element={<AdminRoute />}>
+                <Route index element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="clients" element={<ClientList />} />
+                <Route path="clients/:id" element={<ClientDetail />} />
+                <Route path="roles" element={<AdminUserList />} />
+                <Route path="roles/:id" element={<AdminUserDetail />} />
+                <Route path="diets" element={<DietManager />} />
+                <Route path="meal-plan" element={<MealPlanCalendar />} />
+                <Route path="meal-plan/:date" element={<MealPlanEditor />} />
+                <Route path="meal-plan-templates" element={<MealPlanTemplates />} />
+                <Route path="portion-types" element={<PortionTypes />} />
+                <Route path="settings" element={<SystemSettings />} />
+                <Route path="push-notifications" element={<PushNotificationsAdmin />} />
+              </Route>
 
-            {/* Client Routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route path="/" element={<Navigate to="/home" replace />} />
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/profile" element={<ProfilePage />} />
-              <Route
-                path="/order"
-                element={
-                  <div className="min-h-screen bg-slate-50">
-                    <OrderPage />
-                  </div>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <div className="min-h-screen bg-slate-50">
-                    <Settings />
-                  </div>
-                }
-              />
-            </Route>
-            </Routes>
+              {/* Client Routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<Navigate to="/home" replace />} />
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route
+                  path="/order"
+                  element={
+                    <div className="min-h-screen bg-slate-50">
+                      <OrderPage />
+                    </div>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <div className="min-h-screen bg-slate-50">
+                      <Settings />
+                    </div>
+                  }
+                />
+              </Route>
+              </Routes>
+            </AppContent>
           </ToastProvider>
         </AuthProvider>
       </PWAProvider>

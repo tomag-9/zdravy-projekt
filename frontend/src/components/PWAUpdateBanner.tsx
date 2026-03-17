@@ -8,9 +8,10 @@
 import { usePWA } from '../hooks/usePWA';
 
 export default function PWAUpdateBanner() {
-  const { updateAvailable, applyUpdate } = usePWA();
+  const { updateAvailable, applyUpdate, isStandalone } = usePWA();
 
-  if (!updateAvailable) return null;
+  // In standalone (installed PWA) mode, AppContent handles updates automatically
+  if (!updateAvailable || isStandalone) return null;
 
   return (
     <div className="fixed top-0 inset-x-0 z-50 bg-blue-600 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-md">

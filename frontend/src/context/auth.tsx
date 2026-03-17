@@ -8,6 +8,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
+const CACHED_PROFILE_KEY = "cached_user_profile";
 
 interface UserProfile {
   company_name: string;
@@ -73,26 +74,37 @@ function clearOrderLocalStorage() {
   keysToRemove.forEach((k) => localStorage.removeItem(k));
 }
 
+function loadCachedProfile(): User | null {
+  try {
+    const raw = localStorage.getItem(CACHED_PROFILE_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(
-    sessionStorage.getItem("access_token"),
-  );
-  // True while the initial profile fetch is in-flight (prevents route flicker)
+  const storedToken = localStorage.getItem("access_token");
+  const cachedProfile = storedToken ? loadCachedProfile() : null;
+
+  const [user, setUser] = useState<User | null>(cachedProfile);
+  const [token, setToken] = useState<string | null>(storedToken);
+  // Show loading only when there's a token but no cached profile yet
   const [isLoading, setIsLoading] = useState<boolean>(
-    !!sessionStorage.getItem("access_token"),
+    !!storedToken && !cachedProfile,
   );
   const navigate = useNavigate();
 
   // Logout function
   const logout = useCallback(() => {
-    sessionStorage.removeItem("access_token");
-    sessionStorage.removeItem("refresh_token");
-    // Also clear localStorage in case anything was stored there
     localStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
+    localStorage.removeItem(CACHED_PROFILE_KEY);
+    // Legacy: also clear sessionStorage in case old sessions stored tokens there
+    sessionStorage.removeItem("access_token");
+    sessionStorage.removeItem("refresh_token");
     // Clear per-user order data so next user starts fresh
     clearOrderLocalStorage();
     setToken(null);
@@ -102,7 +114,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   // Refresh access token using refresh token
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    const refresh = sessionStorage.getItem("refresh_token");
+    const refresh = localStorage.getItem("refresh_token");
     if (!refresh) {
       logout();
       return false;
@@ -117,11 +129,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       if (response.ok) {
         const data = await response.json();
-        sessionStorage.setItem("access_token", data.access);
+        localStorage.setItem("access_token", data.access);
         setToken(data.access);
         // If the backend rotates refresh tokens, update it here
         if (data.refresh) {
-          sessionStorage.setItem("refresh_token", data.refresh);
+          localStorage.setItem("refresh_token", data.refresh);
         }
         return true;
       } else {
@@ -138,7 +150,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Custom fetch wrapper that handles auth headers and token refresh
   const apiFetch = useCallback(
     async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-      const currentToken = sessionStorage.getItem("access_token");
+      const currentToken = localStorage.getItem("access_token");
       const headers = new Headers(init?.headers);
 
       if (currentToken) {
@@ -156,7 +168,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!serverDate) return;
         const serverMs = Date.parse(serverDate);
         if (Number.isNaN(serverMs)) return;
-        sessionStorage.setItem(
+        localStorage.setItem(
           "server_time_offset_ms",
           String(serverMs - Date.now()),
         );
@@ -168,7 +180,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       if (response.status === 401) {
         const refreshed = await refreshToken();
         if (refreshed) {
-          const newToken = sessionStorage.getItem("access_token");
+          const newToken = localStorage.getItem("access_token");
           headers.set("Authorization", `Bearer ${newToken}`);
           response = await fetch(input, {
             ...init,
@@ -183,7 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         // results in 403/failure, treat it as an invalid session and redirect to login.
         const refreshed = await refreshToken();
         if (refreshed) {
-          const newToken = sessionStorage.getItem("access_token");
+          const newToken = localStorage.getItem("access_token");
           headers.set("Authorization", `Bearer ${newToken}`);
           const retried = await fetch(input, {
             ...init,
@@ -209,6 +221,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       const response = await apiFetch(`${API_URL}/user/profile/`);
       if (response.ok) {
         const userData: User = await response.json();
+        localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(userData));
         setUser(userData);
         return userData;
       }
@@ -225,16 +238,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     // Determine initial auth state
-    const storedToken = sessionStorage.getItem("access_token");
-    if (storedToken) {
-      setToken(storedToken);
+    const existingToken = localStorage.getItem("access_token");
+    if (existingToken) {
+      setToken(existingToken);
       fetchUserProfile();
     }
 
     // Set up token refresh interval (every 4 minutes, tokens expire in 5 minutes)
     const refreshInterval = setInterval(
       () => {
-        if (sessionStorage.getItem("refresh_token")) {
+        if (localStorage.getItem("refresh_token")) {
           refreshToken();
         }
       },
@@ -248,10 +261,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     accessToken: string,
     refreshTokenStr: string,
   ): Promise<User | null> => {
-    // Wipe previous user's local order data before loading the new user's profile
+    // Wipe previous user's local order data and cached profile before loading new user
     clearOrderLocalStorage();
-    sessionStorage.setItem("access_token", accessToken);
-    sessionStorage.setItem("refresh_token", refreshTokenStr);
+    localStorage.removeItem(CACHED_PROFILE_KEY);
+    localStorage.setItem("access_token", accessToken);
+    localStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
     setIsLoading(true);
     // Await profile so callers can navigate based on role (e.g. is_staff)
