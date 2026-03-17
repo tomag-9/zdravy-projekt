@@ -81,23 +81,11 @@ class OrderService:
         of the number of planned days (no N+1 queries).
         """
         today = timezone.now().astimezone(datetime.timezone.utc).date()
-        # Fetch holidays with an expanding window to ensure all dates examined
-        # by next_workdays are covered, even during long holiday stretches.
-        look_ahead_days = 14
-        max_look_ahead_days = 90
-        while True:
-            look_ahead = today + datetime.timedelta(days=look_ahead_days)
-            holiday_set: set[datetime.date] = set(
-                Holiday.objects.filter(
-                    date__gte=today, date__lte=look_ahead
-                ).values_list("date", flat=True)
-            )
-            workdays = OrderService.next_workdays(today, 5, holiday_set)
-            if not workdays or workdays[-1] <= look_ahead:
-                break
-            if look_ahead_days >= max_look_ahead_days:
-                break
-            look_ahead_days = min(look_ahead_days * 2, max_look_ahead_days)
+        # Fetch all upcoming holidays once (small table) to avoid repeated queries.
+        holiday_set: set[datetime.date] = set(
+            Holiday.objects.filter(date__gte=today).values_list("date", flat=True)
+        )
+        workdays = OrderService.next_workdays(today, 5, holiday_set)
 
         existing: Dict[datetime.date, DailyOrder] = {
             o.date: o for o in DailyOrder.objects.filter(user=user, date__in=workdays)

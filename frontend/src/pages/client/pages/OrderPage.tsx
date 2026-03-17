@@ -301,7 +301,10 @@ const OrderPage = () => {
           </div>
         )}
 
-        <div className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}>
+        <div
+          className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}
+          inert={holidays?.has(selectedDate) ? true : undefined}
+        >
           {visibleMealsList.map((mealItem, mealIndex) => {
             const { key: rawKey, label, icon } = mealItem;
             const key = rawKey as "breakfast" | "lunch" | "olovrant";

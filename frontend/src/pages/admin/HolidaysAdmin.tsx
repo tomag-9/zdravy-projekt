@@ -39,13 +39,24 @@ const HolidaysAdmin: React.FC = () => {
     const fetchHolidays = React.useCallback(async () => {
         setLoading(true);
         try {
-            const res = await apiFetch(`${API_URL}/admin/holidays/`);
-            if (res.ok) {
-                const data = await res.json();
-                setHolidays(data.results ?? data);
-            } else {
-                error('Nepodarilo sa načítať voľné dni');
+            const allHolidays: Holiday[] = [];
+            let url: string | null = `${API_URL}/admin/holidays/`;
+            while (url) {
+                const res = await apiFetch(url);
+                if (!res.ok) {
+                    error('Nepodarilo sa načítať voľné dni');
+                    return;
+                }
+                const data: Holiday[] | { results: Holiday[]; next: string | null } = await res.json();
+                if (Array.isArray(data)) {
+                    allHolidays.push(...data);
+                    url = null;
+                } else {
+                    allHolidays.push(...(data.results ?? []));
+                    url = data.next ?? null;
+                }
             }
+            setHolidays(allHolidays);
         } catch {
             error('Nepodarilo sa načítať voľné dni');
         } finally {
@@ -73,9 +84,12 @@ const HolidaysAdmin: React.FC = () => {
                 setSingleReason('');
                 fetchHolidays();
             } else {
-                const data = await res.json().catch(() => ({}));
-                if (data?.date) {
+                const data: { error?: { message?: string; details?: { date?: string[] } } } = await res.json().catch(() => ({}));
+                const dateError = data?.error?.details?.date;
+                if (dateError) {
                     error('Tento deň je už nastavený ako voľný');
+                } else if (typeof data?.error?.message === 'string' && data.error.message.trim()) {
+                    error(data.error.message);
                 } else {
                     error('Nepodarilo sa pridať voľný deň');
                 }

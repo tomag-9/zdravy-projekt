@@ -229,12 +229,20 @@ export const useOrder = () => {
     useEffect(() => {
         const fetchHolidays = async () => {
             try {
-                const res = await apiFetch(`${API_URL}/holidays/`);
-                if (res.ok) {
+                const allHolidays: { date: string }[] = [];
+                let url: string | null = `${API_URL}/holidays/`;
+                while (url) {
+                    const res = await apiFetch(url);
+                    if (!res.ok) break;
                     const data = await res.json();
-                    const list: { date: string }[] = data.results ?? data;
-                    setHolidays(new Set(list.map((h) => h.date)));
+                    if (Array.isArray(data)) {
+                        allHolidays.push(...data);
+                        break;
+                    }
+                    allHolidays.push(...(data.results ?? []));
+                    url = data.next ?? null;
                 }
+                setHolidays(new Set(allHolidays.map((h) => h.date)));
             } catch (e) {
                 console.error("Failed to fetch holidays", e);
             }

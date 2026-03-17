@@ -132,6 +132,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     ),
                 )
 
+    def _enforce_holiday_restriction(
+        self, user: Any, status: str, date: datetime.date
+    ) -> None:
+        """Disallow non-staff, non-draft orders on holidays."""
+        is_staff = getattr(user, "is_staff", False)
+        if not is_staff and status != "draft":
+            if Holiday.objects.filter(date=date).exists():
+                raise HolidayOrderNotAllowedError()
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -156,10 +165,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", "submitted")
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
-        # Prevent orders on holidays (non-staff only, draft/deletion requests are exempt)
-        if not is_staff and input_status != "draft":
-            if Holiday.objects.filter(date=validated_data["date"]).exists():
-                raise HolidayOrderNotAllowedError()
+        self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -245,7 +251,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", instance.status)
         new_data = validated_data.get("data", instance.data)
         request = self.context.get("request")
+        user = validated_data.get("user") or (request and request.user) or instance.user
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+
+        date = validated_data.get("date", instance.date)
+        self._enforce_holiday_restriction(user, input_status, date)
 
         if not is_staff:
             self._validate_deadlines(

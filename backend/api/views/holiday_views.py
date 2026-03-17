@@ -1,5 +1,6 @@
 import datetime
 
+from django.utils import timezone
 from rest_framework import permissions, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -19,6 +20,7 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
 
     serializer_class = HolidaySerializer
     permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
 
     def get_queryset(self):
         return Holiday.objects.all()
@@ -38,6 +40,13 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
 
         if end < start:
             raise ValidationError("end_date must be >= start_date.")
+
+        max_days = 365
+        total_days = (end - start).days + 1
+        if total_days > max_days:
+            raise ValidationError(
+                f"Date range too large; maximum is {max_days} days, got {total_days} days."
+            )
 
         created = []
         skipped = []
@@ -63,7 +72,8 @@ class HolidayListViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = HolidaySerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
 
     def get_queryset(self):
-        today = datetime.date.today()
+        today = timezone.localdate()
         return Holiday.objects.filter(date__gte=today - datetime.timedelta(days=30))
