@@ -1,6 +1,5 @@
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
-from django.db.utils import IntegrityError
 
 
 class Command(BaseCommand):
@@ -16,10 +15,17 @@ class Command(BaseCommand):
                 self.stdout.write(f'Group "{role_name}" already exists')
 
         # Create Admin User
-        try:
-            admin_user = User.objects.create_superuser(
-                "admin", "admin@example.com", "admin"
-            )
+        admin_user, created = User.objects.get_or_create(
+            username="admin",
+            defaults={
+                "email": "admin@example.com",
+                "is_staff": True,
+                "is_superuser": True,
+            },
+        )
+        if created:
+            admin_user.set_password("admin")
+            admin_user.save()
             admin_group = Group.objects.get(name="Admin")
             admin_user.groups.add(admin_group)
             self.stdout.write(self.style.SUCCESS('Created superuser "admin"'))
@@ -28,16 +34,17 @@ class Command(BaseCommand):
                     "SECURITY WARNING: Created default 'admin' user with weak password. CHANGE IN PRODUCTION!"
                 )
             )
-        except IntegrityError:
+        else:
             self.stdout.write('Superuser "admin" already exists')
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"Could not create superuser: {e}"))
 
         # Create Client User
-        try:
-            client_user = User.objects.create_user(
-                "client", "client@example.com", "client"
-            )
+        client_user, created = User.objects.get_or_create(
+            username="client",
+            defaults={"email": "client@example.com"},
+        )
+        if created:
+            client_user.set_password("client")
+            client_user.save()
             client_group = Group.objects.get(name="Client")
             client_user.groups.add(client_group)
             self.stdout.write(self.style.SUCCESS('Created user "client"'))
@@ -46,7 +53,5 @@ class Command(BaseCommand):
                     "SECURITY WARNING: Created default 'client' user with weak password. CHANGE IN PRODUCTION!"
                 )
             )
-        except IntegrityError:
+        else:
             self.stdout.write('User "client" already exists')
-        except Exception as e:
-            self.stdout.write(self.style.WARNING(f"Could not create client user: {e}"))

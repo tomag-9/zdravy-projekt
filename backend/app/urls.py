@@ -20,6 +20,27 @@ urlpatterns = [
     ),  # handle trailing slash (APPEND_SLASH redirect target)
 ]
 
+# Dev-only push echo endpoint – acts as a fake browser push service.
+# seed_dev_data seeds a PushSubscription pointing here so pushes can be
+# verified without a real browser subscription.
+if settings.DEBUG:
+    import logging
+
+    from django.http import HttpResponse
+    from django.views.decorators.csrf import csrf_exempt
+
+    _push_echo_logger = logging.getLogger("dev.push_echo")
+
+    @csrf_exempt
+    def _dev_push_echo(request):
+        _push_echo_logger.info(
+            "DEV PUSH ECHO received push: %d bytes encrypted payload",
+            len(request.body),
+        )
+        return HttpResponse(status=201)
+
+    urlpatterns.append(path("api/dev/push-echo/", _dev_push_echo, name="dev_push_echo"))
+
 # Only expose API schema and documentation in development
 if settings.DEBUG:
     urlpatterns.extend(

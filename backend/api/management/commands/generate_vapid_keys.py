@@ -29,29 +29,24 @@ class Command(BaseCommand):
         vapid = Vapid()
         vapid.generate_keys()
 
-        # Export public key in uncompressed point format (for browser pushManager)
-        public_key = vapid.public_key
-        # py_vapid stores keys internally; we need the base64url-encoded forms
-        # The application server key used by the browser must be in
-        # uncompressed EC point format (65 bytes), base64url-encoded.
         import base64
 
         from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-        raw_public = public_key.public_bytes(
+        # Public key: uncompressed EC point format (65 bytes), base64url-encoded.
+        # This is what browsers expect for pushManager.subscribe applicationServerKey.
+        raw_public = vapid.public_key.public_bytes(
             Encoding.X962, PublicFormat.UncompressedPoint
         )
         public_b64 = base64.urlsafe_b64encode(raw_public).rstrip(b"=").decode("ascii")
 
-        private_key = vapid.private_key
-        from cryptography.hazmat.primitives.serialization import (
-            NoEncryption,
-            PrivateFormat,
+        # Private key: raw 32-byte EC scalar, base64url-encoded (no padding).
+        # py_vapid.from_string() expects this format (not PEM).
+        private_value = vapid.private_key.private_numbers().private_value
+        raw_private_bytes = private_value.to_bytes(32, "big")
+        private_b64 = (
+            base64.urlsafe_b64encode(raw_private_bytes).rstrip(b"=").decode("ascii")
         )
-
-        raw_private = private_key.private_bytes(
-            Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()
-        ).decode("ascii")
 
         self.stdout.write(
             self.style.SUCCESS("\n✅ VAPID key pair generated successfully!\n")
@@ -60,9 +55,7 @@ class Command(BaseCommand):
         self.stdout.write("-" * 60)
         self.stdout.write(f"VAPID_PUBLIC_KEY={public_b64}")
         self.stdout.write("")
-        self.stdout.write(
-            "VAPID_PRIVATE_KEY=" + raw_private.strip().replace("\n", "\\n")
-        )
+        self.stdout.write(f"VAPID_PRIVATE_KEY={private_b64}")
         self.stdout.write("-" * 60)
         self.stdout.write(
             "\n⚠️  Keep VAPID_PRIVATE_KEY secret. "

@@ -43,6 +43,9 @@ services:
       REDIS_URL: redis://redis:6379/1
       EMAIL_HOST: mailhog
       EMAIL_PORT: 1025
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-BPWWCgQ8JraWheFRIUrMpzw2KgnXj3qXSTLmb1wi9o1lj1ofI6LCidmXcc3xb072BmmOfgQijCuqQG0tn5UwjY4}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-Puur0QT5cW1ev5w_XDuAifu5jNJQy7nwWdsMdLdBV38}
+      VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-admin@example.com}
     depends_on:
       db:
         condition: service_healthy
