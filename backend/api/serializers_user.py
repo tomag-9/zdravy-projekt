@@ -211,7 +211,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
-    company_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
     client_type = serializers.ChoiceField(
         choices=UserProfile.CLIENT_TYPE_CHOICES,
@@ -219,6 +218,21 @@ class AdminUserSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     api_identifier = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    company_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    ico = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    dic = serializers.CharField(
         required=False,
         allow_blank=True,
         write_only=True,
@@ -231,13 +245,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "company_name",
             "is_active",
             "is_staff",
             "settings",
             "profile",
             "client_type",
             "api_identifier",
+            "company_name",
+            "ico",
+            "dic",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -254,6 +270,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data: Dict[str, Any]) -> User:
         client_type = validated_data.pop("client_type", UserProfile.CLIENT_TYPE_APP)
         api_identifier = validated_data.pop("api_identifier", "")
+        company_name = validated_data.pop("company_name", "") or ""
+        ico = validated_data.pop("ico", "") or ""
+        dic = validated_data.pop("dic", "") or ""
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -269,20 +288,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
         user.set_unusable_password()
         user.save()
 
-        # Create profile with client type
+        # Create profile with client type and optional company details
         UserProfile.objects.create(
             user=user,
             client_type=client_type,
             api_identifier=api_identifier,
+            company_name=company_name,
+            ico=ico,
+            dic=dic,
         )
 
         return user
-
-    def get_company_name(self, obj: User) -> str:
-        """Return company name from profile."""
-        if hasattr(obj, "profile"):
-            return obj.profile.company_name
-        return ""
 
     def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
@@ -308,6 +324,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         settings_data = self.initial_data.get("settings", None)
         client_type = validated_data.pop("client_type", serializers.empty)
         api_identifier = validated_data.pop("api_identifier", serializers.empty)
+        company_name = validated_data.pop("company_name", serializers.empty)
+        ico = validated_data.pop("ico", serializers.empty)
+        dic = validated_data.pop("dic", serializers.empty)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
@@ -328,15 +347,22 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
-        if (
-            client_type is not serializers.empty
-            or api_identifier is not serializers.empty
-        ):
+        profile_needs_update = any(
+            v is not serializers.empty
+            for v in (client_type, api_identifier, company_name, ico, dic)
+        )
+        if profile_needs_update:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
             if client_type is not serializers.empty:
                 profile.client_type = client_type
             if api_identifier is not serializers.empty:
                 profile.api_identifier = api_identifier
+            if company_name is not serializers.empty:
+                profile.company_name = company_name or ""
+            if ico is not serializers.empty:
+                profile.ico = ico or ""
+            if dic is not serializers.empty:
+                profile.dic = dic or ""
             profile.save()
 
         if settings_data is not None:

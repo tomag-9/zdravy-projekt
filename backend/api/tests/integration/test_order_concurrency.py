@@ -14,7 +14,7 @@ the logical paths by:
 
 import datetime
 import threading
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 from django.contrib.auth.models import User
@@ -41,14 +41,21 @@ ORDER_DATA = {
 # ---------------------------------------------------------------------------
 
 
+def _make_serializer(data: dict, user: User) -> DailyOrderSerializer:
+    """Build a DailyOrderSerializer with a mock request context for ``user``."""
+    request = Mock()
+    request.user = user
+    return DailyOrderSerializer(data=data, context={"request": request})
+
+
 @pytest.mark.django_db(transaction=True)
 class TestSerializerConcurrency:
     """Validate the select_for_update / IntegrityError retry path."""
 
     def test_create_new_order_no_conflict(self, user):
         """Happy path: create succeeds without any lock contention."""
-        serializer = DailyOrderSerializer(
-            data={"date": str(TARGET_DATE), "data": ORDER_DATA}
+        serializer = _make_serializer(
+            {"date": str(TARGET_DATE), "data": ORDER_DATA}, user
         )
         assert serializer.is_valid(), serializer.errors
         order = serializer.save(user=user)
@@ -64,8 +71,8 @@ class TestSerializerConcurrency:
         DailyOrder.objects.create(user=user, date=TARGET_DATE, data={})
 
         new_data = {"breakfast": {"Dospelý": {"menuCounts": {"A": 3}, "diets": {}}}}
-        serializer = DailyOrderSerializer(
-            data={"date": str(TARGET_DATE), "data": new_data}
+        serializer = _make_serializer(
+            {"date": str(TARGET_DATE), "data": new_data}, user
         )
         assert serializer.is_valid(), serializer.errors
         order = serializer.save(user=user)
@@ -121,8 +128,8 @@ class TestSerializerConcurrency:
                 return original_manager.get(**kwargs)
 
         with patch.object(DailyOrder, "objects", FakeManager()):
-            serializer = DailyOrderSerializer(
-                data={"date": str(TARGET_DATE), "data": ORDER_DATA}
+            serializer = _make_serializer(
+                {"date": str(TARGET_DATE), "data": ORDER_DATA}, user
             )
             assert serializer.is_valid(), serializer.errors
             order = serializer.save(user=user)
@@ -136,8 +143,8 @@ class TestSerializerConcurrency:
         """Draft submission deletes the stored order (unchanged behaviour)."""
         DailyOrder.objects.create(user=user, date=TARGET_DATE, data=ORDER_DATA)
 
-        serializer = DailyOrderSerializer(
-            data={"date": str(TARGET_DATE), "data": {}, "status": "draft"}
+        serializer = _make_serializer(
+            {"date": str(TARGET_DATE), "data": {}, "status": "draft"}, user
         )
         assert serializer.is_valid(), serializer.errors
         order = serializer.save(user=user)

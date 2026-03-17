@@ -159,3 +159,98 @@ class TestAdminUserCreate:
         user.profile.refresh_from_db()
         assert user.profile.client_type == UserProfile.CLIENT_TYPE_API
         assert user.profile.api_identifier == "NEW-ID"
+
+    def test_create_user_persists_company_profile_fields(self, admin_client):
+        """Creating a user with company_name/ico/dic persists them to UserProfile."""
+        with patch(_SETUP_EMAIL):
+            res = admin_client.post(
+                API_URL,
+                {
+                    "email": "company@example.com",
+                    "client_type": "app",
+                    "is_active": True,
+                    "company_name": "Acme s.r.o.",
+                    "ico": "12345678",
+                    "dic": "2012345678",
+                },
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="company@example.com")
+        assert user.profile.company_name == "Acme s.r.o."
+        assert user.profile.ico == "12345678"
+        assert user.profile.dic == "2012345678"
+
+    def test_create_user_without_company_fields_defaults_to_empty(self, admin_client):
+        """Creating a user without ico/dic stores empty strings, not NULL."""
+        with patch(_SETUP_EMAIL):
+            res = admin_client.post(
+                API_URL,
+                {
+                    "email": "nocompany@example.com",
+                    "client_type": "app",
+                    "is_active": True,
+                },
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="nocompany@example.com")
+        assert user.profile.company_name == ""
+        assert user.profile.ico == ""
+        assert user.profile.dic == ""
+
+    def test_update_user_propagates_company_profile_fields(self, admin_client):
+        """PATCH on existing user updates company_name/ico/dic on UserProfile."""
+        user = User.objects.create_user(
+            username="updatecompany@example.com",
+            email="updatecompany@example.com",
+            password="pass123",
+        )
+        UserProfile.objects.create(
+            user=user,
+            client_type=UserProfile.CLIENT_TYPE_APP,
+            company_name="Old Name",
+            ico="00000000",
+            dic="",
+        )
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {"company_name": "New Name s.r.o.", "ico": "99999999", "dic": "SK99999999"},
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_200_OK
+        user.profile.refresh_from_db()
+        assert user.profile.company_name == "New Name s.r.o."
+        assert user.profile.ico == "99999999"
+        assert user.profile.dic == "SK99999999"
+
+    def test_update_user_clears_company_fields_when_empty(self, admin_client):
+        """PATCH with empty strings clears company_name/ico/dic (no NULL stored)."""
+        user = User.objects.create_user(
+            username="clearfields@example.com",
+            email="clearfields@example.com",
+            password="pass123",
+        )
+        UserProfile.objects.create(
+            user=user,
+            client_type=UserProfile.CLIENT_TYPE_APP,
+            company_name="Old",
+            ico="12345678",
+            dic="2012345678",
+        )
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {"company_name": "", "ico": "", "dic": ""},
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_200_OK
+        user.profile.refresh_from_db()
+        assert user.profile.company_name == ""
+        assert user.profile.ico == ""
+        assert user.profile.dic == ""
