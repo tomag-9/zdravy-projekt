@@ -1,7 +1,7 @@
 # Core Django
 Django==5.1.15
 djangorestframework==3.15.2
-django-cors-headers==4.3.1
+django-cors-headers==4.9.0
 # Pinned to 5.5.1: fixes CVE – missing user validation in for_user() allowed
 # disabled accounts to retain API access via previously issued JWTs.
 # Versions < 5.5.1 do not re-check is_active on token use.
@@ -14,7 +14,7 @@ psycopg2-binary==2.9.9
 # Celery / async tasks
 celery==5.4.0
 redis==5.2.1
-django-redis==5.4.0
+django-redis==6.0.0
 django-celery-beat==2.7.0
 
 # Testing
@@ -48,10 +48,11 @@ drf-spectacular==0.28.0
 
 # Observability
 django-prometheus==2.3.1
-sentry-sdk==2.27.0
+sentry-sdk==2.54.0
+
 
 # Code quality
 black==26.3.1
-flake8==7.0.0
+flake8==7.3.0
 isort==5.13.2
 mypy==1.11.2
