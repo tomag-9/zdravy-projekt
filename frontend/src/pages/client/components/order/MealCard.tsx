@@ -11,6 +11,7 @@ interface MealCardProps {
     statusMessage?: ReactNode | null;
     children: ReactNode;
     icon: ComponentType<{ className?: string }>;
+    tourId?: string;
 }
 
 const MealCard = ({
@@ -21,10 +22,11 @@ const MealCard = ({
     statusMessage,
     children,
     icon: Icon,
-    className
+    className,
+    tourId,
 }: MealCardProps & { className?: string }) => {
     return (
-        <Card className={cn("transition-all duration-300", isActive ? "ring-2 ring-indigo-500/10 shadow-md" : "opacity-90", className)}>
+        <Card data-tour-id={tourId} className={cn("transition-all duration-300", isActive ? "ring-2 ring-indigo-500/10 shadow-md" : "opacity-90", className)}>
             <CardHeader className="flex flex-row items-center justify-between py-3">
                 <div className="flex items-center gap-3">
                     <div className={cn("p-2 rounded-lg transition-colors", isActive ? "bg-indigo-100 text-indigo-700" : "bg-slate-100 text-slate-500")}>

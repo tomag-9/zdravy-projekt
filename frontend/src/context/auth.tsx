@@ -24,6 +24,7 @@ interface User {
   first_name?: string;
   last_name?: string;
   company_name?: string;
+  onboarding_completed?: boolean;
   groups?: string[];
   is_staff?: boolean;
   settings?: UserSettings;
@@ -47,6 +48,7 @@ interface AuthContextType {
   refreshToken: () => Promise<boolean>;
   apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   fetchUserProfile: () => Promise<User | null>;
+  updateProfile: (updates: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -258,6 +260,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     return () => clearInterval(refreshInterval);
   }, [refreshToken, fetchUserProfile]);
 
+  const updateProfile = useCallback((updates: Partial<User>) => {
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...updates };
+      localStorage.setItem(CACHED_PROFILE_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   const login = async (
     accessToken: string,
     refreshTokenStr: string,
@@ -286,6 +297,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         refreshToken,
         apiFetch,
         fetchUserProfile,
+        updateProfile,
       }}
     >
       {children}
