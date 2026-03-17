@@ -5,7 +5,7 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
-import { useState, useEffect } from "react";
+
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
 import { ToastProvider } from "./context/ToastContext";
@@ -91,28 +91,21 @@ const AdminRoute = () => {
 
 /**
  * AppContent — shown inside all providers.
- * Displays AppLoadingScreen while auth is initialising or a SW update is
- * being applied. In standalone (PWA) mode updates are applied automatically.
+ * Displays AppLoadingScreen while auth is initialising.
+ * In standalone (PWA) mode, SW updates are applied automatically as a
+ * fire-and-forget (page reloads when ready; no risk of blocking the UI).
  */
 function AppContent({ children }: { children: React.ReactNode }) {
   const { isLoading } = useAuth();
   const { updateAvailable, applyUpdate, isStandalone } = usePWA();
-  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
 
-  // In standalone (installed PWA) mode, apply updates automatically
-  useEffect(() => {
-    if (updateAvailable && isStandalone) {
-      setIsApplyingUpdate(true);
-      applyUpdate();
-    }
-  }, [updateAvailable, isStandalone, applyUpdate]);
+  // Fire-and-forget: no state involved, so a stuck loading screen is impossible
+  if (updateAvailable && isStandalone) {
+    applyUpdate();
+  }
 
-  if (isLoading || isApplyingUpdate) {
-    return (
-      <AppLoadingScreen
-        status={isApplyingUpdate ? "Aktualizujem aplikáciu..." : "Načítavam..."}
-      />
-    );
+  if (isLoading) {
+    return <AppLoadingScreen status="Načítavam..." />;
   }
 
   return <>{children}</>;

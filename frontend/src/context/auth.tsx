@@ -168,7 +168,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!serverDate) return;
         const serverMs = Date.parse(serverDate);
         if (Number.isNaN(serverMs)) return;
-        localStorage.setItem(
+        // Keep in sessionStorage — OrderService reads it from there
+        sessionStorage.setItem(
           "server_time_offset_ms",
           String(serverMs - Date.now()),
         );
