@@ -36,6 +36,24 @@ vi.mock("../../../context/auth", () => ({
   ),
 }));
 
+// Mock OnboardingContext
+vi.mock("../../../context/OnboardingContext", () => ({
+  useOnboarding: vi.fn(() => ({
+    isTourActive: false,
+    currentStep: 0,
+    totalSteps: 9,
+    startTour: vi.fn(),
+    nextStep: vi.fn(),
+    prevStep: vi.fn(),
+    completeTour: vi.fn(),
+    skipTour: vi.fn(),
+    resetTour: vi.fn(),
+  })),
+  OnboardingProvider: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
 // Mock OrderService with implementation that allows actual data structure usage
 vi.mock("../services/OrderService", async (importOriginal) => {
   const actual =
