@@ -255,9 +255,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         client_type = validated_data.pop("client_type", UserProfile.CLIENT_TYPE_APP)
         api_identifier = validated_data.pop("api_identifier", "")
         # Profile fields sent as top-level keys (not in Meta.fields, so read from initial_data)
-        company_name = self.initial_data.get("company_name", "")
-        ico = self.initial_data.get("ico") or None
-        dic = self.initial_data.get("dic") or None
+        company_name = self.initial_data.get("company_name", "") or ""
+        ico = self.initial_data.get("ico") or ""
+        dic = self.initial_data.get("dic") or ""
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -278,7 +278,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             user=user,
             client_type=client_type,
             api_identifier=api_identifier,
-            company_name=company_name or "",
+            company_name=company_name,
             ico=ico,
             dic=dic,
         )
@@ -352,9 +352,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
             if ico is not serializers.empty:
-                profile.ico = ico or None
+                profile.ico = ico or ""
             if dic is not serializers.empty:
-                profile.dic = dic or None
+                profile.dic = dic or ""
             profile.save()
 
         if settings_data is not None:
