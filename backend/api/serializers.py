@@ -8,7 +8,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
-from .exceptions import OrderDeadlinePassedError
+from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
 from .models import DailyOrder, Holiday
 
 logger = logging.getLogger(__name__)
@@ -156,19 +156,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", "submitted")
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
-        # Prevent orders on holidays (non-staff only)
-        if not is_staff:
-            from .models import Holiday as _Holiday  # local import to avoid circular
-
-            if _Holiday.objects.filter(date=validated_data["date"]).exists():
-                raise serializers.ValidationError(
-                    {
-                        "error": {
-                            "code": "holiday",
-                            "message": "Na tento deň nie je možné zadať objednávku (voľný deň).",
-                        }
-                    }
-                )
+        # Prevent orders on holidays (non-staff only, draft/deletion requests are exempt)
+        if not is_staff and input_status != "draft":
+            if Holiday.objects.filter(date=validated_data["date"]).exists():
+                raise HolidayOrderNotAllowedError()
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.

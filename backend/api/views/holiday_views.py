@@ -34,10 +34,10 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
             start = datetime.date.fromisoformat(start_str)
             end = datetime.date.fromisoformat(end_str)
         except (ValueError, TypeError):
-            raise ValidationError({"detail": "Invalid date format. Use YYYY-MM-DD."})
+            raise ValidationError("Invalid date format. Use YYYY-MM-DD.")
 
         if end < start:
-            raise ValidationError({"detail": "end_date must be >= start_date."})
+            raise ValidationError("end_date must be >= start_date.")
 
         created = []
         skipped = []
@@ -58,7 +58,7 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
 class HolidayListViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Read-only holiday list for authenticated clients.
-    GET /api/holidays/  – returns holidays from 30 days ago up to 60 days ahead.
+    GET /api/holidays/  – returns holidays from 30 days ago onward (all future holidays included).
     """
 
     serializer_class = HolidaySerializer
@@ -66,7 +66,4 @@ class HolidayListViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         today = datetime.date.today()
-        return Holiday.objects.filter(
-            date__gte=today - datetime.timedelta(days=30),
-            date__lte=today + datetime.timedelta(days=60),
-        )
+        return Holiday.objects.filter(date__gte=today - datetime.timedelta(days=30))
