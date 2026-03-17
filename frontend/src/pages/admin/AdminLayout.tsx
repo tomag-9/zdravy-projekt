@@ -29,10 +29,9 @@ const SECTIONS: NavSection[] = [
         id: 'clients',
         label: 'Klienti',
         icon: '👥',
-        paths: ['/admin/clients', '/admin/orders'],
+        paths: ['/admin/clients'],
         items: [
             { to: '/admin/clients', label: 'Správa klientov', icon: '👥', activeColor: 'text-blue-700', activeBg: 'bg-blue-50' },
-            { to: '/admin/orders', label: 'Objednávky', icon: '🛒', activeColor: 'text-cyan-700', activeBg: 'bg-cyan-50' },
         ],
     },
     {
@@ -72,65 +71,49 @@ const SECTIONS: NavSection[] = [
 ];
 
 const AdminLayout: React.FC = () => {
-    const { logout } = useAuth();
+    const { logout, user } = useAuth();
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+    const [hoveredSectionId, setHoveredSectionId] = React.useState<string | null>(null);
 
     const isItemActive = (path: string) => location.pathname.startsWith(path);
 
-    const isSectionActive = (section: NavSection) =>
-        section.paths.some((p) => location.pathname.startsWith(p));
+    const getActiveSectionId = () =>
+        SECTIONS.find((s) => s.paths.some((p) => location.pathname.startsWith(p)))?.id ?? null;
 
-    const [openSections, setOpenSections] = React.useState<Record<string, boolean>>(() => {
-        const initial: Record<string, boolean> = {};
-        SECTIONS.forEach((s) => {
-            initial[s.id] = s.paths.some((p) => location.pathname.startsWith(p));
-        });
-        return initial;
-    });
-
-    // Auto-expand section when navigating to a child route
-    React.useEffect(() => {
-        setOpenSections((prev) => {
-            const next = { ...prev };
-            SECTIONS.forEach((s) => {
-                if (isSectionActive(s)) {
-                    next[s.id] = true;
-                }
-            });
-            return next;
-        });
-    }, [location.pathname]);
+    const isSectionOpen = (id: string) =>
+        getActiveSectionId() === id || hoveredSectionId === id;
 
     // Close mobile menu when route changes
     React.useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [location.pathname]);
 
-    const toggleSection = (id: string) => {
-        setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
-    };
-
     const navItemClass = (item: NavItem) => {
         if (item.placeholder) {
             return 'flex items-center px-4 py-2.5 rounded-xl text-gray-400 cursor-default select-none';
         }
         const active = isItemActive(item.to);
-        return `flex items-center px-4 py-2.5 rounded-xl transition-all duration-200 ${
+        return `flex items-center px-4 py-2.5 rounded-xl transition-all duration-150 ${
             active
                 ? `${item.activeBg} ${item.activeColor} font-medium translate-x-1`
-                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900 hover:translate-x-0.5'
         }`;
     };
+
+    const displayName = user?.first_name || user?.last_name
+        ? { first: user.first_name || '', last: user.last_name || '' }
+        : { first: user?.email?.split('@')[0] || '', last: '' };
 
     return (
         <div className="flex h-screen bg-gray-100 font-sans overflow-hidden">
             {/* Mobile Header */}
             <div className="md:hidden fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-40 px-4 py-3 flex items-center justify-between shadow-sm">
-                <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                    Administrácia
-                </h1>
+                <div className="flex items-center gap-2">
+                    <span className="text-xl">🥗</span>
+                    <span className="text-xl font-bold text-green-600">Zdravý projekt</span>
+                </div>
                 <button
                     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
@@ -153,25 +136,31 @@ const AdminLayout: React.FC = () => {
                 md:static md:translate-x-0
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
             `}>
-                <div className="p-6 border-b border-gray-100 hidden md:block">
-                    <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                        Administrácia
-                    </h1>
+                {/* Logo header */}
+                <div className="p-5 border-b border-gray-100 shrink-0 hidden md:flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center shadow-md shadow-green-200 shrink-0">
+                        <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <div className="text-base font-bold text-gray-900 leading-tight">Zdravý projekt</div>
+                        <div className="text-xs text-gray-400 leading-tight">Administrácia</div>
+                    </div>
                 </div>
 
                 {/* Mobile Close Button */}
-                <div className="md:hidden p-4 flex justify-end">
-                    <button
-                        onClick={() => setIsMobileMenuOpen(false)}
-                        className="p-2 text-gray-500 hover:text-gray-900"
-                    >
-                        ✕
-                    </button>
+                <div className="md:hidden p-4 flex justify-between items-center shrink-0">
+                    <div className="flex items-center gap-2">
+                        <span className="text-lg">🥗</span>
+                        <span className="font-bold text-green-600">Zdravý projekt</span>
+                    </div>
+                    <button onClick={() => setIsMobileMenuOpen(false)} className="p-2 text-gray-500 hover:text-gray-900">✕</button>
                 </div>
 
-                <nav className="flex-1 p-4 overflow-y-auto">
+                <nav className="flex-1 p-4 min-h-0">
                     {/* Top-level items */}
-                    <div className="space-y-1 mb-4">
+                    <div className="space-y-1 mb-3">
                         {TOP_ITEMS.map((item) => (
                             <Link key={item.to} to={item.to} className={navItemClass(item)}>
                                 <span className="mr-3">{item.icon}</span>
@@ -180,18 +169,21 @@ const AdminLayout: React.FC = () => {
                         ))}
                     </div>
 
-                    <div className="border-t border-gray-100 pt-3 space-y-1">
+                    <div className="border-t border-gray-100 pt-3 space-y-0.5">
                         {SECTIONS.map((section) => {
-                            const isOpen = openSections[section.id];
-                            const active = isSectionActive(section);
+                            const isOpen = isSectionOpen(section.id);
+                            const isActive = getActiveSectionId() === section.id;
                             return (
-                                <div key={section.id}>
-                                    <button
-                                        onClick={() => toggleSection(section.id)}
-                                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-200 ${
-                                            active
-                                                ? 'text-gray-900 font-semibold'
-                                                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                                <div
+                                    key={section.id}
+                                    onMouseEnter={() => setHoveredSectionId(section.id)}
+                                    onMouseLeave={() => setHoveredSectionId(null)}
+                                >
+                                    <div
+                                        className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl select-none cursor-default ${
+                                            isActive
+                                                ? 'text-gray-900'
+                                                : 'text-gray-500'
                                         }`}
                                     >
                                         <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider">
@@ -199,24 +191,32 @@ const AdminLayout: React.FC = () => {
                                             {section.label}
                                         </span>
                                         <svg
-                                            className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                                            className={`w-3.5 h-3.5 transition-transform duration-300 ease-in-out ${isOpen ? 'rotate-180' : ''}`}
                                             fill="none"
                                             viewBox="0 0 24 24"
                                             stroke="currentColor"
-                                            strokeWidth={2}
+                                            strokeWidth={2.5}
                                         >
                                             <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                                         </svg>
-                                    </button>
+                                    </div>
 
-                                    {isOpen && (
-                                        <div className="mt-1 ml-2 space-y-0.5">
+                                    {/* Animated accordion content */}
+                                    <div
+                                        className="overflow-hidden"
+                                        style={{
+                                            maxHeight: isOpen ? '300px' : '0px',
+                                            opacity: isOpen ? 1 : 0,
+                                            transition: 'max-height 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 250ms ease-in-out',
+                                        }}
+                                    >
+                                        <div className="ml-2 pt-0.5 pb-1 space-y-0.5">
                                             {section.items.map((item) =>
                                                 item.placeholder ? (
                                                     <div key={item.to} className={navItemClass(item)}>
-                                                        <span className="mr-3 opacity-50">{item.icon}</span>
+                                                        <span className="mr-3 opacity-40">{item.icon}</span>
                                                         <span className="text-sm">{item.label}</span>
-                                                        <span className="ml-auto text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full">
+                                                        <span className="ml-auto text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded-full leading-tight">
                                                             čoskoro
                                                         </span>
                                                     </div>
@@ -228,20 +228,36 @@ const AdminLayout: React.FC = () => {
                                                 )
                                             )}
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             );
                         })}
                     </div>
                 </nav>
 
-                <div className="p-4 border-t border-gray-100">
-                    <button
-                        onClick={() => setShowLogoutModal(true)}
-                        className="w-full flex items-center justify-center px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                        Odhlásiť sa
-                    </button>
+                {/* User + Logout footer */}
+                <div className="p-4 border-t border-gray-100 shrink-0">
+                    <div className="flex items-center justify-between">
+                        <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold text-green-600 truncate leading-tight">
+                                {displayName.first}
+                            </div>
+                            {displayName.last && (
+                                <div className="text-xs text-gray-500 truncate leading-tight">
+                                    {displayName.last}
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowLogoutModal(true)}
+                            title="Odhlásiť sa"
+                            className="ml-3 p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                        >
+                            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </aside>
 
@@ -265,10 +281,7 @@ const AdminLayout: React.FC = () => {
                             Zrušiť
                         </button>
                         <button
-                            onClick={() => {
-                                setShowLogoutModal(false);
-                                logout();
-                            }}
+                            onClick={() => { setShowLogoutModal(false); logout(); }}
                             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-sm"
                         >
                             Odhlásiť sa

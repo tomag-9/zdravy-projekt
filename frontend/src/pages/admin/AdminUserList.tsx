@@ -65,7 +65,7 @@ const AdminUserList: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.results || [];
-        setUsers(list); // Show ALL users
+        setUsers(list.filter((u: AdUser) => u.is_staff === true)); // Show only admins
       } else {
         console.error("Failed to fetch users");
       }
@@ -182,25 +182,17 @@ const AdminUserList: React.FC = () => {
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Správa účtov</h2>
+            <h2 className="text-3xl font-bold text-gray-900">Správa adminov</h2>
             <p className="text-gray-500 mt-1">
-              Spravujte používateľov, ich osobné údaje a role.
+              Spravujte admin účty a ich prístupové údaje.
             </p>
           </div>
-          <div className="flex items-center gap-3">
             <button
-              onClick={() => { setCreateMode("admin"); setAdminForm(EMPTY_ADMIN_FORM); }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-gray-50 text-gray-700 font-semibold rounded-xl shadow-sm border border-gray-200 transition-all"
-            >
-              <span className="text-lg leading-none">+</span> Pridať admina
-            </button>
-            <button
-              onClick={() => { setCreateMode("client"); setClientForm(EMPTY_CLIENT_FORM); }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
-            >
-              <span className="text-lg leading-none">+</span> Pridať klienta
-            </button>
-          </div>
+            onClick={() => { setCreateMode("admin"); setAdminForm(EMPTY_ADMIN_FORM); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
+          >
+            <span className="text-lg leading-none">+</span> Pridať admina
+          </button>
         </div>
 
         {/* Search */}
@@ -221,8 +213,7 @@ const AdminUserList: React.FC = () => {
             <table className="w-full text-left text-sm text-gray-600">
               <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Používateľ</th>
-                  <th className="px-6 py-4">Rola</th>
+                  <th className="px-6 py-4">Admin</th>
                   <th className="px-6 py-4 text-right">Akcie</th>
                 </tr>
               </thead>
@@ -230,7 +221,7 @@ const AdminUserList: React.FC = () => {
                 {loading ? (
                   <tr>
                     <td
-                      colSpan={3}
+                      colSpan={2}
                       className="px-6 py-8 text-center text-gray-400"
                     >
                       Načítavam...
@@ -239,10 +230,10 @@ const AdminUserList: React.FC = () => {
                 ) : filteredUsers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={3}
+                      colSpan={2}
                       className="px-6 py-8 text-center text-gray-400"
                     >
-                      Žiadni používatelia
+                      Žiadni admini
                     </td>
                   </tr>
                 ) : (
@@ -268,30 +259,25 @@ const AdminUserList: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        {user.is_staff ? (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                            Admin
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                            Klient
-                          </span>
-                        )}
-                      </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
                           <Link
                             to={`/admin/roles/${user.id}`}
-                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors"
+                            title="Upraviť"
+                            className="p-2 text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
                           >
-                            Upraviť
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
                           </Link>
                           <button
                             onClick={() => setDeleteTarget(user)}
-                            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+                            title="Odstrániť"
+                            className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
-                            Vymazať
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
                           </button>
                         </div>
                       </td>

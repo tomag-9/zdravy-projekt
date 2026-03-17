@@ -78,9 +78,16 @@ const ClientDetail: React.FC = () => {
 
   // Dashboard State
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
-
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+
+  // Order actions
+  const [deleteOrderTarget, setDeleteOrderTarget] = useState<DailyOrder | null>(null);
+  const [resetOrderTarget, setResetOrderTarget] = useState<DailyOrder | null>(null);
+  const [orderActionLoading, setOrderActionLoading] = useState(false);
+
+  // Password reset
+  const [sendingReset, setSendingReset] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -146,6 +153,81 @@ const ClientDetail: React.FC = () => {
       setOrdersLoading(false);
     }
   }, [apiFetch, id]);
+
+  const handleSendPasswordReset = async () => {
+    if (!user) return;
+    setSendingReset(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/auth/password-reset/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: user.email }),
+        },
+      );
+      if (res.ok) {
+        success(`Reset link bol odoslaný na ${user.email}.`);
+      } else {
+        toastError("Nepodarilo sa odoslať reset link.");
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Chyba pri odosielaní reset linku.");
+    } finally {
+      setSendingReset(false);
+    }
+  };
+
+  const handleDeleteOrder = async () => {
+    if (!deleteOrderTarget) return;
+    setOrderActionLoading(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/`,
+        { method: "DELETE" },
+      );
+      if (res.ok || res.status === 204) {
+        success("Objednávka bola odstránená.");
+        setRecentOrders((prev) => prev.filter((o) => o.id !== deleteOrderTarget.id));
+        setDeleteOrderTarget(null);
+      } else {
+        toastError("Nepodarilo sa odstrániť objednávku.");
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Chyba pri odstraňovaní objednávky.");
+    } finally {
+      setOrderActionLoading(false);
+    }
+  };
+
+  const handleResetOrder = async () => {
+    if (!resetOrderTarget) return;
+    setOrderActionLoading(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: {} }),
+        },
+      );
+      if (res.ok) {
+        success("Objednávka bola vynulovaná.");
+        setResetOrderTarget(null);
+        fetchOrders();
+      } else {
+        toastError("Nepodarilo sa vynulovať objednávku.");
+      }
+    } catch (e) {
+      console.error(e);
+      toastError("Chyba pri vynulovaní objednávky.");
+    } finally {
+      setOrderActionLoading(false);
+    }
+  };
 
   useEffect(() => {
     Promise.all([fetchUser(), fetchDiets()]).finally(() => setLoading(false));
@@ -224,6 +306,7 @@ const ClientDetail: React.FC = () => {
   }
 
   return (
+    <>
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in duration-500 pb-12">
       <div>
         <button
@@ -258,6 +341,19 @@ const ClientDetail: React.FC = () => {
               )}
             </div>
           </div>
+          {!isApiClient && (
+            <button
+              onClick={handleSendPasswordReset}
+              disabled={sendingReset}
+              title="Odoslať reset hesla na email"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition-all disabled:opacity-60"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+              {sendingReset ? "Odosielam..." : "Reset hesla"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -318,9 +414,9 @@ const ClientDetail: React.FC = () => {
                 <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                   <tr>
                     <th className="px-6 py-4">Dátum</th>
-                    <th className="px-6 py-4">Status</th>
                     <th className="px-6 py-4">Súhrn</th>
-                    <th className="px-6 py-4 w-10"></th>
+                    <th className="px-6 py-4 text-right">Akcie</th>
+                    <th className="px-4 py-4 w-8"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -402,27 +498,47 @@ const ClientDetail: React.FC = () => {
                     return (
                       <React.Fragment key={order.id}>
                         <tr
-                          className={`hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? "bg-gray-50" : ""}`}
-                          onClick={() =>
-                            setExpandedOrderId(isExpanded ? null : order.id)
-                          }
+                          className={`hover:bg-gray-50 transition-colors ${isExpanded ? "bg-gray-50" : ""}`}
                         >
-                          <td className="px-6 py-4 font-medium text-gray-900">
+                          <td
+                            className="px-6 py-4 font-medium text-gray-900 cursor-pointer"
+                            onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                          >
                             {order.date}
                           </td>
-                          <td className="px-6 py-4">
-                            {/* Status column removed or simplified since all are submitted/confirmed */}
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                              Potvrdené
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 font-bold text-gray-700">
+                          <td
+                            className="px-6 py-4 font-bold text-gray-700 cursor-pointer"
+                            onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                          >
                             {summaryText}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <span className="text-gray-400 text-xs">
-                              {isExpanded ? "▲" : "▼"}
-                            </span>
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setResetOrderTarget(order)}
+                                title="Vynulovať objednávku"
+                                className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => setDeleteOrderTarget(order)}
+                                title="Odstrániť objednávku"
+                                className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              >
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                          <td
+                            className="px-4 py-4 cursor-pointer"
+                            onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                          >
+                            <span className="text-gray-400 text-xs">{isExpanded ? "▲" : "▼"}</span>
                           </td>
                         </tr>
                         {isExpanded && (
@@ -722,6 +838,81 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
     </div>
+
+      {/* ── Delete order confirmation modal ── */}
+      {deleteOrderTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-red-100 text-red-600">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Odstrániť objednávku</h3>
+              <p className="text-gray-500 mb-6 leading-relaxed">
+                Naozaj chcete odstrániť objednávku zo dňa{" "}
+                <strong className="text-gray-800">{deleteOrderTarget.date}</strong>?
+                Táto akcia je nevratná.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteOrderTarget(null)}
+                  disabled={orderActionLoading}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                >
+                  Zrušiť
+                </button>
+                <button
+                  onClick={handleDeleteOrder}
+                  disabled={orderActionLoading}
+                  className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-semibold rounded-xl shadow-md shadow-red-200 transition-all"
+                >
+                  {orderActionLoading ? "Odstraňujem..." : "Odstrániť"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Reset order confirmation modal ── */}
+      {resetOrderTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-amber-100 text-amber-600">
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Vynulovať objednávku</h3>
+              <p className="text-gray-500 mb-6 leading-relaxed">
+                Naozaj chcete vynulovať objednávku zo dňa{" "}
+                <strong className="text-gray-800">{resetOrderTarget.date}</strong>?
+                Všetky položky budú vymazané, záznam zostane zachovaný.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setResetOrderTarget(null)}
+                  disabled={orderActionLoading}
+                  className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors"
+                >
+                  Zrušiť
+                </button>
+                <button
+                  onClick={handleResetOrder}
+                  disabled={orderActionLoading}
+                  className="flex-1 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-60 text-white font-semibold rounded-xl shadow-md shadow-amber-200 transition-all"
+                >
+                  {orderActionLoading ? "Vynulujem..." : "Vynulovať"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 

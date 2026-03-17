@@ -33,8 +33,6 @@ const AdminUserDetail: React.FC = () => {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [userEmail, setUserEmail] = useState("");
-  const [role, setRole] = useState<"client" | "admin">("client");
-  const [isActive, setIsActive] = useState(true);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -49,8 +47,6 @@ const AdminUserDetail: React.FC = () => {
         setFirstName(data.first_name || "");
         setLastName(data.last_name || "");
         setUserEmail(data.email || "");
-        setRole(data.is_staff ? "admin" : "client");
-        setIsActive(data.is_active ?? true);
       }
     } catch (e) {
       console.error(e);
@@ -78,8 +74,6 @@ const AdminUserDetail: React.FC = () => {
         first_name: firstName,
         last_name: lastName,
         email: userEmail,
-        is_staff: role === "admin",
-        is_active: isActive,
         settings: user.settings, // Preserve existing settings
       };
 
@@ -183,52 +177,11 @@ const AdminUserDetail: React.FC = () => {
           </div>
 
           <div className="border-t border-gray-100 pt-6 mt-2">
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Rola v systéme
-              </label>
-              <div className="relative">
-                <select
-                  value={role}
-                  onChange={(e) =>
-                    setRole(e.target.value as "client" | "admin")
-                  }
-                  className="block w-full px-4 py-3 pr-8 leading-tight text-gray-700 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent accent-purple-600"
-                >
-                  <option value="client">Klient</option>
-                  <option value="admin">Administrátor</option>
-                </select>
-                <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
-                  <svg
-                    className="fill-current h-4 w-4"
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                  </svg>
-                </div>
-              </div>
-              <p className="mt-2 text-sm text-gray-500">
-                <strong>Klient:</strong> Má prístup len k objednávaniu (ak je
-                povolené). <br />
-                <strong>Administrátor:</strong> Má prístup k tomuto admin
-                panelu.
-              </p>
-            </div>
-
-            <div className="flex items-center mt-6">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-purple-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-500"></div>
-                <span className="ml-3 text-sm font-medium text-gray-900">
-                  Účet je aktívny
-                </span>
-              </label>
+            <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 rounded-lg">
+              <svg className="w-4 h-4 text-purple-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span className="text-xs text-purple-700 font-medium">Rola: Administrátor</span>
             </div>
           </div>
         </div>

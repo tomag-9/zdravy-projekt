@@ -126,7 +126,6 @@ export default function App() {
               <Route path="portion-types" element={<PortionTypes />} />
               <Route path="settings" element={<SystemSettings />} />
               <Route path="push-notifications" element={<PushNotificationsAdmin />} />
-              <Route path="orders" element={<OrderPage />} />
             </Route>
 
             {/* Client Routes */}
