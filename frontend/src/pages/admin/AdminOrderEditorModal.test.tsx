@@ -164,7 +164,15 @@ describe('AdminOrderEditorModal', () => {
 
     it('shows API error message when POST returns 400', async () => {
         mockApiFetch.mockResolvedValueOnce(
-            makeMockResponse({ date: ['Objednávka na tento dátum už existuje.'] }, false),
+            makeMockResponse(
+                {
+                    error: {
+                        message: 'Objednávka na tento dátum už existuje.',
+                        details: { date: ['Objednávka na tento dátum už existuje.'] },
+                    },
+                },
+                false,
+            ),
         );
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);

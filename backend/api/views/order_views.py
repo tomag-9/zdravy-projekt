@@ -56,7 +56,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         if user.is_staff:
             user_id = self.request.query_params.get("user_id")
             if user_id:
-                queryset = queryset.filter(user_id=user_id)
+                try:
+                    user_id_int = int(user_id)
+                except (TypeError, ValueError):
+                    raise ValidationError({"user_id": "Must be an integer."})
+                queryset = queryset.filter(user_id=user_id_int)
             else:
                 # If no user_id is provided, return only the staff user's own orders
                 # to prevent returning ALL orders by default (which breaks by_date logic).
@@ -83,7 +87,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             user_id = self.request.query_params.get("user_id")
             if not user_id:
                 raise ClientOnlyError()
-            target_user = get_object_or_404(User, pk=user_id)
+            try:
+                user_id_int = int(user_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"user_id": "Must be an integer."})
+            target_user = get_object_or_404(User, pk=user_id_int)
             if target_user.is_staff:
                 raise ValidationError(
                     {"user_id": "Cannot create orders for staff users."}

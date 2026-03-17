@@ -264,6 +264,7 @@ const AdminUserList: React.FC = () => {
                           <Link
                             to={`/admin/roles/${user.id}`}
                             title="Upraviť"
+                            aria-label="Upraviť"
                             className="p-2 text-gray-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors inline-flex"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -273,6 +274,7 @@ const AdminUserList: React.FC = () => {
                           <button
                             onClick={() => setDeleteTarget(user)}
                             title="Odstrániť"
+                            aria-label="Odstrániť"
                             className="p-2 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

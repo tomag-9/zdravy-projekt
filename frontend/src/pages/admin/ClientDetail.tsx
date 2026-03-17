@@ -183,11 +183,11 @@ const ClientDetail: React.FC = () => {
   };
 
   const handleDeleteOrder = async () => {
-    if (!deleteOrderTarget) return;
+    if (!deleteOrderTarget || !id) return;
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/?user_id=${id}`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/?user_id=${encodeURIComponent(id)}`,
         { method: "DELETE" },
       );
       if (res.ok || res.status === 204) {
@@ -206,11 +206,11 @@ const ClientDetail: React.FC = () => {
   };
 
   const handleResetOrder = async () => {
-    if (!resetOrderTarget) return;
+    if (!resetOrderTarget || !id) return;
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/?user_id=${id}`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/?user_id=${encodeURIComponent(id)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

@@ -211,7 +211,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
-    company_name = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
     client_type = serializers.ChoiceField(
         choices=UserProfile.CLIENT_TYPE_CHOICES,
@@ -219,6 +218,21 @@ class AdminUserSerializer(serializers.ModelSerializer):
         write_only=True,
     )
     api_identifier = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    company_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    ico = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
+    dic = serializers.CharField(
         required=False,
         allow_blank=True,
         write_only=True,
@@ -231,13 +245,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "company_name",
             "is_active",
             "is_staff",
             "settings",
             "profile",
             "client_type",
             "api_identifier",
+            "company_name",
+            "ico",
+            "dic",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -254,10 +270,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data: Dict[str, Any]) -> User:
         client_type = validated_data.pop("client_type", UserProfile.CLIENT_TYPE_APP)
         api_identifier = validated_data.pop("api_identifier", "")
-        # Profile fields sent as top-level keys (not in Meta.fields, so read from initial_data)
-        company_name = self.initial_data.get("company_name", "") or ""
-        ico = self.initial_data.get("ico") or ""
-        dic = self.initial_data.get("dic") or ""
+        company_name = validated_data.pop("company_name", "") or ""
+        ico = validated_data.pop("ico", "") or ""
+        dic = validated_data.pop("dic", "") or ""
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -285,12 +300,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         return user
 
-    def get_company_name(self, obj: User) -> str:
-        """Return company name from profile."""
-        if hasattr(obj, "profile"):
-            return obj.profile.company_name
-        return ""
-
     def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
         if hasattr(obj, "profile"):
@@ -315,10 +324,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         settings_data = self.initial_data.get("settings", None)
         client_type = validated_data.pop("client_type", serializers.empty)
         api_identifier = validated_data.pop("api_identifier", serializers.empty)
-        # Profile fields sent as top-level keys (read from initial_data same as settings)
-        company_name = self.initial_data.get("company_name", serializers.empty)
-        ico = self.initial_data.get("ico", serializers.empty)
-        dic = self.initial_data.get("dic", serializers.empty)
+        company_name = validated_data.pop("company_name", serializers.empty)
+        ico = validated_data.pop("ico", serializers.empty)
+        dic = validated_data.pop("dic", serializers.empty)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:

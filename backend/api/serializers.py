@@ -149,6 +149,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         """
         request = self.context.get("request")
         user = validated_data.get("user") or (request and request.user)
+        if user is None:
+            raise serializers.ValidationError(
+                {"user": "User must be provided in request context or validated data."}
+            )
         input_status = validated_data.get("status", "submitted")
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 

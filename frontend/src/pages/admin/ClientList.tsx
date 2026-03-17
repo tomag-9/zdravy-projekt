@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { Link } from "react-router-dom";
@@ -76,6 +76,7 @@ const ClientList: React.FC = () => {
   const [creating, setCreating] = useState(false);
 
   // Edit modal
+  const editRequestRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<AdUser | null>(null);
   const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", first_name: "", last_name: "", company_name: "", ico: "", dic: "" });
   const [saving, setSaving] = useState(false);
@@ -130,7 +131,7 @@ const ClientList: React.FC = () => {
     }
   };
 
-  const openEdit = (user: AdUser) => {
+  const openEdit = async (user: AdUser) => {
     setEditTarget(user);
     setEditForm({
       email: user.email,
@@ -140,19 +141,23 @@ const ClientList: React.FC = () => {
       ico: "",
       dic: "",
     });
-    // Fetch full user details to populate company_name, ico, dic
-    apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${user.id}/`).then((res) => {
-      if (res.ok) res.json().then((data) => {
-        setEditForm({
-          email: data.email,
-          first_name: data.first_name,
-          last_name: data.last_name,
-          company_name: data.company_name || "",
-          ico: data.profile?.ico || "",
-          dic: data.profile?.dic || "",
-        });
+    editRequestRef.current = user.id;
+    try {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${user.id}/`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (editRequestRef.current !== user.id) return;
+      setEditForm({
+        email: data.email,
+        first_name: data.first_name,
+        last_name: data.last_name,
+        company_name: data.company_name || "",
+        ico: data.profile?.ico || "",
+        dic: data.profile?.dic || "",
       });
-    });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleEdit = async (e: React.FormEvent) => {
@@ -312,7 +317,7 @@ const ClientList: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900">Pridať klienta</h3>
-              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              <button type="button" aria-label="Zavrieť" onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleCreate} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -428,7 +433,7 @@ const ClientList: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-xl font-bold text-gray-900">Upraviť klienta</h3>
-              <button onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
+              <button type="button" aria-label="Zavrieť" onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleEdit} className="p-6 space-y-4">
               <div className="grid grid-cols-2 gap-4">

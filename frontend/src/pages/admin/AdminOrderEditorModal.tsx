@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Coffee, Utensils, Apple, X } from 'lucide-react';
 import MealCard from '../client/components/order/MealCard';
 import CategoryRow from '../client/components/order/CategoryRow';
@@ -82,6 +82,18 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     const [activeDietModal, setActiveDietModal] = useState<{ meal: MealKey; category: string } | null>(null);
     const [saving, setSaving] = useState(false);
 
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') onClose();
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [onClose]);
+
+    const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (e.target === e.currentTarget) onClose();
+    };
+
     const visibleMealsList = MEAL_CONFIG.filter((m) =>
         visibleMeals.length === 0 || visibleMeals.includes(m.key),
     );
@@ -131,7 +143,10 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                 });
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));
-                    const msg = body?.date?.[0] || body?.non_field_errors?.[0] || 'Chyba pri vytváraní objednávky.';
+                    const msg =
+                        body?.error?.details?.date?.[0] ||
+                        body?.error?.message ||
+                        'Chyba pri vytváraní objednávky.';
                     toast.error(msg);
                     return;
                 }
@@ -146,12 +161,20 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-4 animate-in zoom-in-95 duration-200">
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in duration-200"
+            onClick={handleOverlayClick}
+        >
+            <div
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-4 animate-in zoom-in-95 duration-200"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="admin-order-editor-title"
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">
+                        <h2 id="admin-order-editor-title" className="text-xl font-bold text-gray-900">
                             {existingOrder ? 'Upraviť objednávku' : 'Nová objednávka'}
                         </h2>
                         {existingOrder && (
@@ -159,6 +182,8 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                         )}
                     </div>
                     <button
+                        type="button"
+                        aria-label="Zavrieť"
                         onClick={onClose}
                         className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     >
