@@ -75,37 +75,32 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
   }, []);
 
   const nextStep = useCallback(() => {
-    setCurrentStep((prev) => {
-      const next = Math.min(prev + 1, TOTAL_STEPS - 1);
-      // Navigate if crossing page boundary
-      const prevPage = TOUR_STEPS[prev].page;
-      const nextPage = TOUR_STEPS[next].page;
-      if (next !== prev && nextPage !== prevPage) {
-        if (nextPage === "/order") {
-          navigate(`/order?date=${getFirstNextWorkday()}`);
-        } else if (nextPage === "/home") {
-          navigate("/home");
-        }
+    const next = Math.min(currentStep + 1, TOTAL_STEPS - 1);
+    const prevPage = TOUR_STEPS[currentStep].page;
+    const nextPage = TOUR_STEPS[next].page;
+    setCurrentStep(next);
+    if (next !== currentStep && nextPage !== prevPage) {
+      if (nextPage === "/order") {
+        navigate(`/order?date=${getFirstNextWorkday()}`);
+      } else if (nextPage === "/home") {
+        navigate("/home");
       }
-      return next;
-    });
-  }, [navigate]);
+    }
+  }, [currentStep, navigate]);
 
   const prevStep = useCallback(() => {
-    setCurrentStep((prev) => {
-      const next = Math.max(prev - 1, 0);
-      const prevPage = TOUR_STEPS[prev].page;
-      const nextPage = TOUR_STEPS[next].page;
-      if (next !== prev && nextPage !== prevPage) {
-        if (nextPage === "/order") {
-          navigate(`/order?date=${getFirstNextWorkday()}`);
-        } else if (nextPage === "/home") {
-          navigate("/home");
-        }
+    const next = Math.max(currentStep - 1, 0);
+    const prevPage = TOUR_STEPS[currentStep].page;
+    const nextPage = TOUR_STEPS[next].page;
+    setCurrentStep(next);
+    if (next !== currentStep && nextPage !== prevPage) {
+      if (nextPage === "/order") {
+        navigate(`/order?date=${getFirstNextWorkday()}`);
+      } else if (nextPage === "/home") {
+        navigate("/home");
       }
-      return next;
-    });
-  }, [navigate]);
+    }
+  }, [currentStep, navigate]);
 
   const completeTour = useCallback(async () => {
     setIsTourActive(false);

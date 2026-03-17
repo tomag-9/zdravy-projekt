@@ -110,8 +110,7 @@ const OrderPage = () => {
     if (isEditable && !activeMeals[key]) {
       toggleMeal(key);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isTourActive, currentStep]);
+  }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const meals: {
     key: keyof DailyOrder;

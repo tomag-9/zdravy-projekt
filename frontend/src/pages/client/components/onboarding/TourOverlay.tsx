@@ -103,14 +103,20 @@ const TourOverlay: React.FC = () => {
     }
 
     const el = document.querySelector(`[data-tour-id="${step.targetId}"]`);
-    if (!el) return;
+    if (!el) {
+      setTooltipPos(null);
+      return;
+    }
 
     // Scroll into view first, then measure
     el.scrollIntoView({ behavior: "smooth", block: "center" });
 
     const measure = () => {
       const rect = el.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return; // element not visible
+      if (rect.width === 0 && rect.height === 0) {
+        setTooltipPos(null);
+        return;
+      }
       const pos = calcPosition(rect, step.placement);
       setTooltipPos(pos);
 
