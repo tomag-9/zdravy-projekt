@@ -36,6 +36,7 @@ import MealPlanEditor from "./pages/admin/MealPlanEditor";
 import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
 import PortionTypes from "./pages/admin/PortionTypes";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
+import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -147,6 +148,7 @@ export default function App() {
                 <Route path="portion-types" element={<PortionTypes />} />
                 <Route path="settings" element={<SystemSettings />} />
                 <Route path="push-notifications" element={<PushNotificationsAdmin />} />
+                <Route path="holidays" element={<HolidaysAdmin />} />
               </Route>
 
               {/* Client Routes */}

@@ -116,7 +116,7 @@ class TestGetPlannedOrders:
 
     @patch("api.services.order_service.timezone")
     def test_no_existing_orders_no_template_all_zeros(self, mock_tz):
-        mock_tz.now.return_value.astimezone.return_value.date.return_value = MONDAY
+        mock_tz.localdate.return_value = MONDAY
         user = self._make_user()
         result = OrderService.get_planned_orders(user, [])
 
@@ -127,7 +127,7 @@ class TestGetPlannedOrders:
 
     @patch("api.services.order_service.timezone")
     def test_existing_order_reflected_in_result(self, mock_tz):
-        mock_tz.now.return_value.astimezone.return_value.date.return_value = MONDAY
+        mock_tz.localdate.return_value = MONDAY
         user = self._make_user()
         self._make_order(user, MONDAY, self.NON_EMPTY)
 
@@ -139,7 +139,7 @@ class TestGetPlannedOrders:
 
     @patch("api.services.order_service.timezone")
     def test_historical_template_used_for_prediction(self, mock_tz):
-        mock_tz.now.return_value.astimezone.return_value.date.return_value = MONDAY
+        mock_tz.localdate.return_value = MONDAY
         user = self._make_user()
         # Historical order one day before the planned window
         historical_date = datetime.date(2025, 1, 5)  # Sunday – still stored
@@ -157,7 +157,7 @@ class TestGetPlannedOrders:
 
     @patch("api.services.order_service.timezone")
     def test_visible_meals_filter_prediction(self, mock_tz):
-        mock_tz.now.return_value.astimezone.return_value.date.return_value = MONDAY
+        mock_tz.localdate.return_value = MONDAY
         user = self._make_user()
         template_data = {
             "breakfast": {"Dospelý": {"menuCounts": {"A": 2}, "diets": {}}},
@@ -177,7 +177,7 @@ class TestGetPlannedOrders:
 
     @patch("api.services.order_service.timezone")
     def test_result_has_five_entries(self, mock_tz):
-        mock_tz.now.return_value.astimezone.return_value.date.return_value = MONDAY
+        mock_tz.localdate.return_value = MONDAY
         user = self._make_user()
         result = OrderService.get_planned_orders(user, [])
         assert len(result) == 5

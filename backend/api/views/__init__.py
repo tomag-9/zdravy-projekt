@@ -19,6 +19,9 @@ from .auth_views import (
 # Diet views
 from .diet_views import DietViewSet
 
+# Holiday views
+from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
+
 # Meal plan views
 from .meal_plan_views import (
     DailyMealPlanViewSet,
@@ -42,6 +45,9 @@ from .settings_views import GlobalSettingsViewSet, UserProfileViewSet
 __all__ = [
     # Authentication
     "EmailTokenObtainPairSerializer",
+    # Holidays
+    "AdminHolidayViewSet",
+    "HolidayListViewSet",
     "EmailTokenObtainPairView",
     "PasswordResetRequestView",
     "PasswordResetConfirmView",

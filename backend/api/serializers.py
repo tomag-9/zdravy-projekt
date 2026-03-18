@@ -8,8 +8,8 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
-from .exceptions import OrderDeadlinePassedError
-from .models import DailyOrder
+from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
+from .models import DailyOrder, Holiday
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,22 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     ),
                 )
 
+    def _enforce_holiday_restriction(
+        self, user: Any, status: str, date: datetime.date
+    ) -> None:
+        """Disallow non-staff, non-draft orders on holidays.
+
+        Staff bypass is keyed off the authenticated actor (request.user) so
+        that staff acting on behalf of a client can still submit on holidays.
+        Falls back to the order owner's is_staff if no request context exists.
+        """
+        request = self.context.get("request")
+        actor = getattr(request, "user", None)
+        is_staff = getattr(actor, "is_staff", False) or getattr(user, "is_staff", False)
+        if not is_staff and status != "draft":
+            if Holiday.objects.filter(date=date).exists():
+                raise HolidayOrderNotAllowedError()
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -155,6 +171,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
         input_status = validated_data.get("status", "submitted")
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+
+        self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -240,7 +258,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", instance.status)
         new_data = validated_data.get("data", instance.data)
         request = self.context.get("request")
+        user = validated_data.get("user") or instance.user
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+
+        self._enforce_holiday_restriction(user, input_status, instance.date)
 
         if not is_staff:
             self._validate_deadlines(
@@ -301,3 +322,9 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         if not is_admin:
             data.pop("report_email_recipients", None)
         return data
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = ["id", "date", "reason"]

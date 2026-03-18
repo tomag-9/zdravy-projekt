@@ -261,6 +261,14 @@ class InvalidOrderDataError(ValidationError):
     default_detail = "Order data is invalid."
 
 
+class HolidayOrderNotAllowedError(BaseAPIException):
+    """Raised when a non-staff user tries to place an order on a holiday."""
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_code = "holiday"
+    default_detail = "Na tento deň nie je možné zadať objednávku (voľný deň)."
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Token & Verification Errors
 # ──────────────────────────────────────────────────────────────────────────────
