@@ -135,8 +135,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _enforce_holiday_restriction(
         self, user: Any, status: str, date: datetime.date
     ) -> None:
-        """Disallow non-staff, non-draft orders on holidays."""
-        is_staff = getattr(user, "is_staff", False)
+        """Disallow non-staff, non-draft orders on holidays.
+
+        Staff bypass is keyed off the authenticated actor (request.user) so
+        that staff acting on behalf of a client can still submit on holidays.
+        Falls back to the order owner's is_staff if no request context exists.
+        """
+        request = self.context.get("request")
+        actor = getattr(request, "user", None)
+        is_staff = getattr(actor, "is_staff", False) or getattr(user, "is_staff", False)
         if not is_staff and status != "draft":
             if Holiday.objects.filter(date=date).exists():
                 raise HolidayOrderNotAllowedError()

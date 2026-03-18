@@ -15,22 +15,23 @@ const DaySelector = ({ selectedDate, onChange, holidays }: DaySelectorProps) => 
     const isWeekend = (d: Date) => d.getDay() === 0 || d.getDay() === 6;
     const isBlocked = (d: Date) => isWeekend(d) || (holidays?.has(OrderService.toLocalDateString(d)) ?? false);
 
-    const handlePrev = () => {
-        const newDate = new Date(dateObj);
-        newDate.setDate(newDate.getDate() - 1);
-        while (isBlocked(newDate)) {
-            newDate.setDate(newDate.getDate() - 1);
+    const findNextAvailable = (from: Date, direction: 1 | -1, max = 365): Date | null => {
+        const d = new Date(from);
+        for (let i = 0; i < max; i++) {
+            d.setDate(d.getDate() + direction);
+            if (!isBlocked(d)) return d;
         }
-        onChange(OrderService.toLocalDateString(newDate));
+        return null;
+    };
+
+    const handlePrev = () => {
+        const result = findNextAvailable(dateObj, -1);
+        if (result) onChange(OrderService.toLocalDateString(result));
     };
 
     const handleNext = () => {
-        const newDate = new Date(dateObj);
-        newDate.setDate(newDate.getDate() + 1);
-        while (isBlocked(newDate)) {
-            newDate.setDate(newDate.getDate() + 1);
-        }
-        onChange(OrderService.toLocalDateString(newDate));
+        const result = findNextAvailable(dateObj, 1);
+        if (result) onChange(OrderService.toLocalDateString(result));
     };
 
     const dateFormatter = new Intl.DateTimeFormat('sk-SK', {

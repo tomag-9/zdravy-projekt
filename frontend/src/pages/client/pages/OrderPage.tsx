@@ -293,7 +293,7 @@ const OrderPage = () => {
 
         {holidays?.has(selectedDate) && (
           <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-2xl px-5 py-4 text-sky-800">
-            <span className="text-2xl">🏖️</span>
+            <span className="text-2xl" aria-hidden="true">🏖️</span>
             <div>
               <div className="font-semibold text-sky-900">Voľný deň</div>
               <div className="text-sm text-sky-700">Na tento deň nie je možné zadať objednávku.</div>

@@ -36,16 +36,25 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
             start = datetime.date.fromisoformat(start_str)
             end = datetime.date.fromisoformat(end_str)
         except (ValueError, TypeError):
-            raise ValidationError("Invalid date format. Use YYYY-MM-DD.")
+            raise ValidationError(
+                {
+                    "start_date": ["Invalid date format. Use YYYY-MM-DD."],
+                    "end_date": ["Invalid date format. Use YYYY-MM-DD."],
+                }
+            )
 
         if end < start:
-            raise ValidationError("end_date must be >= start_date.")
+            raise ValidationError({"end_date": ["end_date must be >= start_date."]})
 
         max_days = 365
         total_days = (end - start).days + 1
         if total_days > max_days:
             raise ValidationError(
-                f"Date range too large; maximum is {max_days} days, got {total_days} days."
+                {
+                    "non_field_errors": [
+                        f"Date range too large; maximum is {max_days} days, got {total_days} days."
+                    ]
+                }
             )
 
         created = []
@@ -75,5 +84,5 @@ class HolidayListViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        today = timezone.localdate()
+        today = timezone.now().astimezone(datetime.timezone.utc).date()
         return Holiday.objects.filter(date__gte=today - datetime.timedelta(days=30))
