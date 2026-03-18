@@ -84,5 +84,5 @@ class HolidayListViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self):
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
+        today = timezone.localdate()
         return Holiday.objects.filter(date__gte=today - datetime.timedelta(days=30))

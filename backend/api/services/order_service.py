@@ -80,7 +80,7 @@ class OrderService:
         This method executes a small, constant number of DB queries regardless
         of the number of planned days (no N+1 queries).
         """
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
+        today = timezone.localdate()
         # Fetch all upcoming holidays once (small table) to avoid repeated queries.
         holiday_set: set[datetime.date] = set(
             Holiday.objects.filter(date__gte=today).values_list("date", flat=True)

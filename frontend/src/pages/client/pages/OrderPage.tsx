@@ -304,6 +304,7 @@ const OrderPage = () => {
         <div
           className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}
           inert={holidays?.has(selectedDate) ? true : undefined}
+          aria-disabled={holidays?.has(selectedDate) ? true : undefined}
         >
           {visibleMealsList.map((mealItem, mealIndex) => {
             const { key: rawKey, label, icon } = mealItem;
@@ -314,16 +315,17 @@ const OrderPage = () => {
               key,
               globalDeadlines,
             );
+            const isHoliday = holidays?.has(selectedDate);
 
             return (
               <MealCard
                 key={key}
                 title={label}
                 icon={icon}
-                isActive={isEditable && activeMeals[key]}
-                onToggle={() => isEditable && toggleMeal(key)} // Block toggle if not editable
-                copyAction={isEditable ? handleCopyTrigger(key) : null} // Hide copy if not editable
-                className={!isEditable ? "opacity-75" : ""} // Visual feedback
+                isActive={isEditable && !isHoliday && activeMeals[key]}
+                onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
+                copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
+                className={!isEditable || isHoliday ? "opacity-75" : ""}
                 tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
                 statusMessage={
                   !isEditable ? (
@@ -353,15 +355,17 @@ const OrderPage = () => {
                         menuCounts={data.menuCounts}
                         onMenuCountChange={(menuType, val) =>
                           isEditable &&
+                          !isHoliday &&
                           updateMenuCount(key, category, menuType, val)
                         }
                         hasDietsEnabled={availableDiets.length > 0}
                         dietCount={dietCount}
                         onOpenDiets={() =>
                           isEditable &&
+                          !isHoliday &&
                           setActiveDietModal({ meal: key, category })
                         }
-                        disabled={!isEditable}
+                        disabled={!isEditable || !!isHoliday}
                         visibleMenus={adminVisibleMenus}
                         tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
                       />
