@@ -258,7 +258,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", instance.status)
         new_data = validated_data.get("data", instance.data)
         request = self.context.get("request")
-        user = validated_data.get("user") or (request and request.user) or instance.user
+        user = validated_data.get("user") or instance.user
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
         self._enforce_holiday_restriction(user, input_status, instance.date)

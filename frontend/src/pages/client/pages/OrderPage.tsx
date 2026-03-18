@@ -303,7 +303,6 @@ const OrderPage = () => {
 
         <div
           className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}
-          inert={holidays?.has(selectedDate) ? true : undefined}
           aria-disabled={holidays?.has(selectedDate) ? true : undefined}
         >
           {visibleMealsList.map((mealItem, mealIndex) => {

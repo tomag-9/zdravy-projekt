@@ -57,18 +57,23 @@ class AdminHolidayViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        created = []
-        skipped = []
-        d = start
-        while d <= end:
-            holiday, was_created = Holiday.objects.get_or_create(
-                date=d, defaults={"reason": reason}
+        all_dates = [
+            start + datetime.timedelta(days=offset)
+            for offset in range((end - start).days + 1)
+        ]
+        existing_dates = set(
+            Holiday.objects.filter(date__range=(start, end)).values_list(
+                "date", flat=True
             )
-            if was_created:
-                created.append(str(d))
-            else:
-                skipped.append(str(d))
-            d += datetime.timedelta(days=1)
+        )
+        missing_dates = [d for d in all_dates if d not in existing_dates]
+        Holiday.objects.bulk_create(
+            [Holiday(date=d, reason=reason) for d in missing_dates],
+            ignore_conflicts=True,
+        )
+        missing_set = set(missing_dates)
+        created = [str(d) for d in all_dates if d in missing_set]
+        skipped = [str(d) for d in all_dates if d not in missing_set]
 
         return Response({"created": created, "skipped": skipped})
 
