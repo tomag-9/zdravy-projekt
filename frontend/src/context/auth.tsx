@@ -139,12 +139,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
         return true;
       } else {
+        // Server explicitly rejected the refresh token (e.g. 401) — session is
+        // truly invalid, log the user out.
         logout();
         return false;
       }
     } catch (error) {
-      console.error("Token refresh failed:", error);
-      logout();
+      // Network error (e.g. phone just woke up and connection isn't ready yet).
+      // Do NOT log the user out — the refresh token is still valid. The next
+      // API call will retry the refresh once the network is available.
+      if (!isNetworkFetchError(error)) {
+        console.error("Token refresh failed with unexpected error:", error);
+      }
       return false;
     }
   }, [logout]);
@@ -247,17 +253,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       fetchUserProfile();
     }
 
-    // Set up token refresh interval (every 4 minutes, tokens expire in 5 minutes)
+    // Set up token refresh interval (every 14 minutes, access tokens expire in 30 minutes)
     const refreshInterval = setInterval(
       () => {
         if (localStorage.getItem("refresh_token")) {
           refreshToken();
         }
       },
-      4 * 60 * 1000,
-    ); // 4 minutes
+      14 * 60 * 1000,
+    ); // 14 minutes
 
-    return () => clearInterval(refreshInterval);
+    // When the PWA returns to the foreground after being backgrounded, mobile
+    // browsers throttle/pause setInterval so the token may be stale. Refresh
+    // proactively on visibility restore so the first user action doesn't block.
+    const handleVisibilityChange = () => {
+      if (
+        document.visibilityState === "visible" &&
+        localStorage.getItem("refresh_token")
+      ) {
+        refreshToken();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [refreshToken, fetchUserProfile]);
 
   const updateProfile = useCallback((updates: Partial<User>) => {

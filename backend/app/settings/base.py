@@ -3,6 +3,7 @@ Django base settings for all environments.
 """
 
 import os
+from datetime import timedelta
 from pathlib import Path
 
 
@@ -214,6 +215,15 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 VAPID_PUBLIC_KEY = env("VAPID_PUBLIC_KEY", "")
 VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", "")
 VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "admin@example.com")
+
+# JWT – longer lifetimes so the PWA stays logged in across background/resume cycles.
+# Access token: 30 min (default 5 min was too short; phones throttle background
+#   refresh and the token expired before the app could refresh it).
+# Refresh token: 30 days ("remember me" for a PWA used daily).
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+}
 
 # Django REST Framework
 REST_FRAMEWORK = {
