@@ -22,11 +22,13 @@ PERIODIC_TASK_NAME_AUTO_ORDER = "auto-order-daily"
 PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 
-PUSH_REMINDER_TASK_NAMES = {
-    "breakfast": "push-reminder-breakfast",
-    "lunch": "push-reminder-lunch",
-    "olovrant": "push-reminder-olovrant",
-}
+PUSH_REMINDER_TASK_PREFIX = "push-reminder-"
+PUSH_REMINDER_OFFSET_MINUTES = 30
+
+
+def _push_reminder_task_name(meal_types: list[str]) -> str:
+    """Return the deterministic PeriodicTask name for a group of meal types."""
+    return PUSH_REMINDER_TASK_PREFIX + "-".join(sorted(meal_types))
 
 
 def _sync_auto_order_schedule(settings_instance) -> None:
@@ -186,11 +188,16 @@ def _sync_daily_report_schedule(settings_instance) -> None:
 
 def _sync_push_reminder_schedule(settings_instance) -> None:
     """
-    Create or update three Celery Beat PeriodicTasks that fire 15 minutes
-    before each meal deadline (breakfast, lunch, olovrant), Monday–Friday.
+    Create or update Celery Beat PeriodicTasks that fire PUSH_REMINDER_OFFSET_MINUTES
+    before each unique meal deadline combination, Monday–Friday.
 
-    If the computed reminder time goes before midnight (deadline < 00:15),
-    the task is clamped to 00:00 and a warning is logged.
+    Meals that share the same (deadline_time, is_day_before) are grouped into
+    a single task so clients receive one combined notification instead of
+    separate ones. Orphaned push-reminder tasks from previous configurations
+    are deleted automatically.
+
+    If the computed reminder time goes before midnight the task is clamped
+    to 00:00 and a warning is logged.
     """
     import datetime
 
@@ -204,22 +211,35 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
         return
 
     try:
-        for meal_type, task_name in PUSH_REMINDER_TASK_NAMES.items():
+        all_meal_types = ["breakfast", "lunch", "olovrant"]
+
+        # Group meal types by (deadline_time, is_day_before).
+        # Meals in the same group fire at the same crontab time and are sent
+        # as a single combined push notification.
+        groups: dict[tuple, list[str]] = {}
+        for meal_type in all_meal_types:
             deadline: datetime.time = getattr(
                 settings_instance, f"deadline_{meal_type}"
             )
-            # Subtract 15 minutes from the deadline
-            dt = datetime.datetime.combine(datetime.date.today(), deadline)
-            reminder_dt = dt - datetime.timedelta(minutes=15)
+            is_day_before: bool = getattr(
+                settings_instance, f"deadline_{meal_type}_is_day_before", False
+            )
+            key = (deadline, is_day_before)
+            groups.setdefault(key, []).append(meal_type)
 
-            # Clamp: if reminder time is negative (deadline < 00:15) use 00:00
+        new_task_names: set[str] = set()
+
+        for (deadline, _is_day_before), meal_types_group in groups.items():
+            dt = datetime.datetime.combine(datetime.date.today(), deadline)
+            reminder_dt = dt - datetime.timedelta(minutes=PUSH_REMINDER_OFFSET_MINUTES)
+
             if reminder_dt.date() < dt.date():
                 logger.warning(
-                    "push-reminder for %s: deadline %s is less than 15 min "
-                    "from midnight, "
-                    "clamping reminder to 00:00.",
-                    meal_type,
+                    "push-reminder for %s: deadline %s is less than %d min "
+                    "from midnight, clamping reminder to 00:00.",
+                    meal_types_group,
                     deadline,
+                    PUSH_REMINDER_OFFSET_MINUTES,
                 )
                 reminder_time = datetime.time(0, 0)
             else:
@@ -234,16 +254,21 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
                 timezone=settings.TIME_ZONE,
             )
 
+            meal_types_sorted = sorted(meal_types_group)
+            task_name = _push_reminder_task_name(meal_types_sorted)
+            new_task_names.add(task_name)
+
             PeriodicTask.objects.update_or_create(
                 name=task_name,
                 defaults={
                     "task": "api.tasks.send_push_deadline_reminder_task",
                     "crontab": schedule,
-                    "args": json.dumps([meal_type]),
+                    "args": json.dumps([meal_types_sorted]),
                     "kwargs": json.dumps({}),
                     "enabled": True,
                     "description": (
-                        f"Push reminder: 15 min before {meal_type} deadline "
+                        f"Push reminder: {PUSH_REMINDER_OFFSET_MINUTES} min before "
+                        f"{'/'.join(meal_types_sorted)} deadline "
                         f"(deadline: {deadline.strftime('%H:%M')}, "
                         f"fires at {reminder_time.strftime('%H:%M')})."
                     ),
@@ -257,6 +282,19 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
                 reminder_time.minute,
                 settings.TIME_ZONE,
             )
+
+        # Remove push-reminder tasks that are no longer needed (e.g. after
+        # deadlines were changed so that previously separate meals are now grouped).
+        deleted_count, _ = (
+            PeriodicTask.objects.filter(name__startswith=PUSH_REMINDER_TASK_PREFIX)
+            .exclude(name__in=new_task_names)
+            .delete()
+        )
+        if deleted_count:
+            logger.info(
+                "Deleted %d orphaned push-reminder periodic task(s)", deleted_count
+            )
+
     except Exception as exc:
         logger.exception("Failed to sync push reminder periodic tasks: %s", exc)
 
