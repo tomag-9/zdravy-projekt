@@ -123,6 +123,13 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
     from api.models import GlobalSettings, PushSubscription
     from api.services import _next_workday
 
+    # Backward-compat: older Beat tasks stored args=["lunch"] (a bare string).
+    # Iterating over a string would treat each character as a meal type and
+    # return invalid_meal_type. Normalise to a list so old schedules keep
+    # working until they are resynced by _sync_push_reminder_schedule.
+    if isinstance(meal_types, str):
+        meal_types = [meal_types]
+
     if not meal_types:
         logger.error("send_push_deadline_reminder_task: empty meal_types, no retry")
         return {"error": "empty_meal_types", "meal_types": meal_types}
@@ -176,7 +183,7 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         return ", ".join(labels[:-1]) + f" a {labels[-1]}"
 
     total_sent = 0
-    first_date = None
+    sent_per_date: dict[str, int] = {}
     try:
         subscribed_user_ids = list(
             PushSubscription.objects.filter(
@@ -188,14 +195,12 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         )
 
         for target_date, date_meals in date_to_meals.items():
-            if first_date is None:
-                first_date = target_date
             date_fmt = target_date.strftime("%d.%m.%Y")
             meal_str = _build_meal_str(date_meals)
             body = (
                 f"Nezabudnite objednať {meal_str} na {date_fmt}. Uzávierka je o chvíľu!"
             )
-
+            date_sent = 0
             for user_id in subscribed_user_ids:
                 result = PushNotificationService.send_to_user(
                     user_id=user_id,
@@ -203,7 +208,15 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
                     body=body,
                     url="/order",
                 )
-                total_sent += result.get("sent", 0)
+                date_sent += result.get("sent", 0)
+            total_sent += date_sent
+            sent_per_date[str(target_date)] = date_sent
+            logger.info(
+                "send_push_deadline_reminder_task: meals=%s date=%s sent=%d",
+                sorted(date_meals),
+                target_date,
+                date_sent,
+            )
 
     except DatabaseError as exc:
         logger.exception(
@@ -217,16 +230,14 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         )
         raise
 
-    logger.info(
-        "send_push_deadline_reminder_task: meal_types=%s date=%s sent=%d",
-        meal_types,
-        first_date,
-        total_sent,
-    )
+    # "date" keeps the first date for backward compatibility with callers that
+    # only expect a single date (the common case where all meals share one deadline).
+    first_date = next(iter(date_to_meals))
     return {
         "sent": total_sent,
         "meal_types": meal_types,
         "date": str(first_date),
+        "sent_per_date": sent_per_date,
     }
 
 
