@@ -123,6 +123,10 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
     from api.models import GlobalSettings, PushSubscription
     from api.services import _next_workday
 
+    if not meal_types:
+        logger.error("send_push_deadline_reminder_task: empty meal_types, no retry")
+        return {"error": "empty_meal_types", "meal_types": meal_types}
+
     valid_meal_types = {"breakfast", "lunch", "olovrant"}
     invalid = [m for m in meal_types if m not in valid_meal_types]
     if invalid:

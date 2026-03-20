@@ -138,10 +138,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           localStorage.setItem("refresh_token", data.refresh);
         }
         return true;
-      } else {
-        // Server explicitly rejected the refresh token (e.g. 401) — session is
-        // truly invalid, log the user out.
+      } else if (response.status === 401 || response.status === 403) {
+        // Server explicitly rejected the refresh token — session is truly invalid,
+        // log the user out.
         logout();
+        return false;
+      } else {
+        // Transient server error (e.g. 500/502). Do NOT log the user out so the
+        // app can retry later without destroying a valid session.
+        console.warn("Token refresh failed with non-auth status:", response.status);
         return false;
       }
     } catch (error) {

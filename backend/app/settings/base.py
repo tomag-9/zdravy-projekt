@@ -220,6 +220,11 @@ VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "admin@example.com")
 # Access token: 30 min (default 5 min was too short; phones throttle background
 #   refresh and the token expired before the app could refresh it).
 # Refresh token: 30 days ("remember me" for a PWA used daily).
+#
+# Security note: refresh tokens are stored in localStorage (no httpOnly cookie).
+# If you later enable ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION you will
+# also need to add "rest_framework_simplejwt.token_blacklist" to INSTALLED_APPS
+# and run its migration. That would allow server-side revocation on logout.
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
