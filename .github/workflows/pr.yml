@@ -114,7 +114,7 @@ jobs:
           pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           files: ./backend/coverage.xml
           flags: backend
@@ -145,7 +145,7 @@ jobs:
         run: npm run test -- --coverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v5
         with:
           files: ./frontend/coverage/coverage-final.json
           flags: frontend
@@ -162,10 +162,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build backend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           push: false
@@ -174,7 +174,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build frontend image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           push: false
