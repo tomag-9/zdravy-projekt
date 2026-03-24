@@ -6,9 +6,10 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from ..exceptions import (
     InactiveAccountError,
@@ -87,6 +88,17 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }
+
+
+@extend_schema(tags=["auth"])
+class SafeTokenRefreshView(TokenRefreshView):
+    """Token refresh view that returns 401 when the user no longer exists."""
+
+    def post(self, request, *args, **kwargs):
+        try:
+            return super().post(request, *args, **kwargs)
+        except User.DoesNotExist:
+            raise InvalidToken("Token neplatný alebo expirovaný.")
 
 
 @extend_schema(tags=["auth"])

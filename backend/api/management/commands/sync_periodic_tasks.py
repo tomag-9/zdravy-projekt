@@ -83,15 +83,28 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(f"Deleted {count} daily report PeriodicTask(s)")
             )
+            # Delete push reminder tasks
+            from api.signals import PUSH_REMINDER_TASK_PREFIX
+
+            push_count, _ = PeriodicTask.objects.filter(
+                name__startswith=PUSH_REMINDER_TASK_PREFIX
+            ).delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Deleted {push_count} push reminder PeriodicTask(s)"
+                )
+            )
             return
 
         if mode == "verify":
             # Only check
             self._verify_tasks(gs)
+            self._verify_push_tasks(gs)
             return
 
         # Mode: fix
         self._sync_tasks(gs)
+        self._sync_push_tasks(gs)
 
     def _verify_tasks(self, gs):
         from django_celery_beat.models import PeriodicTask
@@ -215,3 +228,46 @@ class Command(BaseCommand):
         except Exception as exc:
             self.stdout.write(self.style.ERROR(f"✗ Failed to sync tasks: {exc}"))
             logger.exception("Failed to sync periodic tasks")
+
+    def _verify_push_tasks(self, gs):
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import PUSH_REMINDER_TASK_PREFIX
+
+        self.stdout.write("\n--- Current PeriodicTasks for Push Reminders ---")
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=PUSH_REMINDER_TASK_PREFIX)
+        )
+        if not tasks:
+            self.stdout.write(
+                self.style.ERROR(
+                    "✗ No push-reminder tasks found!\n"
+                    "  Run 'python manage.py sync_periodic_tasks --fix' to create them."
+                )
+            )
+        else:
+            for task in tasks:
+                schedule = (
+                    f"{task.crontab.hour}:{task.crontab.minute} Mon–Fri"
+                    f" (tz: {task.crontab.timezone})"
+                    if task.crontab
+                    else "no schedule"
+                )
+                status = (
+                    self.style.SUCCESS("✓")
+                    if task.enabled
+                    else self.style.WARNING("⚠ disabled")
+                )
+                self.stdout.write(f"  {status} {task.name} → {schedule}")
+
+    def _sync_push_tasks(self, gs):
+        from api.signals import _sync_push_reminder_schedule
+
+        self.stdout.write("\n--- Syncing Push Reminder Tasks ---")
+        try:
+            _sync_push_reminder_schedule(gs)
+            self.stdout.write(self.style.SUCCESS("✓ Push reminder tasks synced!"))
+            self._verify_push_tasks(gs)
+        except Exception as exc:
+            self.stdout.write(self.style.ERROR(f"✗ Failed to sync push tasks: {exc}"))
+            logger.exception("Failed to sync push reminder tasks")
