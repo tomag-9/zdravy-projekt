@@ -67,19 +67,21 @@ class TestStartupSync:
 
     def test_startup_sync_skipped_when_no_global_settings(self):
         """
-        If GlobalSettings doesn't exist yet (fresh DB), startup sync exits
-        cleanly without raising.
+        If GlobalSettings doesn't exist yet (fresh DB), ApiConfig.ready() exits
+        cleanly without raising and does not create push-reminder tasks.
         """
-        from api.signals import _sync_push_reminder_schedule
+        import api
+        from api.apps import ApiConfig
 
         assert not GlobalSettings.objects.filter(pk=1).exists()
 
-        # Should not raise
-        gs_dummy = GlobalSettings(
-            deadline_breakfast=datetime.time(8, 0),
-            deadline_lunch=datetime.time(10, 0),
-            deadline_olovrant=datetime.time(9, 0),
-        )
-        # We don't call it with None — apps.py guards on `if global_settings is None`
-        # so just verify the signal itself is tolerant of a transient exception
-        _sync_push_reminder_schedule(gs_dummy)
+        pre_count = PeriodicTask.objects.filter(
+            name__startswith=PUSH_REMINDER_TASK_PREFIX
+        ).count()
+
+        ApiConfig("api", api).ready()
+
+        post_count = PeriodicTask.objects.filter(
+            name__startswith=PUSH_REMINDER_TASK_PREFIX
+        ).count()
+        assert pre_count == post_count

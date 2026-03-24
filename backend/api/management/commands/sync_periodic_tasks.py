@@ -7,7 +7,7 @@ Usage:
     python manage.py sync_periodic_tasks           # verify/sync all tasks
     python manage.py sync_periodic_tasks --fix     # same as above (default behavior)
     python manage.py sync_periodic_tasks --verify  # only check, don't fix
-    python manage.py sync_periodic_tasks --delete  # delete all report tasks (use with caution)
+    python manage.py sync_periodic_tasks --delete  # delete all report + push reminder tasks (use with caution)
 """
 
 import logging
@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     help = (
-        "Verify and recreate Celery Beat PeriodicTasks for daily reports. "
+        "Verify and recreate Celery Beat PeriodicTasks for daily reports and push reminders. "
         "Use --verify to only check without making changes, --fix to recreate tasks (default), "
-        "or --delete to remove report tasks."
+        "or --delete to remove ALL scheduled tasks (report + push reminders)."
     )
 
     def add_arguments(self, parser):

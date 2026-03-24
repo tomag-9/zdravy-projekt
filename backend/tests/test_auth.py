@@ -41,6 +41,8 @@ class TestAuthentication:
         response = api_client.post(
             url, {"email": "client@example.com", "password": "client123"}
         )
+        assert response.status_code == status.HTTP_200_OK
+        assert "refresh" in response.data
         refresh_token = response.data["refresh"]
 
         user.delete()
