@@ -1,6 +1,5 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
 
 from .health import health_check
 from .views import (
@@ -22,6 +21,7 @@ from .views import (
     PortionTypeViewSet,
     PushSubscribeView,
     ReportTaskViewSet,
+    SafeTokenRefreshView,
     UserProfileViewSet,
     VapidPublicKeyView,
 )
@@ -59,7 +59,7 @@ router.register(r"holidays", HolidayListViewSet, basename="holiday")
 urlpatterns = [
     path("", include(router.urls)),
     path("token/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    path("token/refresh/", SafeTokenRefreshView.as_view(), name="token_refresh"),
     path("health/", health_check, name="health_check"),
     # Password reset (unauthenticated)
     path(

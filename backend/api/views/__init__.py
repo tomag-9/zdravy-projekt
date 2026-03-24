@@ -14,6 +14,7 @@ from .auth_views import (
     EmailTokenObtainPairView,
     PasswordResetConfirmView,
     PasswordResetRequestView,
+    SafeTokenRefreshView,
 )
 
 # Diet views
@@ -51,6 +52,7 @@ __all__ = [
     "EmailTokenObtainPairView",
     "PasswordResetRequestView",
     "PasswordResetConfirmView",
+    "SafeTokenRefreshView",
     # Orders
     "DailyOrderViewSet",
     "PlannedOrdersViewSet",
