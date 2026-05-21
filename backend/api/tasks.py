@@ -107,7 +107,7 @@ def generate_report_xlsx_task(self, date_str: str):
 )
 def send_push_deadline_reminder_task(self, meal_types: list[str]):
     """
-    Send push notifications to all subscribed clients 30 minutes before
+    Send push notifications to all subscribed clients 15 minutes before
     a meal deadline. When multiple meals share the same deadline they are
     passed together so that users receive a single combined notification.
 

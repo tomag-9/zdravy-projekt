@@ -1,4 +1,4 @@
-# ENVIRONMENT VARIABLES TEMPLATE
+# DEVELOPMENT ENVIRONMENT VARIABLES TEMPLATE
 # Copy this file to .env.dev for local development and fill in values.
 # DO NOT COMMIT ACTUAL .env FILES!
 #

@@ -115,20 +115,20 @@ class TestSyncPushReminderSchedule:
         expected_name = _push_reminder_task_name(["breakfast", "lunch", "olovrant"])
         assert tasks.first().name == expected_name
 
-    def test_reminder_fires_30_min_before_each_deadline(self):
+    def test_reminder_fires_15_min_before_each_deadline(self):
         """Each task crontab is PUSH_REMINDER_OFFSET_MINUTES before the deadline."""
-        assert PUSH_REMINDER_OFFSET_MINUTES == 30
+        assert PUSH_REMINDER_OFFSET_MINUTES == 15
 
         _make_settings(
-            deadline_breakfast=datetime.time(8, 30),  # reminder → 08:00
-            deadline_lunch=datetime.time(11, 0),  # reminder → 10:30
-            deadline_olovrant=datetime.time(9, 30),  # reminder → 09:00
+            deadline_breakfast=datetime.time(8, 30),  # reminder → 08:15
+            deadline_lunch=datetime.time(11, 0),  # reminder → 10:45
+            deadline_olovrant=datetime.time(9, 30),  # reminder → 09:15
         )
 
         expectations = {
-            _push_reminder_task_name(["breakfast"]): (8, 0),
-            _push_reminder_task_name(["lunch"]): (10, 30),
-            _push_reminder_task_name(["olovrant"]): (9, 0),
+            _push_reminder_task_name(["breakfast"]): (8, 15),
+            _push_reminder_task_name(["lunch"]): (10, 45),
+            _push_reminder_task_name(["olovrant"]): (9, 15),
         }
         for task_name, (exp_hour, exp_min) in expectations.items():
             task = PeriodicTask.objects.get(name=task_name)
