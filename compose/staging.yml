@@ -1,7 +1,6 @@
 services:
   backend:
     image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
-    pull_policy: always
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
@@ -65,7 +64,6 @@ services:
     networks:
       - app
       - dokploy-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s
@@ -84,6 +82,11 @@ services:
         parallelism: 1
         delay: 10s
         order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: "${BACKEND_CPU_LIMIT:-1.00}"
@@ -94,7 +97,6 @@ services:
 
   celery:
     image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
-    pull_policy: always
     command: >
       sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
@@ -120,7 +122,6 @@ services:
     networks:
       - app
       - dokploy-network
-    restart: unless-stopped
     healthcheck:
       disable: true
     labels:
@@ -137,6 +138,11 @@ services:
         parallelism: 1
         delay: 10s
         order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: "${CELERY_CPU_LIMIT:-1.00}"
@@ -147,7 +153,6 @@ services:
 
   celery-beat:
     image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
-    pull_policy: always
     command: >
       sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
@@ -162,12 +167,9 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
       SENTRY_DSN: ${SENTRY_DSN:-}
-    depends_on:
-      - backend
     networks:
       - app
       - dokploy-network
-    restart: unless-stopped
     healthcheck:
       disable: true
     labels:
@@ -184,6 +186,11 @@ services:
         parallelism: 1
         delay: 10s
         order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: "${CELERY_BEAT_CPU_LIMIT:-0.25}"
@@ -194,7 +201,6 @@ services:
 
   frontend:
     image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-staging}
-    pull_policy: always
     labels:
       - traefik.enable=true
       # Frontend: HTTP router (redirect only)
@@ -216,7 +222,6 @@ services:
     networks:
       - app
       - dokploy-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost/healthz || exit 1"]
       interval: 10s
@@ -235,6 +240,11 @@ services:
         parallelism: 1
         delay: 10s
         order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+        max_attempts: 3
+        window: 120s
       resources:
         limits:
           cpus: "${FRONTEND_CPU_LIMIT:-0.50}"

@@ -315,7 +315,7 @@ Staging deploy flow:
 Required setup:
 
 - GitHub Secrets: `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`
-- Dokploy app envs: `REGISTRY_USERNAME`, `DJANGO_SECRET_KEY`, `POSTGRES_*`, `REDIS_URL`, `EMAIL_HOST`, `EMAIL_HOST_PASSWORD`, `STAGING_HOST`, etc.
+- Dokploy app envs: `REGISTRY_USERNAME`, `DJANGO_SECRET_KEY`, `POSTGRES_*`, `REDIS_URL`, `EMAIL_HOST`, `EMAIL_HOST_PASSWORD`, `STAGING_HOST`/`PROD_HOST`, `FRONTEND_URL`, etc.
 - Dokploy network available as `dokploy-network`
 
 ### Rolling Updates And Limits
