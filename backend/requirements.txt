@@ -44,7 +44,7 @@ chardet==5.2.0
 python-decouple==3.8
 
 # API Documentation
-drf-spectacular==0.28.0
+drf-spectacular==0.29.0
 
 # Observability
 django-prometheus==2.3.1
