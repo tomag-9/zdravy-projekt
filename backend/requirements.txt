@@ -9,7 +9,7 @@ django-cors-headers==4.9.0
 djangorestframework-simplejwt==5.5.1
 
 # Database
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.12
 
 # Celery / async tasks
 celery==5.6.2
