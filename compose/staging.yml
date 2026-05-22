@@ -163,8 +163,7 @@ services:
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
       SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     networks:
       - app
       - dokploy-network
