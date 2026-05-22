@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build-and-push:
     name: Build and Push Production Images
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -62,7 +62,7 @@ jobs:
 
   deploy-production:
     name: Trigger Dokploy Production Deploy
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: build-and-push
     environment:
       name: production
