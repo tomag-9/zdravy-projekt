@@ -197,14 +197,14 @@ class TestSyncPushReminderSchedule:
         task_name = _push_reminder_task_name(["lunch"])
         task_before = PeriodicTask.objects.get(name=task_name)
         assert task_before.crontab.hour == "10"
-        assert task_before.crontab.minute == "30"
+        assert task_before.crontab.minute == "45"
 
         settings.deadline_lunch = datetime.time(12, 0)
         settings.save()
 
         task_after = PeriodicTask.objects.get(name=task_name)
         assert task_after.crontab.hour == "11"
-        assert task_after.crontab.minute == "30"
+        assert task_after.crontab.minute == "45"
 
     def test_orphaned_tasks_deleted_when_deadlines_merge(self):
         """When two previously separate deadlines merge, the old tasks are deleted."""

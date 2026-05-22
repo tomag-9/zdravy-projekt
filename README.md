@@ -50,7 +50,7 @@ Edit `.env.dev` and configure the variables (database, secrets, etc.).
 ### 3. Start development environment
 
 ```bash
-docker compose -f compose/dev.yml up --build
+docker compose --env-file .env.dev -f compose/dev.yml up --build
 ```
 
 The application will be available at:
@@ -61,8 +61,8 @@ The application will be available at:
 ### 4. Run initial migrations
 
 ```bash
-docker compose -f compose/dev.yml exec backend python manage.py migrate
-docker compose -f compose/dev.yml exec backend python manage.py createsuperuser
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py migrate
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py createsuperuser
 ```
 
 ## 🧪 Testing
@@ -71,16 +71,16 @@ docker compose -f compose/dev.yml exec backend python manage.py createsuperuser
 
 ```bash
 # Run all tests
-docker compose -f compose/dev.yml exec backend pytest
+docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest
 
 # Run with coverage (terminal + HTML report)
-docker compose -f compose/dev.yml exec backend pytest --cov=api --cov=app --cov-report=term-missing --cov-report=html
+docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest --cov=api --cov=app --cov-report=term-missing --cov-report=html
 
 # Enforce minimum backend coverage (60%)
-docker compose -f compose/dev.yml exec backend pytest --cov=api --cov=app --cov-fail-under=60
+docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest --cov=api --cov=app --cov-fail-under=60
 
 # Run specific test file
-docker compose -f compose/dev.yml exec backend pytest api/tests/integration/test_order_api.py
+docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest api/tests/integration/test_order_api.py
 ```
 
 **Local testing without Docker:**
@@ -97,10 +97,10 @@ pytest
 
 ```bash
 # Run all tests
-docker compose -f compose/dev.yml exec frontend npm test
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm test
 
 # Watch mode
-docker compose -f compose/dev.yml exec frontend npm run test:watch
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm run test:watch
 ```
 
 **Local testing without Docker:**
@@ -182,19 +182,19 @@ The backend uses Django with environment-specific settings:
 
 ```bash
 # Run development server
-docker compose -f compose/dev.yml exec backend python manage.py runserver 0.0.0.0:8000
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py runserver 0.0.0.0:8000
 
 # Create migrations
-docker compose -f compose/dev.yml exec backend python manage.py makemigrations
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py makemigrations
 
 # Apply migrations
-docker compose -f compose/dev.yml exec backend python manage.py migrate
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py migrate
 
 # Create superuser
-docker compose -f compose/dev.yml exec backend python manage.py createsuperuser
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py createsuperuser
 
 # Django shell
-docker compose -f compose/dev.yml exec backend python manage.py shell
+docker compose --env-file .env.dev -f compose/dev.yml exec backend python manage.py shell
 ```
 
 ### Frontend Development
@@ -203,13 +203,13 @@ The frontend uses React with Vite for fast development:
 
 ```bash
 # Install new package
-docker compose -f compose/dev.yml exec frontend npm install <package-name>
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm install <package-name>
 
 # Build for production
-docker compose -f compose/dev.yml exec frontend npm run build
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm run build
 
 # Lint code
-docker compose -f compose/dev.yml exec frontend npm run lint
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm run lint
 ```
 
 ### Code Quality
@@ -242,16 +242,16 @@ pre-commit run --all-files
 
 ```bash
 # Backend: Format code with black
-docker compose -f compose/dev.yml exec backend black .
+docker compose --env-file .env.dev -f compose/dev.yml exec backend black .
 
 # Backend: Sort imports
-docker compose -f compose/dev.yml exec backend isort .
+docker compose --env-file .env.dev -f compose/dev.yml exec backend isort .
 
 # Backend: Lint with flake8
-docker compose -f compose/dev.yml exec backend flake8 .
+docker compose --env-file .env.dev -f compose/dev.yml exec backend flake8 .
 
 # Frontend: Lint
-docker compose -f compose/dev.yml exec frontend npm run lint
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm run lint
 ```
 
 ## 🌍 Environments
@@ -259,7 +259,7 @@ docker compose -f compose/dev.yml exec frontend npm run lint
 ### Development
 
 ```bash
-docker compose -f compose/dev.yml up
+docker compose --env-file .env.dev -f compose/dev.yml up
 ```
 
 - DEBUG mode enabled
@@ -349,33 +349,33 @@ Alloy tails Docker logs through the Docker socket and scrapes Django metrics fro
 
 ```bash
 # Check database status
-docker compose -f compose/dev.yml ps db
+docker compose --env-file .env.dev -f compose/dev.yml ps db
 
 # View database logs
-docker compose -f compose/dev.yml logs db
+docker compose --env-file .env.dev -f compose/dev.yml logs db
 
 # Reset database
-docker compose -f compose/dev.yml down -v
-docker compose -f compose/dev.yml up -d
+docker compose --env-file .env.dev -f compose/dev.yml down -v
+docker compose --env-file .env.dev -f compose/dev.yml up -d
 ```
 
 ### Frontend build issues
 
 ```bash
 # Clear node_modules and reinstall
-docker compose -f compose/dev.yml exec frontend rm -rf node_modules
-docker compose -f compose/dev.yml exec frontend npm install
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend rm -rf node_modules
+docker compose --env-file .env.dev -f compose/dev.yml exec frontend npm install
 ```
 
 ### View logs
 
 ```bash
 # All services
-docker compose -f compose/dev.yml logs -f
+docker compose --env-file .env.dev -f compose/dev.yml logs -f
 
 # Specific service
-docker compose -f compose/dev.yml logs -f backend
-docker compose -f compose/dev.yml logs -f frontend
+docker compose --env-file .env.dev -f compose/dev.yml logs -f backend
+docker compose --env-file .env.dev -f compose/dev.yml logs -f frontend
 ```
 
 ## 📚 Additional Resources
