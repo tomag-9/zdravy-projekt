@@ -33,10 +33,10 @@ CORS_ALLOWED_ORIGINS = [
 CORS_ALLOW_CREDENTIALS = True
 
 # Security settings
-# Trust X-Forwarded-Proto header from nginx/Cloudflare
+# Trust X-Forwarded-Proto header from Traefik/Cloudflare
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-# Don't force SSL redirect - nginx/Cloudflare handles this
+# Don't force SSL redirect - Traefik/Cloudflare handles this
 # Internal health checks and direct backend access would fail with redirect
 SECURE_SSL_REDIRECT = False
 

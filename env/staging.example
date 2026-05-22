@@ -1,0 +1,20 @@
+# Django settings
+DJANGO_SETTINGS_MODULE=app.settings.staging
+DJANGO_SECRET_KEY=super-secret-key-123
+
+# Database (Dokploy managed Postgres)
+POSTGRES_DB=zdravy_projekt_staging
+POSTGRES_USER=postgres_staging
+POSTGRES_PASSWORD=strong-password-here
+POSTGRES_HOST=postgres-zdravy
+POSTGRES_PORT=5432
+
+# Redis (Dokploy managed Redis)
+CELERY_BROKER_URL=redis://redis-zdravy:6379/0
+CELERY_RESULT_BACKEND=redis://redis-zdravy:6379/0
+REDIS_URL=redis://redis-zdravy:6379/1
+
+# Domain
+STAGING_HOST=zp.tomag.xyz
+FRONTEND_URL=https://zp.tomag.xyz
+VITE_API_URL=https://zp.tomag.xyz/api

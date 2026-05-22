@@ -23,7 +23,7 @@ PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 
 PUSH_REMINDER_TASK_PREFIX = "push-reminder-"
-PUSH_REMINDER_OFFSET_MINUTES = 30
+PUSH_REMINDER_OFFSET_MINUTES = 15
 
 
 def _push_reminder_task_name(meal_types: list[str]) -> str:

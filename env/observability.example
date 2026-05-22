@@ -1,0 +1,14 @@
+# Grafana Cloud Loki
+GRAFANA_LOKI_URL=https://logs-prod-000.grafana.net/loki/api/v1/push
+GRAFANA_LOKI_USER=grafana-loki-user
+GRAFANA_LOKI_API_KEY=grafana-loki-api-key
+
+# Grafana Cloud Prometheus/Mimir remote write
+GRAFANA_PROM_URL=https://prometheus-prod-000.grafana.net/api/prom/push
+GRAFANA_PROM_USER=grafana-prom-user
+GRAFANA_PROM_API_KEY=grafana-prom-api-key
+
+# Alloy metadata / scrape targets
+ALLOY_ENVIRONMENT=production
+ALLOY_METRICS_TARGET=backend:8000
+DOKPLOY_NETWORK=dokploy-network

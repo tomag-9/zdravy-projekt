@@ -1,0 +1,131 @@
+services:
+  backend:
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    pull_policy: always
+    environment:
+      DJANGO_SETTINGS_MODULE: app.settings.prod
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      PROD_HOST: ${PROD_HOST:?Set PROD_HOST in Dokploy env}
+      PROD_HOST_WWW: ${PROD_HOST_WWW:-}
+      FRONTEND_URL: ${FRONTEND_URL:-https://${PROD_HOST}}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-}
+    labels:
+      - logging.job=backend
+      - prometheus.io/scrape=true
+      - prometheus.io/path=/metrics/
+      - prometheus.io/port=8000
+    networks:
+      - app
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  celery:
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    pull_policy: always
+    command: >
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
+             do echo 'Waiting for Redis...'; sleep 2; done &&
+             celery -A app worker -l info"
+    environment:
+      DJANGO_SETTINGS_MODULE: app.settings.prod
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT:-587}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-}
+    networks:
+      - app
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    labels:
+      - logging.job=celery
+
+  celery-beat:
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    pull_policy: always
+    command: >
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
+             do echo 'Waiting for Redis...'; sleep 2; done &&
+             celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
+    environment:
+      DJANGO_SETTINGS_MODULE: app.settings.prod
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
+      POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - app
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+    labels:
+      - logging.job=celery-beat
+
+  frontend:
+    image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-prod}
+    pull_policy: always
+    networks:
+      - app
+      - dokploy-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    labels:
+      - logging.job=frontend
+
+networks:
+  app:
+  dokploy-network:
+    external: true

@@ -7,7 +7,7 @@ on:
 jobs:
   backend-lint:
     name: Backend Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     steps:
       - name: Checkout code
@@ -45,7 +45,7 @@ jobs:
 
   frontend-lint:
     name: Frontend Lint
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -68,7 +68,7 @@ jobs:
 
   backend-tests:
     name: Backend Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     services:
       postgres:
@@ -123,7 +123,7 @@ jobs:
 
   frontend-tests:
     name: Frontend Unit Tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
@@ -154,7 +154,7 @@ jobs:
 
   docker-build:
     name: Docker Build Test
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: [backend-lint, frontend-lint, backend-tests, frontend-tests]
 
     steps:

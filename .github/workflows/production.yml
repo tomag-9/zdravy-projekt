@@ -1,0 +1,95 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build and Push Production Images
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod
+            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod-${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod-cache
+          cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod-cache,mode=max
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          push: true
+          build-args: |
+            VITE_API_URL=${{ vars.PROD_VITE_API_URL || '/api' }}
+          tags: |
+            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod
+            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod-${{ github.sha }}
+          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod-cache
+          cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod-cache,mode=max
+
+      - name: Print rollback tags
+        run: |
+          echo "Backend rollback tag: prod-${{ github.sha }}"
+          echo "Frontend rollback tag: prod-${{ github.sha }}"
+
+  deploy-production:
+    name: Trigger Dokploy Production Deploy
+    runs-on: self-hosted
+    needs: build-and-push
+    environment:
+      name: production
+      url: ${{ vars.PROD_URL || 'https://example.com' }}
+
+    steps:
+      - name: Trigger Dokploy deployment
+        run: |
+          curl -fsS --retry 3 --retry-delay 3 --retry-all-errors \
+            -X POST \
+            -H "Content-Type: application/json" \
+            -H "x-github-event: push" \
+            -d '{"ref":"refs/heads/main"}' \
+            "${{ secrets.DOKPLOY_WEBHOOK_URL_PROD }}"
+
+      - name: Wait for production health
+        env:
+          HEALTHCHECK_URL: ${{ vars.PROD_HEALTHCHECK_URL || 'https://example.com/api/health/' }}
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 30); do
+            if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
+              echo "Production is healthy"
+              exit 0
+            fi
+            echo "Waiting for healthcheck ($i/30)"
+            sleep 10
+          done
+          echo "Production healthcheck failed: $HEALTHCHECK_URL"
+          exit 1

@@ -1,0 +1,92 @@
+discovery.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "15s"
+}
+
+discovery.relabel "docker_logs" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_label_logging_job"]
+		regex         = "(.+)"
+		target_label  = "job"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.+)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+		regex         = "(.+)"
+		target_label  = "compose_project"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+		regex         = "(.+)"
+		target_label  = "compose_service"
+	}
+}
+
+loki.source.docker "containers" {
+	host             = "unix:///var/run/docker.sock"
+	targets          = discovery.docker.containers.targets
+	relabel_rules    = discovery.relabel.docker_logs.rules
+	refresh_interval = "15s"
+	forward_to       = [loki.process.labels.receiver]
+}
+
+loki.process "labels" {
+	stage.static_labels {
+		values = {
+			environment = sys.env("ALLOY_ENVIRONMENT"),
+		}
+	}
+
+	forward_to = [loki.write.grafana.receiver]
+}
+
+loki.write "grafana" {
+	endpoint {
+		url = sys.env("GRAFANA_LOKI_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_LOKI_USER")
+			password = sys.env("GRAFANA_LOKI_API_KEY")
+		}
+	}
+}
+
+prometheus.exporter.self "alloy" { }
+
+prometheus.scrape "alloy" {
+	targets    = prometheus.exporter.self.alloy.targets
+	forward_to = [prometheus.remote_write.grafana.receiver]
+}
+
+prometheus.scrape "django" {
+	targets = [
+		{
+			"__address__" = sys.env("ALLOY_METRICS_TARGET"),
+			"job"         = "django",
+			"environment" = sys.env("ALLOY_ENVIRONMENT"),
+		},
+	]
+
+	metrics_path = "/metrics/"
+	forward_to   = [prometheus.remote_write.grafana.receiver]
+}
+
+prometheus.remote_write "grafana" {
+	endpoint {
+		url = sys.env("GRAFANA_PROM_URL")
+
+		basic_auth {
+			username = sys.env("GRAFANA_PROM_USER")
+			password = sys.env("GRAFANA_PROM_API_KEY")
+		}
+	}
+}

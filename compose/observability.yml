@@ -1,0 +1,29 @@
+services:
+  alloy:
+    image: grafana/alloy:v1.6.1
+    command: run --disable-reporting --storage.path=/var/lib/alloy /etc/alloy/config.alloy
+    volumes:
+      - ../observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy
+    environment:
+      GRAFANA_LOKI_URL: ${GRAFANA_LOKI_URL:?Set GRAFANA_LOKI_URL}
+      GRAFANA_LOKI_USER: ${GRAFANA_LOKI_USER:?Set GRAFANA_LOKI_USER}
+      GRAFANA_LOKI_API_KEY: ${GRAFANA_LOKI_API_KEY:?Set GRAFANA_LOKI_API_KEY}
+      GRAFANA_PROM_URL: ${GRAFANA_PROM_URL:?Set GRAFANA_PROM_URL}
+      GRAFANA_PROM_USER: ${GRAFANA_PROM_USER:?Set GRAFANA_PROM_USER}
+      GRAFANA_PROM_API_KEY: ${GRAFANA_PROM_API_KEY:?Set GRAFANA_PROM_API_KEY}
+      ALLOY_ENVIRONMENT: ${ALLOY_ENVIRONMENT:-production}
+      ALLOY_METRICS_TARGET: ${ALLOY_METRICS_TARGET:-backend:8000}
+    networks:
+      - default
+      - dokploy-network
+    restart: unless-stopped
+
+volumes:
+  alloy_data:
+
+networks:
+  dokploy-network:
+    external: true
+    name: ${DOKPLOY_NETWORK:-dokploy-network}

@@ -22,6 +22,7 @@ ALLOWED_HOSTS = [
     os.environ.get("PROD_HOST", "example.com"),
     os.environ.get("PROD_HOST_WWW", "www.example.com"),
 ]
+ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]
 
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
@@ -42,7 +43,7 @@ SECURE_HSTS_SECONDS = 31536000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
-# Proxy settings (behind Nginx)
+# Proxy settings (behind Traefik/Cloudflare)
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Email configuration

@@ -12,9 +12,9 @@ services:
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       STAGING_HOST: ${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
       FRONTEND_URL: https://${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
-      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
@@ -61,9 +61,9 @@ services:
       - traefik.http.middlewares.zdravy-staging-gzip.compress=true
       - traefik.http.middlewares.zdravy-staging-bodylimit.buffering.maxRequestBodyBytes=104857600
       - logging.job=backend
-    depends_on:
-      redis:
-        condition: service_healthy
+      - prometheus.io/scrape=true
+      - prometheus.io/path=/metrics/
+      - prometheus.io/port=8000
     networks:
       - app
       - dokploy-network
@@ -75,27 +75,11 @@ services:
       retries: 3
       start_period: 20s
 
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    networks:
-      - app
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    labels:
-      - logging.job=redis
-
   celery:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     pull_policy: always
     command: >
-      sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app worker -l info"
     environment:
@@ -106,17 +90,17 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
       POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
       EMAIL_HOST: ${EMAIL_HOST}
       EMAIL_PORT: ${EMAIL_PORT:-587}
       EMAIL_HOST_USER: ${EMAIL_HOST_USER}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
       DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
       SENTRY_DSN: ${SENTRY_DSN:-}
-    depends_on:
-      redis:
-        condition: service_healthy
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-}
     networks:
       - app
       - dokploy-network
@@ -130,7 +114,7 @@ services:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     pull_policy: always
     command: >
-      sh -c "until python -c \"import redis; redis.Redis(host='redis',port=6379).ping()\" 2>/dev/null;
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     environment:
@@ -141,12 +125,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
       POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/0
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
       SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
-      redis:
-        condition: service_healthy
       backend:
         condition: service_healthy
     networks:
@@ -166,8 +148,8 @@ services:
       # Frontend: HTTP router (redirect only)
       - "traefik.http.routers.zdravy-staging-frontend.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && !PathPrefix(`/api/deploy/compose/`)"
       - traefik.http.routers.zdravy-staging-frontend.entrypoints=web
-      # Frontend: HTTPS router (excludes Prometheus scrapers — external noise from 192.168.0.254)
-      - "traefik.http.routers.zdravy-staging-frontend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && !PathPrefix(`/api/deploy/compose/`) && !HeadersRegexp(`User-Agent`, `Prometheus`)"
+      # Frontend: HTTPS router
+      - "traefik.http.routers.zdravy-staging-frontend-secure.rule=Host(`${STAGING_HOST:?Set STAGING_HOST in Dokploy env}`) && !PathPrefix(`/api/deploy/compose/`)"
       - traefik.http.routers.zdravy-staging-frontend-secure.entrypoints=websecure
       - traefik.http.routers.zdravy-staging-frontend-secure.tls=true
       - traefik.http.routers.zdravy-staging-frontend-secure.tls.certresolver=letsencrypt
@@ -178,8 +160,6 @@ services:
       - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.path=/healthz
       - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.interval=10s
       - traefik.http.services.zdravy-staging-frontend.loadbalancer.healthcheck.timeout=3s
-      # Opt out of Dokploy's Prometheus Docker service discovery scraping
-      - "prometheus.io/scrape=false"
       - logging.job=frontend
     networks:
       - app
@@ -191,53 +171,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-
-  prometheus:
-    image: prom/prometheus:v2.54.1
-    command:
-      - --config.file=/etc/prometheus/prometheus.yml
-      - --storage.tsdb.retention.time=15d
-      - --web.enable-lifecycle
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    networks:
-      - app
-    restart: unless-stopped
-    labels:
-      - logging.job=prometheus
-
-  loki:
-    image: grafana/loki:3.1.1
-    command: -config.file=/etc/loki/loki-config.yml
-    volumes:
-      - ./monitoring/loki-config.yml:/etc/loki/loki-config.yml:ro
-      - loki_data:/loki
-    networks:
-      - app
-    restart: unless-stopped
-    labels:
-      - logging.job=loki
-
-  promtail:
-    image: grafana/promtail:3.1.1
-    command: -config.file=/etc/promtail/promtail-config.yml
-    volumes:
-      - ./monitoring/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
-      - promtail_positions:/tmp
-    networks:
-      - app
-    restart: unless-stopped
-    labels:
-      - logging.job=promtail
-
-volumes:
-  redis_data:
-  prometheus_data:
-  loki_data:
-  promtail_positions:
 
 networks:
   app:
