@@ -5,6 +5,7 @@ Django base settings for all environments.
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 
 def env(name, default=None):
@@ -141,13 +142,24 @@ MEDIA_ROOT = BASE_DIR / "media"
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# Cache – Redis when REDIS_URL is set, LocMem for development
+
+# Redis
+def _redis_url_with_db(url: str, db: int) -> str:
+    """Return a Redis URL targeting a specific logical database."""
+    parsed = urlparse(url)
+    return urlunparse(parsed._replace(path=f"/{db}"))
+
+
 REDIS_URL = os.environ.get("REDIS_URL")
-if REDIS_URL:
+REDIS_CACHE_URL = _redis_url_with_db(REDIS_URL, 1) if REDIS_URL else None
+REDIS_CELERY_URL = _redis_url_with_db(REDIS_URL, 0) if REDIS_URL else None
+
+# Cache – Redis when REDIS_URL is set, LocMem for development
+if REDIS_CACHE_URL:
     CACHES = {
         "default": {
             "BACKEND": "django_prometheus.cache.backends.redis.RedisCache",
-            "LOCATION": REDIS_URL,
+            "LOCATION": REDIS_CACHE_URL,
             "KEY_PREFIX": "zdravy_projekt",
             "TIMEOUT": 300,  # Default 5-minute timeout
             "OPTIONS": {
@@ -175,10 +187,10 @@ else:
 
 # Celery – with Redis connection pooling, extended timeouts for Docker Swarm DNS
 # On Docker Swarm, DNS resolution can be slow due to overlay network delays.
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get(
-    "CELERY_RESULT_BACKEND", "redis://localhost:6379/0"
+CELERY_BROKER_URL = os.environ.get(
+    "CELERY_BROKER_URL", REDIS_CELERY_URL or "redis://localhost:6379/0"
 )
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", CELERY_BROKER_URL)
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"

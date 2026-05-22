@@ -1,25 +1,23 @@
 services:
   backend:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     pull_policy: always
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in Dokploy env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in Dokploy env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
       POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
       STAGING_HOST: ${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
       FRONTEND_URL: https://${STAGING_HOST:?Set STAGING_HOST in Dokploy env}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
       REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
-      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_HOST: ${EMAIL_HOST:?Set EMAIL_HOST in Dokploy env}
       EMAIL_PORT: ${EMAIL_PORT:-587}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@example.com}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
@@ -74,29 +72,47 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+    deploy:
+      replicas: ${BACKEND_REPLICAS:-1}
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: "${BACKEND_CPU_LIMIT:-1.00}"
+          memory: ${BACKEND_MEMORY_LIMIT:-768M}
+        reservations:
+          cpus: "${BACKEND_CPU_RESERVATION:-0.25}"
+          memory: ${BACKEND_MEMORY_RESERVATION:-256M}
 
   celery:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     pull_policy: always
     command: >
-      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app worker -l info"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in Dokploy env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in Dokploy env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
       POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
-      EMAIL_HOST: ${EMAIL_HOST}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
+      EMAIL_HOST: ${EMAIL_HOST:?Set EMAIL_HOST in Dokploy env}
       EMAIL_PORT: ${EMAIL_PORT:-587}
-      EMAIL_HOST_USER: ${EMAIL_HOST_USER}
+      EMAIL_HOST_USER: ${EMAIL_HOST_USER:-}
       EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:?Set EMAIL_HOST_PASSWORD in Dokploy env}
-      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL}
+      DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:-noreply@example.com}
       SENTRY_DSN: ${SENTRY_DSN:-}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
@@ -109,24 +125,42 @@ services:
       disable: true
     labels:
       - logging.job=celery
+    deploy:
+      replicas: ${CELERY_REPLICAS:-1}
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: "${CELERY_CPU_LIMIT:-1.00}"
+          memory: ${CELERY_MEMORY_LIMIT:-768M}
+        reservations:
+          cpus: "${CELERY_CPU_RESERVATION:-0.25}"
+          memory: ${CELERY_MEMORY_RESERVATION:-256M}
 
   celery-beat:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-staging}
     pull_policy: always
     command: >
-      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['CELERY_BROKER_URL']).ping()\" 2>/dev/null;
+      sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
              celery -A app beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.staging
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in Dokploy env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in Dokploy env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in Dokploy env}
       POSTGRES_HOST: ${POSTGRES_HOST:?Set POSTGRES_HOST in Dokploy env}
       POSTGRES_PORT: ${POSTGRES_PORT:-5432}
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:?Set CELERY_BROKER_URL in Dokploy env}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:?Set CELERY_RESULT_BACKEND in Dokploy env}
+      REDIS_URL: ${REDIS_URL:?Set REDIS_URL in Dokploy env}
       SENTRY_DSN: ${SENTRY_DSN:-}
     depends_on:
       backend:
@@ -139,9 +173,28 @@ services:
       disable: true
     labels:
       - logging.job=celery-beat
+    deploy:
+      replicas: 1
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: "${CELERY_BEAT_CPU_LIMIT:-0.25}"
+          memory: ${CELERY_BEAT_MEMORY_LIMIT:-256M}
+        reservations:
+          cpus: "${CELERY_BEAT_CPU_RESERVATION:-0.05}"
+          memory: ${CELERY_BEAT_MEMORY_RESERVATION:-128M}
 
   frontend:
-    image: ${REGISTRY_USERNAME}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-staging}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-staging}
     pull_policy: always
     labels:
       - traefik.enable=true
@@ -171,6 +224,25 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    deploy:
+      replicas: ${FRONTEND_REPLICAS:-1}
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        delay: 10s
+        order: stop-first
+      resources:
+        limits:
+          cpus: "${FRONTEND_CPU_LIMIT:-0.50}"
+          memory: ${FRONTEND_MEMORY_LIMIT:-256M}
+        reservations:
+          cpus: "${FRONTEND_CPU_RESERVATION:-0.10}"
+          memory: ${FRONTEND_MEMORY_RESERVATION:-64M}
 
 networks:
   app:

@@ -4,12 +4,13 @@
 
 set -e
 
-REDIS_URL="${CELERY_BROKER_URL:-redis://localhost:6379/0}"
+REDIS_URL="${REDIS_URL:-${CELERY_BROKER_URL:-redis://localhost:6379/0}}"
+export REDIS_URL
 
 # Extract host and port from REDIS_URL
-# Format: redis://host:port/db
-HOST=$(echo "$REDIS_URL" | sed -E 's|redis://([^:/]+).*|\1|')
-PORT=$(echo "$REDIS_URL" | sed -E 's|.*:([0-9]+).*|\1|')
+# Format: redis://user:password@host:port/db
+HOST=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ['REDIS_URL']).hostname)")
+PORT=$(python -c "import os; from urllib.parse import urlparse; print(urlparse(os.environ['REDIS_URL']).port or 6379)")
 
 echo "⏳ Waiting for Redis at $HOST:$PORT..."
 

@@ -1,4 +1,4 @@
-name: Deploy to Staging
+name: Build Staging Images
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - develop
 
 concurrency:
-  group: staging-deploy
+  group: staging-images
   cancel-in-progress: true
 
 jobs:
@@ -35,8 +35,6 @@ jobs:
           tags: |
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging-${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging-cache
-          cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:staging-cache,mode=max
 
       - name: Build and push frontend image
         uses: docker/build-push-action@v7
@@ -48,44 +46,8 @@ jobs:
           tags: |
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-${{ github.sha }}
-          cache-from: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-cache
-          cache-to: type=registry,ref=${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:staging-cache,mode=max
 
       - name: Print rollback tags
         run: |
           echo "Backend rollback tag: staging-${{ github.sha }}"
           echo "Frontend rollback tag: staging-${{ github.sha }}"
-
-  deploy-staging:
-    name: Trigger Dokploy Deploy
-    runs-on: self-hosted
-    needs: build-and-push
-    environment:
-      name: staging
-      url: https://zp.tomag.xyz
-
-    steps:
-      - name: Trigger Dokploy deployment
-        run: |
-          curl -fsS --retry 3 --retry-delay 3 --retry-all-errors \
-            -X POST \
-            -H "Content-Type: application/json" \
-            -H "x-github-event: push" \
-            -d '{"ref":"refs/heads/develop"}' \
-            "${{ secrets.DOKPLOY_WEBHOOK_URL }}"
-
-      - name: Wait for staging health
-        env:
-          HEALTHCHECK_URL: ${{ vars.STAGING_HEALTHCHECK_URL || 'https://zp.tomag.xyz/api/health/' }}
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 30); do
-            if curl -fsS "$HEALTHCHECK_URL" >/dev/null; then
-              echo "✅ Staging is healthy"
-              exit 0
-            fi
-            echo "⏳ Waiting for healthcheck ($i/30)"
-            sleep 10
-          done
-          echo "❌ Staging healthcheck failed: $HEALTHCHECK_URL"
-          exit 1

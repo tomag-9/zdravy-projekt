@@ -154,8 +154,10 @@ zdravy-projekt/
 │   └── nginx.conf
 ├── .github/                    # GitHub Actions workflows
 │   └── workflows/
+│       ├── commit-lint.yml     # PR title commit format check
 │       ├── pr.yml              # PR checks
-│       └── staging.yml         # Staging image build + Dokploy webhook
+│       ├── staging.yml         # Staging image build
+│       └── production.yml      # Production image build
 │
 ├── compose/                    # Docker Compose files
 │   ├── dev.yml                 # Development environment
@@ -296,7 +298,9 @@ Key variables:
 - `DJANGO_SECRET_KEY`: Django secret key (generate for production)
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`: Database credentials
 - `POSTGRES_HOST`: Dokploy-managed Postgres hostname for staging/production
-- `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL`: Dokploy-managed Redis URLs for staging/production
+- `REDIS_URL`: Dokploy-managed Redis internal URL for staging/production; Celery uses DB 0 and Django cache uses DB 1
+- `REGISTRY_USERNAME`: Docker registry namespace used by the deployed image names
+- `EMAIL_HOST`, `EMAIL_HOST_PASSWORD`: SMTP settings required by staging/production
 - `DJANGO_SETTINGS_MODULE`: Settings module (`app.settings.dev/staging/prod`)
 
 ## 🚢 Deployment
@@ -306,30 +310,44 @@ Key variables:
 Staging deploy flow:
 
 1. GitHub Actions builds and pushes Docker images on push to `develop`
-2. Workflow calls Dokploy webhook from secret `DOKPLOY_WEBHOOK_URL`
-3. Dokploy pulls fresh images and deploys `compose/staging.yml`
+2. Dokploy pulls fresh images and deploys `compose/staging.yml`
 
 Required setup:
 
-- GitHub Secrets: `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`, `DOKPLOY_WEBHOOK_URL`
-- Dokploy app envs: `DJANGO_SECRET_KEY`, `POSTGRES_*`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`, `REDIS_URL`, `EMAIL_*`, `STAGING_HOST`, etc.
+- GitHub Secrets: `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`
+- Dokploy app envs: `REGISTRY_USERNAME`, `DJANGO_SECRET_KEY`, `POSTGRES_*`, `REDIS_URL`, `EMAIL_HOST`, `EMAIL_HOST_PASSWORD`, `STAGING_HOST`, etc.
 - Dokploy network available as `dokploy-network`
+
+### Rolling Updates And Limits
+
+The staging and production compose files include Swarm `deploy` settings for
+rolling updates, rollback behavior, replicas, and CPU/RAM limits. These settings
+are honored when the stack is deployed through Swarm-compatible deployment
+(`docker stack deploy`); plain `docker compose up` may ignore the rolling-update
+fields.
+
+Defaults:
+- Production runs `BACKEND_REPLICAS=2`, `FRONTEND_REPLICAS=2`, `CELERY_REPLICAS=1`, and one fixed `celery-beat`.
+- Staging runs one replica per service by default.
+- `backend` and `frontend` use `start-first` rolling updates.
+- `celery-beat` uses `stop-first` and `replicas: 1` to avoid duplicate scheduled tasks.
+- CPU/RAM limits can be changed with variables such as `BACKEND_CPU_LIMIT`, `BACKEND_MEMORY_LIMIT`, `FRONTEND_CPU_LIMIT`, and `CELERY_MEMORY_LIMIT`.
 
 ### CI/CD Pipeline
 
 GitHub Actions automatically:
 1. Runs tests on every pull request
 2. Checks code quality (linting, formatting)
-3. Builds staging images and triggers Dokploy deploy on push to `develop` branch
+3. Builds staging images on push to `develop` branch
+4. Builds production images on push to `main` branch
 
 ### Production Deployment
 
 Production deployment is handled via Dokploy similarly to staging:
 
 1. GitHub Actions builds and pushes `prod` Docker images on push to `main`
-2. Workflow triggers Dokploy webhook from secret `DOKPLOY_WEBHOOK_URL_PROD`
-3. Dokploy pulls fresh images and deploys `compose/prod.yml`
-4. Dokploy owns the public route/Traefik configuration for the production stack
+2. Dokploy pulls fresh images and deploys `compose/prod.yml`
+3. Dokploy owns the public route/Traefik configuration for the production stack
 
 ### Observability
 
