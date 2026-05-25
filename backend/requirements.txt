@@ -24,7 +24,7 @@ pytest-cov==4.1.0
 factory-boy==3.3.0
 
 # Development tools
-django-extensions==3.2.3
+django-extensions==4.1
 
 # XLSX / PDF export
 openpyxl==3.1.5
