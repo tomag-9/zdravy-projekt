@@ -90,8 +90,14 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
     serializer_class = DailyMealPlanSerializer
 
+    def _is_admin_route(self) -> bool:
+        return self.request.path.startswith("/api/admin/")
+
     def get_permissions(self):
-        if self.action in ["list", "retrieve", "by_date"]:
+        if (
+            self.action in ["list", "retrieve", "by_date"]
+            and not self._is_admin_route()
+        ):
             return [permissions.IsAuthenticated()]
         return [permissions.IsAdminUser()]
 
