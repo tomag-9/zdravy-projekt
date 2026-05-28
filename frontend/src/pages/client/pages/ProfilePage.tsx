@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, User, Mail, Calendar, Save, Bell, Download, BookOpen
+  ArrowLeft, User, Mail, Calendar, Save, Bell, Download, BookOpen, LogOut
 } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import { useOnboarding } from '../../../context/OnboardingContext';
@@ -196,6 +196,14 @@ const ProfilePage = () => {
                     <h1>Môj profil</h1>
                     <p>Spravujte svoje osobné údaje</p>
                 </div>
+                <button
+                    type="button"
+                    className="zp-iconbtn"
+                    onClick={() => setShowLogoutConfirmation(true)}
+                    aria-label="Odhlásiť sa"
+                >
+                    <LogOut style={{ width: 18, height: 18, strokeWidth: 2 }} />
+                </button>
             </div>
 
             {/* User info summary */}

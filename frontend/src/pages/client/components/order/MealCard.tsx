@@ -43,8 +43,15 @@ const MealCard = ({
                     className={`zp-switch${isActive ? " zp-switch--on" : ""}`}
                     role="switch"
                     aria-checked={isActive}
-                    onClick={onToggle}
-                    style={isLocked ? { opacity: 0.6 } : {}}
+                    tabIndex={isLocked ? -1 : 0}
+                    onClick={isLocked ? undefined : onToggle}
+                    onKeyDown={isLocked ? undefined : (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onToggle();
+                        }
+                    }}
+                    style={isLocked ? { opacity: 0.6, cursor: "not-allowed" } : {}}
                 />
             </div>
 

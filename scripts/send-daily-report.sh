@@ -16,7 +16,7 @@ fi
 cd backend || exit 1
 
 # Set Django settings module based on environment
-export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-app.settings.staging}"
+export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-app.settings.prod}"
 
 # Log file
 LOG_FILE="../logs/order-reports.log"

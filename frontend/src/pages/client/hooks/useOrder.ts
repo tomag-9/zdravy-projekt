@@ -73,7 +73,6 @@ export const useOrder = () => {
     // Settings
 
     const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
-    const [enabledCategories, setEnabledCategories] = useState<string[]>([]);
 
     const [settings] = useState(() => {
         const defaultSettings = {
@@ -265,7 +264,6 @@ export const useOrder = () => {
                 const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
                 const activeItems = items.filter((item) => item.is_active);
                 setPortionTypes(activeItems);
-                setEnabledCategories(activeItems.map((item) => item.name));
             } catch (e) {
                 console.error("Failed to fetch portion types", e);
             }
@@ -605,7 +603,7 @@ export const useOrder = () => {
     };
 
     return {
-        enabledCategories,
+        enabledCategories: portionTypes.map((pt) => pt.name),
         portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,

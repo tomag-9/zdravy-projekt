@@ -243,7 +243,8 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
 
 @shared_task(
     bind=True,
-    max_retries=0,
+    max_retries=3,
+    default_retry_delay=60,
     time_limit=300,
     soft_time_limit=290,
     name="api.tasks.send_weekly_order_reminder_task",
