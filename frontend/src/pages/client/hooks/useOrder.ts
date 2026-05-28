@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
-import { CATEGORIES } from '../config/constants';
 import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -74,7 +73,7 @@ export const useOrder = () => {
     // Settings
 
     const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
-    const [enabledCategories, setEnabledCategories] = useState<string[]>([...CATEGORIES]);
+    const [enabledCategories, setEnabledCategories] = useState<string[]>([]);
 
     const [settings] = useState(() => {
         const defaultSettings = {
@@ -428,8 +427,6 @@ export const useOrder = () => {
     // Actions
 
 
-    const toggleCategory = (_category: string) => undefined;
-
     const toggleMeal = (mealKey: string) => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
@@ -609,7 +606,7 @@ export const useOrder = () => {
     };
 
     return {
-        enabledCategories, toggleCategory,
+        enabledCategories,
         portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,
