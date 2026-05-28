@@ -241,6 +241,97 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
     }
 
 
+@shared_task(
+    bind=True,
+    max_retries=0,
+    time_limit=300,
+    soft_time_limit=290,
+    name="api.tasks.send_weekly_order_reminder_task",
+)
+def send_weekly_order_reminder_task(self):
+    """
+    Send a Sunday push reminder to clients who have no submitted orders for next week.
+    Fires every Sunday (scheduled via Celery Beat).
+    Users who already have at least one submitted order for Mon–Fri of next week are skipped.
+    """
+    import datetime
+
+    from django.db.models import Q
+
+    from api.models import DailyOrder, PushSubscription
+
+    today = timezone.localdate()
+    # Compute next Monday and next Friday
+    days_until_monday = (7 - today.weekday()) % 7 or 7
+    next_monday = today + datetime.timedelta(days=days_until_monday)
+    next_friday = next_monday + datetime.timedelta(days=4)
+
+    try:
+        subscribed_user_ids = set(
+            PushSubscription.objects.filter(
+                user__is_staff=False,
+                user__is_active=True,
+            )
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+
+        # Users who already have at least one submitted order next week
+        already_ordered = set(
+            DailyOrder.objects.filter(
+                user_id__in=subscribed_user_ids,
+                date__range=(next_monday, next_friday),
+                status="submitted",
+            )
+            .exclude(Q(data={}) | Q(data__isnull=True))
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+
+        recipients = subscribed_user_ids - already_ordered
+        if not recipients:
+            logger.info(
+                "send_weekly_order_reminder_task: all users already ordered, skip"
+            )
+            return {"skipped": "all_ordered", "next_week": str(next_monday)}
+
+        week_label = (
+            next_monday.strftime("%d.%m.") + "–" + next_friday.strftime("%d.%m.%Y")
+        )
+        body = f"Nezabudnite vyplniť objednávku na budúci týždeň ({week_label})."
+
+        sent = 0
+        for user_id in recipients:
+            result = PushNotificationService.send_to_user(
+                user_id=user_id,
+                title="Pripomienka objednávky",
+                body=body,
+                url="/order",
+            )
+            sent += result.get("sent", 0)
+
+        logger.info(
+            "send_weekly_order_reminder_task: next_week=%s sent=%d skipped=%d",
+            next_monday,
+            sent,
+            len(already_ordered),
+        )
+        return {
+            "sent": sent,
+            "skipped_ordered": len(already_ordered),
+            "next_week": str(next_monday),
+        }
+
+    except DatabaseError as exc:
+        logger.exception("send_weekly_order_reminder_task: database error, retrying...")
+        raise self.retry(exc=exc)
+    except Exception:
+        logger.exception(
+            "send_weekly_order_reminder_task: non-transient error, no retry"
+        )
+        raise
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def apply_auto_orders_task(self, date_str: str | None = None):
     """

@@ -50,7 +50,8 @@ class GramageDashboardPDFExporter:
             hdr0.append(para(cg["label"], bold=True))
             hdr0.extend([""] * (len(cg["components"]) - 1))
             for comp in cg["components"]:
-                hdr1.append(para(comp["label"], bold=True))
+                base_g = int(float(comp["base_grams"]))
+                hdr1.append(para(f'{comp["label"]} ({base_g}g)', bold=True))
 
         table_data = [hdr0, hdr1]
 

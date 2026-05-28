@@ -60,6 +60,8 @@ function firstNextWorkday(): string {
 const HomePage = () => {
   const [plannedDays, setPlannedDays] = useState<PlannedDay[]>([]);
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
+  const [allHistoryOrders, setAllHistoryOrders] = useState<HistoryOrder[]>([]);
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
@@ -180,6 +182,7 @@ const HomePage = () => {
         });
 
         history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setAllHistoryOrders(history);
         setHistoryOrders(history.slice(0, 5));
 
         if (toSeed.length > 0) {
@@ -612,16 +615,23 @@ const HomePage = () => {
             <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
               <History style={{ width: 18, height: 18 }} /> História
             </span>
-            <span className="action">Viac →</span>
+            {allHistoryOrders.length > 5 && (
+              <button
+                className="zp-btn zp-btn--ghost zp-btn--sm"
+                onClick={() => setShowAllHistory((v) => !v)}
+              >
+                {showAllHistory ? "Menej ←" : `Viac (${allHistoryOrders.length}) →`}
+              </button>
+            )}
           </h2>
 
-          {historyOrders.length === 0 ? (
+          {(showAllHistory ? allHistoryOrders : historyOrders).length === 0 ? (
             <div className="zp-empty">
               <UtensilsCrossed />
               <p style={{ margin: "8px 0 0", fontSize: 14 }}>História je prázdna</p>
             </div>
           ) : (
-            historyOrders.map((order) => (
+            (showAllHistory ? allHistoryOrders : historyOrders).map((order) => (
               <div
                 key={order.date}
                 className="zp-day"

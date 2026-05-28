@@ -84,7 +84,7 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Deleted {count} daily report PeriodicTask(s)")
             )
             # Delete push reminder tasks
-            from api.signals import PUSH_REMINDER_TASK_PREFIX
+            from api.signals import PUSH_REMINDER_TASK_PREFIX, WEEKLY_REMINDER_TASK_NAME
 
             push_count, _ = PeriodicTask.objects.filter(
                 name__startswith=PUSH_REMINDER_TASK_PREFIX
@@ -94,17 +94,27 @@ class Command(BaseCommand):
                     f"Deleted {push_count} push reminder PeriodicTask(s)"
                 )
             )
+            weekly_count, _ = PeriodicTask.objects.filter(
+                name=WEEKLY_REMINDER_TASK_NAME
+            ).delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Deleted {weekly_count} weekly reminder PeriodicTask(s)"
+                )
+            )
             return
 
         if mode == "verify":
             # Only check
             self._verify_tasks(gs)
             self._verify_push_tasks(gs)
+            self._verify_weekly_task()
             return
 
         # Mode: fix
         self._sync_tasks(gs)
         self._sync_push_tasks(gs)
+        self._sync_weekly_task()
 
     def _verify_tasks(self, gs):
         from django_celery_beat.models import PeriodicTask
@@ -271,3 +281,44 @@ class Command(BaseCommand):
         except Exception as exc:
             self.stdout.write(self.style.ERROR(f"✗ Failed to sync push tasks: {exc}"))
             logger.exception("Failed to sync push reminder tasks")
+
+    def _verify_weekly_task(self):
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import WEEKLY_REMINDER_TASK_NAME
+
+        self.stdout.write("\n--- Weekly Order Reminder (Sunday) ---")
+        task = PeriodicTask.objects.filter(name=WEEKLY_REMINDER_TASK_NAME).first()
+        if task:
+            schedule = (
+                f"Sun {task.crontab.hour}:{task.crontab.minute} (tz: {task.crontab.timezone})"
+                if task.crontab
+                else "no schedule"
+            )
+            status = (
+                self.style.SUCCESS("✓")
+                if task.enabled
+                else self.style.WARNING("⚠ disabled")
+            )
+            self.stdout.write(f"  {status} {task.name} → {schedule}")
+        else:
+            self.stdout.write(
+                self.style.ERROR(
+                    f"✗ Weekly reminder task MISSING: {WEEKLY_REMINDER_TASK_NAME}\n"
+                    "  Run 'python manage.py sync_periodic_tasks --fix' to create it."
+                )
+            )
+
+    def _sync_weekly_task(self):
+        from api.signals import _sync_weekly_reminder_schedule
+
+        self.stdout.write("\n--- Syncing Weekly Reminder Task ---")
+        try:
+            _sync_weekly_reminder_schedule()
+            self.stdout.write(self.style.SUCCESS("✓ Weekly reminder task synced!"))
+            self._verify_weekly_task()
+        except Exception as exc:
+            self.stdout.write(
+                self.style.ERROR(f"✗ Failed to sync weekly reminder task: {exc}")
+            )
+            logger.exception("Failed to sync weekly reminder task")

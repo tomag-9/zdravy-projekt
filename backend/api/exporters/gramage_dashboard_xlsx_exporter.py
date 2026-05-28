@@ -74,10 +74,15 @@ class GramageDashboardXLSXExporter:
                     end_column=c + len(cg["components"]) - 1,
                 )
 
-        # ── Header row 2: component labels ──────────────────────────────────
+        # ── Header row 2: component labels with base gramage ────────────────
         for i, cg in enumerate(col_groups):
             for j, comp in enumerate(cg["components"]):
-                ws.cell(row=HDR_ROW + 1, column=col_start[i] + j, value=comp["label"])
+                base_g = int(float(comp["base_grams"]))
+                ws.cell(
+                    row=HDR_ROW + 1,
+                    column=col_start[i] + j,
+                    value=f'{comp["label"]} ({base_g}g)',
+                )
 
         # Style both header rows
         for r in (HDR_ROW, HDR_ROW + 1):
