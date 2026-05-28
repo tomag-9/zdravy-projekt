@@ -54,6 +54,8 @@ class MealTemplateSerializer(serializers.ModelSerializer):
         max_digits=8, decimal_places=2, read_only=True
     )
 
+    diet_name = serializers.SerializerMethodField()
+
     class Meta:
         model = MealTemplate
         fields = [
@@ -63,8 +65,13 @@ class MealTemplateSerializer(serializers.ModelSerializer):
             "weight_label",
             "base_weight_grams",
             "menu_variant",
+            "diet",
+            "diet_name",
             "is_active",
         ]
+
+    def get_diet_name(self, obj) -> str | None:
+        return obj.diet.name if obj.diet_id else None
 
     def validate_weight_label(self, value: str) -> str:
         try:
