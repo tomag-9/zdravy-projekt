@@ -44,6 +44,11 @@ interface HistoryOrder {
   data: Record<string, Record<string, { menuCounts: Record<string, number> }>>;
 }
 
+interface MonthlySummary {
+  total: number;
+  items: { label: string; count: number }[];
+}
+
 /** First workday strictly after today (Mon–Fri). */
 function firstNextWorkday(): string {
   const d = OrderService.getServerNow();
@@ -59,6 +64,10 @@ const HomePage = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+  const [monthlySummary, setMonthlySummary] = useState<MonthlySummary>({
+    total: 0,
+    items: [],
+  });
   const [predictedModalDay, setPredictedModalDay] = useState<PlannedDay | null>(
     null,
   );
@@ -117,6 +126,20 @@ const HomePage = () => {
     apiFetch(`${API_URL}/orders/planned/`)
       .then((r) => (r.ok ? r.json() : []))
       .then(setPlannedDays)
+      .catch(console.error);
+  }, [user, apiFetch]);
+
+  useEffect(() => {
+    if (!user) return;
+    const now = OrderService.getServerNow();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    apiFetch(`${API_URL}/orders/planned/monthly-summary/?year=${year}&month=${month}`)
+      .then((r) => (r.ok ? r.json() : { total: 0, items: [] }))
+      .then((data) => setMonthlySummary({
+        total: data.total || 0,
+        items: Array.isArray(data.items) ? data.items : [],
+      }))
       .catch(console.error);
   }, [user, apiFetch]);
 
@@ -550,7 +573,7 @@ const HomePage = () => {
             })}
         </div>
 
-        {/* Monthly summary — TODO: wire to API */}
+        {/* Monthly summary */}
         <div className="zp-section">
           <h2>
             <CalendarDays style={{ width: 18, height: 18 }} /> Mesačný súhrn
@@ -565,27 +588,20 @@ const HomePage = () => {
             </small>
           </h3>
           <div className="zp-monthly-grid">
-            <div className="zp-monthly-stat">
-              <div className="num">—</div>
-              <div className="lbl">Menu A</div>
-            </div>
-            <div className="zp-monthly-stat">
-              <div className="num">—</div>
-              <div className="lbl">Menu B</div>
-            </div>
-            <div className="zp-monthly-stat">
-              <div className="num">—</div>
-              <div className="lbl">Raňajky</div>
-            </div>
-            <div className="zp-monthly-stat">
-              <div className="num">—</div>
-              <div className="lbl">Olovrant</div>
-            </div>
+            {(monthlySummary.items.length > 0
+              ? monthlySummary.items.slice(0, 4)
+              : [{ label: "Zatiaľ bez odberu", count: 0 }]
+            ).map((item) => (
+              <div className="zp-monthly-stat" key={item.label}>
+                <div className="num">{item.count}</div>
+                <div className="lbl">{item.label}</div>
+              </div>
+            ))}
           </div>
           <div className="zp-monthly-foot">
             <span>Spolu</span>
             <span>
-              <strong>{plannedDays.reduce((acc, d) => acc + (d.totalPortions || 0), 0)}</strong> porcií
+              <strong>{monthlySummary.total}</strong> porcií
             </span>
           </div>
         </div>

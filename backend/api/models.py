@@ -95,6 +95,10 @@ class GlobalSettings(models.Model):
         blank=True,
         help_text="List of email addresses that receive the daily order report.",
     )
+    client_contact_name = models.CharField(max_length=120, blank=True, default="")
+    client_contact_role = models.CharField(max_length=120, blank=True, default="")
+    client_contact_email = models.EmailField(blank=True, default="")
+    client_contact_phone = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
         verbose_name = "System Settings"
@@ -242,7 +246,7 @@ class MealTemplate(models.Model):
 class PortionType(models.Model):
     """
     Defines a consumer group and their weight coefficient.
-    Seeded with: Škôlka (0.50), Škola (0.75), Dospelý (1.00).
+    Seeded with Škôlka/MS as the 1.00 baseline; other groups are multipliers.
     """
 
     name = models.CharField(max_length=100, unique=True)

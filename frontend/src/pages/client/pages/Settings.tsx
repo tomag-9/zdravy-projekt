@@ -37,8 +37,13 @@ const DIETS = [
 const Settings = () => {
   const [view, setView] = useState<View>("main");
   const { user, logout } = useAuth();
-  const { enabledCategories } = useApp();
+  const { enabledCategories, portionTypes, clientContactInfo } = useApp();
   const navigate = useNavigate();
+  const portionByName = new Map(portionTypes.map((portion) => [portion.name, portion]));
+  const contactName = clientContactInfo.name || "Zdravý projekt";
+  const contactRole = clientContactInfo.role ? ` · ${clientContactInfo.role}` : "";
+  const contactEmail = clientContactInfo.email || "info@zdravyprojekt.sk";
+  const contactPhone = clientContactInfo.phone || "+421 000 000 000";
 
   if (view === "portions") {
     return (
@@ -68,8 +73,12 @@ const Settings = () => {
             </div>
             <div className="body">
               <div className="ttl">{category}</div>
-              <div className="desc">Porcia pre {category.toLowerCase()}.</div>
-              <span className="coef">Aktívna porcia</span>
+              <div className="desc">
+                Porcia pre {category.toLowerCase()}.
+              </div>
+              <span className="coef">
+                Koeficient {portionByName.get(category)?.coefficient_pct ?? 100}%
+              </span>
             </div>
           </div>
         ))}
@@ -79,13 +88,13 @@ const Settings = () => {
           <h4>Kontakt pre úpravu povolených porcií</h4>
           <p>Pre rozšírenie alebo zmenu typov porcií kontaktujte zodpovednú osobu v Zdravom projekte.</p>
           <div className="contact-row">
-            <User style={{ width: 14, height: 14 }} /> Vlado Kováč · prevádzkový riaditeľ
+            <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
           </div>
           <div className="contact-row">
-            <Mail style={{ width: 14, height: 14 }} /> vlado@zdravyprojekt.sk
+            <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
           </div>
           <div className="contact-row">
-            <Phone style={{ width: 14, height: 14 }} /> +421 905 123 456
+            <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
           </div>
         </div>
       </div>
@@ -128,13 +137,13 @@ const Settings = () => {
           <h4>Kontakt pre pridanie / úpravu diéty</h4>
           <p>Ak potrebujete novú diétu, ktorá tu nie je, kontaktujte zodpovednú osobu.</p>
           <div className="contact-row">
-            <User style={{ width: 14, height: 14 }} /> Janka Adamcová · dietologička
+            <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
           </div>
           <div className="contact-row">
-            <Mail style={{ width: 14, height: 14 }} /> janka@zdravyprojekt.sk
+            <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
           </div>
           <div className="contact-row">
-            <Phone style={{ width: 14, height: 14 }} /> +421 905 234 567
+            <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
           </div>
         </div>
       </div>

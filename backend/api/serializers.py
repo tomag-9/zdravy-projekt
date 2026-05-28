@@ -306,6 +306,10 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "deadline_olovrant",
             "deadline_olovrant_is_day_before",
             "report_email_recipients",
+            "client_contact_name",
+            "client_contact_role",
+            "client_contact_email",
+            "client_contact_phone",
         ]
 
     def to_representation(self, instance: Any) -> Dict[str, Any]:

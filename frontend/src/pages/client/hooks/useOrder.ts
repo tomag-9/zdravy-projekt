@@ -5,6 +5,21 @@ import { useAuth } from '../../../context/auth';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+interface PortionType {
+    id: number;
+    name: string;
+    coefficient: string;
+    coefficient_pct: number;
+    is_active: boolean;
+}
+
+interface ClientContactInfo {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+}
+
 type ApiErrorPayload = {
     error?: {
         code?: string;
@@ -51,7 +66,8 @@ export const useOrder = () => {
     const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     // Settings
 
-    const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
+    const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
+    const [enabledCategories, setEnabledCategories] = useState<string[]>([...CATEGORIES]);
 
     const [settings] = useState(() => {
         const defaultSettings = {
@@ -127,7 +143,6 @@ export const useOrder = () => {
     // selectedDateRef ensures we always write under the correct (new) date key
     // without the race condition where the new selectedDate fires the effect with
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
-    useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
     useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
@@ -197,6 +212,12 @@ export const useOrder = () => {
     }, [selectedDate, apiFetch, user]); // Depend on selectedDate
 
     const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
+    const [clientContactInfo, setClientContactInfo] = useState<ClientContactInfo>({
+        name: '',
+        role: '',
+        email: '',
+        phone: '',
+    });
 
     // Fetch Global Settings
     useEffect(() => {
@@ -215,12 +236,35 @@ export const useOrder = () => {
                         olovrant_day_before: !!data.deadline_olovrant_is_day_before,
                     };
                     setGlobalDeadlines(mapped);
+                    setClientContactInfo({
+                        name: data.client_contact_name || '',
+                        role: data.client_contact_role || '',
+                        email: data.client_contact_email || '',
+                        phone: data.client_contact_phone || '',
+                    });
                 }
             } catch (e) {
                 console.error("Failed to fetch global settings", e);
             }
         };
         if (user) fetchSettings();
+    }, [apiFetch, user]);
+
+    useEffect(() => {
+        const fetchPortionTypes = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/portion-types/`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
+                const activeItems = items.filter((item) => item.is_active);
+                setPortionTypes(activeItems);
+                setEnabledCategories(activeItems.map((item) => item.name));
+            } catch (e) {
+                console.error("Failed to fetch portion types", e);
+            }
+        };
+        if (user) fetchPortionTypes();
     }, [apiFetch, user]);
 
     // Holidays: set of date strings "YYYY-MM-DD" that are blocked
@@ -377,9 +421,7 @@ export const useOrder = () => {
     // Actions
 
 
-    const toggleCategory = (category: string) => {
-        setEnabledCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
-    };
+    const toggleCategory = (_category: string) => undefined;
 
     const toggleMeal = (mealKey: string) => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
@@ -558,6 +600,7 @@ export const useOrder = () => {
 
     return {
         enabledCategories, toggleCategory,
+        portionTypes,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         updateMenuCount, updateDiet,
@@ -570,6 +613,7 @@ export const useOrder = () => {
         adminVisibleMenus,
         adminVisibleMeals,
         globalDeadlines,
+        clientContactInfo,
         holidays,
     };
 };

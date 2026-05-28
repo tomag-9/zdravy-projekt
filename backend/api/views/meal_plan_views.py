@@ -62,9 +62,18 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
 class PortionTypeViewSet(viewsets.ModelViewSet):
     """Admin CRUD for portion types."""
 
-    queryset = PortionType.objects.all()
     serializer_class = PortionTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
+
+    def get_permissions(self):
+        if self.action == "list":
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
+
+    def get_queryset(self):
+        queryset = PortionType.objects.all()
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(is_active=True)
+        return queryset
 
 
 @extend_schema_view(

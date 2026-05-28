@@ -62,6 +62,84 @@ class OrderService:
                         total += c
         return total, meal_count
 
+    @staticmethod
+    def monthly_summary(
+        user: User,
+        year: int,
+        month: int,
+        through_date: Optional[datetime.date] = None,
+    ) -> Dict[str, Any]:
+        """Aggregate submitted order counts for a user's month."""
+        start = datetime.date(year, month, 1)
+        end = (
+            datetime.date(year + 1, 1, 1)
+            if month == 12
+            else datetime.date(year, month + 1, 1)
+        )
+
+        today = through_date or timezone.localdate()
+        if year == today.year and month == today.month:
+            end = min(end, today + datetime.timedelta(days=1))
+
+        menu_counts: Dict[str, int] = {}
+        meal_counts: Dict[str, int] = {"breakfast": 0, "lunch": 0, "olovrant": 0}
+        total = 0
+
+        orders = DailyOrder.objects.filter(
+            user=user,
+            status="submitted",
+            date__gte=start,
+            date__lt=end,
+        ).only("data")
+
+        for order in orders:
+            data = order.data or {}
+            order_total, order_meals = OrderService.order_total(data)
+            total += order_total
+            for meal_key, count in order_meals.items():
+                meal_counts[meal_key] = meal_counts.get(meal_key, 0) + count
+
+            for meal_key in ("breakfast", "lunch", "olovrant"):
+                meal = data.get(meal_key, {}) or {}
+                sources = (
+                    [meal]
+                    if "menuCounts" in meal
+                    else [
+                        details
+                        for details in meal.values()
+                        if isinstance(details, dict)
+                    ]
+                )
+                for details in sources:
+                    for menu, count in (details.get("menuCounts") or {}).items():
+                        c = int(count or 0)
+                        if c > 0:
+                            menu_counts[menu] = menu_counts.get(menu, 0) + c
+
+        items = [
+            {"label": f"Menu {menu}", "count": count}
+            for menu, count in sorted(menu_counts.items())
+        ]
+        meal_labels = {
+            "breakfast": "Raňajky",
+            "lunch": "Obed",
+            "olovrant": "Olovrant",
+        }
+        items.extend(
+            {"label": meal_labels[meal], "count": count}
+            for meal, count in meal_counts.items()
+            if count > 0
+        )
+
+        return {
+            "year": year,
+            "month": month,
+            "total": total,
+            "menu_counts": menu_counts,
+            "meal_counts": meal_counts,
+            "items": items,
+        }
+
     # ------------------------------------------------------------------ #
     # Planned-orders business logic
     # ------------------------------------------------------------------ #

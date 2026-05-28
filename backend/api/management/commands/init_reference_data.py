@@ -16,11 +16,11 @@ from django.core.management.base import BaseCommand
 from api.models import PortionType
 
 PORTION_TYPES = [
-    {"name": "Jasle", "coefficient": "0.3000", "sort_order": 1},
-    {"name": "Škôlka", "coefficient": "0.5000", "sort_order": 2},
-    {"name": "ZŠ 1.stupeň", "coefficient": "0.6500", "sort_order": 3},
-    {"name": "ZŠ 2.stupeň", "coefficient": "0.7500", "sort_order": 4},
-    {"name": "Dospelý (SŠ)", "coefficient": "1.0000", "sort_order": 5},
+    {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
+    {"name": "Škôlka", "coefficient": "1.0000", "sort_order": 2},
+    {"name": "ZŠ 1.stupeň", "coefficient": "1.1500", "sort_order": 3},
+    {"name": "ZŠ 2.stupeň", "coefficient": "1.3000", "sort_order": 4},
+    {"name": "Dospelý (SŠ)", "coefficient": "1.5000", "sort_order": 5},
 ]
 
 
