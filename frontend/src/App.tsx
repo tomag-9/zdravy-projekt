@@ -17,8 +17,11 @@ import PWAUpdateBanner from "./components/PWAUpdateBanner";
 import AppLoadingScreen from "./components/AppLoadingScreen";
 import HomePage from "./pages/client/pages/HomePage";
 import OrderPage from "./pages/client/pages/OrderPage";
+import SuccessPage from "./pages/client/pages/SuccessPage";
+import MenuPage from "./pages/client/pages/MenuPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
+import ClientLayout from "./pages/client/components/ClientLayout";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -154,24 +157,14 @@ export default function App() {
               {/* Client Routes */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<Navigate to="/home" replace />} />
-                <Route path="/home" element={<HomePage />} />
+                <Route element={<ClientLayout />}>
+                  <Route path="/home" element={<HomePage />} />
+                  <Route path="/menu" element={<MenuPage />} />
+                  <Route path="/settings" element={<Settings />} />
+                </Route>
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route
-                  path="/order"
-                  element={
-                    <div className="min-h-screen bg-slate-50">
-                      <OrderPage />
-                    </div>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <div className="min-h-screen bg-slate-50">
-                      <Settings />
-                    </div>
-                  }
-                />
+                <Route path="/order" element={<OrderPage />} />
+                <Route path="/success" element={<SuccessPage />} />
               </Route>
               </Routes>
             </AppContent>

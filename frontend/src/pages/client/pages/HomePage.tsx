@@ -4,15 +4,14 @@ import {
   Plus,
   Calendar,
   UtensilsCrossed,
-  History,
-  Settings,
-  User,
   Bot,
   XCircle,
   CalendarDays,
   PenLine,
   Lock,
   Clock,
+  History,
+  ChevronRight,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
@@ -67,7 +66,6 @@ const HomePage = () => {
   const { globalDeadlines } = useApp();
   const { apiFetch, user } = useAuth();
   const toast = useToast();
-
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (
       error instanceof OrderRequestError &&
@@ -75,7 +73,6 @@ const HomePage = () => {
     ) {
       return "Objednávku už nie je možné meniť, termín uplynul.";
     }
-
     return "Nepodarilo sa upraviť objednávku. Skúste to znova.";
   };
 
@@ -90,7 +87,6 @@ const HomePage = () => {
       if (error instanceof OrderRequestError) {
         throw error;
       }
-
       const text = await response.text();
       throw new OrderRequestError(text || "Request failed");
     }
@@ -99,15 +95,12 @@ const HomePage = () => {
   const firstWorkday = firstNextWorkday();
   const _now = OrderService.getServerNow();
   const todayStr = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, "0")}-${String(_now.getDate()).padStart(2, "0")}`;
-  // Today derived from planned days (no extra fetch needed)
   const todayDay = plannedDays.find((d) => d.date === todayStr) ?? null;
 
-  // Check whether any meal deadline for today hasn't passed yet
   const isTodayEditable = (() => {
     if (!globalDeadlines) return false;
     const now = OrderService.getServerNow();
     return (["breakfast", "lunch", "olovrant"] as const).some((meal) => {
-      // When this meal uses "day before" mode, today's version of this meal is past deadline
       if ((globalDeadlines as Record<string, unknown>)[`${meal}_day_before`]) return false;
       const rawTime = globalDeadlines[meal] || "10:00";
       const [hourStr, minuteStr] = rawTime.split(":");
@@ -119,7 +112,6 @@ const HomePage = () => {
     });
   })();
 
-  // ── Planned orders (5 next workdays) ──────────────────────────────────────
   useEffect(() => {
     if (!user) return;
     apiFetch(`${API_URL}/orders/planned/`)
@@ -128,7 +120,6 @@ const HomePage = () => {
       .catch(console.error);
   }, [user, apiFetch]);
 
-  // ── History (past submitted orders) ───────────────────────────────────────
   useEffect(() => {
     if (!user) return;
     const fetchHistory = async () => {
@@ -136,12 +127,10 @@ const HomePage = () => {
         const r = await apiFetch(`${API_URL}/orders/`);
         if (!r.ok) return;
         const json = await r.json();
-        // DRF may return paginated { count, results } or plain array
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const items: any[] = Array.isArray(json) ? json : (json.results ?? []);
         const today = OrderService.toLocalDateString(OrderService.getServerNow());
         const history: HistoryOrder[] = [];
-
         const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,75 +144,43 @@ const HomePage = () => {
             if (!mealObj) return;
             Object.values(mealObj).forEach((cat) => {
               const menuCounts = cat?.menuCounts || {};
-              const c = (Object.values(menuCounts) as number[]).reduce(
-                (a, b) => a + b,
-                0,
-              );
+              const c = (Object.values(menuCounts) as number[]).reduce((a, b) => a + b, 0);
               total += c;
               counts[meal as keyof typeof counts] += c;
             });
           });
           if (total > 0) {
-            const historyItem = {
-              date: rec.date,
-              totalPortions: total,
-              mealCount: counts,
-              data: mealData,
-            };
+            const historyItem = { date: rec.date, totalPortions: total, mealCount: counts, data: mealData };
             history.push(historyItem);
-            // Collect for deferred localStorage seeding
             toSeed.push({ date: rec.date, data: mealData });
           }
         });
 
-        history.sort(
-          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-        );
+        history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setHistoryOrders(history.slice(0, 5));
 
-        // Deferred seeding in background chunks to avoid blocking the main thread
         if (toSeed.length > 0) {
           const CHUNK_SIZE = 5;
           let index = 0;
-
           const processChunk = () => {
             const end = Math.min(index + CHUNK_SIZE, toSeed.length);
             for (; index < end; index++) {
               const item = toSeed[index];
               const key = `order_${item.date}`;
               if (!localStorage.getItem(key)) {
-                localStorage.setItem(
-                  key,
-                  JSON.stringify({ ...item.data, status: "submitted" }),
-                );
+                localStorage.setItem(key, JSON.stringify({ ...item.data, status: "submitted" }));
               }
             }
-
             if (index < toSeed.length) {
-              if (
-                typeof window !== "undefined" &&
-                "requestIdleCallback" in window
-              ) {
-                (
-                  window as unknown as {
-                    requestIdleCallback: (cb: () => void) => void;
-                  }
-                ).requestIdleCallback(processChunk);
+              if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+                (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processChunk);
               } else {
                 setTimeout(processChunk, 10);
               }
             }
           };
-
-          if (
-            typeof window !== "undefined" &&
-            "requestIdleCallback" in window
-          ) {
-            (
-              window as unknown as {
-                requestIdleCallback: (cb: () => void) => void;
-              }
-            ).requestIdleCallback(processChunk);
+          if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+            (window as unknown as { requestIdleCallback: (cb: () => void) => void }).requestIdleCallback(processChunk);
           } else {
             setTimeout(processChunk, 10);
           }
@@ -235,7 +192,6 @@ const HomePage = () => {
     fetchHistory();
   }, [user, apiFetch]);
 
-  // ── Open detail modal for a day that has an existing order ────────────────
   const openDayModal = async (date: string) => {
     try {
       const r = await apiFetch(`${API_URL}/orders/by-date/${date}/`);
@@ -257,15 +213,12 @@ const HomePage = () => {
   const handlePlannedCardClick = (day: PlannedDay) => {
     const hasPrediction = !day.exists && day.predictedTotal > 0;
     if (!day.exists && hasPrediction) {
-      // Auto-predicted: show preview modal with Edit / Vynulovať
       setPredictedModalDay(day);
     } else if (!day.exists) {
-      // No order and no prediction: open detail modal so all day cards behave the same
       setModalOrderData({ breakfast: {}, lunch: {}, olovrant: {} });
       setModalOrderId(null);
       setSelectedDate(day.date);
     } else {
-      // Has an existing order → show summary modal
       openDayModal(day.date);
     }
   };
@@ -281,20 +234,11 @@ const HomePage = () => {
           data: { breakfast: {}, lunch: {}, olovrant: {} },
         }),
       });
-      if (!res.ok) {
-        await parseOrderActionError(res);
-      }
+      if (!res.ok) await parseOrderActionError(res);
       setPlannedDays((prev) =>
         prev.map((d) =>
           d.date === day.date
-            ? {
-                ...d,
-                exists: true,
-                is_empty: true,
-                is_auto: false,
-                totalPortions: 0,
-                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
-              }
+            ? { ...d, exists: true, is_empty: true, is_auto: false, totalPortions: 0, mealCount: { breakfast: 0, lunch: 0, olovrant: 0 } }
             : d,
         ),
       );
@@ -313,26 +257,14 @@ const HomePage = () => {
       const res = await apiFetch(`${API_URL}/orders/${modalOrderId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "submitted",
-          data: { breakfast: {}, lunch: {}, olovrant: {} },
-        }),
+        body: JSON.stringify({ status: "submitted", data: { breakfast: {}, lunch: {}, olovrant: {} } }),
       });
-      if (!res.ok) {
-        await parseOrderActionError(res);
-      }
+      if (!res.ok) await parseOrderActionError(res);
       const date = selectedDate;
       setPlannedDays((prev) =>
         prev.map((d) =>
           d.date === date
-            ? {
-                ...d,
-                exists: true,
-                is_empty: true,
-                is_auto: false,
-                totalPortions: 0,
-                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
-              }
+            ? { ...d, exists: true, is_empty: true, is_auto: false, totalPortions: 0, mealCount: { breakfast: 0, lunch: 0, olovrant: 0 } }
             : d,
         ),
       );
@@ -346,104 +278,106 @@ const HomePage = () => {
   };
 
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr);
-    return d.toLocaleDateString("sk-SK", {
-      weekday: "short",
-      day: "numeric",
-      month: "long",
-    });
+    const d = new Date(`${dateStr}T12:00:00`);
+    return d.toLocaleDateString("sk-SK", { weekday: "short", day: "numeric", month: "long" });
   };
 
-  // ── Badge helpers ──────────────────────────────────────────────────────────
+  const formatLongDate = (dateStr: string) => {
+    const d = new Date(`${dateStr}T12:00:00`);
+    return d.toLocaleDateString("sk-SK", { weekday: "long", day: "numeric", month: "long" });
+  };
+
+  const getTodayEyebrow = () => {
+    const d = new Date(`${todayStr}T12:00:00`);
+    const day = d.toLocaleDateString("sk-SK", { weekday: "long" });
+    const date = d.toLocaleDateString("sk-SK", { day: "numeric", month: "long" });
+    return `${day.charAt(0).toUpperCase() + day.slice(1)} · ${date}`;
+  };
+
+  const greeting = user?.first_name
+    ? `Dobrý deň, ${user.first_name}.`
+    : user?.company_name
+    ? `Dobrý deň, ${user.company_name}.`
+    : "Dobrý deň.";
+
+  // Badge helpers using zp-* classes
   const PlannedBadge = ({ day }: { day: PlannedDay }) => {
     if (!day.exists) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
-          <Bot className="w-3 h-3" />
+        <span className="zp-pill zp-pill--auto">
+          <Bot className="w-3 h-3" style={{ width: 11, height: 11 }} />
           Automatická
         </span>
       );
     }
     if (day.is_empty) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-red-100 text-red-600">
-          <XCircle className="w-3 h-3" />
+        <span className="zp-pill zp-pill--empty">
+          <XCircle style={{ width: 11, height: 11 }} />
           Manuálna – nulová
         </span>
       );
     }
     if (day.is_auto) {
       return (
-        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">
-          <Bot className="w-3 h-3" />
+        <span className="zp-pill zp-pill--auto">
+          <Bot style={{ width: 11, height: 11 }} />
           Automatická
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
-        <PenLine className="w-3 h-3" />
+      <span className="zp-pill zp-pill--manual">
+        <PenLine style={{ width: 11, height: 11 }} />
         Manuálna
       </span>
     );
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
-      <div className="max-w-6xl mx-auto p-4 md:p-6">
-        {/* Header */}
-        <div className="mb-6 md:mb-8 pt-2 md:pt-4 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-              Zdravý Projekt
-            </h1>
-          </div>
-          <div className="flex gap-2 md:gap-3">
-            <Link to="/profile">
-              <button data-tour-id="tour-profile-btn" className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
-                <User className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
-                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">
-                  Profil
-                </span>
-              </button>
-            </Link>
-            <Link to="/settings">
-              <button className="flex items-center gap-2 px-3 md:px-4 py-2.5 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50 transition-all shadow-sm hover:shadow-md group">
-                <Settings className="w-4 h-4 text-slate-600 group-hover:text-indigo-600 transition-colors" />
-                <span className="hidden md:inline text-sm font-medium text-slate-700 group-hover:text-indigo-700 transition-colors">
-                  Nastavenia
-                </span>
-              </button>
-            </Link>
-          </div>
+    <div className="zp-app">
+      <div className="zp-grain" style={{ minHeight: "100%" }}>
+        {/* Top bar */}
+        <div className="zp-topbar">
+          <img
+            src="/logo-zdravy-projekt.png"
+            alt="Zdravý projekt"
+            style={{ height: 32, width: "auto", display: "block" }}
+          />
         </div>
 
-        {/* New Order CTA — navigates to first next workday */}
+        {/* Greeting */}
+        <div className="zp-greeting">
+          <span className="zp-eyebrow">{getTodayEyebrow()}</span>
+          <h1>{greeting}</h1>
+          <p>Tu je váš týždeň v Zdravom projekte.</p>
+        </div>
+
+        {/* Hero CTA */}
         <Link
           data-tour-id="tour-new-order-btn"
           to={`/order?date=${firstWorkday}`}
-          className="group relative block mb-10"
+          className="zp-hero-cta"
         >
-          <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl blur opacity-20 group-hover:opacity-40 transition-opacity duration-300" />
-          <button className="relative w-full bg-white hover:bg-slate-50 border border-indigo-100 rounded-2xl p-6 flex items-center justify-between shadow-xl shadow-indigo-100/50 transition-all duration-300 group-hover:-translate-y-1">
-            <div className="flex items-center gap-5">
-              <div className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg shadow-indigo-200 group-hover:scale-110 transition-transform duration-300">
-                <Plus className="w-8 h-8" />
-              </div>
-              <div className="text-left">
-                <h3 className="text-xl font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
-                  Nová objednávka
-                </h3>
-                <p className="text-slate-500">{formatDate(firstWorkday)}</p>
-              </div>
-            </div>
-            <div className="hidden sm:flex items-center gap-2 text-indigo-600 font-semibold px-4 py-2 bg-indigo-50 rounded-lg group-hover:bg-indigo-100 transition-colors">
-              Prejsť na objednávku →
-            </div>
-          </button>
+          <span className="icon-bubble">
+            <Plus style={{ width: 26, height: 26, strokeWidth: 1.8 }} />
+          </span>
+          <span className="body">
+            <span className="eye">Pripravte novú</span>
+            <h3>Nová objednávka</h3>
+            <span className="when">{formatLongDate(firstWorkday)}</span>
+          </span>
+          <span className="chev">
+            <ChevronRight style={{ width: 22, height: 22 }} />
+          </span>
         </Link>
 
-        {/* ── Dnešná objednávka ── */}
+        {/* Auto-rollover disclaimer */}
+        <p className="zp-disclaimer">
+          Objednávky sa automaticky preklápajú na ďalší deň, pokiaľ ich manuálne neupravíte.
+        </p>
+
+        {/* Today */}
         {todayDay &&
           (() => {
             const day = todayDay;
@@ -455,62 +389,45 @@ const HomePage = () => {
               day.exists && !day.is_empty
                 ? day.totalPortions
                 : isAutoFilled
-                  ? day.predictedTotal
-                  : null;
+                ? day.predictedTotal
+                : null;
             const mealCount =
               day.exists && !day.is_empty
                 ? day.mealCount
                 : isAutoFilled
-                  ? day.predictedMealCount
-                  : null;
+                ? day.predictedMealCount
+                : null;
+
             return (
-              <div data-tour-id="tour-today-section" className="mb-8 animate-in slide-in-from-bottom-3 duration-400">
-                <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                  <Clock className="w-5 h-5 text-orange-500" />
-                  Dnešná objednávka
+              <div data-tour-id="tour-today-section" className="zp-section">
+                <h2>
+                  <Clock style={{ width: 18, height: 18 }} /> Dnešná objednávka
                 </h2>
                 <div
+                  className={`zp-day zp-day--today${isEmpty ? " zp-day--empty" : ""}`}
                   onClick={() => handlePlannedCardClick(day)}
-                  className={[
-                    "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
-                    isEmpty
-                      ? "bg-white border-red-100 hover:border-red-200 hover:shadow-sm"
-                      : "bg-white border-orange-100 shadow-sm hover:shadow-md hover:border-orange-200",
-                  ].join(" ")}
+                  role="button"
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={[
-                          "p-2.5 rounded-lg transition-colors",
-                          isEmpty
-                            ? "bg-red-50"
-                            : isTodayEditable
-                              ? "bg-orange-50 group-hover:bg-orange-100"
-                              : "bg-slate-100",
-                        ].join(" ")}
-                      >
+                  <div className="zp-day-top">
+                    <div className="zp-day-left">
+                      <div className="zp-day-icon">
                         {isEmpty ? (
-                          <XCircle className="w-5 h-5 text-red-400" />
+                          <XCircle style={{ width: 20, height: 20 }} />
                         ) : isTodayEditable ? (
-                          <Clock className="w-5 h-5 text-orange-500" />
+                          <Clock style={{ width: 20, height: 20 }} />
                         ) : (
-                          <Lock className="w-5 h-5 text-slate-400" />
+                          <Lock style={{ width: 20, height: 20 }} />
                         )}
                       </div>
-                      <div>
-                        <h3 className="font-bold text-slate-900">
+                      <div className="flex1">
+                        <div className="zp-day-title">
                           {formatDate(todayStr)}
-                          <span className="ml-2 text-xs font-normal text-orange-500">
-                            Dnes
-                          </span>
-                        </h3>
+                          <span className="pill-today">DNES</span>
+                        </div>
                         {isTodayEditable ? (
-                          <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-orange-100 text-orange-700">
-                            <Clock className="w-3 h-3" />
-                            {day.exists && !day.is_empty
-                              ? "Upraviť do termínu"
-                              : "Vytvoriť do termínu"}
+                          <span className="zp-pill zp-pill--deadline">
+                            <Clock style={{ width: 11, height: 11 }} />
+                            {day.exists && !day.is_empty ? "Upraviť do termínu" : "Vytvoriť do termínu"}
                           </span>
                         ) : (
                           <PlannedBadge day={day} />
@@ -518,198 +435,213 @@ const HomePage = () => {
                       </div>
                     </div>
                     {totalPortions !== null && (
-                      <div className="text-2xl font-bold text-slate-900">
+                      <div className="zp-day-count">
                         {totalPortions}
-                        <span className="text-xs font-normal text-slate-500 ml-1">
-                          ks
-                        </span>
+                        <small>porcií</small>
                       </div>
                     )}
                   </div>
                   {mealCount !== null && (
-                    <div className="flex gap-2 mt-2">
+                    <div className="zp-meal-chips">
                       {mealCount.breakfast > 0 && (
-                        <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
-                          Raňajky: {mealCount.breakfast}
+                        <span className="zp-mchip zp-mchip--breakfast">
+                          Raňajky · {mealCount.breakfast}
                         </span>
                       )}
                       {mealCount.lunch > 0 && (
-                        <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
-                          Obed: {mealCount.lunch}
+                        <span className="zp-mchip zp-mchip--lunch">
+                          Obed · {mealCount.lunch}
                         </span>
                       )}
                       {mealCount.olovrant > 0 && (
-                        <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
-                          Olovrant: {mealCount.olovrant}
+                        <span className="zp-mchip zp-mchip--olovrant">
+                          Olovrant · {mealCount.olovrant}
                         </span>
                       )}
                     </div>
                   )}
                   {isUnset && !hasPrediction && (
-                    <p className="text-xs text-slate-400 mt-2">
-                      Na dnešný deň nebola vytvorená žiadna objednávka.
-                    </p>
+                    <p className="zp-day-hint">Na dnešný deň nebola vytvorená žiadna objednávka.</p>
                   )}
                 </div>
               </div>
             );
           })()}
 
-        {/* ── Plánované objednávky – 5 pracovných dní ── */}
-        <div data-tour-id="tour-planned-section" className="mb-10 animate-in slide-in-from-bottom-5 duration-500">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-indigo-600" />
-            Plánované objednávky
+        {/* Planned */}
+        <div data-tour-id="tour-planned-section" className="zp-section">
+          <h2>
+            <CalendarDays style={{ width: 18, height: 18 }} /> Plánované objednávky
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {plannedDays
-              .filter((d) => d.date !== todayStr)
-              .map((day) => {
-                const isEmpty = day.exists && day.is_empty;
-                const isUnset = !day.exists;
-                const hasPrediction = isUnset && day.predictedTotal > 0;
-                // auto-filled = unset but system will copy last order → render same as real auto
-                const isAutoFilled = isUnset && hasPrediction;
-                const totalPortions =
-                  day.exists && !day.is_empty
-                    ? day.totalPortions
-                    : isAutoFilled
-                      ? day.predictedTotal
-                      : null;
-                const mealCount =
-                  day.exists && !day.is_empty
-                    ? day.mealCount
-                    : isAutoFilled
-                      ? day.predictedMealCount
-                      : null;
 
-                return (
-                  <div
-                    key={day.date}
-                    onClick={() => handlePlannedCardClick(day)}
-                    className={[
-                      "p-5 rounded-xl border cursor-pointer transition-all duration-200 group",
-                      isEmpty
-                        ? "bg-white border-red-100 hover:border-red-200 hover:shadow-sm"
-                        : isUnset && !hasPrediction
-                          ? "bg-white border-slate-200 hover:border-indigo-300 hover:shadow-sm"
-                          : "bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-200",
-                    ].join(" ")}
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={[
-                            "p-2.5 rounded-lg transition-colors",
-                            isEmpty
-                              ? "bg-red-50"
-                              : "bg-indigo-50 group-hover:bg-indigo-100",
-                          ].join(" ")}
-                        >
-                          {isEmpty ? (
-                            <XCircle className="w-5 h-5 text-red-400" />
-                          ) : isUnset ? (
-                            <Bot className="w-5 h-5 text-indigo-600" />
-                          ) : day.is_auto ? (
-                            <Bot className="w-5 h-5 text-indigo-600" />
-                          ) : (
-                            <Calendar className="w-5 h-5 text-indigo-600" />
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-slate-900">
-                            {formatDate(day.date)}
-                          </h3>
-                          <PlannedBadge day={day} />
-                        </div>
+          {plannedDays
+            .filter((d) => d.date !== todayStr)
+            .map((day) => {
+              const isEmpty = day.exists && day.is_empty;
+              const isUnset = !day.exists;
+              const hasPrediction = isUnset && day.predictedTotal > 0;
+              const isAutoFilled = isUnset && hasPrediction;
+              const totalPortions =
+                day.exists && !day.is_empty
+                  ? day.totalPortions
+                  : isAutoFilled
+                  ? day.predictedTotal
+                  : null;
+              const mealCount =
+                day.exists && !day.is_empty
+                  ? day.mealCount
+                  : isAutoFilled
+                  ? day.predictedMealCount
+                  : null;
+
+              return (
+                <div
+                  key={day.date}
+                  className={`zp-day${isEmpty ? " zp-day--empty" : isUnset && !hasPrediction ? " zp-day--unset" : ""}`}
+                  onClick={() => handlePlannedCardClick(day)}
+                  role="button"
+                >
+                  <div className="zp-day-top">
+                    <div className="zp-day-left">
+                      <div className="zp-day-icon">
+                        {isEmpty ? (
+                          <XCircle style={{ width: 20, height: 20 }} />
+                        ) : isUnset ? (
+                          <Bot style={{ width: 20, height: 20 }} />
+                        ) : day.is_auto ? (
+                          <Bot style={{ width: 20, height: 20 }} />
+                        ) : (
+                          <Calendar style={{ width: 20, height: 20 }} />
+                        )}
                       </div>
-
-                      {totalPortions !== null && (
-                        <div className="text-2xl font-bold text-slate-900">
-                          {totalPortions}
-                          <span className="text-xs font-normal text-slate-500 ml-1">
-                            ks
-                          </span>
-                        </div>
-                      )}
+                      <div className="flex1">
+                        <div className="zp-day-title">{formatDate(day.date)}</div>
+                        <PlannedBadge day={day} />
+                      </div>
                     </div>
-
-                    {/* Meal breakdown chips */}
-                    {mealCount !== null && (
-                      <div className="flex gap-2 mt-2">
-                        {mealCount.breakfast > 0 && (
-                          <span className="bg-amber-50 text-amber-700 text-xs px-2 py-1 rounded-md">
-                            Raňajky: {mealCount.breakfast}
-                          </span>
-                        )}
-                        {mealCount.lunch > 0 && (
-                          <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-1 rounded-md">
-                            Obed: {mealCount.lunch}
-                          </span>
-                        )}
-                        {mealCount.olovrant > 0 && (
-                          <span className="bg-purple-50 text-purple-700 text-xs px-2 py-1 rounded-md">
-                            Olovrant: {mealCount.olovrant}
-                          </span>
-                        )}
+                    {totalPortions !== null && (
+                      <div className="zp-day-count" style={totalPortions === 0 ? { color: "var(--ink-mute)" } : {}}>
+                        {totalPortions}
+                        <small>porcií</small>
                       </div>
-                    )}
-
-                    {/* No history at all — nothing to copy from */}
-                    {isUnset && !hasPrediction && (
-                      <p className="text-xs text-slate-400 mt-2">
-                        Žiadna história na predikciu
-                      </p>
                     )}
                   </div>
-                );
-              })}
+                  {mealCount !== null && (
+                    <div className="zp-meal-chips">
+                      {mealCount.breakfast > 0 && (
+                        <span className="zp-mchip zp-mchip--breakfast">Raňajky · {mealCount.breakfast}</span>
+                      )}
+                      {mealCount.lunch > 0 && (
+                        <span className="zp-mchip zp-mchip--lunch">Obed · {mealCount.lunch}</span>
+                      )}
+                      {mealCount.olovrant > 0 && (
+                        <span className="zp-mchip zp-mchip--olovrant">Olovrant · {mealCount.olovrant}</span>
+                      )}
+                    </div>
+                  )}
+                  {isUnset && !hasPrediction && (
+                    <p className="zp-day-hint">Žiadna história na predikciu</p>
+                  )}
+                  {isEmpty && (
+                    <p className="zp-day-hint">Bez objednávky — voľný deň pre kuchyňu.</p>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+
+        {/* Monthly summary — TODO: wire to API */}
+        <div className="zp-section">
+          <h2>
+            <CalendarDays style={{ width: 18, height: 18 }} /> Mesačný súhrn
+          </h2>
+        </div>
+        <div className="zp-monthly">
+          <div className="eye">Tento mesiac</div>
+          <h3>
+            Mesačný súhrn
+            <small>
+              {new Date().toLocaleDateString("sk-SK", { month: "long", year: "numeric" })} · doteraz odoberané
+            </small>
+          </h3>
+          <div className="zp-monthly-grid">
+            <div className="zp-monthly-stat">
+              <div className="num">—</div>
+              <div className="lbl">Menu A</div>
+            </div>
+            <div className="zp-monthly-stat">
+              <div className="num">—</div>
+              <div className="lbl">Menu B</div>
+            </div>
+            <div className="zp-monthly-stat">
+              <div className="num">—</div>
+              <div className="lbl">Raňajky</div>
+            </div>
+            <div className="zp-monthly-stat">
+              <div className="num">—</div>
+              <div className="lbl">Olovrant</div>
+            </div>
+          </div>
+          <div className="zp-monthly-foot">
+            <span>Spolu</span>
+            <span>
+              <strong>{plannedDays.reduce((acc, d) => acc + (d.totalPortions || 0), 0)}</strong> porcií
+            </span>
           </div>
         </div>
 
-        {/* ── História – posledných 5 minulých ── */}
-        <div data-tour-id="tour-history-section" className="animate-in slide-in-from-bottom-10 duration-700">
-          <h2 className="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-            <History className="w-5 h-5 text-slate-500" />
-            História (Posledných 5)
+        {/* History */}
+        <div data-tour-id="tour-history-section" className="zp-section">
+          <h2 className="with-action">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <History style={{ width: 18, height: 18 }} /> História
+            </span>
+            <span className="action">Viac →</span>
           </h2>
+
           {historyOrders.length === 0 ? (
-            <div className="text-center py-10 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-              <UtensilsCrossed className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-slate-500">História je prázdna</p>
+            <div className="zp-empty">
+              <UtensilsCrossed />
+              <p style={{ margin: "8px 0 0", fontSize: 14 }}>História je prázdna</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {historyOrders.map((order) => (
-                <div
-                  key={order.date}
-                  onClick={() => {
-                    setModalOrderData(order.data);
-                    setSelectedDate(order.date);
-                  }}
-                  className="bg-white p-4 rounded-xl border border-slate-100 flex items-center justify-between hover:bg-slate-50 cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    <Calendar className="w-5 h-5 text-slate-400" />
+            historyOrders.map((order) => (
+              <div
+                key={order.date}
+                className="zp-day"
+                style={{ background: "var(--bg-cream-soft)", marginBottom: 8 }}
+                onClick={() => {
+                  setModalOrderData(order.data);
+                  setSelectedDate(order.date);
+                }}
+                role="button"
+              >
+                <div className="zp-day-top">
+                  <div className="zp-day-left">
+                    <div
+                      className="zp-day-icon"
+                      style={{ background: "rgba(114,136,75,0.12)", color: "var(--green-700)" }}
+                    >
+                      <Calendar style={{ width: 20, height: 20 }} />
+                    </div>
                     <div>
-                      <span className="block font-medium text-slate-700">
-                        {formatDate(order.date)}
-                      </span>
-                      <span className="text-xs text-slate-400">
-                        Vybavená objednávka
+                      <div className="zp-day-title">{formatDate(order.date)}</div>
+                      <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
+                        Vybavená
                       </span>
                     </div>
                   </div>
-                  <span className="font-bold text-slate-900">
-                    {order.totalPortions} porcií
-                  </span>
+                  <div className="zp-day-count" style={{ fontSize: 19 }}>
+                    {order.totalPortions}
+                    <small>porcií</small>
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))
           )}
         </div>
 
-        {/* ── Detail modal ── */}
+        {/* Detail modal */}
         <OrderSummaryModal
           isOpen={!!selectedDate}
           onClose={() => {
@@ -726,27 +658,18 @@ const HomePage = () => {
               setPlannedDays((prev) =>
                 prev.map((d) =>
                   d.date === selectedDate
-                    ? {
-                        ...d,
-                        exists: false,
-                        is_auto: null,
-                        is_empty: null,
-                        totalPortions: 0,
-                        mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
-                      }
+                    ? { ...d, exists: false, is_auto: null, is_empty: null, totalPortions: 0, mealCount: { breakfast: 0, lunch: 0, olovrant: 0 } }
                     : d,
                 ),
               );
-              setHistoryOrders((prev) =>
-                prev.filter((o) => o.date !== selectedDate),
-              );
+              setHistoryOrders((prev) => prev.filter((o) => o.date !== selectedDate));
               setSelectedDate(null);
               setModalOrderId(null);
             }
           }}
         />
 
-        {/* ── Auto-predicted day preview modal ── */}
+        {/* Auto-predicted day preview modal */}
         <OrderSummaryModal
           isOpen={!!predictedModalDay}
           onClose={() => setPredictedModalDay(null)}
@@ -755,9 +678,7 @@ const HomePage = () => {
           globalDeadlines={globalDeadlines}
           isPredicted
           predictedMealCount={predictedModalDay?.predictedMealCount}
-          onZero={() =>
-            predictedModalDay && handleZeroPredicted(predictedModalDay)
-          }
+          onZero={() => predictedModalDay && handleZeroPredicted(predictedModalDay)}
         />
 
       </div>

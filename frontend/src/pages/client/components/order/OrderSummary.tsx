@@ -1,6 +1,4 @@
 import { FileCheck, AlertCircle, Eraser } from "lucide-react";
-import { Button } from "../ui/Button";
-import { Card } from "../ui/Card";
 import { useApp } from "../../context/AppContext";
 import { CategoryData } from "../../services/OrderService";
 import { getSlovakPlural } from "../../../../lib/utils";
@@ -24,14 +22,10 @@ const OrderSummary = ({
 
   const getMealTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-
     return Object.values(currentOrder[mealKey]).reduce(
       (acc: number, cat: CategoryData) => {
         const counts = cat.menuCounts || {};
-        const catTotal = Object.values(counts).reduce(
-          (sum: number, val: number) => sum + val,
-          0,
-        );
+        const catTotal = Object.values(counts).reduce((sum: number, val: number) => sum + val, 0);
         return acc + catTotal;
       },
       0,
@@ -40,17 +34,10 @@ const OrderSummary = ({
 
   const getDietTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-
     return Object.values(currentOrder[mealKey]).reduce(
       (acc: number, cat: CategoryData) => {
         if (!cat.diets) return acc;
-        return (
-          acc +
-          Object.values(cat.diets).reduce(
-            (dAcc: number, d: number) => dAcc + d,
-            0,
-          )
-        );
+        return acc + Object.values(cat.diets).reduce((dAcc: number, d: number) => dAcc + d, 0);
       },
       0,
     );
@@ -66,109 +53,94 @@ const OrderSummary = ({
 
   const totalPortions = lunchTotal + breakfastTotal + olovrantTotal;
 
-  // Zero is a valid submission (= "Manuálna nulová" — intentional empty order)
-  const isButtonDisabled = disabled;
+  const dateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString("sk-SK");
 
   return (
-    <Card className="mt-8 border-indigo-100 shadow-md bg-white">
-      <div className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <FileCheck className="w-5 h-5 text-indigo-600" />
-          <h3 className="text-lg font-bold text-slate-800">Rýchle zhrnutie</h3>
-        </div>
+    <div className="zp-summary">
+      <h3>
+        <FileCheck style={{ width: 16, height: 16 }} />
+        Rýchle zhrnutie
+      </h3>
 
-        <div className="space-y-3 mb-6">
-          <div className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
-            <span className="text-slate-500">Dátum</span>
-            <span className="font-medium text-slate-900">
-              {new Date(selectedDate).toLocaleDateString("sk-SK")}
-            </span>
-          </div>
-
-          {activeMeals.lunch && (
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600">Obedy</span>
-              <div className="text-right">
-                <span className="font-bold text-slate-900">{lunchTotal}</span>
-                {lunchDiets > 0 && (
-                  <span className="text-xs text-slate-500 block">
-                    ({lunchDiets}{" "}
-                    {getSlovakPlural(lunchDiets, "diéta", "diéty", "diét")})
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeMeals.breakfast && (
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600">Raňajky</span>
-              <div className="text-right">
-                <span className="font-bold text-slate-900">
-                  {breakfastTotal}
-                </span>
-                {breakfastDiets > 0 && (
-                  <span className="text-xs text-slate-500 block">
-                    ({breakfastDiets}{" "}
-                    {getSlovakPlural(breakfastDiets, "diéta", "diéty", "diét")})
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeMeals.olovrant && (
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-slate-600">Olovranty</span>
-              <div className="text-right">
-                <span className="font-bold text-slate-900">
-                  {olovrantTotal}
-                </span>
-                {olovrantDiets > 0 && (
-                  <span className="text-xs text-slate-500 block">
-                    ({olovrantDiets}{" "}
-                    {getSlovakPlural(olovrantDiets, "diéta", "diéty", "diét")})
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="flex justify-between items-center pt-3 border-t border-slate-100">
-            <span className="font-bold text-slate-800">Spolu porcií</span>
-            <span className="font-bold text-2xl text-indigo-600">
-              {totalPortions}
-            </span>
-          </div>
-        </div>
-
-        <Button
-          className="w-full h-12 text-lg shadow-indigo-200"
-          disabled={isButtonDisabled}
-          onClick={onSubmit}
-        >
-          Odoslať objednávku
-        </Button>
-
-        {!disabled && onReset && (
-          <button
-            type="button"
-            onClick={onReset}
-            className="w-full mt-3 h-10 flex items-center justify-center gap-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-          >
-            <Eraser className="w-4 h-4" />
-            Vynulovať objednávku
-          </button>
-        )}
-
-        {disabled && disabledMessage && (
-          <div className="mt-3 flex items-center gap-2 text-xs text-amber-600 bg-amber-50 p-2 rounded-lg">
-            <AlertCircle className="w-4 h-4 text-amber-600" />
-            <span>{disabledMessage}</span>
-          </div>
-        )}
+      <div className="zp-summary-row">
+        <span className="l">Dátum</span>
+        <span className="r" style={{ textTransform: "capitalize" }}>{dateLabel}</span>
       </div>
-    </Card>
+
+      {activeMeals.breakfast && (
+        <div className="zp-summary-row">
+          <span className="l">Raňajky</span>
+          <span className="r">
+            {breakfastTotal}
+            {breakfastDiets > 0 && (
+              <small>
+                ({breakfastDiets} {getSlovakPlural(breakfastDiets, "diéta", "diéty", "diét")})
+              </small>
+            )}
+          </span>
+        </div>
+      )}
+
+      {activeMeals.lunch && (
+        <div className="zp-summary-row">
+          <span className="l">Obedy</span>
+          <span className="r">
+            {lunchTotal}
+            {lunchDiets > 0 && (
+              <small>
+                ({lunchDiets} {getSlovakPlural(lunchDiets, "diéta", "diéty", "diét")})
+              </small>
+            )}
+          </span>
+        </div>
+      )}
+
+      {activeMeals.olovrant && (
+        <div className="zp-summary-row">
+          <span className="l">Olovranty</span>
+          <span className="r">
+            {olovrantTotal}
+            {olovrantDiets > 0 && (
+              <small>
+                ({olovrantDiets} {getSlovakPlural(olovrantDiets, "diéta", "diéty", "diét")})
+              </small>
+            )}
+          </span>
+        </div>
+      )}
+
+      <div className="zp-summary-total">
+        <span className="l">Spolu porcií</span>
+        <span className="r">{totalPortions}<small>ks</small></span>
+      </div>
+
+      <button
+        className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+        disabled={!!disabled}
+        onClick={onSubmit}
+      >
+        Odoslať objednávku
+      </button>
+
+      {!disabled && onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          className="zp-btn zp-btn--danger zp-btn--block"
+          style={{ marginTop: 8 }}
+        >
+          <Eraser style={{ width: 14, height: 14 }} />
+          Vynulovať objednávku
+        </button>
+      )}
+
+      {disabled && disabledMessage && (
+        <div className="zp-banner" style={{ marginTop: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
+          <AlertCircle style={{ width: 14, height: 14 }} />
+          {disabledMessage}
+        </div>
+      )}
+    </div>
   );
 };
 

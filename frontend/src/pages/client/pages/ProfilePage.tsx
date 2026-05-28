@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, User, Mail, Shield, Calendar, Save, Bell, Download, LogOut, BookOpen } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft, User, Mail, Calendar, Save, Bell, Download, BookOpen
+} from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import { useOnboarding } from '../../../context/OnboardingContext';
 import { usePushNotifications } from '../../../hooks/usePushNotifications';
@@ -42,13 +44,7 @@ const ProfilePage = () => {
         unsubscribe,
         error: pushError,
     } = usePushNotifications();
-    const {
-        isStandalone,
-        isIOS,
-        isAndroid,
-        canInstall,
-        installPrompt,
-    } = usePWA();
+    const { isStandalone, isIOS, isAndroid, canInstall, installPrompt } = usePWA();
     const [profile, setProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -70,7 +66,6 @@ const ProfilePage = () => {
     const fetchProfile = useCallback(async () => {
         try {
             const response = await apiFetch(`${API_URL}/user/profile/`);
-
             if (response.ok) {
                 const data = await response.json();
                 setProfile(data);
@@ -93,24 +88,18 @@ const ProfilePage = () => {
         }
     }, [apiFetch]);
 
-    useEffect(() => {
-        fetchProfile();
-    }, [fetchProfile]);
+    useEffect(() => { fetchProfile(); }, [fetchProfile]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
         setMessage(null);
-
         try {
             const response = await apiFetch(`${API_URL}/user/profile/`, {
                 method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(formData)
             });
-
             if (response.ok) {
                 const data = await response.json();
                 setProfile(data);
@@ -118,47 +107,31 @@ const ProfilePage = () => {
             } else {
                 setMessage({ type: 'error', text: 'Nepodarilo sa aktualizovať profil' });
             }
-        } catch (error) {
+        } catch {
             setMessage({ type: 'error', text: 'Chyba pri ukladaní zmien' });
         } finally {
             setSaving(false);
         }
     };
 
-    const formatDate = (dateString: string) => {
-        return new Date(dateString).toLocaleDateString('sk-SK', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    };
+    const formatDate = (dateString: string) =>
+        new Date(dateString).toLocaleDateString('sk-SK', { year: 'numeric', month: 'long', day: 'numeric' });
 
     const handleEnableNotifications = async () => {
         setPushLoading(true);
         setPushMessage(null);
         try {
             const ok = await subscribe();
-            const currentPermission =
-                typeof Notification !== 'undefined' ? Notification.permission : permission;
-
+            const currentPermission = typeof Notification !== 'undefined' ? Notification.permission : permission;
             if (ok) {
                 setPushMessage({ type: 'success', text: 'Notifikácie boli úspešne aktivované.' });
             } else if (currentPermission === 'denied') {
-                setPushMessage({
-                    type: 'error',
-                    text: 'Notifikácie sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky.',
-                });
+                setPushMessage({ type: 'error', text: 'Notifikácie sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky.' });
             } else {
-                setPushMessage({
-                    type: 'error',
-                    text: 'Notifikácie sa nepodarilo aktivovať. Skúste to prosím znova.',
-                });
+                setPushMessage({ type: 'error', text: 'Notifikácie sa nepodarilo aktivovať. Skúste to prosím znova.' });
             }
         } catch {
-            setPushMessage({
-                type: 'error',
-                text: 'Nepodarilo sa aktivovať notifikácie.',
-            });
+            setPushMessage({ type: 'error', text: 'Nepodarilo sa aktivovať notifikácie.' });
         } finally {
             setPushLoading(false);
         }
@@ -172,16 +145,10 @@ const ProfilePage = () => {
             if (ok) {
                 setPushMessage({ type: 'success', text: 'Notifikácie boli vypnuté.' });
             } else {
-                setPushMessage({
-                    type: 'error',
-                    text: 'Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.',
-                });
+                setPushMessage({ type: 'error', text: 'Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.' });
             }
         } catch {
-            setPushMessage({
-                type: 'error',
-                text: 'Nepodarilo sa vypnúť notifikácie.',
-            });
+            setPushMessage({ type: 'error', text: 'Nepodarilo sa vypnúť notifikácie.' });
         } finally {
             setPushLoading(false);
         }
@@ -189,322 +156,278 @@ const ProfilePage = () => {
 
     const handleInstallPWA = () => {
         setPwaMessage(null);
-
-        if (isStandalone) {
-            setPwaMessage({ type: 'success', text: 'Aplikácia je už nainštalovaná.' });
-            return;
-        }
-
-        if (canInstall) {
-            installPrompt();
-            setPwaMessage({ type: 'success', text: 'Potvrďte inštaláciu v prehliadači.' });
-            return;
-        }
-
-        if (isIOS) {
-            setPwaMessage({
-                type: 'error',
-                text: 'V Safari zvoľte Zdieľať → Pridať na plochu.',
-            });
-            return;
-        }
-
-        if (isAndroid) {
-            setPwaMessage({
-                type: 'error',
-                text: 'V menu prehliadača zvoľte Inštalovať aplikáciu (alebo Pridať na plochu).',
-            });
-            return;
-        }
-
-        setPwaMessage({
-            type: 'error',
-            text: 'Inštalácia PWA nie je v tomto prehliadači dostupná.',
-        });
+        if (isStandalone) { setPwaMessage({ type: 'success', text: 'Aplikácia je už nainštalovaná.' }); return; }
+        if (canInstall) { installPrompt(); setPwaMessage({ type: 'success', text: 'Potvrďte inštaláciu v prehliadači.' }); return; }
+        if (isIOS) { setPwaMessage({ type: 'error', text: 'V Safari zvoľte Zdieľať → Pridať na plochu.' }); return; }
+        if (isAndroid) { setPwaMessage({ type: 'error', text: 'V menu prehliadača zvoľte Inštalovať aplikáciu (alebo Pridať na plochu).' }); return; }
+        setPwaMessage({ type: 'error', text: 'Inštalácia PWA nie je v tomto prehliadači dostupná.' });
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-600">Načítavam profil...</p>
+            <div className="zp-app" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ textAlign: "center" }}>
+                    <div style={{ width: 48, height: 48, border: "4px solid var(--green-600)", borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 16px" }} />
+                    <p style={{ color: "var(--ink-3)" }}>Načítavam profil...</p>
                 </div>
             </div>
         );
-
     }
 
     if (!profile) {
         return (
-             <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
-                <div className="text-center">
-                    <p className="text-red-600 mb-4">{message?.text || 'Nepodarilo sa načítať profil.'}</p>
-                    <Link to="/home" className="text-indigo-600 hover:underline">Späť na domovskú stránku</Link>
+            <div className="zp-app" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ textAlign: "center" }}>
+                    <p style={{ color: "var(--coral-600)", marginBottom: 16 }}>{message?.text || 'Nepodarilo sa načítať profil.'}</p>
+                    <button className="zp-btn zp-btn--secondary" onClick={() => navigate("/home")}>Späť na domovskú stránku</button>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 pb-20">
-            <div className="max-w-4xl mx-auto p-6">
-                {/* Header */}
-                <div className="mb-8 pt-4">
-                    <div className="flex items-center justify-between gap-3 mb-4">
-                        <Link to="/home" className="inline-flex items-center gap-2 text-slate-600 hover:text-indigo-600 transition-colors">
-                            <ArrowLeft className="w-4 h-4" />
-                            <span className="text-sm font-medium">Späť na domovskú stránku</span>
-                        </Link>
-                        <button
-                            type="button"
-                            onClick={() => setShowLogoutConfirmation(true)}
-                            className="inline-flex items-center gap-2 px-3 py-2 bg-white border border-red-200 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
-                        >
-                            <LogOut className="w-4 h-4" />
-                            Odhlásiť sa
-                        </button>
+        <div className="zp-app" style={{ minHeight: "100vh" }}>
+            {/* Page header */}
+            <div className="zp-pageheader">
+                <button className="zp-iconbtn" onClick={() => navigate("/settings")}>
+                    <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
+                </button>
+                <div>
+                    <h1>Môj profil</h1>
+                    <p>Spravujte svoje osobné údaje</p>
+                </div>
+            </div>
+
+            {/* User info summary */}
+            <div style={{ padding: "0 20px 20px" }}>
+                <div className="zp-card zp-card--padded" style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
+                    <div style={{ width: 52, height: 52, borderRadius: "50%", background: "var(--green-700)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        <User style={{ width: 26, height: 26, color: "var(--bg-cream)" }} />
                     </div>
-                    <h1 className="text-3xl font-bold text-slate-900 mb-1">Môj profil</h1>
-                    <p className="text-slate-600">Spravujte svoje osobné údaje</p>
+                    <div>
+                        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)", fontSize: 16 }}>
+                            {profile?.company_name || profile?.email}
+                        </div>
+                        <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>{profile?.email}</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Edit form */}
+            <form onSubmit={handleSubmit}>
+                {/* Company info section */}
+                <div className="zp-settings-section">
+                    <h2>Informácie o spoločnosti</h2>
+                    <div className="zp-settings-list" style={{ padding: "16px" }}>
+                        <div className="zp-field">
+                            <label className="zp-label">Názov spoločnosti</label>
+                            <input
+                                className="zp-input"
+                                type="text"
+                                value={formData.company_name}
+                                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                                placeholder="Názov spoločnosti"
+                            />
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                            <div className="zp-field" style={{ marginBottom: 0 }}>
+                                <label className="zp-label">IČO</label>
+                                <input
+                                    className="zp-input"
+                                    type="text"
+                                    value={formData.ico}
+                                    onChange={(e) => setFormData({ ...formData, ico: e.target.value })}
+                                    placeholder="IČO"
+                                />
+                            </div>
+                            <div className="zp-field" style={{ marginBottom: 0 }}>
+                                <label className="zp-label">DIČ</label>
+                                <input
+                                    className="zp-input"
+                                    type="text"
+                                    value={formData.dic}
+                                    onChange={(e) => setFormData({ ...formData, dic: e.target.value })}
+                                    placeholder="DIČ"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* Profile Info Card */}
-                <div className="bg-white rounded-2xl shadow-xl border border-indigo-50 p-8 mb-6">
-                    <div className="flex items-center gap-4 mb-8 pb-6 border-b border-slate-100">
-                        <div className="w-20 h-20 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                            <User className="w-10 h-10 text-white" />
+                {/* Contact person section */}
+                <div className="zp-settings-section">
+                    <h2>Kontaktná osoba</h2>
+                    <div className="zp-settings-list" style={{ padding: "16px" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                            <div className="zp-field" style={{ marginBottom: 0 }}>
+                                <label className="zp-label">Krstné meno</label>
+                                <input
+                                    className="zp-input"
+                                    type="text"
+                                    value={formData.first_name}
+                                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                                    placeholder="Krstné meno"
+                                />
+                            </div>
+                            <div className="zp-field" style={{ marginBottom: 0 }}>
+                                <label className="zp-label">Priezvisko</label>
+                                <input
+                                    className="zp-input"
+                                    type="text"
+                                    value={formData.last_name}
+                                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                                    placeholder="Priezvisko"
+                                />
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="text-2xl font-bold text-slate-900">
-                                {profile?.company_name || profile?.email}
-                            </h2>
-                            <p className="text-sm text-slate-600 mt-1">{profile?.email}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                                <Shield className="w-4 h-4 text-indigo-600" />
-                                <span className="text-sm text-slate-600">
-                                    {profile?.groups && profile.groups.length > 0 ? profile.groups.join(', ') : 'Používateľ'}
+                        <div className="zp-field" style={{ marginBottom: 0 }}>
+                            <label className="zp-label">
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                    <Mail style={{ width: 12, height: 12 }} /> Email
                                 </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Edit Form */}
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        <div className="bg-indigo-50 rounded-lg p-4 mb-2">
-                            <h3 className="font-semibold text-slate-900 mb-3">Informácie o spoločnosti</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Názov spoločnosti
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.company_name}
-                                        onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                        placeholder="Názov spoločnosti"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        IČO
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.ico}
-                                        onChange={(e) => setFormData({ ...formData, ico: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                        placeholder="IČO"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        DIČ
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.dic}
-                                        onChange={(e) => setFormData({ ...formData, dic: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                        placeholder="DIČ"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
-                                <Mail className="w-4 h-4" />
-                                Email
                             </label>
                             <input
+                                className="zp-input"
                                 type="email"
                                 value={formData.email}
                                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
                                 placeholder="vas@email.sk"
                             />
                         </div>
+                    </div>
+                </div>
 
-                        <div className="border-t border-slate-200 pt-6">
-                            <h3 className="font-semibold text-slate-900 mb-4">Kontaktná osoba (nepovinné)</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Krstné meno
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.first_name}
-                                        onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                        placeholder="Vaše krstné meno"
-                                    />
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">
-                                        Priezvisko
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.last_name}
-                                        onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                                        className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
-                                        placeholder="Vaše priezvisko"
-                                    />
-                                </div>
-                            </div>
+                {/* Registration date */}
+                <div className="zp-settings-section">
+                    <div className="zp-settings-list">
+                        <div className="zp-settings-row" style={{ cursor: "default" }}>
+                            <span className="ic">
+                                <Calendar style={{ width: 18, height: 18 }} />
+                            </span>
+                            <span className="body">
+                                <span className="ttl">Dátum registrácie</span>
+                                <span className="sub">{profile?.date_joined && formatDate(profile.date_joined)}</span>
+                            </span>
                         </div>
+                    </div>
+                </div>
 
-                        <div className="bg-slate-50 rounded-lg p-4 flex items-center gap-3">
-                            <Calendar className="w-5 h-5 text-slate-500" />
+                {/* App guide */}
+                <div className="zp-settings-section">
+                    <h2>Aplikácia</h2>
+                    <div className="zp-settings-list" style={{ padding: "16px" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                            <BookOpen style={{ width: 18, height: 18, color: "var(--green-700)", flexShrink: 0, marginTop: 2 }} />
                             <div>
-                                <p className="text-sm font-medium text-slate-700">Dátum registrácie</p>
-                                <p className="text-sm text-slate-600">{profile?.date_joined && formatDate(profile.date_joined)}</p>
+                                <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", fontSize: 14 }}>Sprievodca aplikáciou</div>
+                                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>Znovu spustiť úvodného sprievodcu aplikáciou.</div>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            disabled={resettingTour}
+                            onClick={async () => {
+                                setResettingTour(true);
+                                await resetTour();
+                                setResettingTour(false);
+                                navigate('/home');
+                            }}
+                            className="zp-btn zp-btn--secondary zp-btn--sm"
+                        >
+                            {resettingTour ? 'Spracúvam...' : 'Spustiť sprievodcu znovu'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Push notifications */}
+                <div className="zp-settings-section">
+                    <h2>Push notifikácie</h2>
+                    <div className="zp-settings-list" style={{ padding: "16px" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                            <Bell style={{ width: 18, height: 18, color: "var(--green-700)", flexShrink: 0, marginTop: 2 }} />
+                            <div>
+                                <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", fontSize: 14 }}>Push notifikácie</div>
+                                <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 2 }}>
+                                    {isSubscribed ? 'Notifikácie sú aktívne.' : 'Ak sa výzva nezobrazí automaticky, povoľte notifikácie ručne.'}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-                            <div className="flex items-center gap-3">
-                                <BookOpen className="w-5 h-5 text-slate-500" />
-                                <div>
-                                    <p className="text-sm font-medium text-slate-700">Sprievodca aplikáciou</p>
-                                    <p className="text-sm text-slate-600">Znovu spustiť úvodného sprievodcu aplikáciou.</p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                disabled={resettingTour}
-                                onClick={async () => {
-                                    setResettingTour(true);
-                                    await resetTour();
-                                    setResettingTour(false);
-                                    navigate('/home');
-                                }}
-                                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg transition-colors"
-                            >
-                                {resettingTour ? 'Spracúvam...' : 'Spustiť sprievodcu znovu'}
-                            </button>
-                        </div>
-
-                        <div className="bg-slate-50 rounded-lg p-4 space-y-3">
-                            <div className="flex items-center gap-3">
-                                <Bell className="w-5 h-5 text-slate-500" />
-                                <div>
-                                    <p className="text-sm font-medium text-slate-700">Push notifikácie</p>
-                                    <p className="text-sm text-slate-600">
-                                        {isSubscribed
-                                            ? 'Notifikácie sú aktívne.'
-                                            : 'Ak sa výzva nezobrazí automaticky, povoľte notifikácie ručne.'}
-                                    </p>
-                                </div>
-                            </div>
-
-                            {permission === 'denied' && (
-                                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                                    Notifikácie sú zamietnuté. V prehliadači otvorte Nastavenia stránky a povoľte notifikácie pre túto doménu.
-                                </p>
-                            )}
-
-                            {pushError && (
-                                <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg p-3">
-                                    {pushError}
-                                </p>
-                            )}
-
-                            {pushMessage && (
-                                <div className={`p-3 rounded-lg text-sm font-medium ${
-                                    pushMessage.type === 'success'
-                                        ? 'bg-green-50 text-green-700 border border-green-200'
-                                        : 'bg-red-50 text-red-700 border border-red-200'
-                                }`}>
-                                    {pushMessage.text}
-                                </div>
-                            )}
-
-                            {pwaMessage && (
-                                <div className={`p-3 rounded-lg text-sm font-medium ${
-                                    pwaMessage.type === 'success'
-                                        ? 'bg-green-50 text-green-700 border border-green-200'
-                                        : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                }`}>
-                                    {pwaMessage.text}
-                                </div>
-                            )}
-
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    onClick={handleEnableNotifications}
-                                    disabled={pushLoading || permission === 'unsupported' || isSubscribed}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg transition-colors"
-                                >
-                                    {pushLoading ? 'Spracúvam...' : 'Povoliť notifikácie'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleInstallPWA}
-                                    disabled={isStandalone}
-                                    className="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-slate-300 text-white text-sm font-medium rounded-lg transition-colors inline-flex items-center gap-2"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    Inštalovať aplikáciu
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleDisableNotifications}
-                                    disabled={pushLoading || !isSubscribed}
-                                    className="px-4 py-2 bg-white hover:bg-slate-100 disabled:bg-slate-100 text-slate-700 text-sm font-medium border border-slate-300 rounded-lg transition-colors"
-                                >
-                                    Vypnúť notifikácie
-                                </button>
-                            </div>
-                        </div>
-
-                        {message && (
-                            <div className={`p-4 rounded-lg flex items-center gap-2 ${
-                                message.type === 'success'
-                                    ? 'bg-green-50 text-green-700 border border-green-200'
-                                    : 'bg-red-50 text-red-700 border border-red-200'
-                            }`}>
-                                <span>{message.type === 'success' ? '✓' : '⚠️'}</span>
-                                <span className="text-sm font-medium">{message.text}</span>
+                        {permission === 'denied' && (
+                            <div className="zp-banner" style={{ marginBottom: 10, marginLeft: 0, marginRight: 0, width: "100%" }}>
+                                Notifikácie sú zamietnuté. V prehliadači otvorte Nastavenia stránky a povoľte notifikácie.
                             </div>
                         )}
 
-                        <button
-                            type="submit"
-                            disabled={saving}
-                            className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-400 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-indigo-200"
-                        >
-                            <Save className="w-5 h-5" />
-                            {saving ? 'Ukladám...' : 'Uložiť zmeny'}
-                        </button>
-                    </form>
+                        {pushError && (
+                            <div className="zp-banner" style={{ marginBottom: 10, marginLeft: 0, marginRight: 0, width: "100%", background: "rgba(201,46,82,0.1)", color: "var(--coral-600)" }}>
+                                {pushError}
+                            </div>
+                        )}
+
+                        {pushMessage && (
+                            <div className="zp-banner" style={{ marginBottom: 10, marginLeft: 0, marginRight: 0, width: "100%", background: pushMessage.type === 'success' ? "rgba(114,136,75,0.12)" : "rgba(201,46,82,0.1)", color: pushMessage.type === 'success' ? "var(--green-700)" : "var(--coral-600)" }}>
+                                {pushMessage.text}
+                            </div>
+                        )}
+
+                        {pwaMessage && (
+                            <div className="zp-banner" style={{ marginBottom: 10, marginLeft: 0, marginRight: 0, width: "100%" }}>
+                                {pwaMessage.text}
+                            </div>
+                        )}
+
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                            <button
+                                type="button"
+                                onClick={handleEnableNotifications}
+                                disabled={pushLoading || permission === 'unsupported' || isSubscribed}
+                                className="zp-btn zp-btn--secondary zp-btn--sm"
+                            >
+                                {pushLoading ? 'Spracúvam...' : 'Povoliť notifikácie'}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleInstallPWA}
+                                disabled={isStandalone}
+                                className="zp-btn zp-btn--secondary zp-btn--sm"
+                            >
+                                <Download style={{ width: 12, height: 12 }} />
+                                Inštalovať aplikáciu
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDisableNotifications}
+                                disabled={pushLoading || !isSubscribed}
+                                className="zp-btn zp-btn--ghost zp-btn--sm"
+                            >
+                                Vypnúť notifikácie
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
+
+                {/* Status message */}
+                {message && (
+                    <div style={{ padding: "0 20px 12px" }}>
+                        <div className="zp-banner" style={{ marginLeft: 0, marginRight: 0, width: "100%", background: message.type === 'success' ? "rgba(114,136,75,0.12)" : "rgba(201,46,82,0.1)", color: message.type === 'success' ? "var(--green-700)" : "var(--coral-600)" }}>
+                            {message.type === 'success' ? '✓' : '⚠'} {message.text}
+                        </div>
+                    </div>
+                )}
+
+                {/* Save button */}
+                <div style={{ padding: "0 20px 32px" }}>
+                    <button
+                        type="submit"
+                        disabled={saving}
+                        className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+                    >
+                        <Save style={{ width: 16, height: 16 }} />
+                        {saving ? 'Ukladám...' : 'Uložiť zmeny'}
+                    </button>
+                </div>
+            </form>
 
             <ConfirmationModal
                 isOpen={showLogoutConfirmation}
