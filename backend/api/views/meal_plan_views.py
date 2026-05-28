@@ -39,7 +39,7 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
-        qs = MealTemplate.objects.all()
+        qs = MealTemplate.objects.select_related("diet")
         category = self.request.query_params.get("category")
         menu_variant = self.request.query_params.get("menu_variant")
         active_only = self.request.query_params.get("active_only", "true").lower()
@@ -102,7 +102,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
     def get_queryset(self):
-        item_queryset = MealPlanItem.objects.select_related("template")
+        item_queryset = MealPlanItem.objects.select_related("template__diet")
         if not self.request.user.is_staff:
             item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(

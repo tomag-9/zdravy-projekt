@@ -310,6 +310,7 @@ def _sync_weekly_reminder_schedule() -> None:
     try:
         import json as _json
 
+        from django.conf import settings
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
         schedule, _ = CrontabSchedule.objects.get_or_create(
@@ -318,7 +319,7 @@ def _sync_weekly_reminder_schedule() -> None:
             day_of_week="0",  # Sunday
             day_of_month="*",
             month_of_year="*",
-            defaults={"timezone": "Europe/Bratislava"},
+            timezone=settings.TIME_ZONE,
         )
 
         PeriodicTask.objects.update_or_create(

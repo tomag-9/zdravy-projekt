@@ -8,7 +8,7 @@ import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
 import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService, { DailyOrder } from "../services/OrderService";
+import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
@@ -134,7 +134,7 @@ const OrderPage = () => {
     visibleMealsList.forEach(({ key }) => {
       const mealKey = key as "breakfast" | "lunch" | "olovrant";
       if (activeMeals[mealKey] && currentOrder[mealKey]) {
-        Object.values(currentOrder[mealKey]).forEach((cat: any) => {
+        Object.values(currentOrder[mealKey]).forEach((cat: CategoryData) => {
           const counts = cat.menuCounts || {};
           total += (Object.values(counts) as number[]).reduce((a: number, b: number) => a + b, 0);
         });
@@ -148,7 +148,7 @@ const OrderPage = () => {
     visibleMealsList.forEach(({ key }) => {
       const mealKey = key as "breakfast" | "lunch" | "olovrant";
       if (activeMeals[mealKey] && currentOrder[mealKey]) {
-        Object.values(currentOrder[mealKey]).forEach((cat: any) => {
+        Object.values(currentOrder[mealKey]).forEach((cat: CategoryData) => {
           if (cat.diets) {
             total += (Object.values(cat.diets) as number[]).reduce((a: number, b: number) => a + b, 0);
           }

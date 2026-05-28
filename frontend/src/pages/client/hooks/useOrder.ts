@@ -542,7 +542,6 @@ export const useOrder = () => {
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const visibleDietDetails: DietDetail[] =
         user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
         ? (user.settings.visible_diets as DietDetail[])
