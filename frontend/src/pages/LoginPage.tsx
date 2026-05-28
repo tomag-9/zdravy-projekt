@@ -8,8 +8,20 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [contactEmail, setContactEmail] = useState("info@zdravyprojekt.sk");
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`${API_URL}/admin/global-settings/`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.client_contact_email) {
+          setContactEmail(data.client_contact_email);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   // Navigate once user profile is loaded — this fires AFTER React commits state,
   // so user.is_staff is guaranteed to be correct
@@ -118,7 +130,7 @@ const LoginPage: React.FC = () => {
           <div className="zp-login-info">
             <strong>Registráciu vykonáva poskytovateľ.</strong><br />
             Ak máte záujem o službu, napíšte nám na{" "}
-            <a href="mailto:info@zdravyprojekt.sk">info@zdravyprojekt.sk</a>{" "}
+            <a href={`mailto:${contactEmail}`}>{contactEmail}</a>{" "}
             a my Vám vytvoríme prístup.
           </div>
         </form>

@@ -1,125 +1,125 @@
-// TODO: wire to real API — currently uses mock week data
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Coffee, Utensils, Apple } from "lucide-react";
+import { useAuth } from "../../../context/auth";
 
-interface MenuItem {
-  l: string;
-  t: string;
-  d: string;
-  allergens?: string[];
+const API_URL = import.meta.env.VITE_API_URL || "/api";
+
+type MealKey = "breakfast" | "lunch" | "snack";
+
+interface MealTemplate {
+  category: MealKey;
+  name: string;
+  weight_label: string;
+  menu_variant: string;
 }
 
-interface MealData {
-  gram: string;
-  items: MenuItem[];
+interface MealPlanItem {
+  id: number;
+  category: MealKey;
+  menu_variant: string;
+  template_detail: MealTemplate;
 }
 
-interface DayData {
+interface MealPlanResponse {
+  exists: boolean;
+  date: string;
+  items: MealPlanItem[];
+}
+
+interface WeekDay {
   date: string;
   label: string;
-  active?: boolean;
-  meals: {
-    ranajky: MealData;
-    obed: MealData;
-    olovrant: MealData;
-  };
 }
 
-const WEEK: DayData[] = [
-  {
-    date: "po",
-    label: "Pondelok",
-    meals: {
-      ranajky: { gram: "200/150 g", items: [{ l: "A", t: "Krupicová kaša s ovocím", d: "Pšeničná krupica, mlieko, lesné ovocie, med." }] },
-      obed: {
-        gram: "Polievka 200ml · 250/150g",
-        items: [
-          { l: "A", t: "Kurací vývar · Kuracie soté so zeleninou, ryža", d: "Kurča, paprika, brokolica, cuketa, dusená ryža." },
-          { l: "B", t: "Kurací vývar · Šošovicový prívarok, vajce, chlieb", d: "Šošovica, vajce v cestíčku, celozrnný chlieb.", allergens: ["1 lepok", "3 vajce", "7 mlieko"] },
-          { l: "V", t: "Zeleninová · Tofu so zeleninou, ryža", d: "Hľadkový tofu, paprika, mrkva, kel, ryža." },
-        ],
-      },
-      olovrant: { gram: "150 g", items: [{ l: "A", t: "Ovocný šalát s tvarohom", d: "Jablko, hruška, banán, tvaroh, škorica." }] },
-    },
-  },
-  {
-    date: "ut",
-    label: "Utorok",
-    active: true,
-    meals: {
-      ranajky: { gram: "200/150 g", items: [{ l: "A", t: "Ovsené vločky s jablkom", d: "Ovsené vločky, jablko, mlieko, škorica, hrozienka." }] },
-      obed: {
-        gram: "Polievka 200ml · 250/150g",
-        items: [
-          { l: "A", t: "Hrachová polievka · Hovädzí guláš, halušky", d: "Hovädzie pliecko, cibuľa, paprika, zemiakové halušky." },
-          { l: "B", t: "Hrachová · Cestoviny s tekvicou a fetou", d: "Penne, pečená tekvica hokkaido, feta syr, bylinky.", allergens: ["1 lepok", "7 mlieko"] },
-          { l: "V", t: "Hrachová · Šošovicové karbonátky, zemiaková kaša", d: "Červená šošovica, mrkva, ovos, kaša." },
-        ],
-      },
-      olovrant: { gram: "150 g", items: [{ l: "A", t: "Domáce müsli tyčinky", d: "Ovsené vločky, med, sušené ovocie, slnečnica." }] },
-    },
-  },
-  {
-    date: "st",
-    label: "Streda",
-    meals: {
-      ranajky: { gram: "200/150 g", items: [{ l: "A", t: "Bryndzové nátierky", d: "Bryndza, smotana, žemľa, cherry paradajky." }] },
-      obed: {
-        gram: "Polievka 200ml · 250/150g",
-        items: [
-          { l: "A", t: "Špargľová · Pečené kuracie stehno, opekané zemiaky", d: "Kuracie stehno, rozmarín, zemiaky." },
-          { l: "B", t: "Špargľová · Špenátové gnocchi s parmezánom", d: "Špenátové gnocchi, parmezán, maslo.", allergens: ["1 lepok", "7 mlieko"] },
-          { l: "V", t: "Špargľová · Falafel, hummus, pita", d: "Cícer, sezam, koriander, pita chlieb." },
-        ],
-      },
-      olovrant: { gram: "150 g", items: [{ l: "A", t: "Mliečne smoothie", d: "Mlieko, banán, lesné ovocie, ovsené vločky." }] },
-    },
-  },
-  {
-    date: "št",
-    label: "Štvrtok",
-    meals: {
-      ranajky: { gram: "200/150 g", items: [{ l: "A", t: "Celozrnné rožky s maslom", d: "Celozrnné rožky, maslo, med, čaj." }] },
-      obed: {
-        gram: "Polievka 200ml · 250/150g",
-        items: [
-          { l: "A", t: "Paradajková polievka · Bravčový rezeň, ryža", d: "Bravčové plátky, strúhanka, vajce, varená ryža." },
-          { l: "B", t: "Paradajková · Vegetariánska čína, ryža", d: "Zelenina wok, sója, zázvor, ryža." },
-          { l: "V", t: "Paradajková · Zeleninový kuskus", d: "Kuskus, cuketa, paprika, olivový olej." },
-        ],
-      },
-      olovrant: { gram: "150 g", items: [{ l: "A", t: "Tvarohový závin", d: "Tvaroh, rozínky, vanilka, lístkové cesto." }] },
-    },
-  },
-  {
-    date: "pi",
-    label: "Piatok",
-    meals: {
-      ranajky: { gram: "200/150 g", items: [{ l: "A", t: "Mlieko s kukuričnými lupienkami", d: "Kukuričné lupienky, mlieko, ovocie." }] },
-      obed: {
-        gram: "Polievka 200ml · 250/150g",
-        items: [
-          { l: "A", t: "Zeleninová polievka · Ryba na masle, zemiaková kaša", d: "Treska, maslo, citrón, zemiaková kaša." },
-          { l: "B", t: "Zeleninová · Cícer na špenáte, ryža", d: "Cícer, špenát, cesnak, olivový olej, ryža." },
-          { l: "V", t: "Zeleninová · Syrové knedličky, špenát", d: "Tvaroh, múka, vajce, špenát s cesnakom." },
-        ],
-      },
-      olovrant: { gram: "150 g", items: [{ l: "A", t: "Ovocná pena", d: "Jogurt, banán, jahody, med." }] },
-    },
-  },
-];
+const MEAL_META = {
+  breakfast: { label: "Raňajky", icon: Coffee },
+  lunch: { label: "Obed", icon: Utensils },
+  snack: { label: "Olovrant", icon: Apple },
+} satisfies Record<MealKey, { label: string; icon: typeof Coffee }>;
+
+function toLocalDateString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function currentWorkWeek(): WeekDay[] {
+  const now = new Date();
+  const monday = new Date(now);
+  const day = now.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  monday.setDate(now.getDate() + diff);
+
+  return Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return {
+      date: toLocalDateString(date),
+      label: date.toLocaleDateString("sk-SK", { weekday: "long" }),
+    };
+  });
+}
 
 const MenuPage = () => {
-  const today = new Date();
-  // Find active day index (today's weekday), fallback to 0
-  const dayOfWeek = today.getDay(); // 0 = Sunday
-  const defaultIdx = dayOfWeek >= 1 && dayOfWeek <= 5 ? dayOfWeek - 1 : 0;
+  const { apiFetch } = useAuth();
+  const week = useMemo(() => currentWorkWeek(), []);
+  const today = toLocalDateString(new Date());
+  const defaultIdx = Math.max(week.findIndex((day) => day.date === today), 0);
   const [dayIdx, setDayIdx] = useState(defaultIdx);
-  const day = WEEK[dayIdx];
+  const [plans, setPlans] = useState<Record<string, MealPlanResponse>>({});
+  const [loading, setLoading] = useState(true);
+  const day = week[dayIdx];
+  const plan = plans[day.date];
 
-  const letterClass = (l: string) => {
-    if (l === "B") return "b";
-    if (l === "V") return "v";
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchWeek() {
+      setLoading(true);
+      const entries = await Promise.all(
+        week.map(async (weekDay) => {
+          try {
+            const res = await apiFetch(
+              `${API_URL}/meal-plans/by-date/?date=${weekDay.date}`,
+            );
+            if (!res.ok) {
+              return [weekDay.date, { exists: false, date: weekDay.date, items: [] }];
+            }
+            const data = (await res.json()) as MealPlanResponse;
+            return [weekDay.date, data];
+          } catch {
+            return [weekDay.date, { exists: false, date: weekDay.date, items: [] }];
+          }
+        }),
+      );
+      if (!cancelled) {
+        setPlans(Object.fromEntries(entries));
+        setLoading(false);
+      }
+    }
+    fetchWeek();
+    return () => {
+      cancelled = true;
+    };
+  }, [apiFetch, week]);
+
+  const groupedItems = useMemo(() => {
+    const grouped: Record<MealKey, MealPlanItem[]> = {
+      breakfast: [],
+      lunch: [],
+      snack: [],
+    };
+    (plan?.items || []).forEach((item) => {
+      if (item.category in grouped) {
+        grouped[item.category].push(item);
+      }
+    });
+    return grouped;
+  }, [plan]);
+
+  const letterClass = (letter: string) => {
+    if (letter === "B") return "b";
+    if (letter === "V") return "v";
     return "";
   };
 
@@ -132,25 +132,24 @@ const MenuPage = () => {
         </div>
       </div>
 
-      {/* Day tabs */}
       <div style={{ display: "flex", gap: 6, padding: "6px 20px 16px", overflowX: "auto" }}>
-        {WEEK.map((d, i) => (
+        {week.map((weekDay, index) => (
           <button
-            key={d.date}
-            onClick={() => setDayIdx(i)}
+            key={weekDay.date}
+            onClick={() => setDayIdx(index)}
             className="zp-pill"
             style={{
               padding: "8px 14px",
-              background: i === dayIdx ? "var(--green-700)" : "var(--bg-cream-warm)",
-              color: i === dayIdx ? "var(--bg-cream)" : "var(--ink-2)",
-              border: `1px solid ${i === dayIdx ? "var(--green-700)" : "var(--line-soft)"}`,
+              background: index === dayIdx ? "var(--green-700)" : "var(--bg-cream-warm)",
+              color: index === dayIdx ? "var(--bg-cream)" : "var(--ink-2)",
+              border: `1px solid ${index === dayIdx ? "var(--green-700)" : "var(--line-soft)"}`,
               fontSize: 12,
               fontWeight: 600,
               cursor: "pointer",
               flexShrink: 0,
             }}
           >
-            {d.label}
+            {weekDay.label}
           </button>
         ))}
       </div>
@@ -161,64 +160,46 @@ const MenuPage = () => {
           <span className="when">{day.date}</span>
         </div>
 
-        {/* Raňajky */}
-        <div className="zp-menu-meal">
-          <div className="zp-menu-meal-head">
-            <Coffee style={{ width: 16, height: 16 }} />
-            <span className="name">Raňajky</span>
-            <span className="gram">{day.meals.ranajky.gram}</span>
-          </div>
-          {day.meals.ranajky.items.map((m, i) => (
-            <div className="zp-menu-item" key={i}>
-              <span className={`letter ${letterClass(m.l)}`}>{m.l}</span>
-              <div className="body">
-                <div className="ttl">{m.t}</div>
-                <div className="desc">{m.d}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+        {loading && <div className="zp-empty">Načítavam jedálniček...</div>}
 
-        {/* Obed */}
-        <div className="zp-menu-meal">
-          <div className="zp-menu-meal-head">
-            <Utensils style={{ width: 16, height: 16 }} />
-            <span className="name">Obed</span>
-            <span className="gram">{day.meals.obed.gram}</span>
-          </div>
-          {day.meals.obed.items.map((m, i) => (
-            <div className="zp-menu-item" key={i}>
-              <span className={`letter ${letterClass(m.l)}`}>{m.l}</span>
-              <div className="body">
-                <div className="ttl">{m.t}</div>
-                <div className="desc">{m.d}</div>
-                {m.allergens && m.allergens.length > 0 && (
-                  <div className="allergens">
-                    {m.allergens.map((a) => <span key={a}>{a}</span>)}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+        {!loading && (!plan?.exists || plan.items.length === 0) && (
+          <div className="zp-empty">Na tento deň zatiaľ nie je zverejnený jedálniček.</div>
+        )}
 
-        {/* Olovrant */}
-        <div className="zp-menu-meal">
-          <div className="zp-menu-meal-head">
-            <Apple style={{ width: 16, height: 16 }} />
-            <span className="name">Olovrant</span>
-            <span className="gram">{day.meals.olovrant.gram}</span>
-          </div>
-          {day.meals.olovrant.items.map((m, i) => (
-            <div className="zp-menu-item" key={i}>
-              <span className={`letter ${letterClass(m.l)}`}>{m.l}</span>
-              <div className="body">
-                <div className="ttl">{m.t}</div>
-                <div className="desc">{m.d}</div>
+        {!loading &&
+          (Object.keys(MEAL_META) as MealKey[]).map((mealKey) => {
+            const mealItems = groupedItems[mealKey];
+            if (mealItems.length === 0) return null;
+            const Icon = MEAL_META[mealKey].icon;
+            const weightLabel = mealItems
+              .map((item) => item.template_detail?.weight_label)
+              .filter(Boolean)
+              .join(" · ");
+
+            return (
+              <div className="zp-menu-meal" key={mealKey}>
+                <div className="zp-menu-meal-head">
+                  <Icon style={{ width: 16, height: 16 }} />
+                  <span className="name">{MEAL_META[mealKey].label}</span>
+                  <span className="gram">{weightLabel}</span>
+                </div>
+                {mealItems.map((item) => {
+                  const variant = item.menu_variant || item.template_detail?.menu_variant || "A";
+                  return (
+                    <div className="zp-menu-item" key={item.id}>
+                      <span className={`letter ${letterClass(variant)}`}>{variant}</span>
+                      <div className="body">
+                        <div className="ttl">{item.template_detail?.name}</div>
+                        {item.template_detail?.weight_label && (
+                          <div className="desc">{item.template_detail.weight_label}</div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          ))}
-        </div>
+            );
+          })}
       </div>
     </div>
   );

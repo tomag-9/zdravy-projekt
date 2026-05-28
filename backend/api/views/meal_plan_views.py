@@ -6,13 +6,14 @@ import datetime
 from typing import Any
 from urllib.parse import quote
 
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import DailyMealPlan, MealTemplate, PortionType
+from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -88,12 +89,22 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
     """Admin ViewSet for daily meal plans with gramage reporting and export."""
 
     serializer_class = DailyMealPlanSerializer
-    permission_classes = [permissions.IsAdminUser]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve", "by_date"]:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
     def get_queryset(self):
+        item_queryset = MealPlanItem.objects.select_related("template")
+        if not self.request.user.is_staff:
+            item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(
-            "items__template", "enrolled_counts__portion_type"
+            Prefetch("items", queryset=item_queryset),
+            "enrolled_counts__portion_type",
         ).order_by("-date")
+        if not self.request.user.is_staff:
+            qs = qs.filter(items__template__is_active=True).distinct()
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
         if from_date:
@@ -122,9 +133,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            plan = DailyMealPlan.objects.prefetch_related(
-                "items__template", "enrolled_counts__portion_type"
-            ).get(date=date)
+            plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
             return Response(
                 {

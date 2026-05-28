@@ -19,6 +19,7 @@ interface RenameModal {
   id: number;
   currentName: string;
   newName: string;
+  description: string;
 }
 
 const DietManager: React.FC = () => {
@@ -26,6 +27,7 @@ const DietManager: React.FC = () => {
   const { success, error } = useToast();
   const [diets, setDiets] = useState<Diet[]>([]);
   const [newDietName, setNewDietName] = useState("");
+  const [newDietDescription, setNewDietDescription] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(
     null,
   );
@@ -60,7 +62,11 @@ const DietManager: React.FC = () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: newDietName, is_active: true }),
+          body: JSON.stringify({
+            name: newDietName.trim(),
+            description: newDietDescription.trim(),
+            is_active: true,
+          }),
         },
       );
       if (res.ok) {
@@ -70,6 +76,7 @@ const DietManager: React.FC = () => {
           return [created, ...prev];
         });
         setNewDietName("");
+        setNewDietDescription("");
         fetchDiets();
         success("Diéta bola úspešne pridaná");
       } else {
@@ -111,7 +118,10 @@ const DietManager: React.FC = () => {
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: renameModal.newName.trim() }),
+          body: JSON.stringify({
+            name: renameModal.newName.trim(),
+            description: renameModal.description.trim(),
+          }),
         },
       );
       if (res.ok) {
@@ -135,13 +145,13 @@ const DietManager: React.FC = () => {
         <div>
           <h2 className="text-3xl font-bold text-gray-900">Správa diét</h2>
           <p className="text-gray-500 mt-1">
-            Pridajte, premenujte alebo odstráňte systémové diéty
+            Pridajte, premenujte alebo upravte popisy systémových diét
           </p>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <form onSubmit={handleAddDiet} className="flex gap-4">
+        <form onSubmit={handleAddDiet} className="grid gap-4 md:grid-cols-[1fr_1fr_auto]">
           <input
             type="text"
             value={newDietName}
@@ -149,9 +159,16 @@ const DietManager: React.FC = () => {
             placeholder="Názov novej diéty (napr. Bez lepku)"
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
           />
+          <input
+            type="text"
+            value={newDietDescription}
+            onChange={(e) => setNewDietDescription(e.target.value)}
+            placeholder="Popis diéty pre klienta"
+            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+          />
           <button
             type="submit"
-            disabled={!newDietName}
+            disabled={!newDietName.trim()}
             className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
           >
             Pridať diétu
@@ -163,9 +180,14 @@ const DietManager: React.FC = () => {
         {diets.map((diet) => (
           <div
             key={diet.id}
-            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center"
+            className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex justify-between items-start gap-4"
           >
-            <span className="font-medium text-gray-800">{diet.name}</span>
+            <div>
+              <span className="font-medium text-gray-800">{diet.name}</span>
+              {diet.description && (
+                <p className="text-sm text-gray-500 mt-1">{diet.description}</p>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               <button
                 onClick={() =>
@@ -173,11 +195,12 @@ const DietManager: React.FC = () => {
                     id: diet.id,
                     currentName: diet.name,
                     newName: diet.name,
+                    description: diet.description || "",
                   })
                 }
                 className="text-indigo-500 hover:text-indigo-700 text-sm px-3 py-1 rounded-md hover:bg-indigo-50 transition"
               >
-                Premenovať
+                Upraviť
               </button>
               <button
                 onClick={() =>
@@ -251,6 +274,17 @@ const DietManager: React.FC = () => {
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-6"
           autoFocus
         />
+        <textarea
+          value={renameModal?.description ?? ""}
+          onChange={(e) =>
+            setRenameModal((prev) =>
+              prev ? { ...prev, description: e.target.value } : prev,
+            )
+          }
+          placeholder="Popis diéty pre klienta"
+          rows={4}
+          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-6"
+        />
         <div className="flex justify-end gap-3">
           <button
             onClick={() => setRenameModal(null)}
@@ -263,7 +297,9 @@ const DietManager: React.FC = () => {
             disabled={
               renaming ||
               !renameModal?.newName.trim() ||
-              renameModal?.newName.trim() === renameModal?.currentName
+              (renameModal?.newName.trim() === renameModal?.currentName &&
+                renameModal?.description.trim() ===
+                  (diets.find((diet) => diet.id === renameModal?.id)?.description || "").trim())
             }
             className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition"
           >

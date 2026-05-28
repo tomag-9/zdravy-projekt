@@ -129,7 +129,6 @@ export default function App() {
               <PWAUpdateBanner />
               <Routes>
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<Navigate to="/login" replace />} />
               <Route path="/verify-email/:token" element={<Navigate to="/login" replace />} />
               <Route path="/resend-verification" element={<Navigate to="/login" replace />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -20,6 +20,13 @@ interface ClientContactInfo {
     phone: string;
 }
 
+interface DietDetail {
+    id: number;
+    name: string;
+    description?: string | null;
+    is_active?: boolean;
+}
+
 type ApiErrorPayload = {
     error?: {
         code?: string;
@@ -539,9 +546,12 @@ export const useOrder = () => {
         : adminVisibleMealsSetting;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ? (user.settings.visible_diets as any[]).map(d => d.name)
+    const visibleDietDetails: DietDetail[] =
+        user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
+        ? (user.settings.visible_diets as DietDetail[])
+        : [];
+    const adminVisibleDiets = visibleDietDetails.length > 0
+        ? visibleDietDetails.map(d => d.name)
         : [];
 
     // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
@@ -601,6 +611,7 @@ export const useOrder = () => {
     return {
         enabledCategories, toggleCategory,
         portionTypes,
+        visibleDietDetails,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         updateMenuCount, updateDiet,

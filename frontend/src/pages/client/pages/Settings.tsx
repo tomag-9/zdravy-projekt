@@ -18,26 +18,10 @@ import { useApp } from "../context/AppContext";
 
 type View = "main" | "portions" | "diets";
 
-const DIETS = [
-  { code: "VEGGIE", name: "Vegetariánska", desc: "Bez mäsa. Zachované mliečne výrobky a vajcia." },
-  { code: "NO MILK", name: "Bez mliečnych výrobkov", desc: "Vynechané všetky mliečne výrobky, vrátane masla a smotany." },
-  { code: "NO GLUTEN", name: "Bezlepková", desc: "Bez pšenice, žita, jačmeňa a ovsa. Vhodné pri celiakii." },
-  { code: "NO MILK / NO GLUTEN", name: "Bez mlieka a lepku", desc: "Kombinácia oboch obmedzení." },
-  { code: "NONONO", name: "Bez mlieka, lepku a vajec", desc: "Najprísnejší variant pri kombinovaných alergiách." },
-  { code: "HISTAMIN", name: "Nízkohistamínová", desc: "Bez fermentovaných potravín a zrelých syrov." },
-  { code: "NO ORECH", name: "Bez orechov", desc: "Vynechané všetky druhy orechov a arašidov." },
-  { code: "NO PARADAJKA", name: "Bez paradajok", desc: "Bez paradajok v akejkoľvek forme (čerstvé, pretlak, omáčka)." },
-  { code: "NO FISH", name: "Bez rýb", desc: "Bez rýb a morských plodov." },
-  { code: "NO EGG", name: "Bez vajec", desc: "Vynechané vajcia aj ako prísada do cesta a omáčok." },
-  { code: "NO ZEMIAK", name: "Bez zemiakov", desc: "Bez zemiakov v hlavnom jedle a prílohách." },
-  { code: "NO SOJA", name: "Bez sóje", desc: "Bez sóje a sójových produktov." },
-  { code: "NO ZELER", name: "Bez zeleru", desc: "Vynechaný zeler vo všetkých formách (vňať, hľuza, sušený)." },
-];
-
 const Settings = () => {
   const [view, setView] = useState<View>("main");
   const { user, logout } = useAuth();
-  const { enabledCategories, portionTypes, clientContactInfo } = useApp();
+  const { enabledCategories, portionTypes, clientContactInfo, visibleDietDetails } = useApp();
   const navigate = useNavigate();
   const portionByName = new Map(portionTypes.map((portion) => [portion.name, portion]));
   const contactName = clientContactInfo.name || "Zdravý projekt";
@@ -110,7 +94,7 @@ const Settings = () => {
           </button>
           <div>
             <h1>Dostupné diéty</h1>
-            <p>{DIETS.length} diét · popis a alergény</p>
+            <p>{visibleDietDetails.length} diét · popis a alergény</p>
           </div>
         </div>
 
@@ -122,12 +106,19 @@ const Settings = () => {
           </div>
         </div>
 
-        {DIETS.map((d) => (
-          <div className="zp-diet-readonly" key={d.code}>
-            <span className="badge">{d.code}</span>
+        {visibleDietDetails.length === 0 && (
+          <div className="zp-empty">
+            <Apple />
+            <p style={{ margin: "8px 0 0", fontSize: 14 }}>Nemáte povolené žiadne diéty.</p>
+          </div>
+        )}
+
+        {visibleDietDetails.map((d) => (
+          <div className="zp-diet-readonly" key={d.id}>
+            <span className="badge">{d.name}</span>
             <div className="body">
               <div className="name">{d.name}</div>
-              <div className="desc">{d.desc}</div>
+              <div className="desc">{d.description || "Bez doplňujúceho popisu."}</div>
             </div>
           </div>
         ))}
@@ -220,7 +211,7 @@ const Settings = () => {
             </span>
             <span className="body">
               <span className="ttl">Dostupné diéty</span>
-              <span className="sub">{DIETS.length} diét · popis a alergény</span>
+              <span className="sub">{visibleDietDetails.length} diét · popis a alergény</span>
             </span>
             <span className="chev">
               <ChevronRight style={{ width: 18, height: 18 }} />

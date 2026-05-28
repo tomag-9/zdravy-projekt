@@ -13,7 +13,7 @@ Usage:
 
 from django.core.management.base import BaseCommand
 
-from api.models import PortionType
+from api.models import Diet, PortionType
 
 PORTION_TYPES = [
     {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
@@ -21,6 +21,22 @@ PORTION_TYPES = [
     {"name": "ZŠ 1.stupeň", "coefficient": "1.1500", "sort_order": 3},
     {"name": "ZŠ 2.stupeň", "coefficient": "1.3000", "sort_order": 4},
     {"name": "Dospelý (SŠ)", "coefficient": "1.5000", "sort_order": 5},
+]
+
+DEFAULT_DIETS = [
+    ("NO MILK", "Bez mlieka a mliečnych výrobkov."),
+    ("NO GLUTEN", "Bez lepku."),
+    ("NO MILK/NO GLUTEN", "Bez mlieka a lepku."),
+    ("VEGGIE", "Vegetariánska strava."),
+    ("HISTAMIN", "Nízkohistamínová strava."),
+    ("NONONO", "Bez mlieka, lepku a vajec."),
+    ("NO ORECH", "Bez orechov."),
+    ("NO PARADAJKA", "Bez paradajok."),
+    ("NO FISH", "Bez rýb."),
+    ("NO EGG", "Bez vajec."),
+    ("NO ZEMIAK", "Bez zemiakov."),
+    ("NO SOJA", "Bez sóje."),
+    ("NO ZELER", "Bez zeleru."),
 ]
 
 
@@ -41,10 +57,21 @@ class Command(BaseCommand):
                 created_count += 1
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
-        if created_count:
+        diet_created_count = 0
+        for name, description in DEFAULT_DIETS:
+            _, created = Diet.objects.update_or_create(
+                name=name,
+                defaults={"description": description, "is_active": True},
+            )
+            if created:
+                diet_created_count += 1
+                self.stdout.write(f"  Diet created: {name}")
+
+        if created_count or diet_created_count:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"init_reference_data: created {created_count} new records."
+                    "init_reference_data: created "
+                    f"{created_count} portion types and {diet_created_count} diets."
                 )
             )
         else:

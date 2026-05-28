@@ -55,9 +55,9 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
     """
 
     def get_permissions(self):
-        # Allow authenticated users to list (read) settings
+        # Allow public read for login/help copy; serializer strips admin-only fields.
         if self.action == "list":
-            return [permissions.IsAuthenticated()]
+            return [permissions.AllowAny()]
         # Require admin for creation/updates
         return [permissions.IsAdminUser()]
 

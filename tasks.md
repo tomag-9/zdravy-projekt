@@ -7,11 +7,11 @@
 
 ## Rychle zistenia z aktualnej implementacie
 
-- Klient si dnes stale vie manualne prepinat "Povolene porcie" v `frontend/src/pages/client/pages/Settings.tsx`.
+- Klientske porcie su read-only a tahaju sa z backendovych aktivnych typov porcii.
 - Historia poslednych 5 objednavok uz existuje v `frontend/src/pages/client/pages/HomePage.tsx`.
-- Po odoslani objednavky sa dnes iba scrolluje hore v `frontend/src/pages/client/pages/OrderPage.tsx`, nepresmeruje sa na homescreen.
-- Dieta ma backend pole `description`, ale admin UI ho zatial nepouziva.
-- Koeficienty su seednute ako Skolka `0.5`, ZS `0.65/0.75`, Dospely `1.0`, nie podla noveho pravidla MS/Skolka = `1.0`.
+- Po odoslani objednavky ide klient na success obrazovku a odtial spat na home.
+- Dieta ma backend pole `description` a admin UI ho vie editovat.
+- Koeficienty maju Skolka/MS zaklad `1.0` a existuje idempotentna migracia.
 
 ## P0
 
@@ -26,9 +26,9 @@
 - (UI)[x] TODO P0: Pod tlacidlo "Nova objednavka" na homescreen doplnit disclaimer: "Objednavky sa automaticky preklapaju na dalsi den, pokial ich manualne needitujete."
 - [x] TODO P0: Opravit koeficienty typov porcii: zaklad je MS/Skolka = `1.0`, ostatne typy su nasobky, napr. ZS = MS x `1.15`.
 - [x] TODO P0: Spravit migraciu alebo idempotentny update existujucich koeficientov v referencnych datach.
-- [x] TODO P0:Zmenit seed default diety: `NO MILK`, `NO GLUTEN`, `NO MILK/NO GLUTEN`, `VEGGIE`, `HISTAMIN`, `NONONO`, `NO ORECH`, `NO PARADAJKA`, `NO FISH`, `NO EGG`, `NO ZEMIAK`, `NO SOJA`, `NO ZELER`.
-- [x] TODO P0: Admin sprava diet ma podporovat aj editaciu `description`, nie iba nazov.
-- (UI)[x] TODO P0: Klientovi zobrazit popisy povolenych diet v settings rovnako ako ma readonly porcie. 
+- [x] TODO P0:Zmenit seed default diety: `NO MILK`, `NO GLUTEN`, `NO MILK/NO GLUTEN`, `VEGGIE`, `HISTAMIN`, `NONONO`, `NO ORECH`, `NO PARADAJKA`, `NO FISH`, `NO EGG`, `NO ZEMIAK`, `NO SOJA`, `NO ZELER`. Napojene na migraciu aj `init_reference_data`.
+- [x] TODO P0: Admin sprava diet ma podporovat aj editaciu `description`, nie iba nazov. Overene cez `/api/diets/`.
+- (UI)[x] TODO P0: Klientovi zobrazit popisy povolenych diet v settings rovnako ako ma readonly porcie. Napojene na `user.settings.visible_diets`.
 
 ## P1
 
@@ -44,9 +44,9 @@
 
 ## P2
 
-- (UI)[x] TODO P2: Na login/registraciu doplnit informaciu, ze registraciu vykonava poskytovatel ak pre informaciu nech napisu na kontaktny email. Route `/register` dnes iba redirectuje na login, takze staci text na login., zmazat rout register bo ho netreba.
+- (UI)[x] TODO P2: Na login/registraciu doplnit informaciu, ze registraciu vykonava poskytovatel ak pre informaciu nech napisu na kontaktny email. Route `/register` dnes iba redirectuje na login, takze staci text na login., zmazat rout register bo ho netreba. `/register` route zmazana, kontakt sa cita z global settings.
 - (FUTURE FEATURE)[] TODO P2: Pripravit import EduPage, samostatne od importu jedalnicka.
-- [x] TODO P2: Pripravit zobrazenie aktualneho jedalnicka pre klienta. Data zo systemu.
+- [x] TODO P2: Pripravit zobrazenie aktualneho jedalnicka pre klienta. Data zo systemu. Klient cita `/api/meal-plans/by-date/`.
 - (UI)[x] DONE P2: Zladit vizual aplikacie s logom a prezentaciou Zdraveho Projektu po dodani podkladov.
 - (UI)[x] DONE P2: Pouzit podkladovu farbu z prezentacie pre celu aplikaciu po dodani brand podkladov.
 - (UI)[] TODO P2: Rozhodnut umiestnenie marketingovej sekcie "News Flash"/blog, pravdepodobne admin/klient home podla cielovej skupiny skolok.
