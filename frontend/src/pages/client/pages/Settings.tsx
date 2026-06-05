@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../context/auth";
 import { useApp } from "../context/AppContext";
+import ConfirmationModal from "../components/ui/ConfirmationModal";
 
 type View = "main" | "portions" | "diets";
 
 const Settings = () => {
   const [view, setView] = useState<View>("main");
+  const [showLogout, setShowLogout] = useState(false);
   const { user, logout } = useAuth();
   const { enabledCategories, portionTypes, clientContactInfo, visibleDietDetails } = useApp();
   const navigate = useNavigate();
@@ -223,7 +225,7 @@ const Settings = () => {
       <div className="zp-settings-section">
         <h2>Podpora</h2>
         <div className="zp-settings-list">
-          <button className="zp-settings-row">
+          <button className="zp-settings-row" onClick={() => navigate("/about")}>
             <span className="ic">
               <Info style={{ width: 18, height: 18 }} />
             </span>
@@ -237,7 +239,7 @@ const Settings = () => {
           </button>
           <button
             className="zp-settings-row"
-            onClick={logout}
+            onClick={() => setShowLogout(true)}
           >
             <span className="ic" style={{ background: "rgba(201,46,82,0.1)", color: "var(--coral-600)" }}>
               <LogOut style={{ width: 18, height: 18 }} />
@@ -249,6 +251,17 @@ const Settings = () => {
           </button>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showLogout}
+        onClose={() => setShowLogout(false)}
+        onConfirm={logout}
+        title="Odhlásenie"
+        description="Naozaj sa chcete odhlásiť z aplikácie?"
+        confirmText="Odhlásiť sa"
+        cancelText="Zrušiť"
+        variant="danger"
+      />
     </div>
   );
 };

@@ -21,6 +21,7 @@ import SuccessPage from "./pages/client/pages/SuccessPage";
 import MenuPage from "./pages/client/pages/MenuPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
+import AboutPage from "./pages/client/pages/AboutPage";
 import ClientLayout from "./pages/client/components/ClientLayout";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -161,8 +162,9 @@ export default function App() {
                   <Route path="/menu" element={<MenuPage />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/order" element={<OrderPage />} />
+                  <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/about" element={<AboutPage />} />
                 </Route>
-                <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/success" element={<SuccessPage />} />
               </Route>
               </Routes>

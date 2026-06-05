@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Coffee, Utensils, Apple } from "lucide-react";
+import { Coffee, Utensils, Apple, Settings, ChevronRight, ChevronLeft } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/auth";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
@@ -44,12 +45,12 @@ function toLocalDateString(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
-function currentWorkWeek(): WeekDay[] {
+function getWorkWeek(offsetWeeks: number): WeekDay[] {
   const now = new Date();
-  const monday = new Date(now);
   const day = now.getDay();
   const diff = day === 0 ? -6 : 1 - day;
-  monday.setDate(now.getDate() + diff);
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff + offsetWeeks * 7);
 
   return Array.from({ length: 5 }, (_, index) => {
     const date = new Date(monday);
@@ -61,16 +62,38 @@ function currentWorkWeek(): WeekDay[] {
   });
 }
 
+function getWeekLabel(week: WeekDay[]): string {
+  const first = new Date(week[0].date + "T12:00:00");
+  const last = new Date(week[4].date + "T12:00:00");
+  const weekNum = (() => {
+    const d = new Date(first);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    const week1 = new Date(d.getFullYear(), 0, 4);
+    return 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+  })();
+  const fmt = (d: Date) => d.toLocaleDateString("sk-SK", { day: "numeric", month: "numeric" });
+  return `Týždeň ${weekNum} · ${fmt(first)} – ${fmt(last)} ${last.getFullYear()}`;
+}
+
 const MenuPage = () => {
   const { apiFetch } = useAuth();
-  const week = useMemo(() => currentWorkWeek(), []);
+  const navigate = useNavigate();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const week = useMemo(() => getWorkWeek(weekOffset), [weekOffset]);
   const today = toLocalDateString(new Date());
   const defaultIdx = Math.max(week.findIndex((day) => day.date === today), 0);
   const [dayIdx, setDayIdx] = useState(defaultIdx);
   const [plans, setPlans] = useState<Record<string, MealPlanResponse>>({});
   const [loading, setLoading] = useState(true);
+  const [nextWeekHasData, setNextWeekHasData] = useState(false);
   const day = week[dayIdx];
   const plan = plans[day.date];
+
+  useEffect(() => {
+    setDayIdx(weekOffset === 0 ? Math.max(week.findIndex((d) => d.date === today), 0) : 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekOffset]);
 
   useEffect(() => {
     let cancelled = false;
@@ -98,10 +121,18 @@ const MenuPage = () => {
       }
     }
     fetchWeek();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [apiFetch, week]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const nextWeek = getWorkWeek(weekOffset + 1);
+    apiFetch(`${API_URL}/meal-plans/by-date/?date=${nextWeek[0].date}`)
+      .then((r) => r.ok ? r.json() : { exists: false })
+      .then((data: MealPlanResponse) => { if (!cancelled) setNextWeekHasData(data.exists); })
+      .catch(() => { if (!cancelled) setNextWeekHasData(false); });
+    return () => { cancelled = true; };
+  }, [apiFetch, weekOffset]);
 
   const groupedItems = useMemo(() => {
     const grouped: Record<MealKey, MealPlanItem[]> = {
@@ -128,8 +159,38 @@ const MenuPage = () => {
       <div className="zp-pageheader">
         <div>
           <h1>Jedálniček</h1>
-          <p>Aktuálny týždeň</p>
+          <p>{getWeekLabel(week)}</p>
         </div>
+        <button
+          className="zp-iconbtn"
+          aria-label="Nastavenia"
+          onClick={() => navigate("/settings")}
+          style={{ marginLeft: "auto" }}
+        >
+          <Settings style={{ width: 18, height: 18, strokeWidth: 2 }} />
+        </button>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 16px 4px" }}>
+        {weekOffset > 0 && (
+          <button
+            className="zp-iconbtn"
+            aria-label="Predchádzajúci týždeň"
+            onClick={() => setWeekOffset((o) => o - 1)}
+          >
+            <ChevronLeft style={{ width: 18, height: 18 }} />
+          </button>
+        )}
+        <div style={{ flex: 1 }} />
+        <button
+          className="zp-iconbtn"
+          aria-label="Nasledujúci týždeň"
+          onClick={() => setWeekOffset((o) => o + 1)}
+          disabled={!nextWeekHasData}
+          style={{ opacity: nextWeekHasData ? 1 : 0.3 }}
+        >
+          <ChevronRight style={{ width: 18, height: 18 }} />
+        </button>
       </div>
 
       <div className="zp-week-tabs">

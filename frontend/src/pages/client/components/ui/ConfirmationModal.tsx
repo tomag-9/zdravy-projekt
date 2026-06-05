@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useScrollLock } from '../../../../hooks/useScrollLock';
 
 interface ConfirmationModalProps {
     isOpen: boolean;
@@ -22,6 +23,7 @@ const ConfirmationModal = ({
     cancelText = 'Zrušiť',
     variant = 'danger'
 }: ConfirmationModalProps) => {
+    useScrollLock(isOpen);
     if (!isOpen) return null;
 
     const colors = {
