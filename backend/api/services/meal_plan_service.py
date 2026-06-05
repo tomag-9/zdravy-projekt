@@ -455,6 +455,7 @@ class MealPlanService:
                                 "type": "standard",
                                 "meal": meal,
                                 "variant": variant,
+                                "portion_name": portion_name,
                                 "label": label,
                                 "count": count,
                                 "col_grams": grams,
@@ -471,6 +472,8 @@ class MealPlanService:
                             {
                                 "type": "diet",
                                 "meal": meal,
+                                "portion_name": portion_name,
+                                "diet_name": diet_name,
                                 "label": f"{portion_name} - {diet_name}",
                                 "count": diet_count,
                                 "col_grams": diet_grams,
@@ -523,18 +526,18 @@ class MealPlanService:
 
         for _r in rows:
             for _sr in _r["sub_rows"]:
-                _pname = _sr["label"].split(" - ", 1)[0]
+                _pname = _sr.get("portion_name", "")
+                if not _pname:
+                    continue
                 if _sr["type"] == "standard":
                     _mv = (_sr["meal"], _sr.get("variant", ""))
                     if _mv not in _std_agg:
                         _std_agg[_mv] = {}
                     _std_agg[_mv][_pname] = _std_agg[_mv].get(_pname, 0) + _sr["count"]
                 else:
-                    _dname = (
-                        _sr["label"][len(_pname) + 3 :]
-                        if _sr["label"].startswith(_pname + " - ")
-                        else _sr["label"]
-                    )
+                    _dname = _sr.get("diet_name", "")
+                    if not _dname:
+                        continue
                     _m = _sr["meal"]
                     if _m not in _diet_agg:
                         _diet_agg[_m] = {}

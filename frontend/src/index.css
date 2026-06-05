@@ -706,7 +706,7 @@
  * Order page
  * ========================================================== */
 
-.zp-orderpage { padding-bottom: 130px; }
+.zp-orderpage { padding-bottom: 16px; }
 
 .zp-orderbar {
     display: flex;

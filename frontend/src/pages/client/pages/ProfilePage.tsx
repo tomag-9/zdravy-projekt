@@ -201,6 +201,7 @@ const ProfilePage = () => {
                     className="zp-iconbtn"
                     onClick={() => setShowLogoutConfirmation(true)}
                     aria-label="Odhlásiť sa"
+                    style={{ marginLeft: "auto" }}
                 >
                     <LogOut style={{ width: 18, height: 18, strokeWidth: 2 }} />
                 </button>

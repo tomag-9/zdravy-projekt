@@ -369,8 +369,19 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
 
 @receiver(post_save, sender="api.ClientSettings")
 def on_client_settings_saved(sender, instance, created=False, **kwargs):
-    """Invalidate ClientSettings cache when saved."""
+    """Apply default diets for new settings and invalidate ClientSettings cache."""
     try:
+        if created and instance.visible_diets.count() == 0:
+            from api.models import Diet
+            from api.reference_data import DEFAULT_DIET_NAMES
+
+            default_diets = Diet.objects.filter(
+                name__in=DEFAULT_DIET_NAMES,
+                is_active=True,
+            )
+            if default_diets.exists():
+                instance.visible_diets.set(default_diets)
+
         from api.cache_service import clear_client_settings_cache
 
         clear_client_settings_cache(instance.user_id)

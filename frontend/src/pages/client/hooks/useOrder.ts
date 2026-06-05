@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
+import { CATEGORIES } from '../config/constants';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -602,8 +603,11 @@ export const useOrder = () => {
         return true;
     };
 
+    const enabledCategories =
+        portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
+
     return {
-        enabledCategories: portionTypes.map((pt) => pt.name),
+        enabledCategories,
         portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,

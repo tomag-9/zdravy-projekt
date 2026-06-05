@@ -43,6 +43,7 @@ const MealCard = ({
                     className={`zp-switch${isActive ? " zp-switch--on" : ""}`}
                     role="switch"
                     aria-checked={isActive}
+                    aria-label={`${title} - prepnúť`}
                     tabIndex={isLocked ? -1 : 0}
                     onClick={isLocked ? undefined : onToggle}
                     onKeyDown={isLocked ? undefined : (e) => {
