@@ -56,7 +56,7 @@ const Modal: React.FC<ModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="zp-centered-modal z-50"
       aria-modal="true"
       role="dialog"
       aria-labelledby={titleId}

@@ -1222,6 +1222,18 @@
 }
 .zp-route-body--notab { padding-bottom: 24px; }
 
+.zp-centered-modal {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+    overflow-y: auto;
+}
+
 /* Bottom tab nav */
 .zp-tabbar {
     position: absolute;
@@ -1252,6 +1264,7 @@
 
 .zp-tab {
     flex: 1;
+    min-width: 0;
     display: inline-flex;
     flex-direction: column;
     align-items: center;
@@ -1272,9 +1285,29 @@
     z-index: 1;
 }
 .zp-tab svg { width: 20px; height: 20px; stroke-width: 1.8; }
+.zp-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .zp-tab:hover { color: var(--green-700); }
 .zp-tab--active { color: var(--green-700); }
 .zp-tab--active svg { stroke-width: 2.1; }
+.zp-tab--action svg {
+    width: 22px;
+    height: 22px;
+    padding: 3px;
+    border-radius: 50%;
+    background: var(--green-700);
+    color: var(--bg-cream);
+    stroke-width: 2.2;
+}
+.zp-tab--action.zp-tab--active svg {
+    background: var(--coral-600);
+    color: white;
+}
 
 /* ========================================================== *
  * Generic page header with back button (settings, menu, etc.)
@@ -1813,6 +1846,40 @@
 
 .zp-menu-day {
     margin: 0 20px 18px;
+}
+.zp-week-tabs {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 6px 20px 16px;
+}
+.zp-week-tab {
+    min-width: 0;
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-pill);
+    padding: 8px 4px;
+    cursor: pointer;
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.1;
+    overflow: hidden;
+    text-align: center;
+    text-overflow: ellipsis;
+    text-transform: capitalize;
+    white-space: nowrap;
+    transition: background 180ms, color 180ms, border-color 180ms;
+}
+.zp-week-tab--active { box-shadow: var(--shadow-xs); }
+@media (max-width: 360px) {
+    .zp-week-tabs {
+        gap: 3px;
+        padding-inline: 14px;
+    }
+    .zp-week-tab {
+        padding-inline: 2px;
+        font-size: 10px;
+    }
 }
 .zp-menu-day-head {
     display: flex;

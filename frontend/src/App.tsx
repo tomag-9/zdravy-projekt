@@ -160,9 +160,9 @@ export default function App() {
                   <Route path="/home" element={<HomePage />} />
                   <Route path="/menu" element={<MenuPage />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/order" element={<OrderPage />} />
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
-                <Route path="/order" element={<OrderPage />} />
                 <Route path="/success" element={<SuccessPage />} />
               </Route>
               </Routes>

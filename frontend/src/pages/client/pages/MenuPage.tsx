@@ -132,21 +132,18 @@ const MenuPage = () => {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 6, padding: "6px 20px 16px", overflowX: "auto" }}>
+      <div className="zp-week-tabs">
         {week.map((weekDay, index) => (
           <button
             key={weekDay.date}
             onClick={() => setDayIdx(index)}
-            className="zp-pill"
+            className={`zp-week-tab${index === dayIdx ? " zp-week-tab--active" : ""}`}
             style={{
-              padding: "8px 14px",
-              background: index === dayIdx ? "var(--green-700)" : "var(--bg-cream-warm)",
+              background:
+                index === dayIdx ? "var(--green-700)" : "var(--bg-cream-warm)",
               color: index === dayIdx ? "var(--bg-cream)" : "var(--ink-2)",
-              border: `1px solid ${index === dayIdx ? "var(--green-700)" : "var(--line-soft)"}`,
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              flexShrink: 0,
+              borderColor:
+                index === dayIdx ? "var(--green-700)" : "var(--line-soft)",
             }}
           >
             {weekDay.label}

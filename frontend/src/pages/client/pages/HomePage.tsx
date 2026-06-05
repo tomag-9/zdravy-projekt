@@ -12,6 +12,7 @@ import {
   Clock,
   History,
   ChevronRight,
+  Settings,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
@@ -370,6 +371,14 @@ const HomePage = () => {
             alt="Zdravý projekt"
             style={{ height: 32, width: "auto", display: "block" }}
           />
+          <Link
+            to="/settings"
+            className="zp-iconbtn"
+            aria-label="Nastavenia"
+            data-tour-id="tour-profile-btn"
+          >
+            <Settings />
+          </Link>
         </div>
 
         {/* Greeting */}
