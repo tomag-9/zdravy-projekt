@@ -74,10 +74,15 @@ class GramageDashboardXLSXExporter:
                     end_column=c + len(cg["components"]) - 1,
                 )
 
-        # ── Header row 2: component labels ──────────────────────────────────
+        # ── Header row 2: component labels with base gramage ────────────────
         for i, cg in enumerate(col_groups):
             for j, comp in enumerate(cg["components"]):
-                ws.cell(row=HDR_ROW + 1, column=col_start[i] + j, value=comp["label"])
+                base_g = int(float(comp["base_grams"]))
+                ws.cell(
+                    row=HDR_ROW + 1,
+                    column=col_start[i] + j,
+                    value=f'{comp["label"]} ({base_g}g)',
+                )
 
         # Style both header rows
         for r in (HDR_ROW, HDR_ROW + 1):
@@ -189,6 +194,45 @@ class GramageDashboardXLSXExporter:
             for j in range(len(cg["components"])):
                 col_letter = openpyxl.utils.get_column_letter(col_start[i] + j)
                 ws.column_dimensions[col_letter].width = 11
+
+        # ── Count summary ────────────────────────────────────────────────────
+        count_summary = self.data.get("count_summary", [])
+        if count_summary:
+            DATA_ROW += 2  # blank separator
+            ws.cell(row=DATA_ROW, column=1, value="Súhrn objednávok")
+            ws.cell(row=DATA_ROW, column=1).font = Font(bold=True, size=12)
+            DATA_ROW += 1
+
+            for section in count_summary:
+                if not section.get("standard") and not section.get("diets"):
+                    continue
+                ws.cell(row=DATA_ROW, column=1, value=section["label"])
+                ws.merge_cells(
+                    start_row=DATA_ROW,
+                    start_column=1,
+                    end_row=DATA_ROW,
+                    end_column=2,
+                )
+                for c in range(1, 3):
+                    cell = ws.cell(row=DATA_ROW, column=c)
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill("solid", fgColor="1E40AF")
+                    cell.alignment = center
+                DATA_ROW += 1
+                for row in section.get("standard", []):
+                    ws.cell(row=DATA_ROW, column=1, value=f"  {row['name']}")
+                    ws.cell(row=DATA_ROW, column=2, value=row["count"])
+                    ws.cell(row=DATA_ROW, column=2).alignment = right_align
+                    DATA_ROW += 1
+                for row in section.get("diets", []):
+                    ws.cell(row=DATA_ROW, column=1, value=f"  {row['label']}")
+                    ws.cell(row=DATA_ROW, column=2, value=row["count"])
+                    ws.cell(row=DATA_ROW, column=2).alignment = right_align
+                    for c in range(1, 3):
+                        ws.cell(row=DATA_ROW, column=c).fill = PatternFill(
+                            "solid", fgColor="FEF9C3"
+                        )
+                    DATA_ROW += 1
 
         buf = io.BytesIO()
         wb.save(buf)

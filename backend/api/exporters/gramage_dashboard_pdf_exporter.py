@@ -50,7 +50,8 @@ class GramageDashboardPDFExporter:
             hdr0.append(para(cg["label"], bold=True))
             hdr0.extend([""] * (len(cg["components"]) - 1))
             for comp in cg["components"]:
-                hdr1.append(para(comp["label"], bold=True))
+                base_g = int(float(comp["base_grams"]))
+                hdr1.append(para(f'{comp["label"]} ({base_g}g)', bold=True))
 
         table_data = [hdr0, hdr1]
 
@@ -183,6 +184,67 @@ class GramageDashboardPDFExporter:
         t = Table(table_data, colWidths=col_widths, repeatRows=2)
         t.setStyle(TableStyle(style_cmds))
 
+        # ── Count summary table ──────────────────────────────────────────
+        count_summary = self.data.get("count_summary", [])
+        summary_elements = []
+        if count_summary:
+            summary_elements.append(Spacer(1, 0.6 * cm))
+            summary_elements.append(
+                Paragraph(
+                    "Súhrn objednávok",
+                    ParagraphStyle("sh", fontName=font_b, fontSize=12, leading=15),
+                )
+            )
+            summary_elements.append(Spacer(1, 0.3 * cm))
+
+            sum_rows = [[para("Jedlo / Porcia", bold=True), para("Počet", bold=True)]]
+            sum_style = [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1E40AF")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), font_b),
+                ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
+                ("ALIGN", (1, 0), (1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+            for section in count_summary:
+                has_content = section.get("standard") or section.get("diets")
+                if not has_content:
+                    continue
+                sec_idx = len(sum_rows)
+                sum_rows.append([para(section["label"], bold=True, size=9), ""])
+                sum_style += [
+                    (
+                        "BACKGROUND",
+                        (0, sec_idx),
+                        (-1, sec_idx),
+                        colors.HexColor("#DBEAFE"),
+                    ),
+                    ("FONTNAME", (0, sec_idx), (-1, sec_idx), font_b),
+                    ("SPAN", (0, sec_idx), (-1, sec_idx)),
+                ]
+                for row in section.get("standard", []):
+                    sum_rows.append(
+                        [para(f"  {row['name']}"), para(f"{row['count']}×")]
+                    )
+                for row in section.get("diets", []):
+                    diet_idx = len(sum_rows)
+                    sum_rows.append(
+                        [para(f"  {row['label']}"), para(f"{row['count']}×")]
+                    )
+                    sum_style.append(
+                        (
+                            "BACKGROUND",
+                            (0, diet_idx),
+                            (-1, diet_idx),
+                            colors.HexColor("#FEF9C3"),
+                        )
+                    )
+
+            if len(sum_rows) > 1:
+                sum_t = Table(sum_rows, colWidths=[8 * cm, 2 * cm])
+                sum_t.setStyle(TableStyle(sum_style))
+                summary_elements.append(sum_t)
+
         buf = io.BytesIO()
         doc = SimpleDocTemplate(
             buf,
@@ -200,6 +262,7 @@ class GramageDashboardPDFExporter:
                 ),
                 Spacer(1, 0.4 * cm),
                 t,
+                *summary_elements,
             ]
         )
         return buf.getvalue()

@@ -190,7 +190,7 @@ describe("OrderPage Logic & Triggers", () => {
 
     // 2. Locate Olovrant Card
     const olovrantTitle = screen.getAllByText("Olovrant")[0];
-    const olovrantCard = olovrantTitle.closest(".transition-all");
+    const olovrantCard = olovrantTitle.closest(".zp-meal");
     expect(olovrantCard).toBeInTheDocument();
 
     // 3. Find the "Kopírovať z obeda" button in Olovrant card
@@ -244,12 +244,12 @@ describe("OrderPage Logic & Triggers", () => {
 
     // 3. Locate Breakfast Card
     const breakfastTitle = screen.getAllByText("Raňajky")[0];
-    const breakfastCard = breakfastTitle.closest(".transition-all");
+    const breakfastCard = breakfastTitle.closest(".zp-meal");
     expect(breakfastCard).toBeInTheDocument();
 
     // 4. Find "Načítať z včera" button
     const copyBtn = await within(breakfastCard as HTMLElement).findByText(
-      /Načítať z včerajšieho obeda/i,
+      /Načítať z včerajška/i,
     );
     expect(copyBtn).toBeInTheDocument();
 
@@ -278,7 +278,7 @@ describe("OrderPage Logic & Triggers", () => {
     );
 
     renderPage();
-    const badges = screen.getAllByText("Termín uplynul");
+    const badges = screen.getAllByText(/Termín uplynul/);
     expect(badges.length).toBeGreaterThan(0);
   });
 

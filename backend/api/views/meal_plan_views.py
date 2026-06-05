@@ -6,13 +6,14 @@ import datetime
 from typing import Any
 from urllib.parse import quote
 
+from django.db.models import Prefetch
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import DailyMealPlan, MealTemplate, PortionType
+from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -38,7 +39,7 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
-        qs = MealTemplate.objects.all()
+        qs = MealTemplate.objects.select_related("diet")
         category = self.request.query_params.get("category")
         menu_variant = self.request.query_params.get("menu_variant")
         active_only = self.request.query_params.get("active_only", "true").lower()
@@ -62,9 +63,18 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
 class PortionTypeViewSet(viewsets.ModelViewSet):
     """Admin CRUD for portion types."""
 
-    queryset = PortionType.objects.all()
     serializer_class = PortionTypeSerializer
-    permission_classes = [permissions.IsAdminUser]
+
+    def get_permissions(self):
+        if self.action == "list":
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
+
+    def get_queryset(self):
+        queryset = PortionType.objects.all()
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(is_active=True)
+        return queryset
 
 
 @extend_schema_view(
@@ -79,12 +89,28 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
     """Admin ViewSet for daily meal plans with gramage reporting and export."""
 
     serializer_class = DailyMealPlanSerializer
-    permission_classes = [permissions.IsAdminUser]
+
+    def _is_admin_route(self) -> bool:
+        return self.request.path.startswith("/api/admin/")
+
+    def get_permissions(self):
+        if (
+            self.action in ["list", "retrieve", "by_date"]
+            and not self._is_admin_route()
+        ):
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
     def get_queryset(self):
+        item_queryset = MealPlanItem.objects.select_related("template__diet")
+        if not self.request.user.is_staff:
+            item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(
-            "items__template", "enrolled_counts__portion_type"
+            Prefetch("items", queryset=item_queryset),
+            "enrolled_counts__portion_type",
         ).order_by("-date")
+        if not self.request.user.is_staff:
+            qs = qs.filter(items__template__is_active=True).distinct()
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
         if from_date:
@@ -113,9 +139,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
-            plan = DailyMealPlan.objects.prefetch_related(
-                "items__template", "enrolled_counts__portion_type"
-            ).get(date=date)
+            plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
             return Response(
                 {

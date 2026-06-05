@@ -8,8 +8,20 @@ const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [contactEmail, setContactEmail] = useState("info@zdravyprojekt.sk");
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`${API_URL}/admin/global-settings/`)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data) => {
+        if (data?.client_contact_email) {
+          setContactEmail(data.client_contact_email);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
 
   // Navigate once user profile is loaded — this fires AFTER React commits state,
   // so user.is_staff is guaranteed to be correct
@@ -60,67 +72,70 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-indigo-50">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Prihlásenie
-          </h1>
-          <p className="text-slate-500">Zadajte svoje prihlasovacie údaje</p>
+    <div className="zp-app" style={{ minHeight: "100vh" }}>
+      <div className="zp-login">
+        <div className="zp-login-brand">
+          <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Email
-            </label>
+        <form className="zp-login-card" onSubmit={handleSubmit}>
+          <h2>Vitajte späť</h2>
+          <p className="sub">Prihláste sa, prosím, do svojho účtu.</p>
+
+          <div className="zp-field">
+            <label className="zp-label">Email</label>
             <input
+              className="zp-input"
               type="email"
-              placeholder="Zadajte email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              placeholder="vase@meno.sk"
               required
-              className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Heslo
-            </label>
+          <div className="zp-field">
+            <label className="zp-label">Heslo</label>
             <input
+              className="zp-input"
               type="password"
-              placeholder="Zadajte heslo"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
               required
-              className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
             />
-            <div className="text-right mt-1">
-              <Link
-                to="/forgot-password"
-                className="text-sm text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
+            <div style={{ textAlign: "right", marginTop: 8 }}>
+              <Link to="/forgot-password" className="zp-link">
                 Zabudli ste heslo?
               </Link>
             </div>
           </div>
 
           {error && (
-            <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm flex items-center gap-2">
-              <span>⚠️</span>
-              {error}
+            <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
+              ⚠ {error}
             </div>
           )}
 
           <button
             type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-indigo-200"
+            className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+            style={{ marginTop: 8 }}
           >
             Prihlásiť sa
           </button>
+
+          <div className="zp-divider">Nemáte účet?</div>
+
+          <div className="zp-login-info">
+            <strong>Registráciu vykonáva poskytovateľ.</strong><br />
+            Ak máte záujem o službu, napíšte nám na{" "}
+            <a href={`mailto:${contactEmail}`}>{contactEmail}</a>{" "}
+            a my Vám vytvoríme prístup.
+          </div>
         </form>
 
+        <div style={{ height: 24 }}></div>
       </div>
     </div>
   );

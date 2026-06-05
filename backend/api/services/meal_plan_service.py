@@ -455,6 +455,7 @@ class MealPlanService:
                                 "type": "standard",
                                 "meal": meal,
                                 "variant": variant,
+                                "portion_name": portion_name,
                                 "label": label,
                                 "count": count,
                                 "col_grams": grams,
@@ -471,6 +472,8 @@ class MealPlanService:
                             {
                                 "type": "diet",
                                 "meal": meal,
+                                "portion_name": portion_name,
+                                "diet_name": diet_name,
                                 "label": f"{portion_name} - {diet_name}",
                                 "count": diet_count,
                                 "col_grams": diet_grams,
@@ -515,10 +518,65 @@ class MealPlanService:
 
         totals_serialized = _serialize_group_totals(totals)
 
+        # ── Count summary ─────────────────────────────────────────────────────
+        # Aggregate order counts across all clients: standard by (meal, variant,
+        # portion_name) and diets by (meal, portion_name, diet_name).
+        _std_agg: dict = {}  # (meal, variant) → {portion_name: count}
+        _diet_agg: dict = {}  # meal → {(portion_name, diet_name): count}
+
+        for _r in rows:
+            for _sr in _r["sub_rows"]:
+                _pname = _sr.get("portion_name", "")
+                if not _pname:
+                    continue
+                if _sr["type"] == "standard":
+                    _mv = (_sr["meal"], _sr.get("variant", ""))
+                    if _mv not in _std_agg:
+                        _std_agg[_mv] = {}
+                    _std_agg[_mv][_pname] = _std_agg[_mv].get(_pname, 0) + _sr["count"]
+                else:
+                    _dname = _sr.get("diet_name", "")
+                    if not _dname:
+                        continue
+                    _m = _sr["meal"]
+                    if _m not in _diet_agg:
+                        _diet_agg[_m] = {}
+                    _k = (_pname, _dname)
+                    _diet_agg[_m][_k] = _diet_agg[_m].get(_k, 0) + _sr["count"]
+
+        count_summary: list[dict] = []
+        _added_meals: set = set()
+        _added_mvs: set = set()
+        for _cg in col_groups:
+            _mv = (_cg["meal"], _cg["variant"])
+            if _mv in _added_mvs:
+                continue
+            _added_mvs.add(_mv)
+            _std_entries = sorted(_std_agg.get(_mv, {}).items(), key=lambda x: -x[1])
+            _diets_entries: list = []
+            if _cg["meal"] not in _added_meals:
+                _added_meals.add(_cg["meal"])
+                _diets_entries = sorted(
+                    _diet_agg.get(_cg["meal"], {}).items(), key=lambda x: -x[1]
+                )
+            count_summary.append(
+                {
+                    "meal": _cg["meal"],
+                    "variant": _cg["variant"],
+                    "label": _cg["label"],
+                    "standard": [{"name": n, "count": c} for n, c in _std_entries],
+                    "diets": [
+                        {"label": f"{pn} - {dn}", "count": c}
+                        for (pn, dn), c in _diets_entries
+                    ],
+                }
+            )
+
         return {
             "date": date_str,
             "meal_plan_id": plan_id,
             "col_groups": col_groups,
             "rows": rows,
             "totals": totals_serialized,
+            "count_summary": count_summary,
         }

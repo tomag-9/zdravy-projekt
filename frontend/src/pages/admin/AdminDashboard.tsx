@@ -46,12 +46,31 @@ interface ClientRow {
   sub_rows: SubRow[];
 }
 
+interface CountStandardRow {
+  name: string;
+  count: number;
+}
+
+interface CountDietRow {
+  label: string;
+  count: number;
+}
+
+interface CountSection {
+  meal: string;
+  variant: string;
+  label: string;
+  standard: CountStandardRow[];
+  diets: CountDietRow[];
+}
+
 interface GramageDashboard {
   date: string;
   meal_plan_id: number | null;
   col_groups: ColGroup[];
   rows: ClientRow[];
   totals: string[][];
+  count_summary: CountSection[];
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -198,6 +217,10 @@ const AdminDashboard: React.FC = () => {
       {/* Content */}
       {loading && <div className="text-center py-16 text-gray-400 text-sm">Načítavam dáta...</div>}
 
+      {!loading && data && hasData && data.count_summary?.length > 0 && (
+        <CountSummaryCard sections={data.count_summary} />
+      )}
+
       {!loading && data && !hasData && (
         <div className="text-center py-16 text-gray-400 text-sm italic">
           Pre tento deň nie sú žiadne dáta.
@@ -208,6 +231,52 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {!loading && data && hasData && <GramageTable data={data} />}
+    </div>
+  );
+};
+
+// ── CountSummaryCard ──────────────────────────────────────────────────────────
+
+const CountSummaryCard: React.FC<{ sections: CountSection[] }> = ({ sections }) => {
+  const visible = sections.filter(
+    (s) => s.standard.length > 0 || s.diets.length > 0,
+  );
+  if (visible.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+      <h3 className="text-lg font-bold text-gray-900 mb-4">Súhrn objednávok</h3>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {visible.map((section) => (
+          <div
+            key={`${section.meal}-${section.variant}`}
+            className="rounded-xl border border-gray-100 overflow-hidden"
+          >
+            <div className="bg-blue-800 text-white px-4 py-2 font-semibold text-sm">
+              {section.label}
+            </div>
+            <div className="p-3 space-y-1">
+              {section.standard.map((row) => (
+                <div key={row.name} className="flex justify-between text-sm">
+                  <span className="text-gray-700">{row.name}</span>
+                  <span className="font-semibold text-gray-900 tabular-nums">{row.count}×</span>
+                </div>
+              ))}
+              {section.diets.length > 0 && (
+                <>
+                  <div className="border-t border-gray-100 mt-2 mb-2" />
+                  {section.diets.map((row) => (
+                    <div key={row.label} className="flex justify-between text-xs">
+                      <span className="text-yellow-700 italic">{row.label}</span>
+                      <span className="font-semibold text-yellow-800 tabular-nums">{row.count}×</span>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

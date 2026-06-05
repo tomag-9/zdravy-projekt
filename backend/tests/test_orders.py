@@ -6,7 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from api.models import DailyOrder, GlobalSettings
+from api.models import DailyOrder, GlobalSettings, PortionType
 
 # Constants mimicking frontend
 CATEGORIES = ["Jasle", "Škôlka", "ZŠ 1.stupeň", "ZŠ 2.stupeň", "Dospelý (SŠ)"]
@@ -195,6 +195,56 @@ class TestOrderCRUD:
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data == {"data": {}}
+
+    def test_monthly_summary_counts_user_orders(
+        self, authenticated_client, user, other_user
+    ):
+        DailyOrder.objects.create(
+            user=user,
+            date=date(2099, 1, 2),
+            status="submitted",
+            data={
+                "breakfast": {"Škôlka": {"menuCounts": {"A": 2}, "diets": {}}},
+                "lunch": {"Škôlka": {"menuCounts": {"A": 3, "B": 1}, "diets": {}}},
+                "olovrant": {},
+            },
+        )
+        DailyOrder.objects.create(
+            user=user,
+            date=date(2099, 1, 3),
+            status="draft",
+            data={"lunch": {"Škôlka": {"menuCounts": {"A": 99}, "diets": {}}}},
+        )
+        DailyOrder.objects.create(
+            user=other_user,
+            date=date(2099, 1, 2),
+            status="submitted",
+            data={"lunch": {"Škôlka": {"menuCounts": {"A": 99}, "diets": {}}}},
+        )
+
+        response = authenticated_client.get(
+            "/api/orders/planned/monthly-summary/?year=2099&month=1"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["total"] == 6
+        assert response.data["menu_counts"] == {"A": 5, "B": 1}
+        assert response.data["meal_counts"]["breakfast"] == 2
+        assert response.data["meal_counts"]["lunch"] == 4
+
+    def test_portion_types_list_is_available_to_clients(self, authenticated_client):
+        PortionType.objects.create(
+            name="Škôlka", coefficient="1.0000", sort_order=1, is_active=True
+        )
+        PortionType.objects.create(
+            name="Interná", coefficient="2.0000", sort_order=2, is_active=False
+        )
+
+        response = authenticated_client.get("/api/admin/portion-types/")
+
+        assert response.status_code == status.HTTP_200_OK
+        names = [item["name"] for item in response.data.get("results", response.data)]
+        assert names == ["Škôlka"]
 
 
 @pytest.mark.django_db

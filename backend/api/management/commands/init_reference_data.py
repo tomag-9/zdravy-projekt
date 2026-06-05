@@ -11,16 +11,18 @@ Usage:
     python manage.py init_reference_data
 """
 
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
-from api.models import PortionType
+from api.models import ClientSettings, Diet, PortionType
+from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
 
 PORTION_TYPES = [
-    {"name": "Jasle", "coefficient": "0.3000", "sort_order": 1},
-    {"name": "Škôlka", "coefficient": "0.5000", "sort_order": 2},
-    {"name": "ZŠ 1.stupeň", "coefficient": "0.6500", "sort_order": 3},
-    {"name": "ZŠ 2.stupeň", "coefficient": "0.7500", "sort_order": 4},
-    {"name": "Dospelý (SŠ)", "coefficient": "1.0000", "sort_order": 5},
+    {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
+    {"name": "Škôlka", "coefficient": "1.0000", "sort_order": 2},
+    {"name": "ZŠ 1.stupeň", "coefficient": "1.1500", "sort_order": 3},
+    {"name": "ZŠ 2.stupeň", "coefficient": "1.3000", "sort_order": 4},
+    {"name": "Dospelý (SŠ)", "coefficient": "1.5000", "sort_order": 5},
 ]
 
 
@@ -41,10 +43,52 @@ class Command(BaseCommand):
                 created_count += 1
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
-        if created_count:
+        diet_created_count = 0
+        for name, description in DEFAULT_DIETS:
+            _, created = Diet.objects.update_or_create(
+                name=name,
+                defaults={"description": description, "is_active": True},
+            )
+            if created:
+                diet_created_count += 1
+                self.stdout.write(f"  Diet created: {name}")
+
+        default_diets = list(
+            Diet.objects.filter(name__in=DEFAULT_DIET_NAMES, is_active=True)
+        )
+        settings_updated_count = 0
+        settings_created_count = 0
+        if default_diets:
+            existing_settings_user_ids = ClientSettings.objects.values_list(
+                "user_id",
+                flat=True,
+            )
+            missing_settings_users = User.objects.filter(
+                is_staff=False,
+            ).exclude(id__in=existing_settings_user_ids)
+            for user in missing_settings_users:
+                ClientSettings.objects.create(user=user)
+                settings_created_count += 1
+
+            empty_settings = ClientSettings.objects.filter(
+                visible_diets__isnull=True
+            ).distinct()
+            for settings in empty_settings:
+                settings.visible_diets.set(default_diets)
+                settings_updated_count += 1
+
+        if (
+            created_count
+            or diet_created_count
+            or settings_created_count
+            or settings_updated_count
+        ):
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"init_reference_data: created {created_count} new records."
+                    "init_reference_data: created "
+                    f"{created_count} portion types and {diet_created_count} diets; "
+                    f"created settings for {settings_created_count} clients; "
+                    f"default diets enabled for {settings_updated_count} clients."
                 )
             )
         else:

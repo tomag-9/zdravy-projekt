@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useApp, CATEGORIES } from "../context/AppContext";
 import DaySelector from "../components/order/DaySelector";
 import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService, { DailyOrder } from "../services/OrderService";
+import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
@@ -17,6 +17,7 @@ import { useOnboarding } from "../../../context/OnboardingContext";
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
   const toast = useToast();
+  const navigate = useNavigate();
 
   const {
     selectedDate,
@@ -45,9 +46,7 @@ const OrderPage = () => {
     category: string;
   } | null>(null);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<string | null>(
-    null,
-  );
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const [showZeroModal, setShowZeroModal] = useState(false);
 
   const initialDataRef = useRef<{
@@ -56,16 +55,13 @@ const OrderPage = () => {
     olovrant: string;
   } | null>(null);
   const dateKeyRef = useRef(selectedDate);
+
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const link = (e.target as Element).closest("a");
       const button = (e.target as Element).closest("button");
       const isSubmit = button && (button.innerText || "").includes("Odoslať");
-
-      // Allow if submitted recently or clean state (simplified check)
       if (!link || isSubmit) return;
-
-      // Check if order is draft/dirty
       if (currentOrder.status !== "submitted") {
         const href = link.getAttribute("href");
         if (href && !href.startsWith("#")) {
@@ -75,7 +71,6 @@ const OrderPage = () => {
         }
       }
     };
-
     document.addEventListener("click", handleClick, true);
     return () => document.removeEventListener("click", handleClick, true);
   }, [currentOrder.status]);
@@ -104,7 +99,7 @@ const OrderPage = () => {
   const meals: {
     key: keyof DailyOrder;
     label: string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   }[] = [
     { key: "breakfast", label: "Raňajky", icon: Coffee },
     { key: "lunch", label: "Obed", icon: Utensils },
@@ -116,7 +111,6 @@ const OrderPage = () => {
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
 
-  // ── Tour: auto-expand first meal when reaching the CategoryRow step (7) ─────
   useEffect(() => {
     if (!isTourActive || currentStep !== 7) return;
     const firstMeal = visibleMealsList[0];
@@ -129,26 +123,53 @@ const OrderPage = () => {
   }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
-    if (
-      error instanceof OrderRequestError &&
-      error.code === "order_deadline_passed"
-    ) {
+    if (error instanceof OrderRequestError && error.code === "order_deadline_passed") {
       return "Objednávku už nie je možné odoslať, termín uplynul.";
     }
-
     return "Nepodarilo sa odoslať objednávku. Skúste to znova.";
+  };
+
+  const getTotalPortions = () => {
+    let total = 0;
+    visibleMealsList.forEach(({ key }) => {
+      const mealKey = key as "breakfast" | "lunch" | "olovrant";
+      if (activeMeals[mealKey] && currentOrder[mealKey]) {
+        Object.values(currentOrder[mealKey]).forEach((cat: CategoryData) => {
+          const counts = cat.menuCounts || {};
+          total += (Object.values(counts) as number[]).reduce((a: number, b: number) => a + b, 0);
+        });
+      }
+    });
+    return total;
+  };
+
+  const getTotalDiets = () => {
+    let total = 0;
+    visibleMealsList.forEach(({ key }) => {
+      const mealKey = key as "breakfast" | "lunch" | "olovrant";
+      if (activeMeals[mealKey] && currentOrder[mealKey]) {
+        Object.values(currentOrder[mealKey]).forEach((cat: CategoryData) => {
+          if (cat.diets) {
+            total += (Object.values(cat.diets) as number[]).reduce((a: number, b: number) => a + b, 0);
+          }
+        });
+      }
+    });
+    return total;
   };
 
   const handleSubmit = async () => {
     try {
       await submitOrder(selectedDate);
-      toast.success("Objednávka bola úspešne odoslaná!");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      const total = getTotalPortions();
+      const dietCount = getTotalDiets();
+      navigate(`/success?date=${selectedDate}&total=${total}&dietCount=${dietCount}`);
     } catch (e) {
       console.error(e);
       toast.error(getFriendlyOrderErrorMessage(e));
     }
   };
+
   const handleReset = () => {
     const mealsToReset = visibleMealsList.filter((m) =>
       OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
@@ -163,10 +184,9 @@ const OrderPage = () => {
       clearMeal(mealKey);
       resetMealData(mealKey);
     });
-    toast.success(
-      "Objednávka bola vynulovaná lokálne. Odošlite ju, aby sa zmena uložila.",
-    );
+    toast.success("Objednávka bola vynulovaná lokálne. Odošlite ju, aby sa zmena uložila.");
   };
+
   const resetMealData = (mealKey: keyof DailyOrder) => {
     initialDataRef.current = {
       breakfast:
@@ -187,8 +207,10 @@ const OrderPage = () => {
   const handleCopyTrigger = (mealKey: string) => {
     if (mealKey === "breakfast") {
       return (
-        <div className="flex flex-col gap-2 w-full">
+        <>
           <button
+            className="zp-btn zp-btn--secondary zp-btn--sm"
+            style={{ flex: 1 }}
             onClick={() => {
               const loaded = loadBreakfastFromPrevLunch();
               if (loaded) {
@@ -198,43 +220,41 @@ const OrderPage = () => {
               }
               resetMealData("breakfast");
             }}
-            className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Copy className="w-3 h-3" /> Načítať z včerajšieho obeda
+            <Copy style={{ width: 12, height: 12 }} /> Načítať z včerajška
           </button>
           <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
             onClick={() => {
               clearMeal("breakfast");
               resetMealData("breakfast");
             }}
-            className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Trash2 className="w-3 h-3" /> Vymazať
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
           </button>
-        </div>
+        </>
       );
     }
-
     if (mealKey === "lunch") {
       return (
-        <div className="flex flex-col gap-2 w-full">
-          <button
-            onClick={() => {
-              clearMeal("lunch");
-              resetMealData("lunch");
-            }}
-            className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
-          >
-            <Trash2 className="w-3 h-3" /> Vymazať
-          </button>
-        </div>
+        <button
+          className="zp-btn zp-btn--danger zp-btn--sm"
+          style={{ flex: 1 }}
+          onClick={() => {
+            clearMeal("lunch");
+            resetMealData("lunch");
+          }}
+        >
+          <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+        </button>
       );
     }
-
     if (mealKey === "olovrant") {
       return (
-        <div className="flex flex-col gap-2 w-full">
+        <>
           <button
+            className="zp-btn zp-btn--secondary zp-btn--sm"
+            style={{ flex: 1 }}
             onClick={() => {
               const copied = copyOlovrantFromCurrentLunch();
               if (copied) {
@@ -244,76 +264,88 @@ const OrderPage = () => {
               }
               resetMealData("olovrant");
             }}
-            className="w-full text-xs py-2 px-3 text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Copy className="w-3 h-3" /> Kopírovať z obeda
+            <Copy style={{ width: 12, height: 12 }} /> Kopírovať z obeda
           </button>
           <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
             onClick={() => {
               clearMeal("olovrant");
               resetMealData("olovrant");
             }}
-            className="w-full text-xs py-2 px-3 text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors font-medium flex items-center justify-center gap-1"
           >
-            <Trash2 className="w-3 h-3" /> Vymazať
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
           </button>
-        </div>
+        </>
       );
     }
-
     return null;
   };
 
+  const dateFormatter = new Intl.DateTimeFormat('sk-SK', { weekday: 'long', day: 'numeric', month: 'long' });
+  const dateObj = new Date(`${selectedDate}T12:00:00`);
+  const formattedDate = dateFormatter.format(dateObj);
+  const totalPortions = getTotalPortions();
+
   return (
-    <div className="p-4 md:p-0 pb-24">
-      <div className="max-w-6xl mx-auto mb-6 md:mb-8 pt-2 md:pt-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Link to="/home">
-              <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors">
-                <ArrowLeft className="w-5 h-5 text-slate-600" />
-              </button>
-            </Link>
-            <div>
-              <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900">
-                Objednávka jedál
-              </h1>
-              <p className="hidden sm:block text-sm md:text-base text-slate-500">
-                Správa denného menu a diét
-              </p>
+    <div className="zp-app">
+      <div className="zp-orderpage">
+        {/* Top bar */}
+        <div className="zp-orderbar">
+          <button
+            className="zp-iconbtn"
+            aria-label="Späť"
+            onClick={() => navigate("/home")}
+          >
+            <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
+          </button>
+          <div>
+            <h1>Objednávka</h1>
+            <p>Príprava na vybraný deň</p>
+          </div>
+        </div>
+
+        {/* Top context strip */}
+        <div className="zp-order-context">
+          <span className="ic">
+            <Calendar style={{ width: 16, height: 16, strokeWidth: 2 }} />
+          </span>
+          <div className="body">
+            <div className="l">Na {formattedDate}</div>
+            <div className="v">
+              máte objednané{" "}
+              <span style={{ color: "var(--green-700)" }}>{totalPortions}</span> porcií
             </div>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-6xl mx-auto space-y-6">
+        {/* Day selector */}
         <div data-tour-id="tour-day-selector">
           <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
         </div>
 
+        {/* Holiday banner */}
         {holidays?.has(selectedDate) && (
-          <div className="flex items-center gap-3 bg-sky-50 border border-sky-200 rounded-2xl px-5 py-4 text-sky-800">
-            <span className="text-2xl" aria-hidden="true">🏖️</span>
+          <div className="zp-banner zp-banner--holiday" style={{ display: "flex", gap: 12 }}>
+            <span className="icon">🏖️</span>
             <div>
-              <div className="font-semibold text-sky-900">Voľný deň</div>
-              <div className="text-sm text-sky-700">Na tento deň nie je možné zadať objednávku.</div>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--teal-500)", fontSize: 14 }}>
+                Voľný deň
+              </div>
+              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>Na tento deň nie je možné zadať objednávku.</div>
             </div>
           </div>
         )}
 
+        {/* Meal cards */}
         <div
-          className={`space-y-6 ${holidays?.has(selectedDate) ? 'opacity-40 pointer-events-none select-none' : ''}`}
+          style={holidays?.has(selectedDate) ? { opacity: 0.4, pointerEvents: "none" } : {}}
           aria-disabled={holidays?.has(selectedDate) ? true : undefined}
         >
           {visibleMealsList.map((mealItem, mealIndex) => {
             const { key: rawKey, label, icon } = mealItem;
             const key = rawKey as "breakfast" | "lunch" | "olovrant";
-            // Check deadline - assuming OrderService is available
-            const isEditable = OrderService.checkDeadline(
-              selectedDate,
-              key,
-              globalDeadlines,
-            );
+            const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
             const isHoliday = holidays?.has(selectedDate);
 
             return (
@@ -324,18 +356,15 @@ const OrderPage = () => {
                 isActive={isEditable && !isHoliday && activeMeals[key]}
                 onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
                 copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
-                className={!isEditable || isHoliday ? "opacity-75" : ""}
+                className={!isEditable || isHoliday ? "" : ""}
                 tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
                 statusMessage={
                   !isEditable ? (
-                    <div className="text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded border border-amber-100 flex items-center gap-2 inline-flex mb-2">
-                      <span className="font-bold">Termín uplynul</span>
-                      <span>- Objednávka uzavretá</span>
-                    </div>
+                    <>Termín uplynul · Objednávka uzavretá</>
                   ) : null
                 }
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
                   {CATEGORIES.filter((category) =>
                     enabledCategories.includes(category),
                   ).map((category, catIndex) => {
@@ -353,16 +382,12 @@ const OrderPage = () => {
                         label={category}
                         menuCounts={data.menuCounts}
                         onMenuCountChange={(menuType, val) =>
-                          isEditable &&
-                          !isHoliday &&
-                          updateMenuCount(key, category, menuType, val)
+                          isEditable && !isHoliday && updateMenuCount(key, category, menuType, val)
                         }
                         hasDietsEnabled={availableDiets.length > 0}
                         dietCount={dietCount}
                         onOpenDiets={() =>
-                          isEditable &&
-                          !isHoliday &&
-                          setActiveDietModal({ meal: key, category })
+                          isEditable && !isHoliday && setActiveDietModal({ meal: key, category })
                         }
                         disabled={!isEditable || !!isHoliday}
                         visibleMenus={adminVisibleMenus}
@@ -376,45 +401,41 @@ const OrderPage = () => {
           })}
         </div>
 
+        {/* Order summary */}
         <div data-tour-id="tour-order-summary">
-        <OrderSummary
-          onSubmit={handleSubmit}
-          onReset={
-            visibleMealsList.every((m) =>
-              OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
-            )
-              ? () => setShowZeroModal(true)
-              : undefined
-          }
-          disabled={
-            holidays?.has(selectedDate) ||
-            (
-              !OrderService.checkDeadline(
-                selectedDate,
-                "breakfast",
-                globalDeadlines,
-              ) &&
-              !OrderService.checkDeadline(
-                selectedDate,
-                "lunch",
-                globalDeadlines,
-              ) &&
-              !OrderService.checkDeadline(
-                selectedDate,
-                "olovrant",
-                globalDeadlines,
+          <OrderSummary
+            onSubmit={handleSubmit}
+            onReset={
+              visibleMealsList.every((m) =>
+                OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
               )
-            )
-          }
-          disabledMessage={
-            holidays?.has(selectedDate)
-              ? "Voľný deň – objednávky nie sú dostupné."
-              : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
-          }
-        />
+                ? () => setShowZeroModal(true)
+                : undefined
+            }
+            disabled={
+              holidays?.has(selectedDate) ||
+              (
+                !OrderService.checkDeadline(selectedDate, "breakfast", globalDeadlines) &&
+                !OrderService.checkDeadline(selectedDate, "lunch", globalDeadlines) &&
+                !OrderService.checkDeadline(selectedDate, "olovrant", globalDeadlines)
+              )
+            }
+            disabledMessage={
+              holidays?.has(selectedDate)
+                ? "Voľný deň – objednávky nie sú dostupné."
+                : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+            }
+          />
         </div>
+
+        {/* Thank-you footer */}
+        <p className="zp-thanks">
+          Ďakujeme za Vašu objednávku
+          <small>Posielame ju priamo do našej kuchyne.</small>
+        </p>
       </div>
 
+      {/* Diet bottom-sheet */}
       {activeDietModal && (
         <DietSelector
           isOpen={true}
@@ -422,14 +443,14 @@ const OrderPage = () => {
           categoryLabel={activeDietModal.category}
           enabledDiets={getAvailableDiets(activeDietModal.category)}
           diets={
-            currentOrder[
-              activeDietModal.meal as "breakfast" | "lunch" | "olovrant"
-            ][activeDietModal.category].diets
+            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
+              activeDietModal.category
+            ].diets
           }
           maxPortions={
-            currentOrder[
-              activeDietModal.meal as "breakfast" | "lunch" | "olovrant"
-            ][activeDietModal.category].menuCounts?.["A"] || 0
+            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
+              activeDietModal.category
+            ].menuCounts?.["A"] || 0
           }
           onUpdateDiet={(diet, count) =>
             updateDiet(
@@ -447,7 +468,7 @@ const OrderPage = () => {
         onClose={() => setShowZeroModal(false)}
         onConfirm={handleReset}
         title="Vynulovať objednávku"
-        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
+        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
         confirmText="Vynulovať"
         cancelText="Zrušiť"
         variant="danger"

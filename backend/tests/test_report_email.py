@@ -137,6 +137,21 @@ class TestGlobalSettingsAPI:
         assert res.status_code == status.HTTP_200_OK
         assert "report_email_recipients" not in res.data
 
+    def test_public_read_hides_recipients_and_returns_client_contact(
+        self, db, global_settings
+    ):
+        """Login page can read client contact without exposing report recipients."""
+        global_settings.report_email_recipients = ["secret@example.com"]
+        global_settings.client_contact_email = "kontakt@example.com"
+        global_settings.save()
+
+        client = APIClient()
+        res = client.get(self.ENDPOINT)
+
+        assert res.status_code == status.HTTP_200_OK
+        assert "report_email_recipients" not in res.data
+        assert res.data["client_contact_email"] == "kontakt@example.com"
+
 
 # ---------------------------------------------------------------------------
 # send_order_report management command

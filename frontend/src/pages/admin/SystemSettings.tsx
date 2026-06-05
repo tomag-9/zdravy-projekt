@@ -10,6 +10,10 @@ interface GlobalSettings {
     deadline_olovrant: string;
     deadline_olovrant_is_day_before: boolean;
     report_email_recipients: string[];
+    client_contact_name: string;
+    client_contact_role: string;
+    client_contact_email: string;
+    client_contact_phone: string;
 }
 
 const SystemSettings: React.FC = () => {
@@ -23,6 +27,10 @@ const SystemSettings: React.FC = () => {
         deadline_olovrant: '10:00',
         deadline_olovrant_is_day_before: false,
         report_email_recipients: [],
+        client_contact_name: '',
+        client_contact_role: '',
+        client_contact_email: '',
+        client_contact_phone: '',
     });
     const [loading, setLoading] = useState(true);
     const [newRecipient, setNewRecipient] = useState('');
@@ -225,6 +233,52 @@ const SystemSettings: React.FC = () => {
                         </button>
                     </div>
                 </form>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Kontakt pre klientov</h2>
+                <p className="text-sm text-gray-500 mb-6">
+                    Tieto údaje sa zobrazujú klientom pri porciách a diétach.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                        type="text"
+                        value={settings.client_contact_name}
+                        onChange={(e) => setSettings({ ...settings, client_contact_name: e.target.value })}
+                        placeholder="Meno kontaktnej osoby"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <input
+                        type="text"
+                        value={settings.client_contact_role}
+                        onChange={(e) => setSettings({ ...settings, client_contact_role: e.target.value })}
+                        placeholder="Rola / poznámka"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <input
+                        type="email"
+                        value={settings.client_contact_email}
+                        onChange={(e) => setSettings({ ...settings, client_contact_email: e.target.value })}
+                        placeholder="kontakt@priklad.sk"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                    <input
+                        type="tel"
+                        value={settings.client_contact_phone}
+                        onChange={(e) => setSettings({ ...settings, client_contact_phone: e.target.value })}
+                        placeholder="+421..."
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                    />
+                </div>
+                <div className="pt-6 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={saveSettings}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl transition-colors shadow-sm hover:shadow-md"
+                    >
+                        Uložiť kontakt
+                    </button>
+                </div>
             </div>
 
             {/* Report email recipients */}

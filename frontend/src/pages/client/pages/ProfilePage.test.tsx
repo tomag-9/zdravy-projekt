@@ -140,7 +140,7 @@ describe("ProfilePage", () => {
     fireEvent.click(screen.getByText("Uložiť zmeny"));
 
     expect(
-      await screen.findByText("Profil bol úspešne aktualizovaný"),
+      await screen.findByText(/Profil bol úspešne aktualizovaný/),
     ).toBeInTheDocument();
   });
 
@@ -158,7 +158,7 @@ describe("ProfilePage", () => {
     fireEvent.click(screen.getByText("Uložiť zmeny"));
 
     expect(
-      await screen.findByText("Nepodarilo sa aktualizovať profil"),
+      await screen.findByText(/Nepodarilo sa aktualizovať profil/),
     ).toBeInTheDocument();
   });
 
@@ -176,7 +176,7 @@ describe("ProfilePage", () => {
     fireEvent.click(screen.getByText("Uložiť zmeny"));
 
     expect(
-      await screen.findByText("Chyba pri ukladaní zmien"),
+      await screen.findByText(/Chyba pri ukladaní zmien/),
     ).toBeInTheDocument();
   });
 
@@ -321,7 +321,7 @@ describe("ProfilePage", () => {
     );
 
     await screen.findByText("Môj profil");
-    fireEvent.click(screen.getByText("Odhlásiť sa"));
+    fireEvent.click(screen.getByRole("button", { name: /Odhlásiť sa/ }));
 
     expect(
       await screen.findByText("Naozaj sa chcete odhlásiť z aplikácie?"),

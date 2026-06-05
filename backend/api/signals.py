@@ -25,6 +25,8 @@ PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 PUSH_REMINDER_TASK_PREFIX = "push-reminder-"
 PUSH_REMINDER_OFFSET_MINUTES = 15
 
+WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
+
 
 def _push_reminder_task_name(meal_types: list[str]) -> str:
     """Return the deterministic PeriodicTask name for a group of meal types."""
@@ -299,6 +301,44 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
         logger.exception("Failed to sync push reminder periodic tasks: %s", exc)
 
 
+def _sync_weekly_reminder_schedule() -> None:
+    """
+    Create or update the Celery Beat PeriodicTask for the Sunday weekly reminder.
+    Fires every Sunday at 17:00 Europe/Bratislava.
+    The task itself checks per-user whether orders for next week already exist.
+    """
+    try:
+        import json as _json
+
+        from django.conf import settings
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute="0",
+            hour="17",
+            day_of_week="0",  # Sunday
+            day_of_month="*",
+            month_of_year="*",
+            timezone=settings.TIME_ZONE,
+        )
+
+        PeriodicTask.objects.update_or_create(
+            name=WEEKLY_REMINDER_TASK_NAME,
+            defaults={
+                "task": "api.tasks.send_weekly_order_reminder_task",
+                "crontab": schedule,
+                "args": _json.dumps([]),
+                "enabled": True,
+                "description": "Sunday 17:00 – remind clients who have no orders for next week",
+            },
+        )
+        logger.debug(
+            "Weekly reminder periodic task synced: %s", WEEKLY_REMINDER_TASK_NAME
+        )
+    except Exception as exc:
+        logger.exception("Failed to sync weekly reminder periodic task: %s", exc)
+
+
 @receiver(post_save, sender="api.GlobalSettings")
 def on_global_settings_saved(sender, instance, created=False, **kwargs):
     """Sync the Celery Beat schedules whenever GlobalSettings are saved.
@@ -312,6 +352,7 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_auto_order_schedule(instance)
         _sync_daily_report_schedule(instance)
         _sync_push_reminder_schedule(instance)
+        _sync_weekly_reminder_schedule()
 
         # Invalidate GlobalSettings cache
         from api.cache_service import clear_global_settings_cache
@@ -328,8 +369,19 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
 
 @receiver(post_save, sender="api.ClientSettings")
 def on_client_settings_saved(sender, instance, created=False, **kwargs):
-    """Invalidate ClientSettings cache when saved."""
+    """Apply default diets for new settings and invalidate ClientSettings cache."""
     try:
+        if created and instance.visible_diets.count() == 0:
+            from api.models import Diet
+            from api.reference_data import DEFAULT_DIET_NAMES
+
+            default_diets = Diet.objects.filter(
+                name__in=DEFAULT_DIET_NAMES,
+                is_active=True,
+            )
+            if default_diets.exists():
+                instance.visible_diets.set(default_diets)
+
         from api.cache_service import clear_client_settings_cache
 
         clear_client_settings_cache(instance.user_id)

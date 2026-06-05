@@ -109,6 +109,64 @@ class AdminSummaryTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class ClientMealPlanAccessTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="meal-admin@example.com",
+            password="password",
+            email="meal-admin@example.com",
+            is_staff=True,
+        )
+        self.client_user = User.objects.create_user(
+            username="meal-client@example.com",
+            password="password",
+            email="meal-client@example.com",
+            is_staff=False,
+        )
+        self.plan_date = date(2026, 3, 16)
+        self.template = MealTemplate.objects.create(
+            category="lunch",
+            name="Kuracie soté",
+            weight_label="200g + 50g",
+            base_weight_grams="250.00",
+            menu_variant="A",
+            is_active=True,
+        )
+        self.plan = DailyMealPlan.objects.create(
+            date=self.plan_date,
+            created_by=self.admin,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=self.plan,
+            template=self.template,
+            category="lunch",
+            menu_variant="A",
+        )
+
+    def test_client_can_read_meal_plan_by_date(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.get(
+            f"/api/meal-plans/by-date/?date={self.plan_date.isoformat()}"
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertTrue(payload["exists"])
+        self.assertEqual(payload["items"][0]["template_detail"]["name"], "Kuracie soté")
+
+    def test_client_cannot_write_meal_plan(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            "/api/meal-plans/",
+            {"date": "2026-03-17"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class AdminDailyReportTest(APITestCase):
     def setUp(self):
         self.admin = User.objects.create_user(

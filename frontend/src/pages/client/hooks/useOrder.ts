@@ -1,9 +1,31 @@
 import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
-import { CATEGORIES } from '../config/constants';
 import { useAuth } from '../../../context/auth';
+import { CATEGORIES } from '../config/constants';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+interface PortionType {
+    id: number;
+    name: string;
+    coefficient: string;
+    coefficient_pct: number;
+    is_active: boolean;
+}
+
+interface ClientContactInfo {
+    name: string;
+    role: string;
+    email: string;
+    phone: string;
+}
+
+interface DietDetail {
+    id: number;
+    name: string;
+    description?: string | null;
+    is_active?: boolean;
+}
 
 type ApiErrorPayload = {
     error?: {
@@ -51,7 +73,7 @@ export const useOrder = () => {
     const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     // Settings
 
-    const [enabledCategories, setEnabledCategories] = useState<string[]>(() => safeParse('enabledCategories', [...CATEGORIES]));
+    const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
 
     const [settings] = useState(() => {
         const defaultSettings = {
@@ -127,7 +149,6 @@ export const useOrder = () => {
     // selectedDateRef ensures we always write under the correct (new) date key
     // without the race condition where the new selectedDate fires the effect with
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
-    useEffect(() => { localStorage.setItem('enabledCategories', JSON.stringify(enabledCategories)); }, [enabledCategories]);
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
     useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
@@ -197,6 +218,12 @@ export const useOrder = () => {
     }, [selectedDate, apiFetch, user]); // Depend on selectedDate
 
     const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
+    const [clientContactInfo, setClientContactInfo] = useState<ClientContactInfo>({
+        name: '',
+        role: '',
+        email: '',
+        phone: '',
+    });
 
     // Fetch Global Settings
     useEffect(() => {
@@ -215,12 +242,34 @@ export const useOrder = () => {
                         olovrant_day_before: !!data.deadline_olovrant_is_day_before,
                     };
                     setGlobalDeadlines(mapped);
+                    setClientContactInfo({
+                        name: data.client_contact_name || '',
+                        role: data.client_contact_role || '',
+                        email: data.client_contact_email || '',
+                        phone: data.client_contact_phone || '',
+                    });
                 }
             } catch (e) {
                 console.error("Failed to fetch global settings", e);
             }
         };
         if (user) fetchSettings();
+    }, [apiFetch, user]);
+
+    useEffect(() => {
+        const fetchPortionTypes = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/portion-types/`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
+                const activeItems = items.filter((item) => item.is_active);
+                setPortionTypes(activeItems);
+            } catch (e) {
+                console.error("Failed to fetch portion types", e);
+            }
+        };
+        if (user) fetchPortionTypes();
     }, [apiFetch, user]);
 
     // Holidays: set of date strings "YYYY-MM-DD" that are blocked
@@ -377,10 +426,6 @@ export const useOrder = () => {
     // Actions
 
 
-    const toggleCategory = (category: string) => {
-        setEnabledCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
-    };
-
     const toggleMeal = (mealKey: string) => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
@@ -496,10 +541,12 @@ export const useOrder = () => {
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const adminVisibleDiets = user?.settings?.visible_diets && (user.settings.visible_diets as any[]).length > 0
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ? (user.settings.visible_diets as any[]).map(d => d.name)
+    const visibleDietDetails: DietDetail[] =
+        user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
+        ? (user.settings.visible_diets as DietDetail[])
+        : [];
+    const adminVisibleDiets = visibleDietDetails.length > 0
+        ? visibleDietDetails.map(d => d.name)
         : [];
 
     // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
@@ -556,8 +603,13 @@ export const useOrder = () => {
         return true;
     };
 
+    const enabledCategories =
+        portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
+
     return {
-        enabledCategories, toggleCategory,
+        enabledCategories,
+        portionTypes,
+        visibleDietDetails,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         updateMenuCount, updateDiet,
@@ -570,6 +622,7 @@ export const useOrder = () => {
         adminVisibleMenus,
         adminVisibleMeals,
         globalDeadlines,
+        clientContactInfo,
         holidays,
     };
 };

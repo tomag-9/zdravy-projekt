@@ -4,6 +4,7 @@ from typing import Optional
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -135,6 +136,22 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
         )
         result = OrderService.get_planned_orders(request.user, visible_meals)
         return Response(result)
+
+    @action(detail=False, methods=["get"], url_path="monthly-summary")
+    def monthly_summary(self, request: Request) -> Response:
+        """GET /api/orders/planned/monthly-summary/?year=YYYY&month=M."""
+        today = timezone.localdate()
+        try:
+            year = int(request.query_params.get("year", today.year))
+            month = int(request.query_params.get("month", today.month))
+            if month < 1 or month > 12:
+                raise ValueError
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "Invalid year/month query params."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(OrderService.monthly_summary(request.user, year, month))
 
 
 @extend_schema(tags=["admin"])

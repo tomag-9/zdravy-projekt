@@ -6,6 +6,7 @@ from django.db.models import Q
 from rest_framework import serializers
 
 from .models import ClientSettings, Diet, UserProfile
+from .reference_data import DEFAULT_DIET_NAMES
 
 
 class DietSerializer(serializers.ModelSerializer):
@@ -162,10 +163,14 @@ class UserProfileSerializer(serializers.ModelSerializer):
         """Return client settings; use defaults when no settings row exists."""
         if hasattr(obj, "settings"):
             return ClientSettingsSerializer(obj.settings).data
+        default_diets = Diet.objects.filter(
+            name__in=DEFAULT_DIET_NAMES,
+            is_active=True,
+        )
         return {
             "visible_menus": ["A"],
             "visible_meals": ["breakfast", "lunch", "olovrant"],
-            "visible_diets": [],
+            "visible_diets": DietSerializer(default_diets, many=True).data,
             "admin_order_note": "",
         }
 
