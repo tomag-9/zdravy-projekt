@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
 
@@ -26,7 +27,7 @@ const DietSelector = ({
     const currentDietSum = Object.values(diets || {}).reduce((a: number, b: number) => a + b, 0);
     const remaining = maxPortions - currentDietSum;
 
-    return (
+    return createPortal(
         <div className="zp-sheet-scrim" onClick={onClose}>
             <div className="zp-sheet" onClick={(e) => e.stopPropagation()}>
                 <div className="zp-sheet-grab"></div>
@@ -87,7 +88,7 @@ const DietSelector = ({
                 </div>
             </div>
         </div>
-    );
+    , document.body);
 };
 
 export default DietSelector;

@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
@@ -41,7 +42,7 @@ const ConfirmationModal = ({
         }
     };
 
-    return (
+    return createPortal(
         <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200" style={{ background: "var(--bg-cream)" }}>
                 <div className="p-6">
@@ -74,7 +75,7 @@ const ConfirmationModal = ({
                 </div>
             </div>
         </div>
-    );
+    , document.body);
 };
 
 export default ConfirmationModal;

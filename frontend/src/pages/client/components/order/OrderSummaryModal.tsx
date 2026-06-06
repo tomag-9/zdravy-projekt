@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import {
   X,
   FileCheck,
@@ -174,7 +175,7 @@ const OrderSummaryModal = ({
   // Note: Deleting individual meals or the whole order could be implemented here.
   // For now, we just redirect to edit page for granular control.
 
-  return (
+  return createPortal(
     <div
       className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={(e) => {
@@ -671,7 +672,7 @@ const OrderSummaryModal = ({
         variant="danger"
       />
     </div>
-  );
+  , document.body);
 };
 
 export default OrderSummaryModal;
