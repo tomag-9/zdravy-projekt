@@ -237,43 +237,50 @@ const AdminDashboard: React.FC = () => {
 
 // ── CountSummaryCard ──────────────────────────────────────────────────────────
 
+const MEAL_LABEL: Record<string, string> = {
+  breakfast: "Raňajky",
+  lunch: "Obed",
+  olovrant: "Olovrant",
+};
+const MEAL_ORDER = ["breakfast", "lunch", "olovrant"];
+
 const CountSummaryCard: React.FC<{ sections: CountSection[] }> = ({ sections }) => {
-  const visible = sections.filter(
-    (s) => s.standard.length > 0 || s.diets.length > 0,
-  );
-  if (visible.length === 0) return null;
+  const mealGroups = MEAL_ORDER.map((meal) => {
+    const mealSections = sections.filter((s) => s.meal === meal);
+    const standard = mealSections.flatMap((s) => s.standard);
+    const diets = mealSections.flatMap((s) => s.diets);
+    return { meal, label: MEAL_LABEL[meal] ?? meal, standard, diets };
+  }).filter((g) => g.standard.length > 0 || g.diets.length > 0);
+
+  if (mealGroups.length === 0) return null;
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Súhrn objednávok</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {visible.map((section) => (
-          <div
-            key={`${section.meal}-${section.variant}`}
-            className="rounded-xl border border-gray-100 overflow-hidden"
-          >
-            <div className="bg-blue-800 text-white px-4 py-2 font-semibold text-sm">
-              {section.label}
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-6 py-4 border-b border-gray-100">
+        <h3 className="text-lg font-bold text-gray-900">Súhrn objednávok</h3>
+      </div>
+      <div className="divide-y divide-gray-100">
+        {mealGroups.map(({ meal, label, standard, diets }) => (
+          <div key={meal}>
+            <div className="px-6 py-2 bg-gray-50">
+              <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">{label}</span>
             </div>
-            <div className="p-3 space-y-1">
-              {section.standard.map((row) => (
-                <div key={row.name} className="flex justify-between text-sm">
-                  <span className="text-gray-700">{row.name}</span>
-                  <span className="font-semibold text-gray-900 tabular-nums">{row.count}×</span>
-                </div>
-              ))}
-              {section.diets.length > 0 && (
-                <>
-                  <div className="border-t border-gray-100 mt-2 mb-2" />
-                  {section.diets.map((row) => (
-                    <div key={row.label} className="flex justify-between text-xs">
-                      <span className="text-yellow-700 italic">{row.label}</span>
-                      <span className="font-semibold text-yellow-800 tabular-nums">{row.count}×</span>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
+            <table className="w-full">
+              <tbody>
+                {standard.map((row) => (
+                  <tr key={row.name} className="border-b border-gray-50 last:border-0">
+                    <td className="px-6 py-2 text-sm text-gray-700">{row.name}</td>
+                    <td className="px-6 py-2 text-sm text-right tabular-nums font-semibold text-gray-900 w-16">{row.count}×</td>
+                  </tr>
+                ))}
+                {diets.map((row) => (
+                  <tr key={row.label} className="border-b border-gray-50 last:border-0 bg-amber-50/40">
+                    <td className="px-6 py-2 text-xs text-amber-700 italic pl-10">{row.label}</td>
+                    <td className="px-6 py-2 text-xs text-right tabular-nums font-semibold text-amber-800 w-16">{row.count}×</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ))}
       </div>
