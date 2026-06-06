@@ -1191,27 +1191,27 @@
 /* Page enter animations */
 @keyframes zp-slide-in-right {
     from { transform: translateX(32px); opacity: 0; }
-    to   { transform: translateX(0);    opacity: 1; }
+    to   { transform: none;             opacity: 1; }
 }
 @keyframes zp-slide-in-left {
     from { transform: translateX(-32px); opacity: 0; }
-    to   { transform: translateX(0);     opacity: 1; }
+    to   { transform: none;              opacity: 1; }
 }
 @keyframes zp-fade-up {
     from { transform: translateY(10px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+    to   { transform: none;             opacity: 1; }
 }
 @keyframes zp-hero-pop {
     0%   { transform: scale(0.95) translateY(12px); opacity: 0; }
     65%  { transform: scale(1.02) translateY(-2px); opacity: 1; }
-    100% { transform: scale(1)    translateY(0);    opacity: 1; }
+    100% { transform: none;                         opacity: 1; }
 }
 
 .zp-page-enter-right {
-    animation: zp-slide-in-right 260ms cubic-bezier(.25,.46,.45,.94) both;
+    animation: zp-slide-in-right 260ms cubic-bezier(.25,.46,.45,.94) forwards;
 }
 .zp-page-enter-left {
-    animation: zp-slide-in-left 260ms cubic-bezier(.25,.46,.45,.94) both;
+    animation: zp-slide-in-left 260ms cubic-bezier(.25,.46,.45,.94) forwards;
 }
 
 .zp-route-body {
