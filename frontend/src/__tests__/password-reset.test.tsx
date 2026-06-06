@@ -38,7 +38,7 @@ describe("ForgotPasswordPage", () => {
 
   it("renders email input and submit button", () => {
     renderForgotPassword();
-    expect(screen.getByPlaceholderText(/Zadajte váš e-mail/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/vase@meno.sk/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Odoslať odkaz/i })).toBeInTheDocument();
   });
 
@@ -55,7 +55,7 @@ describe("ForgotPasswordPage", () => {
     } as Response));
 
     renderForgotPassword();
-    fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
+    fireEvent.change(screen.getByPlaceholderText(/vase@meno.sk/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
@@ -78,7 +78,7 @@ describe("ForgotPasswordPage", () => {
     } as Response));
 
     renderForgotPassword();
-    fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
+    fireEvent.change(screen.getByPlaceholderText(/vase@meno.sk/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
@@ -96,7 +96,7 @@ describe("ForgotPasswordPage", () => {
     } as Response));
 
     renderForgotPassword();
-    fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
+    fireEvent.change(screen.getByPlaceholderText(/vase@meno.sk/i), {
       target: { value: "bad@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
@@ -110,7 +110,7 @@ describe("ForgotPasswordPage", () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("network failure")));
 
     renderForgotPassword();
-    fireEvent.change(screen.getByPlaceholderText(/Zadajte váš e-mail/i), {
+    fireEvent.change(screen.getByPlaceholderText(/vase@meno.sk/i), {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));

@@ -1032,6 +1032,7 @@
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     padding: 0;
     box-shadow: var(--shadow-lg);
+    min-height: 50dvh;
     max-height: 80%;
     display: flex;
     flex-direction: column;
@@ -1190,27 +1191,27 @@
 /* Page enter animations */
 @keyframes zp-slide-in-right {
     from { transform: translateX(32px); opacity: 0; }
-    to   { transform: translateX(0);    opacity: 1; }
+    to   { transform: none;             opacity: 1; }
 }
 @keyframes zp-slide-in-left {
     from { transform: translateX(-32px); opacity: 0; }
-    to   { transform: translateX(0);     opacity: 1; }
+    to   { transform: none;              opacity: 1; }
 }
 @keyframes zp-fade-up {
     from { transform: translateY(10px); opacity: 0; }
-    to   { transform: translateY(0);    opacity: 1; }
+    to   { transform: none;             opacity: 1; }
 }
 @keyframes zp-hero-pop {
     0%   { transform: scale(0.95) translateY(12px); opacity: 0; }
     65%  { transform: scale(1.02) translateY(-2px); opacity: 1; }
-    100% { transform: scale(1)    translateY(0);    opacity: 1; }
+    100% { transform: none;                         opacity: 1; }
 }
 
 .zp-page-enter-right {
-    animation: zp-slide-in-right 260ms cubic-bezier(.25,.46,.45,.94) both;
+    animation: zp-slide-in-right 260ms cubic-bezier(.25,.46,.45,.94) forwards;
 }
 .zp-page-enter-left {
-    animation: zp-slide-in-left 260ms cubic-bezier(.25,.46,.45,.94) both;
+    animation: zp-slide-in-left 260ms cubic-bezier(.25,.46,.45,.94) forwards;
 }
 
 .zp-route-body {
@@ -1370,6 +1371,31 @@
     text-align: center;
     font-style: italic;
 }
+
+/* ========================================================== *
+ * Order detail meal colours (palette-based)
+ * ========================================================== */
+
+.zp-meal-box--breakfast  { background: rgba(248,165,122,0.08); border-color: rgba(248,165,122,0.2); }
+.zp-meal-text--breakfast { color: var(--ink-1); }
+.zp-meal-badge--breakfast { background: rgba(248,165,122,0.18); color: var(--orange-600); }
+.zp-meal-accent--breakfast { border-left: 4px solid var(--peach-500); }
+.zp-meal-chip--breakfast  { background: rgba(248,165,122,0.14); border-color: rgba(248,165,122,0.28); }
+.zp-meal-chiptext--breakfast { color: var(--orange-600); }
+
+.zp-meal-box--lunch  { background: rgba(114,136,75,0.06); border-color: rgba(114,136,75,0.15); }
+.zp-meal-text--lunch { color: var(--ink-1); }
+.zp-meal-badge--lunch { background: rgba(114,136,75,0.12); color: var(--green-700); }
+.zp-meal-accent--lunch { border-left: 4px solid var(--green-500); }
+.zp-meal-chip--lunch  { background: rgba(114,136,75,0.1); border-color: rgba(114,136,75,0.22); }
+.zp-meal-chiptext--lunch { color: var(--green-700); }
+
+.zp-meal-box--olovrant  { background: rgba(255,201,92,0.1); border-color: rgba(255,201,92,0.22); }
+.zp-meal-text--olovrant { color: var(--ink-1); }
+.zp-meal-badge--olovrant { background: rgba(255,201,92,0.2); color: var(--mustard-700); }
+.zp-meal-accent--olovrant { border-left: 4px solid var(--honey-400); }
+.zp-meal-chip--olovrant  { background: rgba(255,201,92,0.14); border-color: rgba(255,201,92,0.28); }
+.zp-meal-chiptext--olovrant { color: var(--mustard-700); }
 
 /* ========================================================== *
  * Monthly summary card

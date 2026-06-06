@@ -41,7 +41,6 @@ const ProfilePage = () => {
         permission,
         isSubscribed,
         subscribe,
-        unsubscribe,
         error: pushError,
     } = usePushNotifications();
     const { isStandalone, isIOS, isAndroid, canInstall, installPrompt } = usePWA();
@@ -137,24 +136,7 @@ const ProfilePage = () => {
         }
     };
 
-    const handleDisableNotifications = async () => {
-        setPushLoading(true);
-        setPushMessage(null);
-        try {
-            const ok = await unsubscribe();
-            if (ok) {
-                setPushMessage({ type: 'success', text: 'Notifikácie boli vypnuté.' });
-            } else {
-                setPushMessage({ type: 'error', text: 'Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.' });
-            }
-        } catch {
-            setPushMessage({ type: 'error', text: 'Nepodarilo sa vypnúť notifikácie.' });
-        } finally {
-            setPushLoading(false);
-        }
-    };
-
-    const handleInstallPWA = () => {
+const handleInstallPWA = () => {
         setPwaMessage(null);
         if (isStandalone) { setPwaMessage({ type: 'success', text: 'Aplikácia je už nainštalovaná.' }); return; }
         if (canInstall) { installPrompt(); setPwaMessage({ type: 'success', text: 'Potvrďte inštaláciu v prehliadači.' }); return; }
@@ -403,14 +385,6 @@ const ProfilePage = () => {
                             >
                                 <Download style={{ width: 12, height: 12 }} />
                                 Inštalovať aplikáciu
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleDisableNotifications}
-                                disabled={pushLoading || !isSubscribed}
-                                className="zp-btn zp-btn--ghost zp-btn--sm"
-                            >
-                                Vypnúť notifikácie
                             </button>
                         </div>
                     </div>

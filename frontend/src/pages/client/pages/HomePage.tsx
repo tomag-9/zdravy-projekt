@@ -600,10 +600,12 @@ const HomePage = () => {
             </small>
           </h3>
           <div className="zp-monthly-grid">
-            {(monthlySummary.items.length > 0
-              ? monthlySummary.items.slice(0, 4)
-              : [{ label: "Zatiaľ bez odberu", count: 0 }]
-            ).map((item) => (
+            {(() => {
+              const MEAL_LABELS = new Set(["Raňajky", "Obed", "Olovrant"]);
+              const mealItems = monthlySummary.items.filter((i) => MEAL_LABELS.has(i.label));
+              const display = mealItems.length > 0 ? mealItems : [{ label: "Zatiaľ bez odberu", count: 0 }];
+              return display;
+            })().map((item) => (
               <div className="zp-monthly-stat" key={item.label}>
                 <div className="num">{item.count}</div>
                 <div className="lbl">{item.label}</div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useRef } from "react";
 import { X } from "lucide-react";
+import { useScrollLock } from "../hooks/useScrollLock";
 
 interface ModalProps {
   open: boolean;
@@ -24,6 +25,7 @@ const Modal: React.FC<ModalProps> = ({
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  useScrollLock(open);
 
   useEffect(() => {
     if (!open) return;

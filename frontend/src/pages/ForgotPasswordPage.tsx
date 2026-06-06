@@ -45,88 +45,80 @@ const ForgotPasswordPage: React.FC = () => {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-indigo-50 text-center">
-          <div className="text-4xl mb-4">📬</div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-3">
-            Skontrolujte e-mail
-          </h1>
-          <p className="text-slate-600 mb-2">
-            Ak je adresa <strong>{email}</strong> zaregistrovaná, bol na ňu
-            odoslaný odkaz na obnovu hesla.
-          </p>
-          <p className="text-slate-500 text-sm mb-6">
-            Ak e-mail nevidíte, skontrolujte priečinok so spamom.
-          </p>
-          <Link
-            to="/login"
-            className="text-indigo-600 hover:text-indigo-800 font-medium text-sm"
-          >
-            ← Späť na prihlásenie
-          </Link>
+      <div className="zp-app" style={{ minHeight: "100vh" }}>
+        <div className="zp-login">
+          <div className="zp-login-brand">
+            <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
+          </div>
+          <div className="zp-login-card" style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📬</div>
+            <h2>Skontrolujte e-mail</h2>
+            <p className="sub" style={{ marginBottom: 8 }}>
+              Ak je adresa <strong>{email}</strong> zaregistrovaná, bol na ňu
+              odoslaný odkaz na obnovu hesla.
+            </p>
+            <p className="sub" style={{ marginBottom: 24 }}>
+              Ak e-mail nevidíte, skontrolujte priečinok so spamom.
+            </p>
+            <Link to="/login" className="zp-link">← Späť na prihlásenie</Link>
+          </div>
+          <div style={{ height: 24 }} />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-purple-50 p-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-indigo-50">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-slate-900 mb-2">
-            Obnovenie hesla
-          </h1>
-          <p className="text-slate-500">
-            Zadajte váš e-mail a pošleme vám odkaz na obnovu hesla.
-          </p>
+    <div className="zp-app" style={{ minHeight: "100vh" }}>
+      <div className="zp-login">
+        <div className="zp-login-brand">
+          <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-2">
-              Email
-            </label>
+        <form className="zp-login-card" onSubmit={handleSubmit}>
+          <h2>Obnovenie hesla</h2>
+          <p className="sub">Zadajte váš e-mail a pošleme vám odkaz na obnovu hesla.</p>
+
+          <div className="zp-field">
+            <label className="zp-label">Email</label>
             <input
+              className="zp-input"
               type="email"
-              placeholder="Zadajte váš e-mail"
+              placeholder="vase@meno.sk"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all"
             />
           </div>
 
           {error && (
-            <div className="p-3 bg-red-50 text-red-600 rounded-lg text-sm flex items-center gap-2">
-              <span>⚠️</span>
-              {error}
+            <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
+              ⚠ {error}
             </div>
           )}
 
           {rateLimitMsg && (
-            <div className="p-3 bg-amber-50 text-amber-700 rounded-lg text-sm flex items-center gap-2">
-              <span>⏳</span>
-              {rateLimitMsg}
+            <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%", background: "rgba(234,167,113,0.15)", color: "var(--mustard-700)" }}>
+              ⏳ {rateLimitMsg}
             </div>
           )}
 
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-colors shadow-lg shadow-indigo-200"
+            className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+            style={{ marginTop: 8 }}
           >
             {isLoading ? "Odosielam…" : "Odoslať odkaz"}
           </button>
+
+          <div className="zp-divider" />
+          <div style={{ textAlign: "center" }}>
+            <Link to="/login" className="zp-link">← Späť na prihlásenie</Link>
+          </div>
         </form>
 
-        <div className="mt-6 text-center">
-          <Link
-            to="/login"
-            className="text-sm text-slate-500 hover:text-indigo-600 transition-colors"
-          >
-            ← Späť na prihlásenie
-          </Link>
-        </div>
+        <div style={{ height: 24 }} />
       </div>
     </div>
   );

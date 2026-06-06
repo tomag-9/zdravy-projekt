@@ -271,46 +271,6 @@ describe("ProfilePage", () => {
     ).toBeInTheDocument();
   });
 
-  it("disables push notifications successfully", async () => {
-    pushState.isSubscribed = true;
-    mockProfileFetch();
-    mockUnsubscribe.mockResolvedValueOnce(true);
-
-    render(
-      <MemoryRouter>
-        <ProfilePage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText("Môj profil");
-    fireEvent.click(screen.getByText("Vypnúť notifikácie"));
-
-    expect(
-      await screen.findByText("Notifikácie boli vypnuté."),
-    ).toBeInTheDocument();
-  });
-
-  it("shows error when disable notifications fails", async () => {
-    pushState.isSubscribed = true;
-    mockProfileFetch();
-    mockUnsubscribe.mockResolvedValueOnce(false);
-
-    render(
-      <MemoryRouter>
-        <ProfilePage />
-      </MemoryRouter>,
-    );
-
-    await screen.findByText("Môj profil");
-    fireEvent.click(screen.getByText("Vypnúť notifikácie"));
-
-    expect(
-      await screen.findByText(
-        "Notifikácie sa nepodarilo vypnúť. Skúste to prosím znova.",
-      ),
-    ).toBeInTheDocument();
-  });
-
   it("opens logout confirmation modal", async () => {
     mockProfileFetch();
 
