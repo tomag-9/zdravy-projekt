@@ -453,10 +453,10 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                   ))}
 
                   {isExpanded && row.admin_order_note?.trim() && (
-                    <tr className="border-b border-indigo-100 bg-indigo-50/70">
+                    <tr className="border-b border-green-100 bg-green-50/40">
                       <td
                         colSpan={2 + totalComponents}
-                        className="px-4 py-3 text-sm text-indigo-900"
+                        className="px-4 py-3 text-sm text-green-900"
                       >
                         <span className="font-semibold">Poznámka k objednávke:</span>{" "}
                         <span className="whitespace-pre-wrap">
