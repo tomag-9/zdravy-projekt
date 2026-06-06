@@ -217,10 +217,6 @@ const AdminDashboard: React.FC = () => {
       {/* Content */}
       {loading && <div className="text-center py-16 text-gray-400 text-sm">Načítavam dáta...</div>}
 
-      {!loading && data && hasData && data.count_summary?.length > 0 && (
-        <CountSummaryCard sections={data.count_summary} />
-      )}
-
       {!loading && data && !hasData && (
         <div className="text-center py-16 text-gray-400 text-sm italic">
           Pre tento deň nie sú žiadne dáta.
@@ -231,52 +227,6 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {!loading && data && hasData && <GramageTable data={data} />}
-    </div>
-  );
-};
-
-// ── CountSummaryCard ──────────────────────────────────────────────────────────
-
-const CountSummaryCard: React.FC<{ sections: CountSection[] }> = ({ sections }) => {
-  const visible = sections.filter(
-    (s) => s.standard.length > 0 || s.diets.length > 0,
-  );
-  if (visible.length === 0) return null;
-
-  return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-      <h3 className="text-lg font-bold text-gray-900 mb-4">Súhrn objednávok</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {visible.map((section) => (
-          <div
-            key={`${section.meal}-${section.variant}`}
-            className="rounded-xl border border-gray-100 overflow-hidden"
-          >
-            <div className="bg-blue-800 text-white px-4 py-2 font-semibold text-sm">
-              {section.label}
-            </div>
-            <div className="p-3 space-y-1">
-              {section.standard.map((row) => (
-                <div key={row.name} className="flex justify-between text-sm">
-                  <span className="text-gray-700">{row.name}</span>
-                  <span className="font-semibold text-gray-900 tabular-nums">{row.count}×</span>
-                </div>
-              ))}
-              {section.diets.length > 0 && (
-                <>
-                  <div className="border-t border-gray-100 mt-2 mb-2" />
-                  {section.diets.map((row) => (
-                    <div key={row.label} className="flex justify-between text-xs">
-                      <span className="text-yellow-700 italic">{row.label}</span>
-                      <span className="font-semibold text-yellow-800 tabular-nums">{row.count}×</span>
-                    </div>
-                  ))}
-                </>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 };
@@ -298,15 +248,47 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     );
   };
 
+  // Aggregate sub_rows from all clients into per-variant gram totals
+  const aggregatedRows = useMemo(() => {
+    type NumRow = { type: "standard" | "diet"; label: string; count: number; col_grams: number[][] };
+    const map = new Map<string, NumRow>();
+    for (const clientRow of rows) {
+      for (const sr of clientRow.sub_rows) {
+        const key = `${sr.type}::${sr.label}`;
+        if (!map.has(key)) {
+          map.set(key, {
+            type: sr.type as "standard" | "diet",
+            label: sr.label,
+            count: 0,
+            col_grams: col_groups.map((cg) => Array<number>(cg.components.length).fill(0)),
+          });
+        }
+        const agg = map.get(key)!;
+        agg.count += sr.count;
+        sr.col_grams.forEach((group, gi) => {
+          group.forEach((val, ci) => {
+            agg.col_grams[gi][ci] = (agg.col_grams[gi][ci] ?? 0) + parseFloat(val || "0");
+          });
+        });
+      }
+    }
+    const toStr = (r: NumRow) => ({ ...r, col_grams: r.col_grams.map((g) => g.map(String)) });
+    const all = [...map.values()];
+    return {
+      standard: all.filter((r) => r.type === "standard").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
+      diets: all.filter((r) => r.type === "diet").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
+    };
+  }, [rows, col_groups]);
+
   // Helper: render gramage cells for a sub_row
-  const GramCells = ({ col_grams, className = "" }: { col_grams: string[][]; className?: string }) => (
+  const GramCells = ({ col_grams, className = "", positiveClass = "text-gray-900 font-medium" }: { col_grams: string[][]; className?: string; positiveClass?: string }) => (
     <>
       {col_groups.map((cg, gi) => {
         const grams = col_grams[gi] || [];
         return cg.components.map((_, ci) => (
           <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${className}`}>
             {grams[ci] ? (
-              <span className={parseFloat(grams[ci]) > 0 ? "text-gray-900 font-medium" : "text-gray-300"}>
+              <span className={parseFloat(grams[ci]) > 0 ? positiveClass : "text-gray-300"}>
                 {parseFloat(grams[ci]) > 0 ? Math.round(parseFloat(grams[ci])) : "—"}
               </span>
             ) : (
@@ -446,10 +428,10 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                   ))}
 
                   {isExpanded && row.admin_order_note?.trim() && (
-                    <tr className="border-b border-indigo-100 bg-indigo-50/70">
+                    <tr className="border-b border-green-100 bg-green-50/40">
                       <td
                         colSpan={2 + totalComponents}
-                        className="px-4 py-3 text-sm text-indigo-900"
+                        className="px-4 py-3 text-sm text-green-900"
                       >
                         <span className="font-semibold">Poznámka k objednávke:</span>{" "}
                         <span className="whitespace-pre-wrap">
@@ -481,6 +463,29 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             })}
           </tbody>
           <tfoot>
+            {/* Section header */}
+            <tr className="bg-slate-600 text-white border-t-2 border-slate-700">
+              <td colSpan={2 + totalComponents} className="px-4 py-2 font-bold text-xs uppercase tracking-wider sticky left-0 bg-slate-600 z-10">
+                Súhrn porcií
+              </td>
+            </tr>
+            {/* Standard variant rows */}
+            {aggregatedRows.standard.map((row) => (
+              <tr key={row.label} className="border-b border-gray-100 bg-white">
+                <td className="px-4 py-2 sticky left-0 z-10 bg-white text-sm text-gray-700">{row.label}</td>
+                <td className="px-3 py-2 text-center text-sm tabular-nums font-semibold text-gray-900">{row.count > 0 ? row.count : "—"}</td>
+                <GramCells col_grams={row.col_grams} />
+              </tr>
+            ))}
+            {/* Diet variant rows */}
+            {aggregatedRows.diets.map((row) => (
+              <tr key={row.label} className="border-b border-amber-50 bg-amber-50/40">
+                <td className="px-4 py-2 pl-10 sticky left-0 z-10 bg-amber-50/40 text-xs italic text-amber-700">↳ {row.label}</td>
+                <td className="px-3 py-2 text-center text-xs tabular-nums font-semibold text-amber-700">{row.count > 0 ? row.count : "—"}</td>
+                <GramCells col_grams={row.col_grams} className="bg-amber-50/40" positiveClass="text-amber-800 font-medium" />
+              </tr>
+            ))}
+            {/* Grand total */}
             <tr className="bg-blue-800 text-white border-t-2 border-blue-900">
               <td colSpan={2} className="px-4 py-2.5 font-bold sticky left-0 bg-blue-800 z-10">
                 CELKOM (g)

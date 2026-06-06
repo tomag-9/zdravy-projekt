@@ -200,7 +200,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                             type="date"
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--green-500)] outline-none"
                         />
                     </div>
                 )}
@@ -262,7 +262,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     <button
                         onClick={handleSave}
                         disabled={saving}
-                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
+                        className="px-6 py-2.5 bg-[var(--green-700)] hover:bg-[var(--green-800)] disabled:opacity-60 text-[var(--bg-cream)] font-semibold rounded-xl shadow-md transition-all"
                     >
                         {saving ? 'Ukladám...' : 'Uložiť'}
                     </button>
