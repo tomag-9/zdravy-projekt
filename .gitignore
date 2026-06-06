@@ -63,7 +63,6 @@ env/*
 
 # IDE
 .vscode/
-.claude/
 .idea/
 *.swp
 *.swo
@@ -92,6 +91,7 @@ venv/
 rebuild-dev.sh
 check-all.sh
 
+notes.md
 tasks.md
 notes.md
 docs/

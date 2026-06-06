@@ -1,0 +1,61 @@
+Implementuj desktopovú (PC) verziu klientskej aplikácie Zdravý projekt podľa
+hotového HTML/React prototypu, ktorý je v priečinku `client_pc/`.
+
+## Zdroj pravdy
+
+Prototyp v `client_pc/` je vizuálne a interakčne schválený. Drž sa ho 1:1
+(layout, rozostupy, farby, kopírajting v slovenčine, hover/active stavy).
+Súbory:
+
+- `client_pc/index.html` – app shell, router, ľavá navigácia, top bar
+- `client_pc/pc.css` – desktopový layout (shell, grid, detail, login…)
+- `client_pc/LoginPC.jsx`, `HomePC.jsx`, `MenuPC.jsx`, `OrderPC.jsx`,
+  `OrderDetailPC.jsx`, `SuccessPC.jsx`, `SettingsPC.jsx`
+- Dizajn tokeny + komponenty: `ui_kits/client_app/colors_and_type.css`
+  a `ui_kits/client_app/client.css` (reuse, neprepisuj farby natvrdo)
+
+## Cieľová architektúra
+
+Aplikuj to do našej reálnej Vite + React + Tailwind appky (`frontend/`).
+NEpoužívaj inline `<script type="text/babel">` ani globálne `window.*` exporty —
+to bol len spôsob behu prototypu. Namiesto toho:
+
+- každú obrazovku sprav ako samostatný TSX komponent v `src/pages/client/…`
+- ikony ber z `lucide-react` (v prototype sú ručne kreslené ekvivalenty)
+- tokeny z `colors_and_type.css` prenes do `tailwind.config` theme
+  (alebo cez CSS premenné), nehardcoduj hex hodnoty
+
+## Čo presne implementovať
+
+1. **Ľavá navigácia** v tomto poradí: Domov · Nová objednávka · Jedálniček ·
+   Nastavenia. „Nová objednávka“ má peach (akcentové) zvýraznenie.
+2. **Vpravo hore**: zvonček (notifikácie) + **logout** ikona (odhlási na login).
+   Žiadne ozubené koliesko hore – Nastavenia sú v ľavom menu.
+3. **Pätička sidebaru**: meno „Janka Lúková“ a pod ním na samostatnom riadku
+   organizácia „Materská škola Lúka“. Klik otvorí Nastavenia.
+4. **Domov**: hero „Nová objednávka“, dnešná objednávka, plánované (grid kariet),
+   mesačný súhrn, história. Klik na kartu otvára DETAIL (read-only), nie editor.
+5. **Detail objednávky** (`OrderDetailPC`): read-only rozpis jedál (Raňajky/Obed/
+   Olovrant), diétne čipy, sticky zhrnutie vpravo, tlačidlo **„Upraviť
+   objednávku“** → editor. Prázdny deň má vlastný empty-state.
+6. **Nová objednávka** (`OrderPC`): builder s počítadlami, prepínače jedál,
+   modal pre diéty, sticky zhrnutie, odoslanie → success.
+7. **Jedálniček**: týždenné taby + 3 stĺpce (Raňajky/Obed/Olovrant).
+8. **Nastavenia**: pod-navigácia Účet · Dostupné porcie · Dostupné diéty
+   (porcie a diéty sú read-only s kontaktom na zmenu).
+
+## Dáta
+
+V prototype sú dáta natvrdo (PC_ORDERS, PC_HISTORY, týždenné menu). Naviaž ich
+na naše reálne API/služby (OrderService, useOrder a pod.) tam, kde existujú;
+inak nechaj typovaný mock s TODO komentárom.
+
+## Akceptačné kritériá
+
+- Responzívne: pri úzkom okne sa ľavý rail zúži na ikony (viď breakpointy v pc.css).
+- Žiadne nové farby mimo brand tokenov.
+- Slovenský kopírajting zachovaný presne ako v prototype.
+- Build/lint čistý.
+
+Najprv mi napíš stručný plán (zoznam súborov, ktoré vytvoríš/upravíš a routing),
+počkaj na potvrdenie, až potom implementuj.
