@@ -52,7 +52,7 @@ const ClientLayout = () => {
   return (
     <div
       className="zp-phone"
-      style={{ width: "100%", height: "100vh", borderRadius: 0, boxShadow: "none" }}
+      style={{ width: "100%", height: "100dvh", borderRadius: 0, boxShadow: "none" }}
     >
       <div
         className="zp-route-body"

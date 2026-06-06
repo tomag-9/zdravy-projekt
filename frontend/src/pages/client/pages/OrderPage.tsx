@@ -6,7 +6,7 @@ import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -303,6 +303,14 @@ const OrderPage = () => {
             <h1>Objednávka</h1>
             <p>Príprava na vybraný deň</p>
           </div>
+          <button
+            className="zp-iconbtn"
+            aria-label="Nastavenia"
+            onClick={() => navigate("/settings")}
+            style={{ marginLeft: "auto" }}
+          >
+            <Settings style={{ width: 18, height: 18, strokeWidth: 2 }} />
+          </button>
         </div>
 
         {/* Top context strip */}

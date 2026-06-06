@@ -14,6 +14,7 @@
 import React, { useState } from 'react';
 import { usePWA } from '../hooks/usePWA';
 import { usePushNotifications } from '../hooks/usePushNotifications';
+import { useScrollLock } from '../hooks/useScrollLock';
 
 interface NotificationGuardProps {
   children: React.ReactNode;
@@ -22,12 +23,65 @@ interface NotificationGuardProps {
 export default function NotificationGuard({ children }: NotificationGuardProps) {
   const { isStandalone } = usePWA();
 
-  // In browser mode (not standalone), skip the guard entirely
-  if (!isStandalone) {
-    return <>{children}</>;
+  if (isStandalone) {
+    return <StandaloneNotificationGuard>{children}</StandaloneNotificationGuard>;
   }
 
-  return <StandaloneNotificationGuard>{children}</StandaloneNotificationGuard>;
+  return <BrowserNotificationPrompt>{children}</BrowserNotificationPrompt>;
+}
+
+function BrowserNotificationPrompt({ children }: NotificationGuardProps) {
+  const { permission, subscribe } = usePushNotifications();
+  const [dismissed, setDismissed] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+
+  const showPrompt = !dismissed && permission === 'default';
+  useScrollLock(showPrompt);
+
+  const handleAllow = async () => {
+    setRequesting(true);
+    await subscribe();
+    setRequesting(false);
+    setDismissed(true);
+  };
+
+  return (
+    <>
+      {children}
+      {showPrompt && (
+        <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6" style={{ fontFamily: 'var(--font-display)' }}>
+              <div style={{ fontSize: 40, marginBottom: 16, textAlign: 'center' }}>🔔</div>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 8 }}>
+                Povolenie notifikácií
+              </h3>
+              <p style={{ fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.5, marginBottom: 24 }}>
+                Budeme vás upozorňovať na blížiace sa uzávierky objednávok. Notifikácie môžete kedykoľvek vypnúť v nastaveniach zariadenia.
+              </p>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <button
+                  onClick={() => setDismissed(true)}
+                  className="zp-btn zp-btn--ghost"
+                  style={{ flex: 1 }}
+                >
+                  Teraz nie
+                </button>
+                <button
+                  onClick={handleAllow}
+                  disabled={requesting}
+                  className="zp-btn zp-btn--primary"
+                  style={{ flex: 1 }}
+                >
+                  {requesting ? 'Čakajte...' : 'Povoliť'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
 
 function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
