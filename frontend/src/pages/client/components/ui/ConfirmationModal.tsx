@@ -36,14 +36,14 @@ const ConfirmationModal = ({
             button: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-200'
         },
         info: {
-            icon: 'text-blue-600 bg-blue-100',
-            button: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-200'
+            icon: 'bg-[rgba(74,124,63,0.12)]',
+            button: ''
         }
     };
 
     return (
         <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200" style={{ background: "var(--bg-cream)" }}>
                 <div className="p-6">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 ${colors[variant].icon}`}>
                         <AlertTriangle className="w-6 h-6" />

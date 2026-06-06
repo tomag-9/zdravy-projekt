@@ -182,12 +182,13 @@ const OrderSummaryModal = ({
       }}
     >
       <div
-        className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90dvh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col"
+        className="rounded-2xl shadow-xl w-full max-w-md max-h-[90dvh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col"
+        style={{ background: "var(--bg-cream)" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <h3 className="font-bold text-lg text-slate-900 flex items-center gap-2">
-            <FileCheck className="w-5 h-5 text-indigo-600" />
+        <div className="p-4 border-b flex items-center justify-between" style={{ background: "var(--bg-cream-warm)", borderColor: "var(--line-soft)" }}>
+          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: "var(--ink-1)" }}>
+            <FileCheck className="w-5 h-5" style={{ color: "var(--green-700)" }} />
             Detail objednávky
           </h3>
           <Button
@@ -217,7 +218,7 @@ const OrderSummaryModal = ({
           {/* ── Predicted-mode body ── */}
           {isPredicted && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl p-4 text-sm text-indigo-700">
+              <div className="flex items-center gap-2 rounded-xl p-4 text-sm" style={{ background: "rgba(74,124,63,0.06)", border: "1px solid rgba(74,124,63,0.15)", color: "var(--green-700)" }}>
                 <Bot className="w-4 h-4 shrink-0" />
                 <span>
                   Táto objednávka ešte{" "}
@@ -616,7 +617,7 @@ const OrderSummaryModal = ({
           {/* ── Footer buttons: Edit | Erase | Delete ── */}
           <div className="pt-3 sm:pt-4 flex gap-2">
             <Button
-              className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm shadow-indigo-200"
+              className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm"
               onClick={handleEdit}
             >
               <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />

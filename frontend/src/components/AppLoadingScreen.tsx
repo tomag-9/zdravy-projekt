@@ -4,10 +4,10 @@ interface Props {
 
 export default function AppLoadingScreen({ status = 'Načítavam...' }: Props) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50">
+    <div className="min-h-screen flex flex-col items-center justify-center" style={{ background: "var(--bg-cream)" }}>
       <div className="flex flex-col items-center gap-8">
         {/* Logo */}
-        <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
+        <div className="w-20 h-20 rounded-2xl flex items-center justify-center" style={{ background: "var(--green-700)", boxShadow: "0 8px 24px rgba(23,53,5,0.2)" }}>
           <svg
             width="44"
             height="44"
@@ -31,7 +31,7 @@ export default function AppLoadingScreen({ status = 'Načítavam...' }: Props) {
             {/* Vein */}
             <path
               d="M22 14C22 14 16 22 16 28"
-              stroke="#2563eb"
+              stroke="var(--green-900)"
               strokeWidth="1.5"
               strokeLinecap="round"
               fillOpacity="0.3"
@@ -41,7 +41,7 @@ export default function AppLoadingScreen({ status = 'Načítavam...' }: Props) {
 
         {/* App name */}
         <div className="text-center space-y-1">
-          <h1 className="text-2xl font-bold text-slate-800">Zdravý Projekt</h1>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--ink-1)" }}>Zdravý Projekt</h1>
         </div>
 
         {/* Bouncing dots */}
@@ -49,14 +49,14 @@ export default function AppLoadingScreen({ status = 'Načítavam...' }: Props) {
           {[0, 1, 2].map((i) => (
             <span
               key={i}
-              className="w-2.5 h-2.5 bg-blue-500 rounded-full animate-bounce"
-              style={{ animationDelay: `${i * 160}ms` }}
+              className="w-2.5 h-2.5 rounded-full animate-bounce"
+              style={{ background: "var(--green-600)", animationDelay: `${i * 160}ms` }}
             />
           ))}
         </div>
 
         {/* Status text */}
-        <p role="status" aria-live="polite" className="text-slate-400 text-sm h-5 text-center">{status}</p>
+        <p role="status" aria-live="polite" className="text-sm h-5 text-center" style={{ color: "var(--ink-3)" }}>{status}</p>
       </div>
     </div>
   );
