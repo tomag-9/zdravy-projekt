@@ -46,8 +46,9 @@ class TestAuthenticationErrors:
         )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert response.data["error"]["code"] == "inactive_account"
-        assert "neaktívny" in response.data["error"]["message"]
+        # H3 fix: inactive account must return the same error as wrong credentials
+        # to prevent user enumeration via login.
+        assert response.data["error"]["code"] == "invalid_credentials"
 
 
 @pytest.mark.django_db

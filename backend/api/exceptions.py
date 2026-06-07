@@ -64,7 +64,8 @@ class InvalidCredentialsError(AuthenticationError):
 
 
 class InactiveAccountError(AuthenticationError):
-    """Raised when trying to authenticate with inactive account."""
+    """Retired — no longer raised at login (H3: login must not leak account state).
+    Kept for import compatibility; do not use in new code."""
 
     error_code = "inactive_account"
     default_detail = "Tento účet je neaktívny."

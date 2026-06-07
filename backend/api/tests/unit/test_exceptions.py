@@ -10,7 +10,6 @@ from api.exception_handlers import custom_exception_handler, get_error_response
 from api.exceptions import (
     ClientOnlyError,
     EmailAlreadyExistsError,
-    InactiveAccountError,
     InvalidCredentialsError,
     InvalidDateFormatError,
     InvalidReportFormatError,
@@ -30,13 +29,6 @@ class TestCustomExceptions:
         assert exc.status_code == status.HTTP_401_UNAUTHORIZED
         assert exc.error_code == "invalid_credentials"
         assert "Nesprávny" in str(exc.detail)
-
-    def test_inactive_account_error(self):
-        """Test InactiveAccountError has correct attributes."""
-        exc = InactiveAccountError()
-        assert exc.status_code == status.HTTP_401_UNAUTHORIZED
-        assert exc.error_code == "inactive_account"
-        assert "neaktívny" in str(exc.detail)
 
     def test_client_only_error(self):
         """Test ClientOnlyError has correct attributes."""
