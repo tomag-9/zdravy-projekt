@@ -3,65 +3,54 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
+COOKIE_NAME = "refresh_token"
+
 
 @pytest.mark.django_db
 class TestTokenRefresh:
     """Tests for JWT token refresh functionality"""
 
+    def _login(self, api_client, email, password):
+        return api_client.post(
+            reverse("token_obtain_pair"), {"email": email, "password": password}
+        )
+
     def test_refresh_token_success(self, api_client):
-        """Valid refresh token returns new access token"""
-        # Create user and get tokens
+        """Valid refresh cookie returns new access token."""
         User.objects.create_user(
             "client@example.com", "client@example.com", "client123"
         )
 
-        # Get initial token pair
-        auth_url = reverse("token_obtain_pair")
-        auth_resp = api_client.post(
-            auth_url, {"email": "client@example.com", "password": "client123"}
-        )
-
+        auth_resp = self._login(api_client, "client@example.com", "client123")
         assert auth_resp.status_code == status.HTTP_200_OK
-        refresh_token = auth_resp.data["refresh"]
+        assert COOKIE_NAME in auth_resp.cookies
 
-        # Use refresh token to get new access token
-        refresh_url = reverse("token_refresh")
-        refresh_resp = api_client.post(refresh_url, {"refresh": refresh_token})
+        refresh_resp = api_client.post(reverse("token_refresh"))
 
         assert refresh_resp.status_code == status.HTTP_200_OK
         assert "access" in refresh_resp.data
         assert refresh_resp.data["access"] != auth_resp.data["access"]
 
     def test_refresh_token_invalid(self, api_client):
-        """Invalid refresh token returns error"""
-        refresh_url = reverse("token_refresh")
-        response = api_client.post(refresh_url, {"refresh": "invalid_token_here"})
+        """Invalid refresh cookie returns 401."""
+        api_client.cookies[COOKIE_NAME] = "invalid_token_here"
+        response = api_client.post(reverse("token_refresh"))
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_access_token_works_after_refresh(self, api_client):
-        """New access token from refresh works for authenticated requests"""
-        # Create user and get tokens
+        """New access token from refresh works for authenticated requests."""
         User.objects.create_user(
             "client@example.com", "client@example.com", "client123"
         )
 
-        # Get initial tokens
-        auth_url = reverse("token_obtain_pair")
-        auth_resp = api_client.post(
-            auth_url, {"email": "client@example.com", "password": "client123"}
-        )
-        refresh_token = auth_resp.data["refresh"]
+        self._login(api_client, "client@example.com", "client123")
 
-        # Refresh to get new access token
-        refresh_url = reverse("token_refresh")
-        refresh_resp = api_client.post(refresh_url, {"refresh": refresh_token})
+        refresh_resp = api_client.post(reverse("token_refresh"))
         new_access_token = refresh_resp.data["access"]
 
-        # Use new access token for authenticated request
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_access_token}")
-        profile_url = reverse("user-profile")
-        profile_resp = api_client.get(profile_url)
+        profile_resp = api_client.get(reverse("user-profile"))
 
         assert profile_resp.status_code == status.HTTP_200_OK
         assert profile_resp.data["email"] == "client@example.com"

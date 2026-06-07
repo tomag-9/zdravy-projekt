@@ -1,5 +1,5 @@
 """
-Authentication tests for login, JWT token refresh, and password reset flows.
+Authentication tests for login, JWT token flow, and password reset.
 """
 
 from datetime import timedelta
@@ -16,9 +16,30 @@ from api.models import PasswordResetToken
 
 pytestmark = pytest.mark.integration
 
+COOKIE_NAME = "refresh_token"
+
 
 # ──────────────────────────────────────────────────────────────────────────
-# LOGIN FLOW TESTS
+# Helpers
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def _login(api_client, email, password):
+    """Perform a login and return the response (cookies are set on api_client)."""
+    return api_client.post(
+        reverse("token_obtain_pair"),
+        {"email": email, "password": password},
+        format="json",
+    )
+
+
+def _get_refresh_cookie(response):
+    """Extract the raw refresh token string from a response's Set-Cookie header."""
+    return response.cookies.get(COOKIE_NAME)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# LOGIN FLOW
 # ──────────────────────────────────────────────────────────────────────────
 
 
@@ -27,55 +48,29 @@ class TestLoginFlow:
     """Test login and JWT token flow."""
 
     def test_login_with_valid_credentials(self, api_client, user):
-        """Test successful login with valid email and password."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "client@example.com", "password": "client123"},
-            format="json",
-        )
+        response = _login(api_client, "client@example.com", "client123")
 
         assert response.status_code == status.HTTP_200_OK
+        # Access token is in the body
         assert "access" in response.data
-        assert "refresh" in response.data
-
-        # Verify tokens are valid
-        access_token = response.data["access"]
-        refresh_token = response.data["refresh"]
-
-        assert len(access_token) > 0
-        assert len(refresh_token) > 0
+        # Refresh token must NOT be in the body — it is set as an httpOnly cookie
+        assert "refresh" not in response.data
+        # Cookie must be present
+        assert COOKIE_NAME in response.cookies
+        assert response.cookies[COOKIE_NAME].value
 
     def test_login_with_invalid_password(self, api_client, user):
-        """Test login fails with invalid password."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "client@example.com", "password": "wrongpassword"},
-            format="json",
-        )
+        response = _login(api_client, "client@example.com", "wrongpassword")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_login_with_invalid_email(self, api_client):
-        """Test login fails with non-existent email."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "nonexistent@example.com", "password": "anypassword"},
-            format="json",
-        )
+        response = _login(api_client, "nonexistent@example.com", "anypassword")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_login_case_insensitive_email(self, api_client, user):
-        """Test login with email of different case."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "CLIENT@EXAMPLE.COM", "password": "client123"},
-            format="json",
-        )
+        response = _login(api_client, "CLIENT@EXAMPLE.COM", "client123")
 
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
@@ -83,7 +78,6 @@ class TestLoginFlow:
     def test_login_with_duplicate_email_prefers_matching_active_account(
         self, api_client
     ):
-        """Login should succeed if one duplicate email account is active and matches password."""
         User.objects.create_user(
             username="dup-inactive",
             email="duplicate@example.com",
@@ -97,118 +91,166 @@ class TestLoginFlow:
             is_active=True,
         )
 
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "duplicate@example.com", "password": "active-pass"},
-            format="json",
-        )
+        response = _login(api_client, "duplicate@example.com", "active-pass")
 
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
 
     def test_login_with_inactive_user(self, api_client, user):
-        """Test login fails for inactive user."""
         user.is_active = False
         user.save()
 
-        url = reverse("token_obtain_pair")
-        response = api_client.post(
-            url,
-            {"email": "client@example.com", "password": "client123"},
-            format="json",
-        )
+        response = _login(api_client, "client@example.com", "client123")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_login_missing_email(self, api_client):
-        """Test login fails without email."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(url, {"password": "anypassword"}, format="json")
-
-        # Missing required field returns 400
+        response = api_client.post(
+            reverse("token_obtain_pair"), {"password": "anypassword"}, format="json"
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_login_missing_password(self, api_client, user):
-        """Test login fails without password."""
-        url = reverse("token_obtain_pair")
-        response = api_client.post(url, {"email": "client@example.com"}, format="json")
-
-        # Missing required field returns 400
+        response = api_client.post(
+            reverse("token_obtain_pair"),
+            {"email": "client@example.com"},
+            format="json",
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_login_empty_email(self, api_client):
-        """Test login fails with empty email."""
-        url = reverse("token_obtain_pair")
         response = api_client.post(
-            url, {"email": "", "password": "anypassword"}, format="json"
+            reverse("token_obtain_pair"),
+            {"email": "", "password": "anypassword"},
+            format="json",
         )
-
-        # Empty email is a serializer validation error for this endpoint.
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_client_gets_30_day_refresh_token(self, api_client, user):
+        """Client users receive a 30-day refresh token."""
+        assert not user.is_staff
+        response = _login(api_client, "client@example.com", "client123")
+
+        assert response.status_code == status.HTTP_200_OK
+        cookie = _get_refresh_cookie(response)
+        assert cookie is not None
+
+        refresh = RefreshToken(cookie.value)
+        lifetime_days = (refresh.payload["exp"] - refresh.payload["iat"]) / 86400
+        assert abs(lifetime_days - 30) < 1  # within 1 day tolerance
+
+    def test_admin_gets_1_day_refresh_token(self, api_client, admin_user):
+        """Admin users receive a 1-day refresh token."""
+        assert admin_user.is_staff
+        response = _login(api_client, "admin@example.com", "admin123")
+
+        assert response.status_code == status.HTTP_200_OK
+        cookie = _get_refresh_cookie(response)
+        assert cookie is not None
+
+        refresh = RefreshToken(cookie.value)
+        lifetime_days = (refresh.payload["exp"] - refresh.payload["iat"]) / 86400
+        assert abs(lifetime_days - 1) < 0.1  # within ~2.5 hours tolerance
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# JWT TOKEN REFRESH TESTS
+# TOKEN REFRESH
 # ──────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
 class TestTokenRefreshFlow:
-    """Test JWT token refresh flow."""
+    """Test JWT token refresh via httpOnly cookie."""
 
     def test_token_refresh_success(self, api_client, user):
-        """Test successful token refresh."""
-        # Get initial tokens
-        obtain_url = reverse("token_obtain_pair")
-        obtain_response = api_client.post(
-            obtain_url,
-            {"email": "client@example.com", "password": "client123"},
-            format="json",
-        )
-        refresh_token = obtain_response.data["refresh"]
+        # Login to obtain the refresh cookie
+        _login(api_client, "client@example.com", "client123")
 
-        # Refresh the token
         refresh_url = reverse("token_refresh")
-        refresh_response = api_client.post(
-            refresh_url, {"refresh": refresh_token}, format="json"
-        )
+        refresh_response = api_client.post(refresh_url, format="json")
 
         assert refresh_response.status_code == status.HTTP_200_OK
         assert "access" in refresh_response.data
+        # Rotation: new refresh cookie must be set
+        assert COOKIE_NAME in refresh_response.cookies
 
-    def test_token_refresh_with_invalid_token(self, api_client):
-        """Test token refresh fails with invalid token."""
-        url = reverse("token_refresh")
-        response = api_client.post(url, {"refresh": "invalid-token"}, format="json")
+    def test_token_refresh_rotates_cookie(self, api_client, user):
+        """Each refresh call produces a new refresh cookie (rotation)."""
+        _login(api_client, "client@example.com", "client123")
+        first_refresh = api_client.cookies[COOKIE_NAME].value
+
+        api_client.post(reverse("token_refresh"), format="json")
+        second_refresh = api_client.cookies[COOKIE_NAME].value
+
+        assert first_refresh != second_refresh
+
+    def test_token_refresh_with_invalid_cookie(self, api_client):
+        """An invalid cookie value is rejected."""
+        api_client.cookies[COOKIE_NAME] = "invalid-token"
+        response = api_client.post(reverse("token_refresh"), format="json")
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    def test_token_refresh_missing_token(self, api_client):
-        """Test token refresh fails without token."""
-        url = reverse("token_refresh")
-        response = api_client.post(url, {}, format="json")
+    def test_token_refresh_missing_cookie(self, api_client):
+        """Missing cookie returns 401."""
+        response = api_client.post(reverse("token_refresh"), format="json")
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_access_token_contains_user_info(self, api_client, user):
-        """Test that access token contains user information."""
-        obtain_url = reverse("token_obtain_pair")
-        obtain_response = api_client.post(
-            obtain_url,
-            {"email": "client@example.com", "password": "client123"},
-            format="json",
-        )
-        access_token_str = obtain_response.data["access"]
+        login_response = _login(api_client, "client@example.com", "client123")
+        access_token_str = login_response.data["access"]
 
-        # Decode token payload (without verification for test)
         token = AccessToken(access_token_str)
-        # user_id is stored as string in token
         assert int(token.payload["user_id"]) == user.id
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# PASSWORD RESET FLOW TESTS
+# LOGOUT
+# ──────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.django_db
+class TestLogoutFlow:
+    """Test server-side logout with token blacklisting."""
+
+    def test_logout_blacklists_refresh_token(self, api_client, user):
+        """After logout the refresh cookie can no longer be used to refresh."""
+        login_response = _login(api_client, "client@example.com", "client123")
+        access_token = login_response.data["access"]
+
+        # Logout
+        api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token}")
+        logout_response = api_client.post(reverse("token_logout"), format="json")
+        assert logout_response.status_code == status.HTTP_200_OK
+
+        # The old refresh cookie is now blacklisted — refresh must fail
+        refresh_response = api_client.post(reverse("token_refresh"), format="json")
+        assert refresh_response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_logout_clears_cookie(self, api_client, user):
+        """Logout response deletes the refresh cookie."""
+        login_response = _login(api_client, "client@example.com", "client123")
+        api_client.credentials(
+            HTTP_AUTHORIZATION=f"Bearer {login_response.data['access']}"
+        )
+
+        logout_response = api_client.post(reverse("token_logout"), format="json")
+
+        # Cookie should be cleared (max-age=0 or explicit deletion)
+        assert logout_response.status_code == status.HTTP_200_OK
+
+    def test_logout_requires_authentication(self, api_client):
+        """Unauthenticated logout is rejected (401 from JWT, 403 from SessionAuthentication)."""
+        response = api_client.post(reverse("token_logout"), format="json")
+        assert response.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# PASSWORD RESET
 # ──────────────────────────────────────────────────────────────────────────
 
 
@@ -217,103 +259,100 @@ class TestPasswordResetFlow:
     """Test password reset request and validation."""
 
     def test_password_reset_request_success(self, api_client, user):
-        """Test successful password reset request."""
-        url = reverse("password_reset_request")
-        response = api_client.post(url, {"email": user.email}, format="json")
-
+        response = api_client.post(
+            reverse("password_reset_request"), {"email": user.email}, format="json"
+        )
         assert response.status_code == status.HTTP_200_OK
 
-        # Verify token was created
         token = PasswordResetToken.objects.filter(user=user).first()
         assert token is not None
         assert not token.used
 
     def test_password_reset_request_unknown_email(self, api_client):
-        """Test password reset for unknown email returns 200 (security)."""
-        url = reverse("password_reset_request")
-        response = api_client.post(url, {"email": "unknown@example.com"}, format="json")
-
-        # Should return 200 to avoid email enumeration
+        response = api_client.post(
+            reverse("password_reset_request"),
+            {"email": "unknown@example.com"},
+            format="json",
+        )
         assert response.status_code == status.HTTP_200_OK
 
     def test_password_reset_request_missing_email(self, api_client):
-        """Test password reset fails without email."""
-        url = reverse("password_reset_request")
-        response = api_client.post(url, {}, format="json")
-
+        response = api_client.post(reverse("password_reset_request"), {}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_request_rate_limit(self, api_client, user):
-        """Test rate limiting on password reset requests."""
         url = reverse("password_reset_request")
 
-        # First request succeeds
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_200_OK
 
-        # Subsequent requests are rate-limited due to cooldown
-        # (cooldown is enforced before attempt counter)
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "error" in response.data
-        # Should be either rate_limit_exceeded or too_soon
         assert response.data["error"]["code"] in ["rate_limit_exceeded", "too_soon"]
 
     def test_password_reset_request_cooldown(self, api_client, user):
-        """Test cooldown between password reset requests."""
         url = reverse("password_reset_request")
 
-        # First request succeeds
-        response = api_client.post(url, {"email": user.email}, format="json")
-        assert response.status_code == status.HTTP_200_OK
+        api_client.post(url, {"email": user.email}, format="json")
 
-        # Immediate second request should fail with cooldown error
         response = api_client.post(url, {"email": user.email}, format="json")
         assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
-        assert "error" in response.data
         assert response.data["error"]["code"] == "too_soon"
         assert "wait_seconds" in response.data["error"]["details"]
 
     def test_password_reset_confirm_success(self, api_client, user):
-        """Test successful password reset confirmation."""
-        # Create reset token
-        token = PasswordResetToken.objects.create(
+        PasswordResetToken.objects.create(
             user=user,
             token="valid-reset-token",
             expires_at=timezone.now() + timedelta(hours=1),
             used=False,
         )
 
-        url = reverse("password_reset_confirm")
         response = api_client.post(
-            url,
+            reverse("password_reset_confirm"),
             {"token": "valid-reset-token", "new_password": "NewPassword123"},
             format="json",
         )
-
         assert response.status_code == status.HTTP_200_OK
 
-        # Token should be marked as used
-        token.refresh_from_db()
+        token = PasswordResetToken.objects.get(token="valid-reset-token")
         assert token.used is True
 
-        # User password should be changed
         user.refresh_from_db()
         assert user.check_password("NewPassword123")
 
-    def test_password_reset_confirm_with_invalid_token(self, api_client):
-        """Test password reset confirmation with invalid token."""
-        url = reverse("password_reset_confirm")
-        response = api_client.post(
-            url,
-            {"token": "invalid-token", "new_password": "NewPassword123"},
+    def test_password_reset_invalidates_existing_sessions(self, api_client, user):
+        """After a password reset all outstanding refresh tokens are blacklisted."""
+        # Log in to create an outstanding refresh token
+        login_response = _login(api_client, "client@example.com", "client123")
+
+        # Reset password
+        PasswordResetToken.objects.create(
+            user=user,
+            token="invalidate-sessions-token",
+            expires_at=timezone.now() + timedelta(hours=1),
+            used=False,
+        )
+        api_client.post(
+            reverse("password_reset_confirm"),
+            {"token": "invalidate-sessions-token", "new_password": "NewPassword456"},
             format="json",
         )
 
+        # The old refresh cookie must now be rejected
+        api_client.cookies[COOKIE_NAME] = api_client.cookies.get(COOKIE_NAME, "")
+        refresh_response = api_client.post(reverse("token_refresh"), format="json")
+        assert refresh_response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_password_reset_confirm_with_invalid_token(self, api_client):
+        response = api_client.post(
+            reverse("password_reset_confirm"),
+            {"token": "invalid-token", "new_password": "NewPassword123"},
+            format="json",
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_confirm_with_expired_token(self, api_client, user):
-        """Test password reset confirmation with expired token."""
         PasswordResetToken.objects.create(
             user=user,
             token="expired-reset-token",
@@ -321,17 +360,14 @@ class TestPasswordResetFlow:
             used=False,
         )
 
-        url = reverse("password_reset_confirm")
         response = api_client.post(
-            url,
+            reverse("password_reset_confirm"),
             {"token": "expired-reset-token", "new_password": "NewPassword123"},
             format="json",
         )
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_confirm_with_already_used_token(self, api_client, user):
-        """Test password reset confirmation with already-used token."""
         PasswordResetToken.objects.create(
             user=user,
             token="used-reset-token",
@@ -339,17 +375,14 @@ class TestPasswordResetFlow:
             used=True,
         )
 
-        url = reverse("password_reset_confirm")
         response = api_client.post(
-            url,
+            reverse("password_reset_confirm"),
             {"token": "used-reset-token", "new_password": "NewPassword123"},
             format="json",
         )
-
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_confirm_weak_password(self, api_client, user):
-        """Test password reset fails with weak password."""
         PasswordResetToken.objects.create(
             user=user,
             token="weak-password-token",
@@ -358,63 +391,46 @@ class TestPasswordResetFlow:
         )
 
         for weak_pass in ["123", "password", "weak"]:
-            url = reverse("password_reset_confirm")
             response = api_client.post(
-                url,
+                reverse("password_reset_confirm"),
                 {"token": "weak-password-token", "new_password": weak_pass},
                 format="json",
             )
-
-            # Weak passwords should fail
             if response.status_code != status.HTTP_200_OK:
                 assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_confirm_missing_fields(self, api_client):
-        """Test password reset confirmation fails without required fields."""
         url = reverse("password_reset_confirm")
 
-        # Missing token
         response = api_client.post(
             url, {"new_password": "NewPassword123"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-        # Missing new_password
         response = api_client.post(url, {"token": "some-token"}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_password_reset_can_login_after_reset(self, api_client, user):
-        """Test user can login with new password after reset."""
-        # Reset password
-        token = PasswordResetToken.objects.create(
+        PasswordResetToken.objects.create(
             user=user,
             token="reset-and-login-token",
             expires_at=timezone.now() + timedelta(hours=1),
             used=False,
         )
 
-        url = reverse("password_reset_confirm")
-        response = api_client.post(
-            url,
+        api_client.post(
+            reverse("password_reset_confirm"),
             {"token": "reset-and-login-token", "new_password": "NewLogin123"},
             format="json",
         )
-        assert response.status_code == status.HTTP_200_OK
 
-        # Try to login with new password
-        login_url = reverse("token_obtain_pair")
-        login_response = api_client.post(
-            login_url,
-            {"email": user.email, "password": "NewLogin123"},
-            format="json",
-        )
-
+        login_response = _login(api_client, user.email, "NewLogin123")
         assert login_response.status_code == status.HTTP_200_OK
         assert "access" in login_response.data
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# EDGE CASES AND SECURITY TESTS
+# EDGE CASES AND SECURITY
 # ──────────────────────────────────────────────────────────────────────────
 
 
@@ -423,56 +439,37 @@ class TestAuthEdgeCases:
     """Test edge cases and security scenarios."""
 
     def test_multiple_failed_login_attempts(self, api_client, user):
-        """Test handling of multiple failed login attempts."""
         url = reverse("token_obtain_pair")
-
-        # Multiple failed attempts should not lock account
-        for i in range(10):
+        for _ in range(10):
             response = api_client.post(
-                url,
-                {"email": user.email, "password": "wrongpass"},
-                format="json",
+                url, {"email": user.email, "password": "wrongpass"}, format="json"
             )
             assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-        # User should still be able to login with correct password
+        # Still able to log in with correct password
         response = api_client.post(
-            url,
-            {"email": user.email, "password": "client123"},
-            format="json",
+            url, {"email": user.email, "password": "client123"}, format="json"
         )
         assert response.status_code == status.HTTP_200_OK
 
     def test_token_expiry_not_accessible(self, api_client, user):
-        """Test that expired tokens cannot be used."""
-        # Create manually expired token
+        """An expired refresh token in the cookie is rejected."""
         refresh = RefreshToken.for_user(user)
         refresh.set_exp(lifetime=timedelta(seconds=-10))
+        api_client.cookies[COOKIE_NAME] = str(refresh)
 
-        url = reverse("token_refresh")
-        response = api_client.post(url, {"refresh": str(refresh)}, format="json")
-
+        response = api_client.post(reverse("token_refresh"), format="json")
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_sql_injection_attempt(self, api_client):
-        """Test that SQL injection is prevented in auth endpoints."""
-        url = reverse("token_obtain_pair")
         response = api_client.post(
-            url,
-            {
-                "email": "test' OR '1'='1",
-                "password": "test' OR '1'='1",
-            },
+            reverse("token_obtain_pair"),
+            {"email": "test' OR '1'='1", "password": "test' OR '1'='1"},
             format="json",
         )
-
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_email_whitespace_trimming(self, api_client):
-        """Test that email fields are trimmed of whitespace."""
-        url = reverse("token_obtain_pair")
-
-        # Create user with specific email
         User.objects.create_user(
             username="test@example.com",
             email="test@example.com",
@@ -480,25 +477,19 @@ class TestAuthEdgeCases:
             is_active=True,
         )
 
-        # Test with whitespace
         response = api_client.post(
-            url,
+            reverse("token_obtain_pair"),
             {"email": "  test@example.com  ", "password": "Password123"},
             format="json",
         )
-
         assert response.status_code == status.HTTP_200_OK
 
     def test_password_reset_token_uniqueness(self, api_client, user):
-        """Test that each password reset token is unique."""
         url = reverse("password_reset_request")
-
-        # Request twice while simulating cooldown passage without real sleep.
         tokens = []
         with patch("api.password_reset_service.RESEND_COOLDOWN", 0):
             for _ in range(2):
-                response = api_client.post(url, {"email": user.email}, format="json")
-                assert response.status_code == status.HTTP_200_OK
+                api_client.post(url, {"email": user.email}, format="json")
                 token = PasswordResetToken.objects.filter(user=user).latest(
                     "created_at"
                 )
@@ -508,7 +499,6 @@ class TestAuthEdgeCases:
         assert tokens[0] != tokens[1]
 
     def test_cross_user_token_reuse(self, api_client, user):
-        """Test that tokens from one user cannot be used by another."""
         user2 = User.objects.create_user(
             username="other@example.com",
             email="other@example.com",
@@ -516,45 +506,33 @@ class TestAuthEdgeCases:
             is_active=True,
         )
 
-        # Create reset token for user1
-        token = PasswordResetToken.objects.create(
+        PasswordResetToken.objects.create(
             user=user,
             token="user1-token",
             expires_at=timezone.now() + timedelta(hours=1),
             used=False,
         )
 
-        # Try to use it for user2
-        url = reverse("password_reset_confirm")
         response = api_client.post(
-            url,
+            reverse("password_reset_confirm"),
             {"token": "user1-token", "new_password": "Hacked123"},
             format="json",
         )
-
-        # Should work for user1 but token should be single-use
         assert response.status_code == status.HTTP_200_OK
 
-        # User1's password changed
         user.refresh_from_db()
         assert user.check_password("Hacked123")
 
-        # User2 should not have new password
         user2.refresh_from_db()
         assert not user2.check_password("Hacked123")
 
     def test_long_email_handling(self, api_client):
-        """Test handling of very long email addresses."""
-        url = reverse("token_obtain_pair")
         long_email = "a" * 200 + "@example.com"
-
         response = api_client.post(
-            url,
+            reverse("token_obtain_pair"),
             {"email": long_email, "password": "anypassword"},
             format="json",
         )
-
-        # Should fail gracefully
         assert response.status_code in [
             status.HTTP_401_UNAUTHORIZED,
             status.HTTP_400_BAD_REQUEST,

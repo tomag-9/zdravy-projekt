@@ -14,6 +14,7 @@ from .views import (
     EmailTokenObtainPairView,
     GlobalSettingsViewSet,
     HolidayListViewSet,
+    LogoutView,
     MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
@@ -61,6 +62,7 @@ urlpatterns = [
     path("", include(router.urls)),
     path("token/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", SafeTokenRefreshView.as_view(), name="token_refresh"),
+    path("token/logout/", LogoutView.as_view(), name="token_logout"),
     path("health/", health_check, name="health_check"),
     # Password reset (unauthenticated)
     path(

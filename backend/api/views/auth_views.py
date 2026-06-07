@@ -1,12 +1,14 @@
 import logging
+from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
@@ -18,6 +20,34 @@ from ..exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Differentiated refresh token lifetimes by role.
+# Admins: 1 day — they use the web admin UI, not the PWA; short lifetime appropriate
+#   given they have access to all client data.
+# Clients: 30 days — they may open the app as infrequently as every two weeks;
+#   rotation resets the clock on each visit so they're only logged out after 30 days
+#   of complete inactivity.
+_ADMIN_REFRESH_LIFETIME = timedelta(days=1)
+_CLIENT_REFRESH_LIFETIME = timedelta(days=30)
+
+_COOKIE_NAME = settings.REFRESH_TOKEN_COOKIE_NAME
+_COOKIE_PATH = settings.REFRESH_TOKEN_COOKIE_PATH
+
+
+def _set_refresh_cookie(response: Response, refresh_str: str, max_age: int) -> None:
+    response.set_cookie(
+        _COOKIE_NAME,
+        refresh_str,
+        max_age=max_age,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="Lax",
+        path=_COOKIE_PATH,
+    )
+
+
+def _delete_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(_COOKIE_NAME, path=_COOKIE_PATH)
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -62,18 +92,11 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         """
-        Authenticate by email + password and return JWT access/refresh tokens.
+        Authenticate by email + password and return JWT tokens.
 
-        Args:
-            attrs: Dict containing ``email`` and ``password``.
-
-        Returns:
-            Dict with ``access`` and ``refresh`` JWT strings.
-
-        Raises:
-            InvalidCredentialsError: When the email is missing or credentials
-                are invalid.
-            InactiveAccountError: When the user account exists but is inactive.
+        The refresh token is NOT included in the returned dict — the view pops
+        it out and sets it as an httpOnly cookie.  The ``_refresh`` attribute is
+        set on the serializer so the view can compute the correct max_age.
         """
         email = attrs.get("email", "").strip().lower()
         password = attrs.get("password", "")
@@ -83,29 +106,115 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         user = self._find_user_for_login(email=email, password=password)
 
+        lifetime = (
+            _ADMIN_REFRESH_LIFETIME if user.is_staff else _CLIENT_REFRESH_LIFETIME
+        )
         refresh = RefreshToken.for_user(user)
+        refresh.set_exp(lifetime=lifetime)
+
+        # Store on the instance so the view can read the lifetime without re-parsing
+        self._refresh = refresh
+
         return {
-            "refresh": str(refresh),
+            "refresh": str(refresh),  # view pops this before returning to client
             "access": str(refresh.access_token),
         }
 
 
 @extend_schema(tags=["auth"])
-class SafeTokenRefreshView(TokenRefreshView):
-    """Token refresh view that returns 401 when the user no longer exists."""
+class EmailTokenObtainPairView(TokenObtainPairView):
+    """JWT login view. Returns access token in body; sets refresh token as httpOnly cookie."""
+
+    serializer_class = EmailTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        try:
-            return super().post(request, *args, **kwargs)
-        except User.DoesNotExist:
-            raise InvalidToken("Token neplatný alebo expirovaný.")
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        refresh_str: str = serializer.validated_data["refresh"]
+        access_str: str = serializer.validated_data["access"]
+        refresh_obj: RefreshToken = serializer._refresh
+
+        exp = refresh_obj.payload["exp"]
+        iat = refresh_obj.payload["iat"]
+        max_age = int(exp - iat)
+
+        response = Response({"access": access_str}, status=status.HTTP_200_OK)
+        _set_refresh_cookie(response, refresh_str, max_age=max_age)
+        return response
 
 
 @extend_schema(tags=["auth"])
-class EmailTokenObtainPairView(TokenObtainPairView):
-    """JWT token view that authenticates via email instead of username."""
+class SafeTokenRefreshView(TokenRefreshView):
+    """
+    Token refresh view.
 
-    serializer_class = EmailTokenObtainPairSerializer
+    Reads the refresh token from the httpOnly cookie (not the request body).
+    Returns the new access token in the body and rotates the refresh cookie.
+    """
+
+    def post(self, request, *args, **kwargs):
+        refresh_str = request.COOKIES.get(_COOKIE_NAME)
+        if not refresh_str:
+            raise InvalidToken("Refresh token nenájdený.")
+
+        # Inject the cookie value into request data so the parent serializer can read it
+        data = (
+            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        )
+        data["refresh"] = refresh_str
+
+        serializer = self.get_serializer(data=data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as exc:
+            raise InvalidToken(exc.args[0]) from exc
+        except User.DoesNotExist:
+            raise InvalidToken("Token neplatný alebo expirovaný.")
+
+        new_access: str = serializer.validated_data["access"]
+        # ROTATE_REFRESH_TOKENS=True → the serializer returns a new refresh token
+        new_refresh: str | None = serializer.validated_data.get("refresh")
+
+        response = Response({"access": new_access}, status=status.HTTP_200_OK)
+
+        if new_refresh:
+            try:
+                obj = RefreshToken(new_refresh)  # type: ignore[arg-type]
+                max_age = int(obj.payload["exp"] - obj.payload["iat"])
+            except Exception:
+                max_age = int(_CLIENT_REFRESH_LIFETIME.total_seconds())
+            _set_refresh_cookie(response, new_refresh, max_age=max_age)
+
+        return response
+
+
+@extend_schema(tags=["auth"])
+class LogoutView(APIView):
+    """
+    POST /api/token/logout/
+
+    Blacklists the refresh token from the httpOnly cookie and clears it.
+    Requires a valid access token in the Authorization header.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        refresh_str = request.COOKIES.get(_COOKIE_NAME)
+        if refresh_str:
+            try:
+                token = RefreshToken(refresh_str)
+                token.blacklist()
+            except Exception:
+                # Already blacklisted or otherwise invalid — proceed with logout anyway
+                pass
+
+        response = Response(
+            {"detail": "Odhlásenie bolo úspešné."}, status=status.HTTP_200_OK
+        )
+        _delete_refresh_cookie(response)
+        return response
 
 
 @extend_schema(tags=["auth"])
@@ -122,12 +231,6 @@ class PasswordResetRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        """
-        Initiate a password-reset flow for the given email address.
-
-        Always returns HTTP 200 even when the email is not registered to
-        avoid user-enumeration. Returns HTTP 429 when rate-limited.
-        """
         from ..exceptions import RateLimitExceeded, TooSoonError
         from ..password_reset_service import request_password_reset
 
@@ -138,7 +241,6 @@ class PasswordResetRequestView(APIView):
         try:
             request_password_reset(email)
         except (RateLimitExceeded, TooSoonError):
-            # Re-raise to let exception handler handle it
             raise
         except Exception:
             logger.exception(
@@ -171,22 +273,13 @@ class PasswordResetConfirmView(APIView):
     POST /api/auth/password-reset/confirm/
     Body: {"token": "<reset_token>", "new_password": "<new_password>"}
 
-    Validates the token and sets the new password.
+    Validates the token, sets the new password, and invalidates all outstanding
+    JWT refresh tokens for the user so existing sessions are terminated.
     """
 
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        """
-        Confirm a password reset by validating the token and setting a new password.
-
-        Args (request body):
-            token: The reset token sent to the user's email.
-            new_password: The desired new password.
-
-        Returns HTTP 200 on success, HTTP 400 when the token is invalid or
-        the password fails validation.
-        """
         from ..password_reset_service import confirm_password_reset
 
         token = request.data.get("token", "").strip()

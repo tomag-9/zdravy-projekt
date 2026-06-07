@@ -160,6 +160,17 @@ def confirm_password_reset(token: str, new_password: str) -> None:
     reset_token.used = True
     reset_token.save(update_fields=["used"])
 
+    # ── Invalidate all outstanding JWT refresh tokens for this user ────────────
+    # This ensures any session that was active before the password reset cannot
+    # continue — the user must log in again with the new password.
+    from rest_framework_simplejwt.token_blacklist.models import (
+        BlacklistedToken,
+        OutstandingToken,
+    )
+
+    for outstanding in OutstandingToken.objects.filter(user=user):
+        BlacklistedToken.objects.get_or_create(token=outstanding)
+
     # ── Clear rate-limit state so user can log in immediately ─────────────────
     email = user.email.lower()
     cache.delete(_key_attempts(email))
