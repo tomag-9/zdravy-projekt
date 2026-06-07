@@ -565,8 +565,9 @@ class TestAutoOrderTimezone:
         """
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
 
-        with patch("api.services.auto_order_service.timezone") as mock_tz:
-            mock_tz.localdate.return_value = MONDAY
+        with patch(
+            "api.services.auto_order_service.timezone.localdate", return_value=MONDAY
+        ):
             result = apply_auto_orders()
 
         # Auto-order should have been created for TUESDAY (next workday after MONDAY)

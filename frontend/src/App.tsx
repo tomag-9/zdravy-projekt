@@ -95,7 +95,7 @@ const AdminRoute = () => {
     return <Navigate to="/home" replace />;
   }
 
-  return <AdminLayout />;
+  return <ErrorBoundary><AdminLayout /></ErrorBoundary>;
 };
 
 /**

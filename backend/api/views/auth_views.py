@@ -3,7 +3,6 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -54,40 +53,31 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     @staticmethod
     def _find_user_for_login(email: str, password: str) -> User:
         """
-        Resolve the login user for an email even if historical duplicate rows exist.
+        Return the active user whose password matches email, or raise
+        InvalidCredentialsError.
 
-        Priority:
-        1) active account with matching password
-        2) inactive account with matching password (so caller can raise inactive error)
+        Both wrong-password and inactive-account cases raise the same error
+        to prevent user enumeration (consistent with password_reset_service.py).
+        Materialising the queryset once avoids the 3-query pattern that
+        existed when .exists(), .count(), and iteration hit the DB separately.
         """
-        candidates: QuerySet[User] = User.objects.filter(email__iexact=email).order_by(
-            "-is_active", "id"
+        candidates = list(
+            User.objects.filter(email__iexact=email).order_by("-is_active", "id")
         )
-        if not candidates.exists():
+        if not candidates:
             raise InvalidCredentialsError()
 
-        if candidates.count() > 1:
+        if len(candidates) > 1:
             logger.error(
                 "Duplicate user emails detected for %s (count=%s)",
                 email,
-                candidates.count(),
+                len(candidates),
             )
 
-        inactive_match: User | None = None
         for candidate in candidates:
-            if not candidate.check_password(password):
-                continue
-            if candidate.is_active:
+            if candidate.check_password(password) and candidate.is_active:
                 return candidate
-            if inactive_match is None:
-                inactive_match = candidate
 
-        if inactive_match is not None:
-            # Don't distinguish "inactive" from "wrong password" at the API boundary —
-            # revealing that a password is correct but the account is disabled leaks
-            # user existence (inconsistent with the anti-enumeration posture in
-            # password_reset_service.py).
-            raise InvalidCredentialsError()
         raise InvalidCredentialsError()
 
     def validate(self, attrs):
