@@ -282,7 +282,7 @@ const AdminLayout: React.FC = () => {
                             Zrušiť
                         </button>
                         <button
-                            onClick={() => { setShowLogoutModal(false); logout(); }}
+                            onClick={() => { setShowLogoutModal(false); void logout(); }}
                             className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors shadow-sm"
                         >
                             Odhlásiť sa

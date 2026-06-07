@@ -111,6 +111,10 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         )
         refresh = RefreshToken.for_user(user)
         refresh.set_exp(lifetime=lifetime)
+        # Embed is_staff so rotation can re-apply the correct lifetime without a
+        # DB query (avoids both a per-rotation SELECT and the exception-fallback
+        # path that would silently promote an admin to a 30-day token).
+        refresh["is_staff"] = user.is_staff
 
         # Store on the instance so the view can read the lifetime without re-parsing
         self._refresh = refresh
@@ -174,29 +178,26 @@ class SafeTokenRefreshView(TokenRefreshView):
 
         new_access: str = serializer.validated_data["access"]
         # ROTATE_REFRESH_TOKENS=True → the serializer returns a new refresh token.
-        # SimpleJWT's rotation calls set_exp() without a lifetime argument, so it
-        # always uses the global REFRESH_TOKEN_LIFETIME (30 days) regardless of the
-        # per-role lifetime we set at login.  Re-apply the correct lifetime here.
+        # SimpleJWT's rotation calls set_exp() without a lifetime argument so it
+        # always resets to the global REFRESH_TOKEN_LIFETIME (30 days).  Read the
+        # is_staff claim we embedded at login to re-apply the correct lifetime
+        # without a DB query — no exception-fallback path needed.
         new_refresh: str | None = serializer.validated_data.get("refresh")
 
         response = Response({"access": new_access}, status=status.HTTP_200_OK)
 
         if new_refresh:
-            try:
-                obj = RefreshToken(new_refresh)  # type: ignore[arg-type]
-                user_id = obj.payload.get("user_id")
-                user_obj = User.objects.get(pk=user_id) if user_id else None
-                lifetime = (
-                    _ADMIN_REFRESH_LIFETIME
-                    if (user_obj and user_obj.is_staff)
-                    else _CLIENT_REFRESH_LIFETIME
-                )
-                obj.set_exp(lifetime=lifetime)
-                new_refresh = str(obj)
-                max_age = int(lifetime.total_seconds())
-            except Exception:
-                max_age = int(_CLIENT_REFRESH_LIFETIME.total_seconds())
-            _set_refresh_cookie(response, new_refresh, max_age=max_age)
+            obj = RefreshToken(new_refresh)  # type: ignore[arg-type]
+            lifetime = (
+                _ADMIN_REFRESH_LIFETIME
+                if obj.payload.get("is_staff")
+                else _CLIENT_REFRESH_LIFETIME
+            )
+            obj.set_exp(lifetime=lifetime)
+            new_refresh = str(obj)
+            _set_refresh_cookie(
+                response, new_refresh, max_age=int(lifetime.total_seconds())
+            )
 
         return response
 
@@ -219,8 +220,12 @@ class LogoutView(APIView):
                 token = RefreshToken(refresh_str)
                 token.blacklist()
             except Exception:
-                # Already blacklisted or otherwise invalid — proceed with logout anyway
-                pass
+                # Token already blacklisted, expired, or malformed — all safe to ignore.
+                # Log at WARNING so a DB outage during logout is visible in monitoring.
+                logger.warning(
+                    "Could not blacklist refresh token on logout (already invalid or DB error)",
+                    exc_info=True,
+                )
 
         response = Response(
             {"detail": "Odhlásenie bolo úspešné."}, status=status.HTTP_200_OK

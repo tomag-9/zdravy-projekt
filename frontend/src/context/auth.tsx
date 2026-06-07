@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -43,7 +44,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (accessToken: string) => Promise<User | null>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
   apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -98,6 +99,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     !!storedToken && !cachedProfile,
   );
   const navigate = useNavigate();
+  // Single in-flight refresh promise shared across all callers.
+  // With ROTATE_REFRESH_TOKENS+BLACKLIST_AFTER_ROTATION, two concurrent refresh
+  // calls using the same cookie cause the second to get 401 and trigger a spurious
+  // logout.  Deduplicating here ensures only one network request is in-flight at a
+  // time — any concurrent caller awaits the same promise instead of racing.
+  const refreshInFlight = useRef<Promise<boolean> | null>(null);
 
   // Logout: blacklist the server-side refresh token cookie, then clear local state.
   const logout = useCallback(async () => {
@@ -129,34 +136,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   // Refresh access token using the httpOnly refresh cookie.
   // The browser sends the cookie automatically — no token in the request body.
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_URL}/token/refresh/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // sends the httpOnly refresh cookie
-      });
+    // Return the in-flight promise if a refresh is already running so concurrent
+    // callers (setInterval, visibilitychange, apiFetch 401) share one request.
+    if (refreshInFlight.current) return refreshInFlight.current;
 
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem("access_token", data.access);
-        setToken(data.access);
-        return true;
-      } else if (response.status === 401 || response.status === 403) {
-        // Refresh cookie is invalid or blacklisted — session is truly over
-        logout();
+    const doRefresh = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`${API_URL}/token/refresh/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // sends the httpOnly refresh cookie
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("access_token", data.access);
+          setToken(data.access);
+          return true;
+        } else if (response.status === 401 || response.status === 403) {
+          // Refresh cookie is invalid or blacklisted — session is truly over
+          await logout();
+          return false;
+        } else {
+          // Transient server error (e.g. 500/502). Do NOT log the user out.
+          console.warn("Token refresh failed with non-auth status:", response.status);
+          return false;
+        }
+      } catch (error) {
+        // Network error — do NOT log the user out; the cookie is still valid.
+        if (!isNetworkFetchError(error)) {
+          console.error("Token refresh failed with unexpected error:", error);
+        }
         return false;
-      } else {
-        // Transient server error (e.g. 500/502). Do NOT log the user out.
-        console.warn("Token refresh failed with non-auth status:", response.status);
-        return false;
+      } finally {
+        refreshInFlight.current = null;
       }
-    } catch (error) {
-      // Network error — do NOT log the user out; the cookie is still valid.
-      if (!isNetworkFetchError(error)) {
-        console.error("Token refresh failed with unexpected error:", error);
-      }
-      return false;
-    }
+    };
+
+    refreshInFlight.current = doRefresh();
+    return refreshInFlight.current;
   }, [logout]);
 
   // Custom fetch wrapper that handles auth headers and token refresh
