@@ -215,12 +215,12 @@ class TestOrderValidation:
             "breakfast": {
                 "Dospelý": {
                     "menuCounts": {"A": 2, "B": 1},
-                    "diets": {"vegetarian": True},
+                    "diets": {"Vegetariánske": 1},
                 },
                 "Deti": {"menuCounts": {"A": 1}, "diets": {}},
             },
             "lunch": {
-                "Dospelý": {"menuCounts": {"A": 5, "B": 3}, "diets": {"vegan": True}}
+                "Dospelý": {"menuCounts": {"A": 5, "B": 3}, "diets": {"Vegánske": 2}}
             },
             "olovrant": {},
         }
