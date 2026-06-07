@@ -12,6 +12,7 @@ from .admin_views import AdminUserViewSet
 from .auth_views import (
     EmailTokenObtainPairSerializer,
     EmailTokenObtainPairView,
+    LogoutView,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     SafeTokenRefreshView,
@@ -50,6 +51,7 @@ __all__ = [
     "AdminHolidayViewSet",
     "HolidayListViewSet",
     "EmailTokenObtainPairView",
+    "LogoutView",
     "PasswordResetRequestView",
     "PasswordResetConfirmView",
     "SafeTokenRefreshView",

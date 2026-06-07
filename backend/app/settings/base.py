@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "django_celery_beat",
     # Local apps
     "api",
@@ -231,16 +232,29 @@ VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", "admin@example.com")
 # JWT – longer lifetimes so the PWA stays logged in across background/resume cycles.
 # Access token: 30 min (default 5 min was too short; phones throttle background
 #   refresh and the token expired before the app could refresh it).
-# Refresh token: 30 days ("remember me" for a PWA used daily).
+# Refresh token: default 30 days (overridden per user at login — admins get 1 day,
+#   clients get 30 days since they may open the app as infrequently as every 2 weeks;
+#   rotation resets the clock on each active visit so clients are never logged out
+#   while actively using the app).
 #
-# Security note: refresh tokens are stored in localStorage (no httpOnly cookie).
-# If you later enable ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION you will
-# also need to add "rest_framework_simplejwt.token_blacklist" to INSTALLED_APPS
-# and run its migration. That would allow server-side revocation on logout.
+# Refresh tokens are stored in an httpOnly, Secure, SameSite=Lax cookie — never
+# accessible to JavaScript, eliminating the XSS exfiltration path.
+# ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION give server-side revocation:
+# each refresh call issues a new token and blacklists the old one so a stolen token
+# becomes useless after the legitimate client refreshes once.
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(
+        days=30
+    ),  # default; overridden per user in login view
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
 }
+
+# httpOnly cookie used to transport the refresh token.
+REFRESH_TOKEN_COOKIE_NAME = "refresh_token"
+# Restrict the cookie to token endpoints so it isn't sent on every API request.
+REFRESH_TOKEN_COOKIE_PATH = "/api/token"
 
 # Django REST Framework
 REST_FRAMEWORK = {

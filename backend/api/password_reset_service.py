@@ -160,6 +160,30 @@ def confirm_password_reset(token: str, new_password: str) -> None:
     reset_token.used = True
     reset_token.save(update_fields=["used"])
 
+    # ── Invalidate all outstanding JWT refresh tokens for this user ────────────
+    # Bulk-insert to avoid N+1 and wrap in atomic so a DB error cannot leave a
+    # partial blacklist (some sessions live, some revoked).
+    from django.db import transaction
+    from django.utils import timezone as tz
+    from rest_framework_simplejwt.token_blacklist.models import (
+        BlacklistedToken,
+        OutstandingToken,
+    )
+
+    with transaction.atomic():
+        token_ids = list(
+            OutstandingToken.objects.filter(
+                user=user,
+                expires_at__gt=tz.now(),
+            )
+            .exclude(blacklistedtoken__isnull=False)
+            .values_list("id", flat=True)
+        )
+        BlacklistedToken.objects.bulk_create(
+            [BlacklistedToken(token_id=tid) for tid in token_ids],
+            ignore_conflicts=True,
+        )
+
     # ── Clear rate-limit state so user can log in immediately ─────────────────
     email = user.email.lower()
     cache.delete(_key_attempts(email))

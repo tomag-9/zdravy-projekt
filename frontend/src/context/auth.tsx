@@ -4,6 +4,7 @@ import React, {
   useState,
   useEffect,
   useCallback,
+  useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -42,8 +43,8 @@ interface AuthContextType {
   user: User | null;
   token: string | null;
   isLoading: boolean;
-  login: (token: string, refresh: string) => Promise<User | null>;
-  logout: () => void;
+  login: (accessToken: string) => Promise<User | null>;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
   refreshToken: () => Promise<boolean>;
   apiFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -98,66 +99,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     !!storedToken && !cachedProfile,
   );
   const navigate = useNavigate();
+  // Single in-flight refresh promise shared across all callers.
+  // With ROTATE_REFRESH_TOKENS+BLACKLIST_AFTER_ROTATION, two concurrent refresh
+  // calls using the same cookie cause the second to get 401 and trigger a spurious
+  // logout.  Deduplicating here ensures only one network request is in-flight at a
+  // time — any concurrent caller awaits the same promise instead of racing.
+  const refreshInFlight = useRef<Promise<boolean> | null>(null);
 
-  // Logout function
-  const logout = useCallback(() => {
+  // Logout: blacklist the server-side refresh token cookie, then clear local state.
+  const logout = useCallback(async () => {
+    const currentToken = localStorage.getItem("access_token");
+    if (currentToken) {
+      try {
+        await fetch(`${API_URL}/token/logout/`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${currentToken}` },
+          credentials: "include",
+        });
+      } catch {
+        // Network failure — proceed with local cleanup regardless
+      }
+    }
+
     localStorage.removeItem("access_token");
-    localStorage.removeItem("refresh_token");
     localStorage.removeItem(CACHED_PROFILE_KEY);
-    // Legacy: also clear sessionStorage in case old sessions stored tokens there
+    // Legacy: clear any old refresh tokens that may have been stored in prior versions
+    localStorage.removeItem("refresh_token");
     sessionStorage.removeItem("access_token");
     sessionStorage.removeItem("refresh_token");
-    // Clear per-user order data so next user starts fresh
     clearOrderLocalStorage();
     setToken(null);
     setUser(null);
     navigate("/login");
   }, [navigate]);
 
-  // Refresh access token using refresh token
+  // Refresh access token using the httpOnly refresh cookie.
+  // The browser sends the cookie automatically — no token in the request body.
   const refreshToken = useCallback(async (): Promise<boolean> => {
-    const refresh = localStorage.getItem("refresh_token");
-    if (!refresh) {
-      logout();
-      return false;
-    }
+    // Return the in-flight promise if a refresh is already running so concurrent
+    // callers (setInterval, visibilitychange, apiFetch 401) share one request.
+    if (refreshInFlight.current) return refreshInFlight.current;
 
-    try {
-      const response = await fetch(`${API_URL}/token/refresh/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refresh }),
-      });
+    const doRefresh = async (): Promise<boolean> => {
+      try {
+        const response = await fetch(`${API_URL}/token/refresh/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include", // sends the httpOnly refresh cookie
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem("access_token", data.access);
-        setToken(data.access);
-        // If the backend rotates refresh tokens, update it here
-        if (data.refresh) {
-          localStorage.setItem("refresh_token", data.refresh);
+        if (response.ok) {
+          const data = await response.json();
+          localStorage.setItem("access_token", data.access);
+          setToken(data.access);
+          return true;
+        } else if (response.status === 401 || response.status === 403) {
+          // Refresh cookie is invalid or blacklisted — session is truly over
+          await logout();
+          return false;
+        } else {
+          // Transient server error (e.g. 500/502). Do NOT log the user out.
+          console.warn("Token refresh failed with non-auth status:", response.status);
+          return false;
         }
-        return true;
-      } else if (response.status === 401 || response.status === 403) {
-        // Server explicitly rejected the refresh token — session is truly invalid,
-        // log the user out.
-        logout();
+      } catch (error) {
+        // Network error — do NOT log the user out; the cookie is still valid.
+        if (!isNetworkFetchError(error)) {
+          console.error("Token refresh failed with unexpected error:", error);
+        }
         return false;
-      } else {
-        // Transient server error (e.g. 500/502). Do NOT log the user out so the
-        // app can retry later without destroying a valid session.
-        console.warn("Token refresh failed with non-auth status:", response.status);
-        return false;
+      } finally {
+        refreshInFlight.current = null;
       }
-    } catch (error) {
-      // Network error (e.g. phone just woke up and connection isn't ready yet).
-      // Do NOT log the user out — the refresh token is still valid. The next
-      // API call will retry the refresh once the network is available.
-      if (!isNetworkFetchError(error)) {
-        console.error("Token refresh failed with unexpected error:", error);
-      }
-      return false;
-    }
+    };
+
+    refreshInFlight.current = doRefresh();
+    return refreshInFlight.current;
   }, [logout]);
 
   // Custom fetch wrapper that handles auth headers and token refresh
@@ -170,10 +187,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         headers.set("Authorization", `Bearer ${currentToken}`);
       }
 
-      // Prevent browser from caching API responses. Note: this cache option does not affect CORS preflight.
+      // Prevent browser from caching API responses.
       const config = { ...init, headers, cache: "no-store" as RequestCache };
 
-      // First attempt
       let response = await fetch(input, config);
 
       const syncServerTimeOffset = (res: Response) => {
@@ -181,7 +197,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         if (!serverDate) return;
         const serverMs = Date.parse(serverDate);
         if (Number.isNaN(serverMs)) return;
-        // Keep in sessionStorage — OrderService reads it from there
         sessionStorage.setItem(
           "server_time_offset_ms",
           String(serverMs - Date.now()),
@@ -190,7 +205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
       syncServerTimeOffset(response);
 
-      // If unauthorized, try to refresh and retry
+      // 401 = expired/missing access token → refresh and retry
       if (response.status === 401) {
         const refreshed = await refreshToken();
         if (refreshed) {
@@ -203,31 +218,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           });
           syncServerTimeOffset(response);
         }
-      } else if (response.status === 403) {
-        // Forbidden — may be caused by an expired JWT that the backend returns as 403.
-        // Attempt a token refresh and retry. If the refresh or the retried request still
-        // results in 403/failure, treat it as an invalid session and redirect to login.
-        const refreshed = await refreshToken();
-        if (refreshed) {
-          const newToken = localStorage.getItem("access_token");
-          headers.set("Authorization", `Bearer ${newToken}`);
-          const retried = await fetch(input, {
-            ...init,
-            headers,
-            cache: "no-store" as RequestCache,
-          });
-          syncServerTimeOffset(retried);
-          if (retried.status === 403) {
-            // Valid token but still forbidden → session/account issue, force logout.
-            logout();
-          }
-          response = retried;
-        }
-        // If refresh failed, refreshToken() already called logout().
       }
+      // 403 = permission denial for a valid session — do NOT logout.
+      // The API uses 401 for auth/token issues and 403 for authorization failures.
+
       return response;
     },
-    [logout, refreshToken],
+    [refreshToken],
   );
 
   const fetchUserProfile = useCallback(async (): Promise<User | null> => {
@@ -251,30 +248,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [apiFetch]);
 
   useEffect(() => {
-    // Determine initial auth state
     const existingToken = localStorage.getItem("access_token");
     if (existingToken) {
       setToken(existingToken);
       fetchUserProfile();
     }
 
-    // Set up token refresh interval (every 14 minutes, access tokens expire in 30 minutes)
+    // Proactively refresh the access token every 14 minutes (it expires in 30).
     const refreshInterval = setInterval(
       () => {
-        if (localStorage.getItem("refresh_token")) {
+        if (localStorage.getItem("access_token")) {
           refreshToken();
         }
       },
       14 * 60 * 1000,
-    ); // 14 minutes
+    );
 
-    // When the PWA returns to the foreground after being backgrounded, mobile
-    // browsers throttle/pause setInterval so the token may be stale. Refresh
-    // proactively on visibility restore so the first user action doesn't block.
+    // On PWA foreground restore the access token may be stale — refresh immediately
+    // so the first user action doesn't block on an expired token.
     const handleVisibilityChange = () => {
       if (
         document.visibilityState === "visible" &&
-        localStorage.getItem("refresh_token")
+        localStorage.getItem("access_token")
       ) {
         refreshToken();
       }
@@ -296,18 +291,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, []);
 
-  const login = async (
-    accessToken: string,
-    refreshTokenStr: string,
-  ): Promise<User | null> => {
-    // Wipe previous user's local order data and cached profile before loading new user
+  // login() accepts only the access token — the refresh token arrives as an
+  // httpOnly cookie set by the server and is never visible to JavaScript.
+  const login = async (accessToken: string): Promise<User | null> => {
     clearOrderLocalStorage();
     localStorage.removeItem(CACHED_PROFILE_KEY);
     localStorage.setItem("access_token", accessToken);
-    localStorage.setItem("refresh_token", refreshTokenStr);
     setToken(accessToken);
     setIsLoading(true);
-    // Await profile so callers can navigate based on role (e.g. is_staff)
     const userData = await fetchUserProfile();
     return userData;
   };

@@ -41,6 +41,7 @@ const LoginPage: React.FC = () => {
         headers: {
           "Content-Type": "application/json",
         },
+        credentials: "include", // allows the httpOnly refresh cookie to be set
         body: JSON.stringify({ email, password }),
       });
 
@@ -57,13 +58,14 @@ const LoginPage: React.FC = () => {
 
       const data = await response.json();
 
-      if (!data.access || !data.refresh) {
+      if (!data.access) {
         setError("Prihlásenie zlyhalo. Neplatná odpoveď servera.");
         return;
       }
 
+      // Refresh token arrives as an httpOnly cookie — only access token is in body.
       // login() fetches the profile; the useEffect above will navigate once user is set
-      await login(data.access, data.refresh);
+      await login(data.access);
     } catch (err) {
       setError(
         "Nepodarilo sa pripojiť k serveru. Skontrolujte pripojenie na internet.",

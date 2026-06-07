@@ -13,11 +13,13 @@ Full-stack web application with Django backend and React frontend, containerized
 ## 🤝 Contributing
 
 **Commit Message Format:**
+
 ```
 <type>(<scope>): <subject>
 ```
 
 **Príklady:**
+
 - `feat(backend): add user authentication`
 - `fix(frontend): resolve navbar issues`
 - `docs: update setup instructions`
@@ -54,6 +56,7 @@ docker compose --env-file .env.dev -f compose/dev.yml up --build
 ```
 
 The application will be available at:
+
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:8000
 - Django Admin: http://localhost:8000/admin
@@ -176,6 +179,10 @@ zdravy-projekt/
 └── README.md
 ```
 
+## 📚 Documentation
+
+- [Architektura a dolezite flows](docs/ARCHITECTURE_AND_FLOWS.md) - modulova mapa, Mermaid diagramy, datovy model, objednavkove/report/push/Celery flows a poznamky k rizikovym miestam.
+
 ## 🔧 Development
 
 ### Backend Development
@@ -233,12 +240,12 @@ pre-commit run --all-files
 
 **Hooks configured:**
 
-| Hook | Tool | What it does |
-|------|------|-------------|
-| `black` | black 25.1.0 | Formats Python code |
-| `isort` | isort 5.13.2 | Sorts imports (black-compatible) |
-| `flake8` | flake8 7.0.0 | Lints for style/logic errors |
-| `mypy` | mypy 1.11.2 | Static type checking |
+| Hook     | Tool         | What it does                     |
+| -------- | ------------ | -------------------------------- |
+| `black`  | black 25.1.0 | Formats Python code              |
+| `isort`  | isort 5.13.2 | Sorts imports (black-compatible) |
+| `flake8` | flake8 7.0.0 | Lints for style/logic errors     |
+| `mypy`   | mypy 1.11.2  | Static type checking             |
 
 **Via Docker (without local Python):**
 
@@ -295,6 +302,7 @@ Deployment is managed by Dokploy (Traefik + Compose stack).
 See [env/dev.example](env/dev.example), [env/staging.example](env/staging.example), [env/prod.example](env/prod.example), and [env/observability.example](env/observability.example) for available environment variables.
 
 Key variables:
+
 - `DJANGO_SECRET_KEY`: Django secret key (generate for production)
 - `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`: Database credentials
 - `POSTGRES_HOST`: Dokploy-managed Postgres hostname for staging/production
@@ -327,6 +335,7 @@ are honored when the stack is deployed through Swarm-compatible deployment
 fields.
 
 Defaults:
+
 - Production runs `BACKEND_REPLICAS=2`, `FRONTEND_REPLICAS=2`, `CELERY_REPLICAS=1`, and one fixed `celery-beat`.
 - Staging runs one replica per service by default.
 - `backend` and `frontend` use `start-first` rolling updates.
@@ -336,6 +345,7 @@ Defaults:
 ### CI/CD Pipeline
 
 GitHub Actions automatically:
+
 1. Runs tests on every pull request
 2. Checks code quality (linting, formatting)
 3. Builds staging images on push to `develop` branch
