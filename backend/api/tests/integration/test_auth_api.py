@@ -184,6 +184,19 @@ class TestTokenRefreshFlow:
 
         assert first_refresh != second_refresh
 
+    def test_rotation_preserves_role_based_lifetime(self, api_client, admin_user):
+        """Rotated token must keep the admin's 1-day lifetime, not fall back to 30 days."""
+        _login(api_client, "admin@example.com", "admin123")
+
+        rotate_response = api_client.post(reverse("token_refresh"), format="json")
+        assert rotate_response.status_code == status.HTTP_200_OK
+
+        rotated_cookie = api_client.cookies[COOKIE_NAME].value
+        rotated = RefreshToken(rotated_cookie)
+        lifetime_days = (rotated.payload["exp"] - rotated.payload["iat"]) / 86400
+        # Must still be ~1 day, not 30
+        assert abs(lifetime_days - 1) < 0.1
+
     def test_token_refresh_with_invalid_cookie(self, api_client):
         """An invalid cookie value is rejected."""
         api_client.cookies[COOKIE_NAME] = "invalid-token"

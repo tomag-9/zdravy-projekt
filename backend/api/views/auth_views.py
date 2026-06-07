@@ -173,7 +173,10 @@ class SafeTokenRefreshView(TokenRefreshView):
             raise InvalidToken("Token neplatný alebo expirovaný.")
 
         new_access: str = serializer.validated_data["access"]
-        # ROTATE_REFRESH_TOKENS=True → the serializer returns a new refresh token
+        # ROTATE_REFRESH_TOKENS=True → the serializer returns a new refresh token.
+        # SimpleJWT's rotation calls set_exp() without a lifetime argument, so it
+        # always uses the global REFRESH_TOKEN_LIFETIME (30 days) regardless of the
+        # per-role lifetime we set at login.  Re-apply the correct lifetime here.
         new_refresh: str | None = serializer.validated_data.get("refresh")
 
         response = Response({"access": new_access}, status=status.HTTP_200_OK)
@@ -181,7 +184,16 @@ class SafeTokenRefreshView(TokenRefreshView):
         if new_refresh:
             try:
                 obj = RefreshToken(new_refresh)  # type: ignore[arg-type]
-                max_age = int(obj.payload["exp"] - obj.payload["iat"])
+                user_id = obj.payload.get("user_id")
+                user_obj = User.objects.get(pk=user_id) if user_id else None
+                lifetime = (
+                    _ADMIN_REFRESH_LIFETIME
+                    if (user_obj and user_obj.is_staff)
+                    else _CLIENT_REFRESH_LIFETIME
+                )
+                obj.set_exp(lifetime=lifetime)
+                new_refresh = str(obj)
+                max_age = int(lifetime.total_seconds())
             except Exception:
                 max_age = int(_CLIENT_REFRESH_LIFETIME.total_seconds())
             _set_refresh_cookie(response, new_refresh, max_age=max_age)
