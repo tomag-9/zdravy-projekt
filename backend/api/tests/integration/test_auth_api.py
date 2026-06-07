@@ -104,6 +104,25 @@ class TestLoginFlow:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
+    def test_inactive_account_returns_same_error_as_invalid_credentials(
+        self, api_client, user
+    ):
+        """H3 regression: login must not distinguish inactive from wrong-password.
+        Both paths must return identical error codes so an attacker cannot use
+        login to confirm a valid password against a disabled account."""
+        user.is_active = False
+        user.save()
+
+        inactive_response = _login(api_client, "client@example.com", "client123")
+        wrong_pw_response = _login(api_client, "client@example.com", "wrongpassword")
+
+        assert inactive_response.status_code == wrong_pw_response.status_code == 401
+        assert (
+            inactive_response.data["error"]["code"]
+            == wrong_pw_response.data["error"]["code"]
+            == "invalid_credentials"
+        )
+
     def test_login_missing_email(self, api_client):
         response = api_client.post(
             reverse("token_obtain_pair"), {"password": "anypassword"}, format="json"

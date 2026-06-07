@@ -9,6 +9,7 @@ Covers:
 """
 
 import datetime
+from unittest.mock import patch
 
 import pytest
 from django.contrib.auth.models import User
@@ -425,7 +426,7 @@ class TestAutoOrderTemplateSelection:
         """Planned orders cascade forward orders within the same week."""
         from django.utils import timezone
 
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
+        today = timezone.localdate()
         import datetime as dt
 
         # Get first workday
@@ -546,3 +547,32 @@ class TestAutoOrderEdgeCases:
                         assert auto.data.get(meal, {}) == template_meal_data
                     else:
                         assert auto.data.get(meal) == {}
+
+
+@pytest.mark.django_db
+class TestAutoOrderTimezone:
+    """
+    Regression test for H2: apply_auto_orders must use the local (Europe/Bratislava)
+    date, not UTC.  At 23:30 local time (UTC+1) UTC is already on the next calendar
+    day, so a UTC-based `today` would skip ahead by one workday.
+    """
+
+    def test_localdate_used_near_local_midnight(self, user):
+        """
+        Mock timezone.localdate() to return MONDAY (simulating 23:30 local on Mon).
+        The service should target TUESDAY.  A UTC-based implementation seeing "today
+        is Tuesday" would instead target WEDNESDAY — this test catches the regression.
+        """
+        DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
+
+        with patch("api.services.auto_order_service.timezone") as mock_tz:
+            mock_tz.localdate.return_value = MONDAY
+            result = apply_auto_orders()
+
+        # Auto-order should have been created for TUESDAY (next workday after MONDAY)
+        created_order = DailyOrder.objects.filter(
+            user=user, date=TUESDAY, is_auto=True
+        ).first()
+        assert created_order is not None, (
+            "Expected auto-order on TUESDAY but none was created. " f"Result: {result}"
+        )

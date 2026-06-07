@@ -90,8 +90,10 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
     Returns a summary dict: {"created": [...], "skipped": int}
     """
     if target_date is None:
-        # Use UTC date so all clients see the same calendar regardless of timezone
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
+        # Use local date (Europe/Bratislava) — same timezone the rest of the app uses
+        # for deadlines, monthly_summary, etc.  UTC diverges near local midnight and
+        # across DST transitions, causing off-by-one target dates.
+        today = timezone.localdate()
         target_date = _next_workday(today)
 
     # Safety: never auto-order on weekends

@@ -13,11 +13,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from ..exceptions import (
-    InactiveAccountError,
-    InvalidCredentialsError,
-    MissingRequiredFieldError,
-)
+from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +83,11 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
                 inactive_match = candidate
 
         if inactive_match is not None:
-            raise InactiveAccountError()
+            # Don't distinguish "inactive" from "wrong password" at the API boundary —
+            # revealing that a password is correct but the account is disabled leaks
+            # user existence (inconsistent with the anti-enumeration posture in
+            # password_reset_service.py).
+            raise InvalidCredentialsError()
         raise InvalidCredentialsError()
 
     def validate(self, attrs):

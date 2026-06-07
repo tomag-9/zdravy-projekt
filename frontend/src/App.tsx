@@ -12,6 +12,7 @@ import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
 import { usePWA } from "./hooks/usePWA";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import NotificationGuard from "./components/NotificationGuard";
 import PWAUpdateBanner from "./components/PWAUpdateBanner";
 import AppLoadingScreen from "./components/AppLoadingScreen";
@@ -121,6 +122,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <BrowserRouter>
       <PWAProvider>
         <AuthProvider>
@@ -139,33 +141,33 @@ export default function App() {
               {/* Admin Routes */}
               <Route path="/admin" element={<AdminRoute />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<AdminDashboard />} />
-                <Route path="clients" element={<ClientList />} />
-                <Route path="clients/:id" element={<ClientDetail />} />
-                <Route path="roles" element={<AdminUserList />} />
-                <Route path="roles/:id" element={<AdminUserDetail />} />
-                <Route path="diets" element={<DietManager />} />
-                <Route path="meal-plan" element={<MealPlanCalendar />} />
-                <Route path="meal-plan/:date" element={<MealPlanEditor />} />
-                <Route path="meal-plan-templates" element={<MealPlanTemplates />} />
-                <Route path="portion-types" element={<PortionTypes />} />
-                <Route path="settings" element={<SystemSettings />} />
-                <Route path="push-notifications" element={<PushNotificationsAdmin />} />
-                <Route path="holidays" element={<HolidaysAdmin />} />
+                <Route path="dashboard" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
+                <Route path="clients" element={<ErrorBoundary><ClientList /></ErrorBoundary>} />
+                <Route path="clients/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
+                <Route path="roles" element={<ErrorBoundary><AdminUserList /></ErrorBoundary>} />
+                <Route path="roles/:id" element={<ErrorBoundary><AdminUserDetail /></ErrorBoundary>} />
+                <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />
+                <Route path="meal-plan" element={<ErrorBoundary><MealPlanCalendar /></ErrorBoundary>} />
+                <Route path="meal-plan/:date" element={<ErrorBoundary><MealPlanEditor /></ErrorBoundary>} />
+                <Route path="meal-plan-templates" element={<ErrorBoundary><MealPlanTemplates /></ErrorBoundary>} />
+                <Route path="portion-types" element={<ErrorBoundary><PortionTypes /></ErrorBoundary>} />
+                <Route path="settings" element={<ErrorBoundary><SystemSettings /></ErrorBoundary>} />
+                <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
+                <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
               </Route>
 
               {/* Client Routes */}
               <Route element={<ProtectedRoute />}>
                 <Route path="/" element={<Navigate to="/home" replace />} />
                 <Route element={<ClientLayout />}>
-                  <Route path="/home" element={<HomePage />} />
-                  <Route path="/menu" element={<MenuPage />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/order" element={<OrderPage />} />
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/home" element={<ErrorBoundary><HomePage /></ErrorBoundary>} />
+                  <Route path="/menu" element={<ErrorBoundary><MenuPage /></ErrorBoundary>} />
+                  <Route path="/settings" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+                  <Route path="/order" element={<ErrorBoundary><OrderPage /></ErrorBoundary>} />
+                  <Route path="/profile" element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
+                  <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
                 </Route>
-                <Route path="/success" element={<SuccessPage />} />
+                <Route path="/success" element={<ErrorBoundary><SuccessPage /></ErrorBoundary>} />
               </Route>
               </Routes>
             </AppContent>
@@ -173,5 +175,6 @@ export default function App() {
         </AuthProvider>
       </PWAProvider>
     </BrowserRouter>
+    </ErrorBoundary>
   );
 }
