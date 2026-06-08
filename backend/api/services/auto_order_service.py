@@ -65,9 +65,27 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
     return None
 
 
+def _normalise_meal(meal: Any) -> Dict[str, Any]:
+    """
+    Return a guaranteed category-nested meal dict.
+
+    Legacy records may have flat shape: {meal: {"menuCounts": {...}}}.
+    Auto-orders must write category-nested shape so the serializer accepts
+    any subsequent client resubmit.  Flat meals are promoted to a single
+    synthetic category named after the meal key they came from.
+    """
+    if not isinstance(meal, dict) or not meal:
+        return {}
+    if "menuCounts" in meal or "diets" in meal:
+        # Flat shape — wrap in a placeholder category so downstream readers
+        # see the expected nested structure without losing the counts.
+        return {"default": {k: v for k, v in meal.items()}}
+    return meal
+
+
 def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str, Any]:
     """
-    Copy only the allowed meals from the template.
+    Copy only the allowed meals from the template, always in category-nested shape.
     If visible_meals is empty, all three meals are copied.
     """
     allowed = (
@@ -76,7 +94,8 @@ def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str
     data = {}
     for meal_key in ("breakfast", "lunch", "olovrant"):
         if meal_key in allowed:
-            data[meal_key] = (template.data or {}).get(meal_key, {})
+            raw = (template.data or {}).get(meal_key, {})
+            data[meal_key] = _normalise_meal(raw)
         else:
             data[meal_key] = {}
     return data

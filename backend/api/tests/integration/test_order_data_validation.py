@@ -186,6 +186,37 @@ class TestOrderDataValidation:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_null_menu_counts_rejected(self, authenticated_client):
+        """Explicit null for menuCounts must be rejected (not silently treated as empty)."""
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": None, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_null_diets_rejected(self, authenticated_client):
+        """Explicit null for diets must be rejected (not silently treated as empty)."""
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"A": 1}, "diets": None}}},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_boolean_diet_count_rejected(self, authenticated_client):
+        """Boolean values in diets must be rejected (bool is a subclass of int in Python)."""
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 1},
+                        "diets": {"Bez lepku": True},
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
     # ------------------------------------------------------------------ #
     # Size limit
     # ------------------------------------------------------------------ #

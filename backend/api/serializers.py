@@ -51,23 +51,22 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         if not isinstance(data, dict):
             raise serializers.ValidationError("Order data must be an object.")
 
-        raw_size = len(json.dumps(data, separators=(",", ":")).encode())
+        unknown_keys = set(data) - self._ALLOWED_MEAL_KEYS
+        if unknown_keys:
+            allowed = ", ".join(sorted(self._ALLOWED_MEAL_KEYS))
+            raise serializers.ValidationError(
+                f"Unknown meal keys: {sorted(unknown_keys)}. Allowed keys are: {allowed}."
+            )
+
+        raw_size = len(
+            json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        )
         if raw_size > self._MAX_DATA_BYTES:
             raise serializers.ValidationError(
                 f"Order data exceeds the {self._MAX_DATA_BYTES // 1024} KB size limit."
             )
 
-        unknown_keys = set(data) - self._ALLOWED_MEAL_KEYS
-        if unknown_keys:
-            raise serializers.ValidationError(
-                f"Unknown meal keys: {sorted(unknown_keys)}. "
-                "Allowed keys are: breakfast, lunch, olovrant."
-            )
-
-        for meal_key in self._ALLOWED_MEAL_KEYS:
-            meal = data.get(meal_key)
-            if meal is None:
-                continue
+        for meal_key, meal in data.items():
             if not isinstance(meal, dict):
                 raise serializers.ValidationError(f"'{meal_key}' must be an object.")
             if "menuCounts" in meal or "diets" in meal:
@@ -80,16 +79,16 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         f"'{meal_key}.{cat_name}' must be an object."
                     )
-                self._validate_count_map(
-                    cat_data.get("menuCounts", {}), f"{meal_key}.{cat_name}.menuCounts"
-                )
-                self._validate_count_map(
-                    cat_data.get("diets", {}), f"{meal_key}.{cat_name}.diets"
-                )
+                for sub_key in ("menuCounts", "diets"):
+                    if sub_key in cat_data:
+                        self._validate_count_map(
+                            cat_data[sub_key], f"{meal_key}.{cat_name}.{sub_key}"
+                        )
 
         return data
 
-    def _validate_count_map(self, count_map: Any, field_path: str) -> None:
+    @staticmethod
+    def _validate_count_map(count_map: Any, field_path: str) -> None:
         """Validate that a counts dict contains only non-negative integers within bounds."""
         if not isinstance(count_map, dict):
             raise serializers.ValidationError(f"'{field_path}' must be an object.")
@@ -98,9 +97,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     f"'{field_path}.{key}' must be an integer, got {type(value).__name__}."
                 )
-            if value < 0 or value > self._MAX_COUNT:
+            if value < 0 or value > DailyOrderSerializer._MAX_COUNT:
                 raise serializers.ValidationError(
-                    f"'{field_path}.{key}' must be between 0 and {self._MAX_COUNT}."
+                    f"'{field_path}.{key}' must be between 0 and {DailyOrderSerializer._MAX_COUNT}."
                 )
 
     @staticmethod
