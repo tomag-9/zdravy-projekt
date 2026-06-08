@@ -11,6 +11,7 @@ from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
@@ -22,6 +23,14 @@ from ..serializers_menu import (
 from ..services.meal_plan_service import MealPlanService
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _parse_date(date_str: str, param: str = "date") -> datetime.date:
+    """Parse a YYYY-MM-DD string; raises DRF 400 ValidationError on failure."""
+    try:
+        return datetime.date.fromisoformat(date_str)
+    except ValueError:
+        raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
 
 
 @extend_schema_view(
@@ -114,9 +123,9 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
         if from_date:
-            qs = qs.filter(date__gte=from_date)
+            qs = qs.filter(date__gte=_parse_date(from_date, "from"))
         if to_date:
-            qs = qs.filter(date__lte=to_date)
+            qs = qs.filter(date__lte=_parse_date(to_date, "to"))
         return qs
 
     def perform_create(self, serializer):
@@ -231,6 +240,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "date query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        date = _parse_date(date_str)
 
         from ..models import DailyOrder
 
@@ -240,7 +250,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 return 0
 
-        orders = DailyOrder.objects.filter(date=date_str)
+        orders = DailyOrder.objects.filter(date=date)
 
         # {meal: {diet_name: count}}
         diet_by_meal: dict[str, dict[str, int]] = {}
@@ -303,7 +313,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = _parse_date(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-xlsx")
@@ -314,7 +325,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = _parse_date(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_xlsx_exporter import (
             GramageDashboardXLSXExporter,
         )
@@ -324,7 +336,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             xlsx_bytes,
             content_type=_XLSX_CONTENT_TYPE,
         )
-        fname = f"gramaz_{date_str}.xlsx"
+        fname = f"gramaz_{date}.xlsx"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response
 
@@ -336,14 +348,15 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = _parse_date(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_pdf_exporter import (
             GramageDashboardPDFExporter,
         )
 
         pdf_bytes = GramageDashboardPDFExporter(data).generate()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        fname = f"gramaz_{date_str}.pdf"
+        fname = f"gramaz_{date}.pdf"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response
 
