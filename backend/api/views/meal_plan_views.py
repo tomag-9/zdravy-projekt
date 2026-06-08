@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -11,7 +10,6 @@ from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
@@ -21,16 +19,9 @@ from ..serializers_menu import (
     PortionTypeSerializer,
 )
 from ..services.meal_plan_service import MealPlanService
+from ..utils import parse_date_param
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _parse_date(date_str: str, param: str = "date") -> datetime.date:
-    """Parse a YYYY-MM-DD string; raises DRF 400 ValidationError on failure."""
-    try:
-        return datetime.date.fromisoformat(date_str)
-    except ValueError:
-        raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
 
 
 @extend_schema_view(
@@ -123,9 +114,9 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
         if from_date:
-            qs = qs.filter(date__gte=_parse_date(from_date, "from"))
+            qs = qs.filter(date__gte=parse_date_param(from_date, "from"))
         if to_date:
-            qs = qs.filter(date__lte=_parse_date(to_date, "to"))
+            qs = qs.filter(date__lte=parse_date_param(to_date, "to"))
         return qs
 
     def perform_create(self, serializer):
@@ -140,13 +131,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "date query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            date = datetime.date.fromisoformat(date_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        date = parse_date_param(date_str)
         try:
             plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
@@ -211,14 +196,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "from and to query params required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            from_date = datetime.date.fromisoformat(from_str)
-            to_date = datetime.date.fromisoformat(to_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        from_date = parse_date_param(from_str, "from")
+        to_date = parse_date_param(to_str, "to")
         data = MealPlanService.calculate_range_gramage(from_date, to_date)
         return Response(data)
 
@@ -240,7 +219,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "date query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        date = _parse_date(date_str)
+        date = parse_date_param(date_str)
 
         from ..models import DailyOrder
 
@@ -299,7 +278,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
         return Response(
             {
-                "date": date_str,
+                "date": date.isoformat(),
                 "diet_by_meal": diet_by_meal,
                 "menu_totals": menu_totals,
             }
@@ -313,7 +292,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        date = _parse_date(date_str)
+        date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
         return Response(data)
 
@@ -325,7 +304,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        date = _parse_date(date_str)
+        date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_xlsx_exporter import (
             GramageDashboardXLSXExporter,
@@ -348,7 +327,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        date = _parse_date(date_str)
+        date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_pdf_exporter import (
             GramageDashboardPDFExporter,
@@ -370,14 +349,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "from and to query params required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            from_date = datetime.date.fromisoformat(from_str)
-            to_date = datetime.date.fromisoformat(to_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        from_date = parse_date_param(from_str, "from")
+        to_date = parse_date_param(to_str, "to")
         gramage_list = MealPlanService.calculate_range_gramage(from_date, to_date)
         from ..exporters.meal_plan_xlsx_exporter import MealPlanXLSXExporter
 
@@ -386,6 +359,6 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             xlsx_bytes,
             content_type=_XLSX_CONTENT_TYPE,
         )
-        fname = f"jedalnícek_{from_str}_{to_str}.xlsx"
+        fname = f"jedalnícek_{from_date}_{to_date}.xlsx"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response
