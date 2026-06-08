@@ -114,7 +114,7 @@ jobs:
           pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./backend/coverage.xml
           flags: backend
@@ -145,7 +145,7 @@ jobs:
         run: npm run test -- --coverage
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./frontend/coverage/coverage-final.json
           flags: frontend
