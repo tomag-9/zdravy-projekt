@@ -36,14 +36,14 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **H4** ✅ DONE — React error boundary added at app root and per-route; renders friendly fallback with reload button. Implemented in `feat/high-security-resilience-fixes`.
 
 ### Medium
-- **M1** — `views_backup.py` (1,723 LOC dead code, incl. `AllowAny` endpoints) committed and shippable.
+- **M1** ✅ DONE — Deleted `views_backup.py` (1,723 LOC) and committed coverage artifacts. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 - **M2** — Duplicated order-parsing logic across 4+ modules with divergent rules.
-- **M3** — `apiFetch` logs users out on legitimate `403`s (refresh-then-retry-then-logout).
+- **M3** ✅ DONE — `apiFetch` no longer logs out on `403`; only `401` triggers refresh+retry. Fixed in `feat/high-security-resilience-fixes`.
 - **M4** — Two divergent password policies (registration vs reset confirm).
-- **M5** — Insecure `SECRET_KEY` / DB-password defaults in `settings/base.py`.
+- **M5** ✅ DONE — `prod.py` and `staging.py` now assert `SECRET_KEY` is set and non-insecure at import time; fails loudly instead of booting with dev default. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 - **M6** — Inconsistent client defaults (`visible_menus` model default `[]` vs serializer default `["A"]`).
-- **M7** — Unvalidated `date` query params reach the ORM in several admin actions.
-- **M8** — `GlobalSettings.save()` silently no-ops on second instance (swallows writes).
+- **M7** ✅ DONE — All unvalidated `date`/`from`/`to` query params in `meal_plan_views.py` now go through `_parse_date()`, returning a clean 400 on invalid input. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
+- **M8** ✅ DONE — `GlobalSettings.save()` now raises `ValueError` on second-instance attempt instead of silently no-oping. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 
 ### Low
 - **L1** — 59 `console.*` calls shipped in production frontend code.
