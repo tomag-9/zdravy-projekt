@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { Link } from "react-router-dom";
+import { logger } from '../../lib/logger';
 
 interface AdUser {
   id: number;
@@ -67,10 +68,10 @@ const AdminUserList: React.FC = () => {
         const list = Array.isArray(data) ? data : data.results || [];
         setUsers(list.filter((u: AdUser) => u.is_staff === true)); // Show only admins
       } else {
-        console.error("Failed to fetch users");
+        logger.error("Failed to fetch users");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setLoading(false);
     }
@@ -106,7 +107,7 @@ const AdminUserList: React.FC = () => {
         toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri vytváraní účtu.");
     } finally {
       setCreating(false);
@@ -139,7 +140,7 @@ const AdminUserList: React.FC = () => {
         toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri vytváraní účtu.");
     } finally {
       setCreating(false);
@@ -162,7 +163,7 @@ const AdminUserList: React.FC = () => {
         toastError("Nepodarilo sa vymazať účet.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri mazaní účtu.");
     } finally {
       setDeleting(false);

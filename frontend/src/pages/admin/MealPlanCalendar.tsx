@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
+import { logger } from '../../lib/logger';
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -57,7 +58,7 @@ const MealPlanCalendar: React.FC = () => {
           setPlans(index);
         }
       } catch (e) {
-        console.error(e);
+        logger.error(e);
       } finally {
         setLoading(false);
       }

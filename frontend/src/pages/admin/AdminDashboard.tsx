@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
+import { logger } from '../../lib/logger';
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -124,7 +125,7 @@ const AdminDashboard: React.FC = () => {
     try {
       const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}`);
       if (res.ok) setData(await res.json());
-    } catch (e) { console.error(e); }
+    } catch (e) { logger.error(e); }
     finally { setLoading(false); }
   }, [apiFetch, date]);
 
@@ -144,7 +145,7 @@ const AdminDashboard: React.FC = () => {
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
-    } catch (e) { console.error(e); toastError("Chyba pri generovaní súboru."); }
+    } catch (e) { logger.error(e); toastError("Chyba pri generovaní súboru."); }
     finally { setFmt(false); }
   }, [apiFetch, date, toastError]);
 

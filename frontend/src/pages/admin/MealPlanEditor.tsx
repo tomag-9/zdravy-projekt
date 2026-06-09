@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
+import { logger } from '../../lib/logger';
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -179,7 +180,7 @@ const MealPlanEditor: React.FC = () => {
         error(data?.detail || "Nepodarilo sa uložiť");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri ukladaní");
     } finally {
       setSaving(false);

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
+import { logger } from '../../lib/logger';
 
 interface UserSettings {
   visible_menus: string[];
@@ -49,7 +50,7 @@ const AdminUserDetail: React.FC = () => {
         setUserEmail(data.email || "");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setLoading(false);
     }
@@ -92,7 +93,7 @@ const AdminUserDetail: React.FC = () => {
         toastError("Nepodarilo sa uložiť údaje používateľa.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri ukladaní údajov používateľa.");
     } finally {
       setSaving(false);

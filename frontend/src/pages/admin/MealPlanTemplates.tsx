@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import Modal from "../../components/Modal";
+import { logger } from '../../lib/logger';
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -72,7 +73,7 @@ const MealPlanTemplates: React.FC = () => {
         setTemplates(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [apiFetch]);
 
@@ -116,7 +117,7 @@ const MealPlanTemplates: React.FC = () => {
         error(msg);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri ukladaní");
     } finally {
       setSaving(false);
@@ -137,7 +138,7 @@ const MealPlanTemplates: React.FC = () => {
         error("Nepodarilo sa odstrániť (šablóna je možno použitá v plánoch)");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri odstraňovaní");
     } finally {
       setDeleteConfirm(null);

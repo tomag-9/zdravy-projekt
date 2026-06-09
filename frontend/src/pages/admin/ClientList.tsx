@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { Link } from "react-router-dom";
+import { logger } from '../../lib/logger';
 
 interface AdUser {
   id: number;
@@ -94,7 +95,7 @@ const ClientList: React.FC = () => {
         setUsers(list.filter((u: AdUser) => u.is_staff === false));
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setLoading(false);
     }
@@ -124,7 +125,7 @@ const ClientList: React.FC = () => {
         toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť klienta.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri vytváraní klienta.");
     } finally {
       setCreating(false);
@@ -156,7 +157,7 @@ const ClientList: React.FC = () => {
         dic: data.profile?.dic || "",
       });
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   };
 
@@ -178,7 +179,7 @@ const ClientList: React.FC = () => {
         toastError("Nepodarilo sa upraviť klienta.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri ukladaní.");
     } finally {
       setSaving(false);
@@ -200,7 +201,7 @@ const ClientList: React.FC = () => {
         toastError("Nepodarilo sa odstrániť klienta.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri odstraňovaní.");
     } finally {
       setDeleting(false);

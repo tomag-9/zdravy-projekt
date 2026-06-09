@@ -31,10 +31,8 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
     """
     Return the most recent non-empty order before the given date.
 
-    No status filter applied: the spec requires the last non-empty order,
-    regardless of status. Drafts are never persisted via the normal API
-    (submission deletes them), but omitting the filter keeps the function
-    correct for direct DB writes (e.g. tests, admin).
+    Drafts are never persisted via the normal API path, so every stored order
+    is treated as submitted.
     """
     orders = DailyOrder.objects.filter(
         user=user,
@@ -155,7 +153,6 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
                     user=client,
                     date=target_date,
                     defaults={
-                        "status": "submitted",
                         "is_auto": True,
                         "data": auto_data,
                     },

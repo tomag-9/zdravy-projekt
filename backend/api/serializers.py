@@ -26,6 +26,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
       against concurrent writes using ``SELECT FOR UPDATE``.
     """
 
+    status = serializers.ChoiceField(
+        choices=("draft", "submitted"), required=False, default="submitted"
+    )
+
     class Meta:
         model = DailyOrder
         fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
@@ -268,8 +272,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                         validated_data["date"],
                     )
                 order.data = new_data
-                order.status = "submitted"
-                order.save(update_fields=["data", "status", "updated_at"])
+                order.save(update_fields=["data", "updated_at"])
             except DailyOrder.DoesNotExist:
                 # Wrap create() in its own savepoint so that if IntegrityError is
                 # raised (another request raced us to INSERT), only this savepoint
@@ -280,7 +283,6 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                             user=user,
                             date=validated_data["date"],
                             data=new_data,
-                            status="submitted",
                         )
                 except IntegrityError:
                     # Another request won the INSERT race; retry with a lock.
@@ -288,8 +290,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                         user=user, date=validated_data["date"]
                     )
                     order.data = new_data
-                    order.status = "submitted"
-                    order.save(update_fields=["data", "status", "updated_at"])
+                    order.save(update_fields=["data", "updated_at"])
 
         return order
 
@@ -316,8 +317,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         instance.data = new_data
-        instance.status = input_status
-        instance.save(update_fields=["data", "status", "updated_at"])
+        instance.save(update_fields=["data", "updated_at"])
         return instance
 
 

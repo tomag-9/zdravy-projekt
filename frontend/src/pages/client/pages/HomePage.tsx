@@ -21,6 +21,7 @@ import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
+import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -129,7 +130,7 @@ const HomePage = () => {
     apiFetch(`${API_URL}/orders/planned/`)
       .then((r) => (r.ok ? r.json() : []))
       .then(setPlannedDays)
-      .catch(console.error);
+      .catch(logger.error);
   }, [user, apiFetch]);
 
   useEffect(() => {
@@ -143,7 +144,7 @@ const HomePage = () => {
         total: data.total || 0,
         items: Array.isArray(data.items) ? data.items : [],
       }))
-      .catch(console.error);
+      .catch(logger.error);
   }, [user, apiFetch]);
 
   useEffect(() => {
@@ -213,7 +214,7 @@ const HomePage = () => {
           }
         }
       } catch (e) {
-        console.error("Failed to fetch order history", e);
+        logger.error("Failed to fetch order history", e);
       }
     };
     fetchHistory();
@@ -271,7 +272,7 @@ const HomePage = () => {
       );
       toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toast.error(getFriendlyOrderErrorMessage(e));
     } finally {
       setPredictedModalDay(null);
@@ -299,7 +300,7 @@ const HomePage = () => {
       setModalOrderId(null);
       toast.success("Objednávka bola vynulovaná.");
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toast.error(getFriendlyOrderErrorMessage(e));
     }
   };

@@ -1,3 +1,4 @@
+import { logger } from './logger';
 /**
  * Service Worker registration and update management.
  *
@@ -57,7 +58,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
     return registration;
   } catch (err) {
-    console.error('[SW] Registration failed:', err);
+    logger.error('[SW] Registration failed:', err);
     return null;
   }
 }

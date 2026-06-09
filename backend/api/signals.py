@@ -28,6 +28,16 @@ PUSH_REMINDER_OFFSET_MINUTES = 15
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 
+def _capture_signal_failure(exc: Exception, area: str) -> None:
+    """Report non-fatal signal sync failures when Sentry is configured."""
+    try:
+        import sentry_sdk
+
+        sentry_sdk.capture_exception(exc, scope={"tags": {"signal_area": area}})
+    except Exception:
+        logger.debug("Sentry capture skipped for signal_area=%s", area, exc_info=True)
+
+
 def _push_reminder_task_name(meal_types: list[str]) -> str:
     """Return the deterministic PeriodicTask name for a group of meal types."""
     return PUSH_REMINDER_TASK_PREFIX + "-".join(sorted(meal_types))
@@ -89,6 +99,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         )
     except Exception as exc:
         logger.exception("Failed to sync auto-order periodic task: %s", exc)
+        _capture_signal_failure(exc, "auto_order_schedule")
 
 
 def _sync_daily_report_schedule(settings_instance) -> None:
@@ -186,6 +197,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         )
     except Exception as exc:
         logger.exception("Failed to sync daily report periodic tasks: %s", exc)
+        _capture_signal_failure(exc, "daily_report_schedule")
 
 
 def _sync_push_reminder_schedule(settings_instance) -> None:
@@ -299,6 +311,7 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
 
     except Exception as exc:
         logger.exception("Failed to sync push reminder periodic tasks: %s", exc)
+        _capture_signal_failure(exc, "push_reminder_schedule")
 
 
 def _sync_weekly_reminder_schedule() -> None:
@@ -337,6 +350,7 @@ def _sync_weekly_reminder_schedule() -> None:
         )
     except Exception as exc:
         logger.exception("Failed to sync weekly reminder periodic task: %s", exc)
+        _capture_signal_failure(exc, "weekly_reminder_schedule")
 
 
 @receiver(post_save, sender="api.GlobalSettings")
@@ -365,6 +379,7 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         )
     except Exception as exc:
         logger.exception("Error syncing periodic tasks for GlobalSettings: %s", exc)
+        _capture_signal_failure(exc, "global_settings_saved")
 
 
 @receiver(post_save, sender="api.ClientSettings")
@@ -388,6 +403,7 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
         logger.debug("ClientSettings cache cleared for user_id=%s", instance.user_id)
     except Exception as exc:
         logger.exception("Error clearing ClientSettings cache: %s", exc)
+        _capture_signal_failure(exc, "client_settings_saved")
 
 
 @receiver(post_save, sender="api.Diet")
@@ -401,3 +417,4 @@ def on_diet_changed(sender, instance, **kwargs):
         logger.debug("Diet list cache cleared")
     except Exception as exc:
         logger.exception("Error clearing Diet list cache: %s", exc)
+        _capture_signal_failure(exc, "diet_changed")

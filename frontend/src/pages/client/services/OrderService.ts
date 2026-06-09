@@ -139,29 +139,34 @@ class OrderService {
         }, 0);
     }
 
-    // Schema enforcement helper
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    static enforceStructure(data: any, schema: any): any {
+    static enforceStructure<T>(data: unknown, schema: T): T {
         if (!data) return schema;
         if (typeof data !== 'object') return schema;
 
         if (Array.isArray(schema)) {
-            return Array.isArray(data) ? data : schema;
+            return (Array.isArray(data) ? data : schema) as T;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result: any = { ...schema };
-        Object.keys(schema).forEach(key => {
-            if (key in data) {
-                if (typeof schema[key] === 'object' && schema[key] !== null && !Array.isArray(schema[key])) {
-                    result[key] = this.enforceStructure(data[key], schema[key]);
+        if (!schema || typeof schema !== 'object') {
+            return data as T;
+        }
+
+        const dataRecord = data as Record<string, unknown>;
+        const schemaRecord = schema as Record<string, unknown>;
+        const result: Record<string, unknown> = { ...schemaRecord };
+
+        Object.keys(schemaRecord).forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(dataRecord, key)) {
+                const schemaValue = schemaRecord[key];
+                if (typeof schemaValue === 'object' && schemaValue !== null && !Array.isArray(schemaValue)) {
+                    result[key] = this.enforceStructure(dataRecord[key], schemaValue);
                 } else {
-                    result[key] = data[key];
+                    result[key] = dataRecord[key];
                 }
             }
         });
 
-        return result;
+        return result as T;
     }
 
     // Deadline logic

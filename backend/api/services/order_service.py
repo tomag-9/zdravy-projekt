@@ -63,7 +63,6 @@ class OrderService:
 
         orders = DailyOrder.objects.filter(
             user=user,
-            status="submitted",
             date__gte=start,
             date__lt=end,
         ).only("data")
