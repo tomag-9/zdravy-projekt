@@ -168,10 +168,23 @@ class PasswordResetTokenAdmin(admin.ModelAdmin):
     token_preview.short_description = "Token"
 
 
+class DailyOrderAdminForm(forms.ModelForm):
+    class Meta:
+        model = DailyOrder
+        fields = "__all__"
+
+    def clean_data(self):
+        from .serializers import DailyOrderSerializer
+
+        serializer = DailyOrderSerializer()
+        return serializer.validate_data(self.cleaned_data.get("data") or {})
+
+
 @admin.register(DailyOrder)
 class DailyOrderAdmin(admin.ModelAdmin):
     """Admin for DailyOrder model."""
 
+    form = DailyOrderAdminForm
     list_display = ("user", "date", "status", "is_auto", "created_at")
     list_filter = ("status", "is_auto", "date", "created_at")
     search_fields = ("user__email", "user__profile__company_name")
