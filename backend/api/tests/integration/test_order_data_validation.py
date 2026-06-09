@@ -87,21 +87,28 @@ class TestOrderDataValidation:
         )
 
     # ------------------------------------------------------------------ #
-    # Flat shape rejected
+    # Flat shape compatibility
     # ------------------------------------------------------------------ #
 
-    def test_flat_shape_with_menu_counts_rejected(self, authenticated_client):
-        """Legacy flat shape {meal: {menuCounts: ...}} must be rejected."""
+    def test_flat_shape_with_menu_counts_accepted(self, authenticated_client):
+        """Legacy flat shape {meal: {menuCounts: ...}} remains supported."""
         response = self._post(
             authenticated_client,
             {"lunch": {"menuCounts": {"A": 5}, "diets": {}}},
         )
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.status_code == status.HTTP_201_CREATED
 
-    def test_flat_shape_with_diets_rejected(self, authenticated_client):
+    def test_flat_shape_with_diets_accepted(self, authenticated_client):
         response = self._post(
             authenticated_client,
             {"lunch": {"diets": {"Bez lepku": 1}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_flat_shape_negative_menu_count_rejected(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"menuCounts": {"A": -1}, "diets": {}}},
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 

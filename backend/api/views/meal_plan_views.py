@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -20,6 +19,7 @@ from ..serializers_menu import (
     PortionTypeSerializer,
 )
 from ..services.meal_plan_service import MealPlanService
+from ..utils import parse_date_param
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
@@ -114,9 +114,9 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
         if from_date:
-            qs = qs.filter(date__gte=from_date)
+            qs = qs.filter(date__gte=parse_date_param(from_date, "from"))
         if to_date:
-            qs = qs.filter(date__lte=to_date)
+            qs = qs.filter(date__lte=parse_date_param(to_date, "to"))
         return qs
 
     def perform_create(self, serializer):
@@ -131,13 +131,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "date query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            date = datetime.date.fromisoformat(date_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        date = parse_date_param(date_str)
         try:
             plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
@@ -202,14 +196,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "from and to query params required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            from_date = datetime.date.fromisoformat(from_str)
-            to_date = datetime.date.fromisoformat(to_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        from_date = parse_date_param(from_str, "from")
+        to_date = parse_date_param(to_str, "to")
         data = MealPlanService.calculate_range_gramage(from_date, to_date)
         return Response(data)
 
@@ -231,6 +219,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "date query param required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        date = parse_date_param(date_str)
 
         from ..models import DailyOrder
 
@@ -240,7 +229,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 return 0
 
-        orders = DailyOrder.objects.filter(date=date_str)
+        orders = DailyOrder.objects.filter(date=date)
 
         # {meal: {diet_name: count}}
         diet_by_meal: dict[str, dict[str, int]] = {}
@@ -289,7 +278,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
         return Response(
             {
-                "date": date_str,
+                "date": date.isoformat(),
                 "diet_by_meal": diet_by_meal,
                 "menu_totals": menu_totals,
             }
@@ -303,7 +292,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = parse_date_param(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-xlsx")
@@ -314,7 +304,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = parse_date_param(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_xlsx_exporter import (
             GramageDashboardXLSXExporter,
         )
@@ -324,7 +315,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             xlsx_bytes,
             content_type=_XLSX_CONTENT_TYPE,
         )
-        fname = f"gramaz_{date_str}.xlsx"
+        fname = f"gramaz_{date}.xlsx"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response
 
@@ -336,14 +327,15 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        data = MealPlanService.gramage_dashboard(date_str)
+        date = parse_date_param(date_str)
+        data = MealPlanService.gramage_dashboard(date.isoformat())
         from ..exporters.gramage_dashboard_pdf_exporter import (
             GramageDashboardPDFExporter,
         )
 
         pdf_bytes = GramageDashboardPDFExporter(data).generate()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        fname = f"gramaz_{date_str}.pdf"
+        fname = f"gramaz_{date}.pdf"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response
 
@@ -357,14 +349,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 {"error": "from and to query params required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        try:
-            from_date = datetime.date.fromisoformat(from_str)
-            to_date = datetime.date.fromisoformat(to_str)
-        except ValueError:
-            return Response(
-                {"error": "Invalid date format, use YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        from_date = parse_date_param(from_str, "from")
+        to_date = parse_date_param(to_str, "to")
         gramage_list = MealPlanService.calculate_range_gramage(from_date, to_date)
         from ..exporters.meal_plan_xlsx_exporter import MealPlanXLSXExporter
 
@@ -373,6 +359,6 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             xlsx_bytes,
             content_type=_XLSX_CONTENT_TYPE,
         )
-        fname = f"jedalnícek_{from_str}_{to_str}.xlsx"
+        fname = f"jedalnícek_{from_date}_{to_date}.xlsx"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
         return response

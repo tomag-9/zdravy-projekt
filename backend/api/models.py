@@ -106,7 +106,10 @@ class GlobalSettings(models.Model):
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.pk and GlobalSettings.objects.exists():
-            return
+            raise ValueError(
+                "GlobalSettings is a singleton; update the existing instance (pk=1) "
+                "instead of creating a new one."
+            )
         return super(GlobalSettings, self).save(*args, **kwargs)
 
     def __str__(self) -> str:

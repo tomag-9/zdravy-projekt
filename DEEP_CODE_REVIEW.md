@@ -30,20 +30,20 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **C1** ✅ DONE — JWT refresh tokens: httpOnly cookie, rotation + blacklist, server-side logout, role-based lifetimes (admin 1d / client 30d), password-reset invalidation. Implemented in `feat/security-token-hardening` (commits 6ea8df9, f16f081).
 
 ### High
-- **H1** — `DailyOrder.data` is an unvalidated, unbounded, dual-shape `JSONField` (correctness + storage DoS).
-- **H2** — `apply_auto_orders` mixes UTC and Europe/Bratislava dates → off-by-one auto-orders near midnight/DST.
-- **H3** — Login leaks account state: `InactiveAccountError` vs `InvalidCredentialsError` enables user enumeration.
-- **H4** — No React error boundary; any render exception white-screens the entire app.
+- **H1** ✅ DONE — `DailyOrder.data` validated with canonical category-nested schema, size/bounds enforcement, null handling, and admin form validation. Implemented in `feat/h1-dailyorder-data-validation` (commits 9f2c4a1, 90175d8).
+- **H2** ✅ DONE — `apply_auto_orders` now uses `timezone.localdate()` consistently; regression test added. Implemented in `feat/high-security-resilience-fixes`.
+- **H3** ✅ DONE — Login collapses to single generic `InvalidCredentialsError` for both inactive and invalid cases; enumeration eliminated. Implemented in `feat/high-security-resilience-fixes`.
+- **H4** ✅ DONE — React error boundary added at app root and per-route; renders friendly fallback with reload button. Implemented in `feat/high-security-resilience-fixes`.
 
 ### Medium
-- **M1** — `views_backup.py` (1,723 LOC dead code, incl. `AllowAny` endpoints) committed and shippable.
+- **M1** ✅ DONE — Deleted `views_backup.py` (1,723 LOC) and committed coverage artifacts. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 - **M2** — Duplicated order-parsing logic across 4+ modules with divergent rules.
-- **M3** — `apiFetch` logs users out on legitimate `403`s (refresh-then-retry-then-logout).
+- **M3** ✅ DONE — `apiFetch` no longer logs out on `403`; only `401` triggers refresh+retry. Fixed in `feat/high-security-resilience-fixes`.
 - **M4** — Two divergent password policies (registration vs reset confirm).
-- **M5** — Insecure `SECRET_KEY` / DB-password defaults in `settings/base.py`.
+- **M5** ✅ DONE — `prod.py` and `staging.py` now assert `SECRET_KEY` is set and non-insecure at import time; fails loudly instead of booting with dev default. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 - **M6** — Inconsistent client defaults (`visible_menus` model default `[]` vs serializer default `["A"]`).
-- **M7** — Unvalidated `date` query params reach the ORM in several admin actions.
-- **M8** — `GlobalSettings.save()` silently no-ops on second instance (swallows writes).
+- **M7** ✅ DONE — All unvalidated `date`/`from`/`to` query params in `meal_plan_views.py` now go through `_parse_date()`, returning a clean 400 on invalid input. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
+- **M8** ✅ DONE — `GlobalSettings.save()` now raises `ValueError` on second-instance attempt instead of silently no-oping. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 
 ### Low
 - **L1** — 59 `console.*` calls shipped in production frontend code.

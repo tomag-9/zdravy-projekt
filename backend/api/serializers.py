@@ -47,7 +47,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     _MAX_COUNT = 9999
 
     def validate_data(self, data: Any) -> Dict[str, Any]:
-        """Enforce canonical category-nested schema, key whitelist, numeric bounds, and size limit."""
+        """Enforce meal keys, count bounds, and size limits for supported shapes."""
         if not isinstance(data, dict):
             raise serializers.ValidationError("Order data must be an object.")
 
@@ -70,10 +70,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             if not isinstance(meal, dict):
                 raise serializers.ValidationError(f"'{meal_key}' must be an object.")
             if "menuCounts" in meal or "diets" in meal:
-                raise serializers.ValidationError(
-                    f"'{meal_key}' must use the category-nested shape "
-                    f'(e.g. {{"CategoryName": {{"menuCounts": {{...}}}}}}).'
-                )
+                for sub_key in ("menuCounts", "diets"):
+                    if sub_key in meal:
+                        self._validate_count_map(meal[sub_key], f"{meal_key}.{sub_key}")
+                continue
             for cat_name, cat_data in meal.items():
                 if not isinstance(cat_data, dict):
                     raise serializers.ValidationError(

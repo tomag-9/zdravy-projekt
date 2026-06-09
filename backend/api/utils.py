@@ -1,6 +1,17 @@
 """Shared utility functions for report processing."""
 
+import datetime
 from typing import Any, Dict, List
+
+from rest_framework.exceptions import ValidationError as DRFValidationError
+
+
+def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
+    """Parse a YYYY-MM-DD query param string; raises DRF 400 ValidationError on failure."""
+    try:
+        return datetime.date.fromisoformat(date_str)
+    except ValueError:
+        raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
 
 
 def safe_int(v: Any) -> int:
