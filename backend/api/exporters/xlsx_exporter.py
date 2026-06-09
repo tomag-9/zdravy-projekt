@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, Dict, List
 
+from ..order_data import OrderData, safe_count
 from .report_helpers import safe_int
 
 if TYPE_CHECKING:
@@ -115,29 +116,22 @@ class XLSXReportExporter:
         """Gather every (category, menu, diet) combination per meal."""
         raw = {m: {} for m in self.meal_keys}
 
-        def _scan(cat_name, details, mk):
-            if not isinstance(details, dict):
-                return
-            for key, cnt in (details.get("menuCounts") or {}).items():
-                if safe_int(cnt) > 0:
-                    raw[mk].setdefault(cat_name, {"menus": set(), "diets": set()})
-                    raw[mk][cat_name]["menus"].add(key)
-            for key, cnt in (details.get("diets") or {}).items():
-                if safe_int(cnt) > 0:
-                    raw[mk].setdefault(cat_name, {"menus": set(), "diets": set()})
-                    raw[mk][cat_name]["diets"].add(key)
-
         for row in self.rows_data:
-            data = row["data"]
-            for mk in self.meal_keys:
-                meal = data.get(mk) or {}
-                if not isinstance(meal, dict):
+            for category in OrderData(row["data"]).iter_categories():
+                if category.meal not in raw:
                     continue
-                if "menuCounts" in meal:
-                    _scan(mk, meal, mk)
-                else:
-                    for cat_name, details in meal.items():
-                        _scan(cat_name, details, mk)
+                for key, cnt in category.menu_counts.items():
+                    if safe_count(cnt) > 0:
+                        raw[category.meal].setdefault(
+                            category.name, {"menus": set(), "diets": set()}
+                        )
+                        raw[category.meal][category.name]["menus"].add(key)
+                for key, cnt in category.diets.items():
+                    if safe_count(cnt) > 0:
+                        raw[category.meal].setdefault(
+                            category.name, {"menus": set(), "diets": set()}
+                        )
+                        raw[category.meal][category.name]["diets"].add(key)
 
         sorted_cats = {}
         for mk in self.meal_keys:
@@ -312,24 +306,23 @@ class XLSXReportExporter:
                     row_vals.extend([""] * meal_col_count)
                     continue
 
-                meal = data.get(mk) or {}
+                categories = {
+                    category.name: category
+                    for category in OrderData(data).iter_categories(mk)
+                }
                 meal_total = 0
-                is_flat = "menuCounts" in meal
                 for cat_name, cat_data in sorted_cats[mk].items():
-                    if is_flat:
-                        cat_details = meal if cat_name == mk else {}
-                    else:
-                        cat_details = meal.get(cat_name) or {}
+                    category = categories.get(cat_name)
                     for menu_key in cat_data["menus"]:
                         cnt = safe_int(
-                            (cat_details.get("menuCounts") or {}).get(menu_key, 0)
+                            category.menu_counts.get(menu_key, 0) if category else 0
                         )
                         row_vals.append(cnt or "")
                         totals[mk][cat_name]["menus"][menu_key] += cnt
                         meal_total += cnt
                     for diet_name in cat_data["diets"]:
                         cnt = safe_int(
-                            (cat_details.get("diets") or {}).get(diet_name, 0)
+                            category.diets.get(diet_name, 0) if category else 0
                         )
                         row_vals.append(cnt or "")
                         totals[mk][cat_name]["diets"][diet_name] += cnt

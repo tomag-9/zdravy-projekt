@@ -37,11 +37,11 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 
 ### Medium
 - **M1** ✅ DONE — Deleted `views_backup.py` (1,723 LOC) and committed coverage artifacts. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
-- **M2** — Duplicated order-parsing logic across 4+ modules with divergent rules.
+- **M2** ✅ DONE — Introduced canonical `api.order_data.OrderData` parser and routed order totals, emptiness checks, reports, exports, and diet summaries through it. Implemented in this pass.
 - **M3** ✅ DONE — `apiFetch` no longer logs out on `403`; only `401` triggers refresh+retry. Fixed in `feat/high-security-resilience-fixes`.
-- **M4** — Two divergent password policies (registration vs reset confirm).
+- **M4** ✅ DONE — `validate_password_strength()` now delegates to Django's configured `validate_password()` validators, matching password reset. Implemented in this pass.
 - **M5** ✅ DONE — `prod.py` and `staging.py` now assert `SECRET_KEY` is set and non-insecure at import time; fails loudly instead of booting with dev default. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
-- **M6** — Inconsistent client defaults (`visible_menus` model default `[]` vs serializer default `["A"]`).
+- **M6** ✅ DONE — `ClientSettings.visible_menus` now defaults to `["A"]` via a named model default, with migration/backfill for existing empty rows. Implemented in this pass.
 - **M7** ✅ DONE — All unvalidated `date`/`from`/`to` query params in `meal_plan_views.py` now go through `_parse_date()`, returning a clean 400 on invalid input. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 - **M8** ✅ DONE — `GlobalSettings.save()` now raises `ValueError` on second-instance attempt instead of silently no-oping. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 
@@ -113,13 +113,14 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **Why it matters:** Dead code rots; unauthenticated endpoints in dead code are exactly the kind of thing that gets accidentally re-activated.
 - **Concrete fix:** Delete the file (it's in git history if ever needed). Same for other stray artifacts: root `.coverage`, root `htmlcov/`, `backend/htmlcov/`, and the `notes.md`/`tasks.md`/`tmp/` already ignored but present.
 
-### M2 — Order-parsing logic duplicated with divergent rules
+### M2 — Order-parsing logic duplicated with divergent rules ✅ DONE
 - **Severity:** Medium
 - **Category:** Architecture / Maintainability / Data consistency
 - **Where:** `services/order_service.py:36-141`, `services/auto_order_service.py:16-37`, `views/meal_plan_views.py:237-296` (`diet_summary`), `views/report_views.py:98-126` + `report_helpers.py`, plus the frontend's own copy in `OrderService.ts`.
 - **What is wrong:** "Is this order empty?", "what's the total?", "iterate menuCounts/diets" are each re-implemented several times. Some count diets, some don't; some handle flat shape, some assume nested; `diet_summary` iterates `data.items()` trusting arbitrary keys.
 - **Why it matters:** When the schema or business rule changes, you must find and edit N copies; drift between them produces reports that disagree with each other. This is the structural cause that makes H1 dangerous.
 - **Concrete fix:** Introduce a single `OrderData` value object / parser module (e.g. `services/order_data.py`) with `is_empty()`, `totals()`, `iter_menu_counts()`, `iter_diets()` and use it everywhere. Pair with H1's write-time normalization so there's exactly one shape to parse.
+- **Resolution:** Added `api.order_data.OrderData` and routed backend readers through it, including order totals, auto-order emptiness/copy normalization, daily/monthly reporting, XLSX/PDF report exports, and meal-plan diet summary aggregation.
 
 ### M3 — `apiFetch` logs users out on legitimate 403s
 - **Severity:** Medium
@@ -130,13 +131,14 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **Realistic impact:** Spurious logouts; users distrust the app's stability.
 - **Concrete fix:** Don't treat authorization `403` as a session problem. Only refresh-and-retry on `401`; for `403` after a successful refresh, surface a "not allowed" error to the caller and leave the session intact. (DRF emits `401` for auth/expiry; reserve logout for that.)
 
-### M4 — Two divergent password-strength policies
+### M4 — Two divergent password-strength policies ✅ DONE
 - **Severity:** Medium
 - **Category:** Security / Maintainability
 - **Where:** `serializers_user.py:20-32` (`validate_password_strength`: ≥8 chars + ≥1 digit) vs `password_reset_service.py:152-155` (Django's `AUTH_PASSWORD_VALIDATORS`: similarity/common/numeric/min-length from `base.py:111-125`).
 - **What is wrong:** Account/profile flows enforce a custom, weaker policy; password reset enforces Django's validators. The same user can have a password that one path accepts and the other rejects.
 - **Why it matters:** Inconsistent security guarantees and confusing UX ("why is my password fine here but not there?").
 - **Concrete fix:** Standardize on Django's `validate_password()` everywhere (or one shared validator), and align the user-facing copy. Remove the bespoke `validate_password_strength`.
+- **Resolution:** Kept the helper for compatibility but changed it to delegate to Django's configured `validate_password()`, matching the password reset path.
 
 ### M5 — Insecure secret/DB defaults in base settings
 - **Severity:** Medium
@@ -146,13 +148,14 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **Why it matters:** A predictable `SECRET_KEY` breaks session/CSRF/token signing integrity; defense-in-depth should not rely solely on the orchestration layer.
 - **Concrete fix:** In `prod.py`/`staging.py`, assert presence: `assert SECRET_KEY and not SECRET_KEY.startswith("django-insecure")`, and require `POSTGRES_PASSWORD`. Fail loudly at import time when running with `DEBUG=False`.
 
-### M6 — Inconsistent client default for visible menus
+### M6 — Inconsistent client default for visible menus ✅ DONE
 - **Severity:** Medium
 - **Category:** Data consistency / Bug
 - **Where:** `models.py:52` (`visible_menus = JSONField(default=list)` → `[]`) vs `serializers_user.py:170-175` (when no settings row exists, returns `"visible_menus": ["A"]`).
 - **What is wrong:** A client *with* a `ClientSettings` row whose `visible_menus` was never set sees `[]` (no menus orderable), while a client *without* a row sees the synthetic default `["A"]`. Two clients in effectively the same state behave differently depending on whether a row happens to exist.
 - **Why it matters:** Some clients can't order anything; the behavior depends on an implementation accident (row presence), not on intent.
 - **Concrete fix:** Pick one source of truth. Either give the model field `default=["A"]` (or a named default function) and create the settings row on user creation, or have the serializer apply the same default for the empty-row case. Backfill existing empty `visible_menus`.
+- **Resolution:** Added a named `ClientSettings.visible_menus` model default returning `["A"]` and migration `0024_clientsettings_visible_menus_default` to backfill existing empty rows.
 
 ### M7 — Unvalidated date params reach the ORM
 - **Severity:** Medium
@@ -249,7 +252,7 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 
 **Module boundaries.** Backend is well-layered (models → serializers → services → views → exporters), and the services layer is the right call. Frontend separates client/admin and isolates order logic. Overall coupling is reasonable.
 
-**Duplication.** The dominant architectural smell is **repeated order-shape parsing** (M2), itself a symptom of an **ambiguous domain model** (M1/H1): `DailyOrder.data` is a schemaless bag with two shapes. The single highest-leverage refactor is to define one canonical order schema, validate on write, and centralize reads.
+**Duplication.** The dominant architectural smell was **repeated order-shape parsing** (M2), itself a symptom of an **ambiguous domain model** (M1/H1): `DailyOrder.data` is a schemaless bag with two shapes. This has now been centralized behind `api.order_data.OrderData`, while write-time validation from H1 keeps new payloads bounded.
 
 **Domain modeling.** The meal-plan/gramage module (`MealTemplate`, `PortionType`, `DailyMealPlan`, `MealPlanItem`, `EnrolledCount`) is properly normalized with sensible constraints and `PROTECT` on references — much better modeled than the order `data` blob. The contrast is striking: the newer module is relational and clean; the older order path is a JSON blob with defensive parsing.
 
@@ -285,10 +288,10 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 5. **H4** — add a top-level React error boundary + Sentry-react.
 
 ### Refactor next
-6. **M2** — extract one canonical order-data parser; delete duplicates (depends on H1).
+6. **M2** ✅ DONE — extract one canonical order-data parser; delete duplicates (depends on H1).
 7. **M3** — stop logging out on authorization 403s.
 8. **M1** — delete `views_backup.py` and committed coverage/html artifacts.
-9. **M4/M5/M6/M7/M8** — unify password policy, assert prod secrets, fix `visible_menus` default, validate date params, make `GlobalSettings` singleton explicit.
+9. **M4/M5/M6/M7/M8** ✅ DONE — unify password policy, assert prod secrets, fix `visible_menus` default, validate date params, make `GlobalSettings` singleton explicit.
 
 ### Larger architecture decisions
 10. Decide the long-term shape of orders: keep JSON-but-validated, or migrate to a relational order-line model mirroring the (much cleaner) meal-plan module. This removes the dual-shape class of bugs permanently.
@@ -304,6 +307,6 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 
 **Not yet production-stable, but close.** This is a well-engineered application with genuinely good concurrency handling, a clean service layer, server-side deadline/holiday enforcement, strong backend test coverage, and a solid deployment security baseline. It is clearly safe to keep running in its current (presumably small, trusted) deployment.
 
-Before it should be labeled **stable**, two things must be fixed because they are load-bearing: **(C1) server-side token revocation** and **(H1) validation of the order payload that drives the entire business**. Alongside those, **(H2)** the timezone bug and **(H3/H4)** the enumeration leak and missing error boundary are small, high-value fixes that should ship in the same cycle. The Medium tier (dead code, duplicated parsing, 403-logout, password-policy unification, prod-secret asserts) should follow shortly after — most are an afternoon each.
+Before it should be labeled **stable**, two things had to be fixed because they are load-bearing: **(C1) server-side token revocation** and **(H1) validation of the order payload that drives the entire business**. Alongside those, **(H2)** the timezone bug and **(H3/H4)** the enumeration leak and missing error boundary were small, high-value fixes. The Medium tier is now marked complete in the checklist above.
 
 Estimated effort to reach "stable": roughly **1–2 focused engineer-weeks** for Critical + High + the top Medium items, assuming the existing test infrastructure is reused. The architecture is sound enough that this is hardening, not rebuilding.

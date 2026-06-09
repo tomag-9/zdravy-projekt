@@ -9,32 +9,14 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from ..models import DailyOrder
+from ..order_data import MEAL_KEYS, OrderData
 
 logger = logging.getLogger(__name__)
 
 
 def _is_order_empty(data: Dict[str, Any]) -> bool:
-    """
-    Return True if the order data contains zero portions across all meals.
-
-    Supports two storage shapes:
-    - Category-nested: {"breakfast": {"Dospelý": {"menuCounts": {"A": 5}}}}
-    - Flat:            {"breakfast": {"menuCounts": {"A": 5}}}
-    """
-    for meal_key in ("breakfast", "lunch", "olovrant"):
-        meal = data.get(meal_key, {}) or {}
-        if "menuCounts" in meal:
-            # Flat shape: meal dict itself contains menuCounts
-            for count in (meal.get("menuCounts") or {}).values():
-                if int(count or 0) > 0:
-                    return False
-        else:
-            # Category-nested shape
-            for _cat, details in meal.items():
-                for count in (details.get("menuCounts") or {}).values():
-                    if int(count or 0) > 0:
-                        return False
-    return True
+    """Return True if order data contains zero menu portions across all meals."""
+    return OrderData(data).is_empty()
 
 
 def _next_workday(from_date: datetime.date) -> datetime.date:
@@ -74,13 +56,7 @@ def _normalise_meal(meal: Any) -> Dict[str, Any]:
     any subsequent client resubmit.  Flat meals are promoted to a single
     synthetic category named after the meal key they came from.
     """
-    if not isinstance(meal, dict) or not meal:
-        return {}
-    if "menuCounts" in meal or "diets" in meal:
-        # Flat shape — wrap in a placeholder category so downstream readers
-        # see the expected nested structure without losing the counts.
-        return {"default": {k: v for k, v in meal.items()}}
-    return meal
+    return OrderData.normalise_meal(meal)
 
 
 def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str, Any]:
@@ -88,11 +64,9 @@ def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str
     Copy only the allowed meals from the template, always in category-nested shape.
     If visible_meals is empty, all three meals are copied.
     """
-    allowed = (
-        set(visible_meals) if visible_meals else {"breakfast", "lunch", "olovrant"}
-    )
+    allowed = set(visible_meals) if visible_meals else set(MEAL_KEYS)
     data = {}
-    for meal_key in ("breakfast", "lunch", "olovrant"):
+    for meal_key in MEAL_KEYS:
         if meal_key in allowed:
             raw = (template.data or {}).get(meal_key, {})
             data[meal_key] = _normalise_meal(raw)

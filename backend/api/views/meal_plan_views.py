@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import quote
 
 from django.db.models import Prefetch
@@ -13,6 +12,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
+from ..order_data import OrderData, safe_count
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -223,12 +223,6 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
         from ..models import DailyOrder
 
-        def _safe_int(value: Any) -> int:
-            try:
-                return int(value)
-            except (TypeError, ValueError):
-                return 0
-
         orders = DailyOrder.objects.filter(date=date)
 
         # {meal: {diet_name: count}}
@@ -241,40 +235,29 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             if not isinstance(data, dict):
                 continue
 
-            for meal, meal_data in data.items():
-                if not isinstance(meal, str) or not isinstance(meal_data, dict):
-                    continue
-                if meal not in diet_by_meal:
-                    diet_by_meal[meal] = {}
-                    menu_totals[meal] = {}
+            for category in OrderData(data).iter_categories():
+                diet_by_meal.setdefault(category.meal, {})
+                menu_totals.setdefault(category.meal, {})
 
-                for cat_data in meal_data.values():
-                    if not isinstance(cat_data, dict):
+                for variant, count in category.menu_counts.items():
+                    if not isinstance(variant, str):
                         continue
+                    count_int = safe_count(count)
+                    if count_int <= 0:
+                        continue
+                    menu_totals[category.meal][variant] = (
+                        menu_totals[category.meal].get(variant, 0) + count_int
+                    )
 
-                    menu_counts = cat_data.get("menuCounts")
-                    if isinstance(menu_counts, dict):
-                        for variant, count in menu_counts.items():
-                            if not isinstance(variant, str):
-                                continue
-                            count_int = _safe_int(count)
-                            if count_int <= 0:
-                                continue
-                            menu_totals[meal][variant] = (
-                                menu_totals[meal].get(variant, 0) + count_int
-                            )
-
-                    diets = cat_data.get("diets")
-                    if isinstance(diets, dict):
-                        for diet_name, count in diets.items():
-                            if not isinstance(diet_name, str):
-                                continue
-                            count_int = _safe_int(count)
-                            if count_int <= 0:
-                                continue
-                            diet_by_meal[meal][diet_name] = (
-                                diet_by_meal[meal].get(diet_name, 0) + count_int
-                            )
+                for diet_name, count in category.diets.items():
+                    if not isinstance(diet_name, str):
+                        continue
+                    count_int = safe_count(count)
+                    if count_int <= 0:
+                        continue
+                    diet_by_meal[category.meal][diet_name] = (
+                        diet_by_meal[category.meal].get(diet_name, 0) + count_int
+                    )
 
         return Response(
             {
