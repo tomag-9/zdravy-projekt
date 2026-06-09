@@ -18,7 +18,7 @@ from django.core.management.base import BaseCommand
 
 from api.email_utils import send_daily_report_email
 from api.models import DailyOrder, GlobalSettings
-from api.views.report_xlsx_helpers import (
+from api.report_xlsx_helpers import (
     xlsx_build_column_meta,
     xlsx_collect_columns,
     xlsx_style_headers,

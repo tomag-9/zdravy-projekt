@@ -6,7 +6,7 @@ import io
 from typing import TYPE_CHECKING, Dict, List
 
 from ..order_data import OrderData, safe_count
-from ..views.report_xlsx_helpers import xlsx_collect_columns
+from ..report_xlsx_helpers import xlsx_collect_columns
 
 if TYPE_CHECKING:
     from openpyxl.styles import Alignment, Font, PatternFill
