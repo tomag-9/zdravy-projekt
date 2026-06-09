@@ -5,7 +5,8 @@ from __future__ import annotations
 import io
 from typing import TYPE_CHECKING, Dict, List
 
-from .report_helpers import safe_int
+from ..order_data import OrderData, safe_count
+from ..report_xlsx_helpers import xlsx_collect_columns
 
 if TYPE_CHECKING:
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -113,49 +114,7 @@ class XLSXReportExporter:
 
     def _collect_columns(self) -> Dict:
         """Gather every (category, menu, diet) combination per meal."""
-        raw = {m: {} for m in self.meal_keys}
-
-        def _scan(cat_name, details, mk):
-            if not isinstance(details, dict):
-                return
-            for key, cnt in (details.get("menuCounts") or {}).items():
-                if safe_int(cnt) > 0:
-                    raw[mk].setdefault(cat_name, {"menus": set(), "diets": set()})
-                    raw[mk][cat_name]["menus"].add(key)
-            for key, cnt in (details.get("diets") or {}).items():
-                if safe_int(cnt) > 0:
-                    raw[mk].setdefault(cat_name, {"menus": set(), "diets": set()})
-                    raw[mk][cat_name]["diets"].add(key)
-
-        for row in self.rows_data:
-            data = row["data"]
-            for mk in self.meal_keys:
-                meal = data.get(mk) or {}
-                if not isinstance(meal, dict):
-                    continue
-                if "menuCounts" in meal:
-                    _scan(mk, meal, mk)
-                else:
-                    for cat_name, details in meal.items():
-                        _scan(cat_name, details, mk)
-
-        sorted_cats = {}
-        for mk in self.meal_keys:
-            sorted_cat_keys = sorted(
-                raw[mk].keys(),
-                key=lambda c: (
-                    self.CAT_ORDER.index(c) if c in self.CAT_ORDER else 99,
-                    c,
-                ),
-            )
-            sorted_cats[mk] = {
-                cat: {
-                    "menus": sorted(raw[mk][cat]["menus"]),
-                    "diets": sorted(raw[mk][cat]["diets"]),
-                }
-                for cat in sorted_cat_keys
-            }
-        return sorted_cats
+        return xlsx_collect_columns(self.rows_data, self.meal_keys)
 
     def _build_column_meta(self, sorted_cats: Dict) -> tuple:
         """Build 3 header rows and column metadata list."""
@@ -312,24 +271,23 @@ class XLSXReportExporter:
                     row_vals.extend([""] * meal_col_count)
                     continue
 
-                meal = data.get(mk) or {}
+                categories = {
+                    category.name: category
+                    for category in OrderData(data).iter_categories(mk)
+                }
                 meal_total = 0
-                is_flat = "menuCounts" in meal
                 for cat_name, cat_data in sorted_cats[mk].items():
-                    if is_flat:
-                        cat_details = meal if cat_name == mk else {}
-                    else:
-                        cat_details = meal.get(cat_name) or {}
+                    category = categories.get(cat_name)
                     for menu_key in cat_data["menus"]:
-                        cnt = safe_int(
-                            (cat_details.get("menuCounts") or {}).get(menu_key, 0)
+                        cnt = safe_count(
+                            category.menu_counts.get(menu_key, 0) if category else 0
                         )
                         row_vals.append(cnt or "")
                         totals[mk][cat_name]["menus"][menu_key] += cnt
                         meal_total += cnt
                     for diet_name in cat_data["diets"]:
-                        cnt = safe_int(
-                            (cat_details.get("diets") or {}).get(diet_name, 0)
+                        cnt = safe_count(
+                            category.diets.get(diet_name, 0) if category else 0
                         )
                         row_vals.append(cnt or "")
                         totals[mk][cat_name]["diets"][diet_name] += cnt

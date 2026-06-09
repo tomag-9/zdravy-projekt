@@ -46,10 +46,14 @@ def _default_all_meals() -> List[str]:
     return ["breakfast", "lunch", "olovrant"]
 
 
+def _default_visible_menus() -> List[str]:
+    return ["A"]
+
+
 class ClientSettings(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="settings")
     # Stores list of allowed menus e.g. ["A", "B", "V"]
-    visible_menus = models.JSONField(default=list, blank=True)
+    visible_menus = models.JSONField(default=_default_visible_menus, blank=True)
     # Stores list of allowed meals e.g. ["breakfast", "lunch", "olovrant"]
     visible_meals = models.JSONField(default=_default_all_meals, blank=True)
     # ManyToMany to allow dynamic diet selection

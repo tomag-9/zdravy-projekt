@@ -4,13 +4,15 @@ import datetime
 from typing import List
 
 from ..models import DailyOrder
+from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
+from ..order_data import OrderData, safe_count
 from ..utils import build_user_meal_row, merge_meal_totals
 
 
 class ReportService:
     """Service for report data preparation and aggregation."""
 
-    MEAL_KEYS = ["breakfast", "lunch", "olovrant"]
+    MEAL_KEYS = list(ORDER_MEAL_KEYS)
     MEAL_LABELS = {
         "breakfast": "Raňajky",
         "lunch": "Obed",
@@ -156,41 +158,26 @@ class ReportService:
 
         Handles both nested-by-category and flat meal storage shapes.
         """
-        if meal_key not in data or not data[meal_key]:
-            return
-
-        meal_data = data[meal_key]
-        if not isinstance(meal_data, dict):
-            return
-
-        # Flat shape: the meal dict itself contains menuCounts/diets.
-        # Wrap it in a synthetic category so the loop below is uniform.
-        if "menuCounts" in meal_data or "diets" in meal_data:
-            meal_data = {meal_key: meal_data}
-
-        for category, details in meal_data.items():
-            if not details:
-                continue
-
-            if category not in stats["meals"][meal_key]:
-                stats["meals"][meal_key][category] = {
+        for category in OrderData(data).iter_categories(meal_key):
+            if category.name not in stats["meals"][meal_key]:
+                stats["meals"][meal_key][category.name] = {
                     "menus": {},
                     "diets": {},
                     "total": 0,
                 }
 
-            cat_stats = stats["meals"][meal_key][category]
+            cat_stats = stats["meals"][meal_key][category.name]
 
-            for menu_type, count in (details.get("menuCounts") or {}).items():
-                count = int(count or 0)
+            for menu_type, count in category.menu_counts.items():
+                count = safe_count(count)
                 if count > 0:
                     cat_stats["menus"][menu_type] = (
                         cat_stats["menus"].get(menu_type, 0) + count
                     )
                     cat_stats["total"] += count
 
-            for diet_name, count in (details.get("diets") or {}).items():
-                count = int(count or 0)
+            for diet_name, count in category.diets.items():
+                count = safe_count(count)
                 if count > 0:
                     cat_stats["diets"][diet_name] = (
                         cat_stats["diets"].get(diet_name, 0) + count

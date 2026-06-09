@@ -1,7 +1,8 @@
-import re
 from typing import Any, Dict, List, Optional
 
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import serializers
 
@@ -17,18 +18,12 @@ class DietSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "is_active", "description"]
 
 
-def validate_password_strength(password: str) -> str:
-    """
-    Validate password meets strength requirements:
-    - At least 8 characters
-    - At least one number
-    """
-    if len(password) < 8:
-        raise serializers.ValidationError("Heslo musí obsahovať aspoň 8 znakov.")
-
-    if not re.search(r"\d", password):
-        raise serializers.ValidationError("Heslo musí obsahovať aspoň jedno číslo.")
-
+def validate_password_strength(password: str, user: User | None = None) -> str:
+    """Validate passwords with Django's configured AUTH_PASSWORD_VALIDATORS."""
+    try:
+        validate_password(password, user=user)
+    except DjangoValidationError as exc:
+        raise serializers.ValidationError(exc.messages) from exc
     return password
 
 

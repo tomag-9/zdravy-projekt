@@ -11,6 +11,7 @@ from rest_framework import serializers
 from .cached_settings_service import get_global_settings
 from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
 from .models import DailyOrder, Holiday
+from .order_data import OrderData, safe_count
 
 logger = logging.getLogger(__name__)
 
@@ -102,35 +103,14 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     f"'{field_path}.{key}' must be between 0 and {DailyOrderSerializer._MAX_COUNT}."
                 )
 
-    @staticmethod
-    def _is_positive(value: Any) -> bool:
-        try:
-            return int(value) > 0
-        except (TypeError, ValueError):
-            return bool(value)
-
     @classmethod
     def _meal_has_content(cls, meal_data: Any) -> bool:
-        if not isinstance(meal_data, dict) or not meal_data:
-            return False
-
-        if "menuCounts" in meal_data:
-            menu_counts = meal_data.get("menuCounts") or {}
-            diets = meal_data.get("diets") or {}
-            return any(cls._is_positive(v) for v in menu_counts.values()) or any(
-                cls._is_positive(v) for v in diets.values()
-            )
-
-        for details in meal_data.values():
-            if not isinstance(details, dict):
-                continue
-            menu_counts = details.get("menuCounts") or {}
-            diets = details.get("diets") or {}
-            if any(cls._is_positive(v) for v in menu_counts.values()) or any(
-                cls._is_positive(v) for v in diets.values()
-            ):
-                return True
-        return False
+        od = OrderData({"_": meal_data})
+        return any(
+            any(safe_count(c) > 0 for c in cat.menu_counts.values())
+            or any(safe_count(c) > 0 for c in cat.diets.values())
+            for cat in od.iter_categories("_")
+        )
 
     @classmethod
     def _changed_meals(

@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.utils import timezone
 
 from ..models import DailyOrder, Holiday
+from ..order_data import MEAL_KEYS, OrderData
 from .auto_order_service import _build_auto_data, _is_order_empty, _last_non_empty_order
 
 
@@ -34,33 +35,8 @@ class OrderService:
 
     @staticmethod
     def order_total(data: Dict[str, Any]) -> Tuple[int, Dict[str, int]]:
-        """
-        Return (total_portions, {meal: count}) for an order data dict.
-
-        Supports both storage shapes:
-        - Flat:            {"lunch": {"menuCounts": {"A": 5}}}
-        - Category-nested: {"lunch": {"Dospelý": {"menuCounts": {"A": 5}}}}
-        """
-        meal_count: Dict[str, int] = {"breakfast": 0, "lunch": 0, "olovrant": 0}
-        total: int = 0
-        for meal_key in ("breakfast", "lunch", "olovrant"):
-            meal = data.get(meal_key, {}) or {}
-            if "menuCounts" in meal:
-                # Flat shape
-                for count in (meal.get("menuCounts") or {}).values():
-                    c = int(count or 0)
-                    meal_count[meal_key] += c
-                    total += c
-            else:
-                # Category-nested shape
-                for _cat, details in meal.items():
-                    if not isinstance(details, dict):
-                        continue
-                    for count in (details.get("menuCounts") or {}).values():
-                        c = int(count or 0)
-                        meal_count[meal_key] += c
-                        total += c
-        return total, meal_count
+        """Return (total_portions, {meal: count}) for an order data dict."""
+        return OrderData(data).totals()
 
     @staticmethod
     def monthly_summary(
@@ -99,22 +75,8 @@ class OrderService:
             for meal_key, count in order_meals.items():
                 meal_counts[meal_key] = meal_counts.get(meal_key, 0) + count
 
-            for meal_key in ("breakfast", "lunch", "olovrant"):
-                meal = data.get(meal_key, {}) or {}
-                sources = (
-                    [meal]
-                    if "menuCounts" in meal
-                    else [
-                        details
-                        for details in meal.values()
-                        if isinstance(details, dict)
-                    ]
-                )
-                for details in sources:
-                    for menu, count in (details.get("menuCounts") or {}).items():
-                        c = int(count or 0)
-                        if c > 0:
-                            menu_counts[menu] = menu_counts.get(menu, 0) + c
+            for menu, count in OrderData(data).menu_totals().items():
+                menu_counts[menu] = menu_counts.get(menu, 0) + count
 
         items = [
             {"label": f"Menu {menu}", "count": count}
@@ -217,9 +179,9 @@ class OrderService:
                         predicted_data
                     )
                 else:
-                    predicted_data = {"breakfast": {}, "lunch": {}, "olovrant": {}}
+                    predicted_data = {meal: {} for meal in MEAL_KEYS}
                     predicted_total = 0
-                    predicted_meal_count = {"breakfast": 0, "lunch": 0, "olovrant": 0}
+                    predicted_meal_count = {meal: 0 for meal in MEAL_KEYS}
                 result.append(
                     {
                         "date": str(day),

@@ -6,7 +6,7 @@ import io
 import logging
 import os
 
-from .report_helpers import safe_int
+from ..order_data import OrderData, safe_count
 
 logger = logging.getLogger(__name__)
 
@@ -241,32 +241,28 @@ class PDFReportExporter:
         from reportlab.lib import colors as reportlab_colors
         from reportlab.platypus import Table, TableStyle
 
-        meal = meal_data.get(meal_key)
-        if not isinstance(meal, dict) or not meal:
+        categories = {
+            category.name: category
+            for category in OrderData(meal_data).iter_categories(meal_key)
+        }
+        if not categories:
             return None
 
-        is_flat = "menuCounts" in meal
-        if is_flat:
-            cat_entries = [(meal_key, meal)]
-        else:
-            cat_entries = [(k, v) for k, v in meal.items() if isinstance(v, dict)]
-
-        cat_dict = dict(cat_entries)
-        ordered = [c for c in self.CAT_ORDER if c in cat_dict]
-        ordered += [c for c in cat_dict if c not in ordered]
+        ordered = [c for c in self.CAT_ORDER if c in categories]
+        ordered += [c for c in categories if c not in ordered]
 
         rows = [["Kategória", "Menu", "Špeciálne diéty"]]
         for cat_name in ordered:
-            details = cat_dict[cat_name]
+            category = categories[cat_name]
             menus_str = ", ".join(
                 f"{k}×{v}"
-                for k, v in sorted((details.get("menuCounts") or {}).items())
-                if safe_int(v) > 0
+                for k, v in sorted(category.menu_counts.items())
+                if safe_count(v) > 0
             )
             diets_str = ", ".join(
-                (f"{k}×{v}" if safe_int(v) > 1 else k)
-                for k, v in sorted((details.get("diets") or {}).items())
-                if safe_int(v) > 0
+                (f"{k}×{v}" if safe_count(v) > 1 else k)
+                for k, v in sorted(category.diets.items())
+                if safe_count(v) > 0
             )
             if menus_str or diets_str:
                 rows.append([cat_name, menus_str or "–", diets_str or ""])

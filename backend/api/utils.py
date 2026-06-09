@@ -1,9 +1,11 @@
 """Shared utility functions for report processing."""
 
 import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from rest_framework.exceptions import ValidationError as DRFValidationError
+
+from .order_data import OrderData
 
 
 def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
@@ -12,14 +14,6 @@ def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
         return datetime.date.fromisoformat(date_str)
     except ValueError:
         raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
-
-
-def safe_int(v: Any) -> int:
-    """Coerce a stored count value to int, returning 0 on any error."""
-    try:
-        return int(v or 0)
-    except (TypeError, ValueError):
-        return 0
 
 
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:
@@ -33,39 +27,7 @@ def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, 
     Returns:
         Dictionary with categories and total count
     """
-    meal = order_data.get(meal_key) or {}
-    if not isinstance(meal, dict):
-        return {"categories": [], "total": 0}
-
-    categories: List[Dict[str, Any]] = []
-    meal_total = 0
-    iter_categories = (
-        [(meal_key, meal)]
-        if "menuCounts" in meal
-        else [(k, v) for k, v in meal.items() if isinstance(v, dict)]
-    )
-    for cat_name, details in iter_categories:
-        if not isinstance(details, dict):
-            continue
-        menu_counts = {
-            k: safe_int(v) for k, v in (details.get("menuCounts") or {}).items()
-        }
-        diets = {
-            k: safe_int(v)
-            for k, v in (details.get("diets") or {}).items()
-            if safe_int(v) > 0
-        }
-        cat_total = sum(menu_counts.values())
-        meal_total += cat_total
-        categories.append(
-            {
-                "name": cat_name,
-                "menus": menu_counts,
-                "diets": diets,
-                "total": cat_total,
-            }
-        )
-    return {"categories": categories, "total": meal_total}
+    return OrderData(order_data).meal_row(meal_key)
 
 
 def merge_meal_totals(totals: Dict[str, Any], meal_row: Dict[str, Any]) -> None:
