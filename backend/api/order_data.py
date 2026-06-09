@@ -13,7 +13,10 @@ def safe_count(value: Any) -> int:
     try:
         return int(value or 0)
     except (TypeError, ValueError):
-        return 0
+        try:
+            return int(float(value))
+        except (TypeError, ValueError):
+            return 0
 
 
 @dataclass(frozen=True)

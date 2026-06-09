@@ -6,7 +6,7 @@ import io
 from typing import TYPE_CHECKING, Dict, List
 
 from ..order_data import OrderData, safe_count
-from .report_helpers import safe_int
+from ..views.report_xlsx_helpers import xlsx_collect_columns
 
 if TYPE_CHECKING:
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -114,42 +114,7 @@ class XLSXReportExporter:
 
     def _collect_columns(self) -> Dict:
         """Gather every (category, menu, diet) combination per meal."""
-        raw = {m: {} for m in self.meal_keys}
-
-        for row in self.rows_data:
-            for category in OrderData(row["data"]).iter_categories():
-                if category.meal not in raw:
-                    continue
-                for key, cnt in category.menu_counts.items():
-                    if safe_count(cnt) > 0:
-                        raw[category.meal].setdefault(
-                            category.name, {"menus": set(), "diets": set()}
-                        )
-                        raw[category.meal][category.name]["menus"].add(key)
-                for key, cnt in category.diets.items():
-                    if safe_count(cnt) > 0:
-                        raw[category.meal].setdefault(
-                            category.name, {"menus": set(), "diets": set()}
-                        )
-                        raw[category.meal][category.name]["diets"].add(key)
-
-        sorted_cats = {}
-        for mk in self.meal_keys:
-            sorted_cat_keys = sorted(
-                raw[mk].keys(),
-                key=lambda c: (
-                    self.CAT_ORDER.index(c) if c in self.CAT_ORDER else 99,
-                    c,
-                ),
-            )
-            sorted_cats[mk] = {
-                cat: {
-                    "menus": sorted(raw[mk][cat]["menus"]),
-                    "diets": sorted(raw[mk][cat]["diets"]),
-                }
-                for cat in sorted_cat_keys
-            }
-        return sorted_cats
+        return xlsx_collect_columns(self.rows_data, self.meal_keys)
 
     def _build_column_meta(self, sorted_cats: Dict) -> tuple:
         """Build 3 header rows and column metadata list."""
@@ -314,14 +279,14 @@ class XLSXReportExporter:
                 for cat_name, cat_data in sorted_cats[mk].items():
                     category = categories.get(cat_name)
                     for menu_key in cat_data["menus"]:
-                        cnt = safe_int(
+                        cnt = safe_count(
                             category.menu_counts.get(menu_key, 0) if category else 0
                         )
                         row_vals.append(cnt or "")
                         totals[mk][cat_name]["menus"][menu_key] += cnt
                         meal_total += cnt
                     for diet_name in cat_data["diets"]:
-                        cnt = safe_int(
+                        cnt = safe_count(
                             category.diets.get(diet_name, 0) if category else 0
                         )
                         row_vals.append(cnt or "")

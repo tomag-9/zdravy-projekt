@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
-from .order_data import OrderData, safe_count
+from .order_data import OrderData
 
 
 def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
@@ -14,11 +14,6 @@ def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
         return datetime.date.fromisoformat(date_str)
     except ValueError:
         raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
-
-
-def safe_int(v: Any) -> int:
-    """Coerce a stored count value to int, returning 0 on any error."""
-    return safe_count(v)
 
 
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:

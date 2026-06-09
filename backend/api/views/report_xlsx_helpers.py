@@ -1,7 +1,6 @@
 """XLSX Helper Functions."""
 
-from ..order_data import OrderData
-from .report_helpers import safe_int
+from ..order_data import OrderData, safe_count
 
 
 def xlsx_collect_columns(rows_data, meal_keys):
@@ -14,13 +13,13 @@ def xlsx_collect_columns(rows_data, meal_keys):
             if category.meal not in raw:
                 continue
             for key, cnt in category.menu_counts.items():
-                if safe_int(cnt) > 0:
+                if safe_count(cnt) > 0:
                     raw[category.meal].setdefault(
                         category.name, {"menus": set(), "diets": set()}
                     )
                     raw[category.meal][category.name]["menus"].add(key)
             for key, cnt in category.diets.items():
-                if safe_int(cnt) > 0:
+                if safe_count(cnt) > 0:
                     raw[category.meal].setdefault(
                         category.name, {"menus": set(), "diets": set()}
                     )
@@ -198,14 +197,16 @@ def xlsx_write_data(ws, rows_data, meal_keys, sorted_cats, bold_font):
             for cat_name, cat_data in sorted_cats[mk].items():
                 category = categories.get(cat_name)
                 for menu_key in cat_data["menus"]:
-                    cnt = safe_int(
+                    cnt = safe_count(
                         category.menu_counts.get(menu_key, 0) if category else 0
                     )
                     row_vals.append(cnt or "")
                     totals[mk][cat_name]["menus"][menu_key] += cnt
                     meal_total += cnt
                 for diet_name in cat_data["diets"]:
-                    cnt = safe_int(category.diets.get(diet_name, 0) if category else 0)
+                    cnt = safe_count(
+                        category.diets.get(diet_name, 0) if category else 0
+                    )
                     row_vals.append(cnt or "")
                     totals[mk][cat_name]["diets"][diet_name] += cnt
             row_vals.append(meal_total or "")

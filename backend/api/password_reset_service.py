@@ -13,10 +13,9 @@ import secrets
 import time
 
 from django.contrib.auth.models import User
-from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
-from django.core.exceptions import ValidationError
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from .email_utils import send_password_reset_email
 from .exceptions import RateLimitExceeded, TooSoonError
@@ -149,10 +148,13 @@ def confirm_password_reset(token: str, new_password: str) -> None:
 
     user = reset_token.user
 
+    from .serializers_user import validate_password_strength
+
     try:
-        validate_password(new_password, user=user)
-    except ValidationError as exc:
-        raise ValueError(" ".join(exc.messages)) from exc
+        validate_password_strength(new_password, user=user)
+    except DRFValidationError as exc:
+        messages = exc.detail if isinstance(exc.detail, list) else [exc.detail]
+        raise ValueError(" ".join(str(m) for m in messages)) from exc
 
     user.set_password(new_password)
     user.save(update_fields=["password"])

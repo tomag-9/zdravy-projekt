@@ -6,8 +6,7 @@ import io
 import logging
 import os
 
-from ..order_data import OrderData
-from .report_helpers import safe_int
+from ..order_data import OrderData, safe_count
 
 logger = logging.getLogger(__name__)
 
@@ -258,12 +257,12 @@ class PDFReportExporter:
             menus_str = ", ".join(
                 f"{k}×{v}"
                 for k, v in sorted(category.menu_counts.items())
-                if safe_int(v) > 0
+                if safe_count(v) > 0
             )
             diets_str = ", ".join(
-                (f"{k}×{v}" if safe_int(v) > 1 else k)
+                (f"{k}×{v}" if safe_count(v) > 1 else k)
                 for k, v in sorted(category.diets.items())
-                if safe_int(v) > 0
+                if safe_count(v) > 0
             )
             if menus_str or diets_str:
                 rows.append([cat_name, menus_str or "–", diets_str or ""])

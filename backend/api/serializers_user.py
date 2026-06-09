@@ -18,12 +18,12 @@ class DietSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "is_active", "description"]
 
 
-def validate_password_strength(password: str) -> str:
+def validate_password_strength(password: str, user: User | None = None) -> str:
     """Validate passwords with Django's configured AUTH_PASSWORD_VALIDATORS."""
     try:
-        validate_password(password)
+        validate_password(password, user=user)
     except DjangoValidationError as exc:
-        raise serializers.ValidationError(list(exc.messages)) from exc
+        raise serializers.ValidationError(exc.messages) from exc
     return password
 
 

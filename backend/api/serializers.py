@@ -11,7 +11,7 @@ from rest_framework import serializers
 from .cached_settings_service import get_global_settings
 from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
 from .models import DailyOrder, Holiday
-from .order_data import OrderData
+from .order_data import OrderData, safe_count
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
     @classmethod
     def _meal_has_content(cls, meal_data: Any) -> bool:
-        return OrderData({"lunch": meal_data}).has_content(include_diets=True)
+        od = OrderData({"_": meal_data})
+        return any(
+            any(safe_count(c) > 0 for c in cat.menu_counts.values())
+            or any(safe_count(c) > 0 for c in cat.diets.values())
+            for cat in od.iter_categories("_")
+        )
 
     @classmethod
     def _changed_meals(
