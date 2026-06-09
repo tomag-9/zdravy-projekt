@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import Modal from "../../components/Modal";
+import { logger } from '../../lib/logger';
 
 interface Diet {
   id: number;
@@ -44,7 +45,7 @@ const DietManager: React.FC = () => {
         setDiets(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [apiFetch]);
 
@@ -83,7 +84,7 @@ const DietManager: React.FC = () => {
         error("Nepodarilo sa vytvoriť diétu (možno už existuje)");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri vytváraní diéty");
     }
   };
@@ -102,7 +103,7 @@ const DietManager: React.FC = () => {
         error("Nepodarilo sa odstrániť diétu");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri odstraňovaní diéty");
     } finally {
       setDeleteConfirm(null);
@@ -132,7 +133,7 @@ const DietManager: React.FC = () => {
         error("Nepodarilo sa premenovať diétu (možno názov už existuje)");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri premenovaní diéty");
     } finally {
       setRenaming(false);

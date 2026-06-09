@@ -21,6 +21,30 @@ describe('OrderService', () => {
         });
     });
 
+    describe('enforceStructure', () => {
+        it('returns a schema-shaped order while preserving known server values', () => {
+            const schema = OrderService.createEmptyOrder();
+            const result = OrderService.enforceStructure<DailyOrder>(
+                {
+                    status: 'submitted',
+                    lunch: {
+                        Škôlka: {
+                            menuCounts: { A: 3, unexpected: 99 },
+                        },
+                    },
+                    unknownMeal: { anything: true },
+                },
+                schema
+            );
+
+            expect(result.status).toBe('submitted');
+            expect(result.lunch['Škôlka'].menuCounts.A).toBe(3);
+            expect(result.lunch['Škôlka'].diets).toEqual(schema.lunch['Škôlka'].diets);
+            expect(result).not.toHaveProperty('unknownMeal');
+            expect(result.lunch['Škôlka'].menuCounts).not.toHaveProperty('unexpected');
+        });
+    });
+
     describe('updateMenuCount', () => {
         it('should update menu count', () => {
             const initialOrder: DailyOrder = {

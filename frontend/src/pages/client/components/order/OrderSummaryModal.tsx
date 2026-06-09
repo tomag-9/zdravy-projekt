@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom";
 import OrderService, { DailyOrder } from "../../services/OrderService";
 
 import ConfirmationModal from "../ui/ConfirmationModal";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
@@ -53,6 +53,10 @@ const OrderSummaryModal = ({
   const { setSelectedDate, deleteOrder } = useApp();
   const [deleteConfirmation, setDeleteConfirmation] = useState(false);
   const [activeMealPanel, setActiveMealPanel] = useState<MealKey | null>(null);
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   useScrollLock(isOpen);
 
   useEffect(() => {
@@ -60,6 +64,45 @@ const OrderSummaryModal = ({
       setActiveMealPanel(null);
     }
   }, [isOpen, orderDate, isPredicted]);
+
+  useEffect(() => {
+    if (!isOpen || deleteConfirmation) return;
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+
+      if (event.key !== "Tab") return;
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable || focusable.length === 0) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      const previous = previousFocusRef.current;
+      previousFocusRef.current = null;
+      if (previous && document.contains(previous)) {
+        window.setTimeout(() => previous.focus(), 0);
+      }
+    };
+  }, [isOpen, deleteConfirmation, onClose]);
 
   if (!isOpen || (!orderData && !isPredicted)) return null;
 
@@ -183,22 +226,28 @@ const OrderSummaryModal = ({
       }}
     >
       <div
+        ref={dialogRef}
         className="rounded-2xl shadow-xl w-full max-w-md max-h-[90dvh] overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col"
         style={{ background: "var(--bg-cream)" }}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
       >
         <div className="p-4 border-b flex items-center justify-between" style={{ background: "var(--bg-cream-warm)", borderColor: "var(--line-soft)" }}>
-          <h3 className="font-bold text-lg flex items-center gap-2" style={{ color: "var(--ink-1)" }}>
-            <FileCheck className="w-5 h-5" style={{ color: "var(--green-700)" }} />
+          <h3 id={titleId} className="font-bold text-lg flex items-center gap-2" style={{ color: "var(--ink-1)" }}>
+            <FileCheck className="w-5 h-5" style={{ color: "var(--green-700)" }} aria-hidden="true" />
             Detail objednávky
           </h3>
           <Button
+            ref={closeButtonRef}
             variant="ghost"
             size="icon"
             onClick={onClose}
             className="h-8 w-8"
+            aria-label="Zavrieť detail objednávky"
           >
-            <X className="w-5 h-5 text-slate-500" />
+            <X className="w-5 h-5 text-slate-500" aria-hidden="true" />
           </Button>
         </div>
 

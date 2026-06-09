@@ -7,6 +7,7 @@ import React, {
   useRef,
 } from "react";
 import { useNavigate } from "react-router-dom";
+import { logger } from '../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 const CACHED_PROFILE_KEY = "cached_user_profile";
@@ -159,13 +160,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           return false;
         } else {
           // Transient server error (e.g. 500/502). Do NOT log the user out.
-          console.warn("Token refresh failed with non-auth status:", response.status);
+          logger.warn("Token refresh failed with non-auth status:", response.status);
           return false;
         }
       } catch (error) {
         // Network error — do NOT log the user out; the cookie is still valid.
         if (!isNetworkFetchError(error)) {
-          console.error("Token refresh failed with unexpected error:", error);
+          logger.error("Token refresh failed with unexpected error:", error);
         }
         return false;
       } finally {
@@ -239,7 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
       return null;
     } catch (e) {
       if (!isNetworkFetchError(e)) {
-        console.error("Failed to fetch user profile", e);
+        logger.error("Failed to fetch user profile", e);
       }
       return null;
     } finally {

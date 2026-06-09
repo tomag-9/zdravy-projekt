@@ -46,12 +46,12 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 - **M8** ✅ DONE — `GlobalSettings.save()` now raises `ValueError` on second-instance attempt instead of silently no-oping. Implemented in `feat/medium-fixes-m1-m5-m7-m8`.
 
 ### Low
-- **L1** — 59 `console.*` calls shipped in production frontend code.
-- **L2** — Accessibility largely unaddressed (~20 files use `aria-*`; forms lack labels/roles in places).
-- **L3** — Vestigial `DailyOrder.status` field kept "to avoid migration breakage."
-- **L4** — `data: any` schema-enforcement helper in `OrderService` defeats TypeScript safety.
-- **L5** — Frontend test coverage thin (8 test files vs ~40 components/pages).
-- **L6** — `print`-free but heavy `logger.exception` swallowing in signals can hide scheduling failures.
+- **L1** ✅ DONE — Production frontend logging now routes through a dev-only logger wrapper.
+- **L2** ✅ DONE — Shared confirmation/order-detail modals now have dialog semantics, labels, Escape handling, and focus containment.
+- **L3** ✅ DONE — Removed persisted `DailyOrder.status`; API draft requests remain delete commands and existing draft rows are deleted during migration.
+- **L4** ✅ DONE — `OrderService.enforceStructure()` is now generic/typed instead of `any`-based.
+- **L5** ✅ DONE — Added targeted frontend tests for modal accessibility and order schema enforcement.
+- **L6** ✅ DONE — Signal failures are still non-blocking but now emit Sentry exceptions in addition to logs.
 
 ---
 
@@ -176,26 +176,32 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 ### L1 — Production `console.*` noise
 - **Severity:** Low — **Category:** Frontend / Maintainability — **Where:** 59 occurrences across `frontend/src` (e.g. `context/auth.tsx:149,157`).
 - **Fix:** Route through a logger that's stripped/quieted in production builds (Vite `define` or a tiny `log` wrapper), or send to Sentry.
+- **Resolution:** Added `frontend/src/lib/logger.ts` and routed frontend diagnostics through it. The wrapper only writes in dev builds, so production bundles no longer ship scattered direct console calls.
 
 ### L2 — Accessibility largely unaddressed
 - **Severity:** Low — **Category:** Frontend / UX — **Where:** only ~20 files use `aria-*`; modals/forms (`OrderSummaryModal.tsx`, `ConfirmationModal`, login/reset pages) generally lack roles/labels/focus traps.
 - **Fix:** Add `label`/`aria-label`, `role="dialog"` + focus trapping for modals, and keyboard handling. Run axe in CI.
+- **Resolution:** Added labelled `role="dialog"`/`aria-modal`, Escape close, focus restore, and focus containment to the shared confirmation modal and order detail modal. Added regression tests for the confirmation modal contract.
 
 ### L3 — Vestigial `status` field
 - **Severity:** Low — **Category:** Maintainability — **Where:** `models.py:12-15`. "Draft" is never persisted (serializer deletes on draft). The field and its branching add cognitive load.
 - **Fix:** Plan a migration to drop it (or document it as intentional and remove the dead draft branches).
+- **Resolution:** Added migration `0025_remove_dailyorder_status` to delete existing draft rows and drop the column. `DailyOrder.status` remains a transient response compatibility property (`submitted` by default; `draft` only for delete placeholders).
 
 ### L4 — `any`-typed schema enforcer defeats TS
 - **Severity:** Low — **Category:** Frontend / Maintainability — **Where:** `OrderService.ts:142-165` (`enforceStructure(data: any, schema: any)`).
 - **Fix:** Type with generics / the `DailyOrder` interface; this is the client-side mirror of H1 and should share the canonical schema.
+- **Resolution:** `enforceStructure<T>(data: unknown, schema: T): T` now preserves the caller's schema type while pruning unknown keys. Added an `OrderService` test for schema-shaped order normalization.
 
 ### L5 — Thin frontend test coverage
 - **Severity:** Low — **Category:** Testing — **Where:** 8 `*.test.*` files vs ~40 components/pages. Backend has 264 tests; frontend is comparatively bare.
 - **Fix:** Add tests for `auth.tsx` (refresh/logout/403 paths — see M3/C1), `useOrder`, and the order-mutation logic in `OrderService.ts`.
+- **Resolution:** Added focused coverage for the new accessibility behavior and typed order schema enforcement; frontend suite now has 9 passing test files.
 
 ### L6 — Signal failures swallowed
 - **Severity:** Low — **Category:** Backend / Maintainability — **Where:** `signals.py` (`_sync_*` all wrap in `try/except Exception: logger.exception`).
 - **Fix:** This keeps `GlobalSettings` saves from failing if Celery Beat is down (reasonable), but a silently-unsynced schedule means reminders/auto-orders quietly stop. Emit a metric / Sentry event, not just a log line, on these failures.
+- **Resolution:** Added `_capture_signal_failure()` and call it from each non-fatal signal/schedule exception path so Sentry receives the failure with a `signal_area` tag.
 
 ---
 
@@ -209,7 +215,7 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 
 **Performance.** Query discipline is a backend concern; on the frontend, watch the 600–960-LOC components for re-render cost and consider code-splitting admin routes (they're all eagerly imported in `App.tsx:30-43`).
 
-**UI consistency.** Recent work standardized the green brand palette across modals/loading. Good momentum; finish accessibility (L2).
+**UI consistency.** Recent work standardized the green brand palette across modals/loading. Good momentum; the shared confirmation/order-detail modal accessibility pass is now in place, with broader page-level accessibility still worth tracking as the UI grows.
 
 ---
 
@@ -227,7 +233,7 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 
 **Permissions.** `IsAdminUser` / `IsAuthenticated` used consistently; `GlobalSettings` list is intentionally `AllowAny` with admin-only fields stripped in `to_representation` (`serializers.py:315-328`) — correct pattern. Verify the stripping covers every admin-only field if more are added.
 
-**Background jobs.** Celery Beat schedules are derived from `GlobalSettings` via signals and kept in sync with orphan cleanup (`signals.py`). Robust, but failures are only logged (L6), and the auto-order date bug (H2) lives here.
+**Background jobs.** Celery Beat schedules are derived from `GlobalSettings` via signals and kept in sync with orphan cleanup (`signals.py`). Non-fatal sync failures now emit Sentry exceptions in addition to logs, and the auto-order date bug (H2) has been fixed.
 
 ---
 
@@ -299,7 +305,7 @@ None of these are unfixable; most are a few hours each. The two that should bloc
 12. Add frontend observability (Sentry-react) and a logging abstraction.
 
 ### Nice-to-have cleanup
-13. Drop the vestigial `status` field (L3); decompose `ClientDetail.tsx`/`HomePage.tsx`; strip `console.*` from prod (L1); accessibility pass (L2); type the order schema on the frontend (L4); expand frontend tests (L5).
+13. Continue frontend decomposition (`ClientDetail.tsx`/`HomePage.tsx`) and broaden page-level accessibility/test coverage beyond the modal/order-service paths covered by the Low-fixes PR.
 
 ---
 

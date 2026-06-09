@@ -8,6 +8,7 @@ import { useOnboarding } from '../../../context/OnboardingContext';
 import { usePushNotifications } from '../../../hooks/usePushNotifications';
 import { usePWA } from '../../../hooks/usePWA';
 import ConfirmationModal from '../components/ui/ConfirmationModal';
+import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -80,7 +81,7 @@ const ProfilePage = () => {
                 setMessage({ type: 'error', text: 'Nepodarilo sa načítať profil' });
             }
         } catch (error) {
-            console.error('Failed to fetch profile:', error);
+            logger.error('Failed to fetch profile:', error);
             setMessage({ type: 'error', text: 'Chyba pri načítaní profilu' });
         } finally {
             setLoading(false);

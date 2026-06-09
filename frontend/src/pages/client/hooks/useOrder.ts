@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
 import { CATEGORIES } from '../config/constants';
+import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -206,7 +207,7 @@ export const useOrder = () => {
                     }
                 }
             } catch (e) {
-                console.error("Failed to fetch order", e);
+                logger.error("Failed to fetch order", e);
             }
         };
 
@@ -250,7 +251,7 @@ export const useOrder = () => {
                     });
                 }
             } catch (e) {
-                console.error("Failed to fetch global settings", e);
+                logger.error("Failed to fetch global settings", e);
             }
         };
         if (user) fetchSettings();
@@ -266,7 +267,7 @@ export const useOrder = () => {
                 const activeItems = items.filter((item) => item.is_active);
                 setPortionTypes(activeItems);
             } catch (e) {
-                console.error("Failed to fetch portion types", e);
+                logger.error("Failed to fetch portion types", e);
             }
         };
         if (user) fetchPortionTypes();
@@ -293,7 +294,7 @@ export const useOrder = () => {
                 }
                 setHolidays(new Set(allHolidays.map((h) => h.date)));
             } catch (e) {
-                console.error("Failed to fetch holidays", e);
+                logger.error("Failed to fetch holidays", e);
             }
         };
         if (user) fetchHolidays();
@@ -337,7 +338,7 @@ export const useOrder = () => {
                     (p as DailyOrder & { date: string }).date = dStr;
                     history.push(p as DailyOrder & { date: string });
                 } catch (e) {
-                    console.error('Failed to parse stored order for date', dStr, e);
+                    logger.error('Failed to parse stored order for date', dStr, e);
                     // Clean up malformed data
                     localStorage.removeItem(`order_${dStr}`);
                 }
@@ -357,7 +358,7 @@ export const useOrder = () => {
                 const mealData = template[mealKey] as MealData;
                 if (mealData && !OrderService.isMealEmpty(mealData)) {
                     if (import.meta.env.DEV) {
-                        console.log(`Lazy copying ${mealKey} from ${(template as unknown as { date: string }).date}`);
+                        logger.debug(`Lazy copying ${mealKey} from ${(template as unknown as { date: string }).date}`);
                     }
                     updatesObj[mealKey] = JSON.parse(JSON.stringify(mealData));
                     newTouched.add(mealKey);
@@ -418,7 +419,7 @@ export const useOrder = () => {
                             return n;
                         });
                     }
-                } catch (e) { console.error(e); }
+                } catch (e) { logger.error(e); }
             }
         }
     }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
@@ -485,10 +486,10 @@ export const useOrder = () => {
             };
             setCurrentOrder(orderWithStatus);
 
-            console.log('Order submitted to API');
+            logger.debug('Order submitted to API');
             return true;
         } catch (e) {
-            console.error('Failed to submit order to API', e);
+            logger.error('Failed to submit order to API', e);
             throw e;
         }
     };
@@ -522,9 +523,9 @@ export const useOrder = () => {
                 },
                 body: JSON.stringify({ date, status: 'draft', data: empty })
             });
-            console.log('Order deleted/reset on API');
+            logger.debug('Order deleted/reset on API');
         } catch (e) {
-            console.error('Failed to delete order on API', e);
+            logger.error('Failed to delete order on API', e);
         }
     };
 
@@ -585,7 +586,7 @@ export const useOrder = () => {
                     setTouchedMeals(prev => { const n = new Set(prev); n.add('breakfast'); return n; });
                     return true;
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { logger.error(e); }
         }
         return false;
     };

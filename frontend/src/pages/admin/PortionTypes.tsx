@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import Modal from "../../components/Modal";
+import { logger } from '../../lib/logger';
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -35,7 +36,7 @@ const PortionTypes: React.FC = () => {
         setItems(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [apiFetch]);
 
@@ -63,7 +64,7 @@ const PortionTypes: React.FC = () => {
         error("Nepodarilo sa uložiť");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       error("Chyba pri ukladaní");
     } finally {
       setSaving(false);

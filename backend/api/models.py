@@ -9,10 +9,6 @@ from django.utils import timezone
 class DailyOrder(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
     date = models.DateField(db_index=True)
-    # Status removed/deprecated effectively. All orders in DB are considered submitted.
-    # We keep the field for now to avoid massive migration breakage but default to 'submitted'  # noqa: E501
-    # or we can remove it. Let's start by defaulting to submitted and ignoring draft.
-    status = models.CharField(max_length=20, default="submitted")
     data = models.JSONField(default=dict)
     is_auto = models.BooleanField(
         default=False, help_text="True if this order was auto-generated after deadline"
@@ -31,6 +27,14 @@ class DailyOrder(models.Model):
 
     def __str__(self) -> str:
         return f"{self.user.email} - {self.date}"
+
+    @property
+    def status(self) -> str:
+        return getattr(self, "_response_status", "submitted")
+
+    @status.setter
+    def status(self, value: str) -> None:
+        self._response_status = value
 
 
 class Diet(models.Model):

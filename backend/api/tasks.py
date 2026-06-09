@@ -277,12 +277,11 @@ def send_weekly_order_reminder_task(self):
             .distinct()
         )
 
-        # Users who already have at least one submitted order next week
+        # Stored orders are submitted orders; draft requests delete the row.
         already_ordered = set(
             DailyOrder.objects.filter(
                 user_id__in=subscribed_user_ids,
                 date__range=(next_monday, next_friday),
-                status="submitted",
             )
             .exclude(Q(data={}) | Q(data__isnull=True))
             .values_list("user_id", flat=True)

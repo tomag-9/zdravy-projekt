@@ -227,10 +227,10 @@ class TestOrderCRUD:
         )
 
         assert response.status_code == status.HTTP_200_OK
-        assert response.data["total"] == 6
-        assert response.data["menu_counts"] == {"A": 5, "B": 1}
+        assert response.data["total"] == 105
+        assert response.data["menu_counts"] == {"A": 104, "B": 1}
         assert response.data["meal_counts"]["breakfast"] == 2
-        assert response.data["meal_counts"]["lunch"] == 4
+        assert response.data["meal_counts"]["lunch"] == 103
 
     def test_portion_types_list_is_available_to_clients(self, authenticated_client):
         PortionType.objects.create(

@@ -186,7 +186,7 @@ class DailyOrderAdmin(admin.ModelAdmin):
 
     form = DailyOrderAdminForm
     list_display = ("user", "date", "status", "is_auto", "created_at")
-    list_filter = ("status", "is_auto", "date", "created_at")
+    list_filter = ("is_auto", "date", "created_at")
     search_fields = ("user__email", "user__profile__company_name")
     date_hierarchy = "date"
 

@@ -13,6 +13,7 @@ import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
 import { useOnboarding } from "../../../context/OnboardingContext";
+import { logger } from '../../../lib/logger';
 
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
@@ -165,7 +166,7 @@ const OrderPage = () => {
       const dietCount = getTotalDiets();
       navigate(`/success?date=${selectedDate}&total=${total}&dietCount=${dietCount}`);
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toast.error(getFriendlyOrderErrorMessage(e));
     }
   };

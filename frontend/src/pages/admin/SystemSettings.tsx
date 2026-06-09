@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
+import { logger } from '../../lib/logger';
 
 interface GlobalSettings {
     deadline_breakfast: string;
@@ -43,7 +44,7 @@ const SystemSettings: React.FC = () => {
                 setSettings(data);
             }
         } catch (e) {
-            console.error(e);
+            logger.error(e);
             error('Nepodarilo sa načítať nastavenia');
         } finally {
             setLoading(false);
@@ -72,7 +73,7 @@ const SystemSettings: React.FC = () => {
                 error('Chyba pri ukladaní nastavení');
             }
         } catch (e) {
-            console.error(e);
+            logger.error(e);
             error('Chyba pripojenia');
         }
     };
@@ -120,7 +121,7 @@ const SystemSettings: React.FC = () => {
                 await fetchSettings();
             }
         } catch (e) {
-            console.error(e);
+            logger.error(e);
             error('Chyba pripojenia');
             await fetchSettings();
         }
@@ -148,7 +149,7 @@ const SystemSettings: React.FC = () => {
                 await fetchSettings();
             }
         } catch (e) {
-            console.error(e);
+            logger.error(e);
             error('Chyba pripojenia');
             await fetchSettings();
         }

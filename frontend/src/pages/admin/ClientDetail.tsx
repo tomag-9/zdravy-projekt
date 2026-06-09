@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
+import { logger } from '../../lib/logger';
 
 interface Diet {
   id: number;
@@ -114,7 +115,7 @@ const ClientDetail: React.FC = () => {
         setAdminOrderNote(settings.admin_order_note || "");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [apiFetch, id]);
 
@@ -128,7 +129,7 @@ const ClientDetail: React.FC = () => {
         setAllDiets(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     }
   }, [apiFetch]);
 
@@ -151,7 +152,7 @@ const ClientDetail: React.FC = () => {
         setRecentOrders(list);
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
     } finally {
       setOrdersLoading(false);
     }
@@ -175,7 +176,7 @@ const ClientDetail: React.FC = () => {
         toastError("Nepodarilo sa odoslať reset link.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri odosielaní reset linku.");
     } finally {
       setSendingReset(false);
@@ -198,7 +199,7 @@ const ClientDetail: React.FC = () => {
         toastError("Nepodarilo sa odstrániť objednávku.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri odstraňovaní objednávky.");
     } finally {
       setOrderActionLoading(false);
@@ -225,7 +226,7 @@ const ClientDetail: React.FC = () => {
         toastError("Nepodarilo sa vynulovať objednávku.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Chyba pri vynulovaní objednávky.");
     } finally {
       setOrderActionLoading(false);
@@ -275,7 +276,7 @@ const ClientDetail: React.FC = () => {
         toastError("Nepodarilo sa uložiť nastavenia.");
       }
     } catch (e) {
-      console.error(e);
+      logger.error(e);
       toastError("Nastala chyba pri ukladaní nastavení.");
     } finally {
       setSaving(false);

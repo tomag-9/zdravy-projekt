@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { logger } from '../lib/logger';
 
 interface Props {
   children: ReactNode;
@@ -41,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error("ErrorBoundary caught:", error, info.componentStack);
+    logger.error("ErrorBoundary caught:", error, info.componentStack);
     // Clear the reload counter when a boundary successfully catches an error
     // so future independent errors don't hit the cap prematurely.
     try {
