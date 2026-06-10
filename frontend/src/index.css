@@ -183,6 +183,7 @@ body,
     min-height: 100%;
     margin: 0;
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
 .zp-app {
@@ -1177,6 +1178,7 @@ body,
     height: 780px;
     background: var(--bg-cream);
     overflow: hidden;
+    overscroll-behavior: none;
     position: relative;
     border-radius: 36px;
     box-shadow:

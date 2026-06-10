@@ -49,4 +49,24 @@ describe("useStableViewportHeight", () => {
 
     expect(document.documentElement).toHaveStyle("--zp-app-height: 780px");
   });
+
+  it("keeps the smaller viewport height when visualViewport reports a larger value", () => {
+    const visualViewport = new EventTarget() as VisualViewport;
+    Object.defineProperty(visualViewport, "height", {
+      configurable: true,
+      value: 840,
+    });
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      value: visualViewport,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 760,
+    });
+
+    renderHook(() => useStableViewportHeight());
+
+    expect(document.documentElement).toHaveStyle("--zp-app-height: 760px");
+  });
 });
