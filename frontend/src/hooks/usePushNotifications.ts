@@ -23,6 +23,7 @@ interface UsePushNotificationsReturn {
   isSubscribed: boolean;
   subscribe: () => Promise<boolean>;
   unsubscribe: () => Promise<boolean>;
+  ensureSubscriptionRegistration: () => Promise<boolean>;
   error: string | null;
 }
 
@@ -43,6 +44,13 @@ function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
     bytes[i] = rawData.charCodeAt(i);
   }
   return bytes.buffer;
+}
+
+function arrayBufferEquals(a: ArrayBuffer | null, b: ArrayBuffer): boolean {
+  if (!a || a.byteLength !== b.byteLength) return false;
+  const aBytes = new Uint8Array(a);
+  const bBytes = new Uint8Array(b);
+  return aBytes.every((value, index) => value === bBytes[index]);
 }
 
 /** Extract the serialisable parts of a PushSubscription for sending to the API. */
@@ -89,6 +97,65 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       .catch(() => { });
   }, []);
 
+  const registerWithBackend = useCallback(async (pushSub: PushSubscription): Promise<boolean> => {
+    try {
+      const serialized = serializeSubscription(pushSub);
+      const response = await apiFetch(`${API_URL}/push/subscribe/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serialized),
+      });
+
+      if (!response.ok) {
+        let message = 'Nepodarilo sa aktivovať notifikácie. Skúste to znova online.';
+        try {
+          const data = await response.json();
+          if (typeof data?.detail === 'string' && data.detail) {
+            message = data.detail;
+          }
+        } catch {
+          // Ignore invalid/non-JSON error responses.
+        }
+
+        setIsSubscribed(false);
+        setError(message);
+        return false;
+      }
+
+      setIsSubscribed(true);
+      return true;
+    } catch {
+      setIsSubscribed(false);
+      setError('Nepodarilo sa aktivovať notifikácie. Skúste to znova online.');
+      return false;
+    }
+  }, [apiFetch]);
+
+  const getOrCreateBrowserSubscription = useCallback(async (): Promise<PushSubscription | null> => {
+    if (!vapidPublicKey) {
+      setError('VAPID kľúč nie je dostupný. Skúste to neskôr.');
+      return null;
+    }
+
+    const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
+    const reg = await navigator.serviceWorker.ready;
+    const existing = await reg.pushManager.getSubscription();
+    const existingKey = existing?.options.applicationServerKey ?? null;
+
+    if (existing && arrayBufferEquals(existingKey, applicationServerKey)) {
+      return existing;
+    }
+
+    if (existing) {
+      await existing.unsubscribe().catch(() => { });
+    }
+
+    return reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey,
+    });
+  }, [vapidPublicKey]);
+
   const subscribe = useCallback(async (): Promise<boolean> => {
     setError(null);
 
@@ -97,8 +164,8 @@ export function usePushNotifications(): UsePushNotificationsReturn {
       return false;
     }
 
-    if (!vapidPublicKey) {
-      setError('VAPID kľúč nie je dostupný. Skúste to neskôr.');
+    if (!('serviceWorker' in navigator)) {
+      setError('Váš prehliadač nepodporuje service worker notifikácie.');
       return false;
     }
 
@@ -108,53 +175,42 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     if (result !== 'granted') return false;
 
     try {
-      const reg = await navigator.serviceWorker.ready;
-      const pushSub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-      });
+      const pushSub = await getOrCreateBrowserSubscription();
+      if (!pushSub) return false;
 
-      const serialized = serializeSubscription(pushSub);
-
-      try {
-        const response = await apiFetch(`${API_URL}/push/subscribe/`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(serialized),
-        });
-
-        if (!response.ok) {
-          let message = 'Nepodarilo sa aktivovať notifikácie. Skúste to znova online.';
-          try {
-            const data = await response.json();
-            if (typeof data?.detail === 'string' && data.detail) {
-              message = data.detail;
-            }
-          } catch {
-            // Ignore invalid/non-JSON error responses.
-          }
-
-          await pushSub.unsubscribe().catch(() => { });
-          setIsSubscribed(false);
-          setError(message);
-          return false;
-        }
-
-        setIsSubscribed(true);
-        return true;
-      } catch {
-        // Keep browser and server subscription state consistent.
+      const registered = await registerWithBackend(pushSub);
+      if (!registered) {
         await pushSub.unsubscribe().catch(() => { });
-        setIsSubscribed(false);
-        setError('Nepodarilo sa aktivovať notifikácie. Skúste to znova online.');
-        return false;
       }
+      return registered;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError(`Chyba pri prihlasovaní na notifikácie: ${msg}`);
       return false;
     }
-  }, [vapidPublicKey, apiFetch]);
+  }, [getOrCreateBrowserSubscription, registerWithBackend]);
+
+  const ensureSubscriptionRegistration = useCallback(async (): Promise<boolean> => {
+    setError(null);
+
+    if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+      return false;
+    }
+
+    const currentPermission = Notification.permission;
+    setPermission(currentPermission);
+    if (currentPermission !== 'granted') return false;
+
+    try {
+      const pushSub = await getOrCreateBrowserSubscription();
+      if (!pushSub) return false;
+      return registerWithBackend(pushSub);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Chyba pri obnove notifikácií: ${msg}`);
+      return false;
+    }
+  }, [getOrCreateBrowserSubscription, registerWithBackend]);
 
   const unsubscribe = useCallback(async (): Promise<boolean> => {
     setError(null);
@@ -181,5 +237,12 @@ export function usePushNotifications(): UsePushNotificationsReturn {
     }
   }, [apiFetch]);
 
-  return { permission, isSubscribed, subscribe, unsubscribe, error };
+  return {
+    permission,
+    isSubscribed,
+    subscribe,
+    unsubscribe,
+    ensureSubscriptionRegistration,
+    error,
+  };
 }

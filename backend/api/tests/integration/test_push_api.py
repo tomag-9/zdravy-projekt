@@ -9,6 +9,7 @@ Covers:
 """
 
 import pytest
+from django.utils import timezone
 from rest_framework import status
 
 from api.models import PushSubscription
@@ -72,8 +73,12 @@ class TestPushSubscribePost:
 
     def test_creates_subscription(self, authenticated_client, user):
         """Valid subscription data is saved to the database."""
+        before = timezone.now()
         response = authenticated_client.post(
-            SUBSCRIBE_URL, VALID_SUBSCRIPTION, format="json"
+            SUBSCRIBE_URL,
+            VALID_SUBSCRIPTION,
+            format="json",
+            HTTP_USER_AGENT="Test Browser",
         )
 
         assert response.status_code == status.HTTP_201_CREATED
@@ -84,6 +89,9 @@ class TestPushSubscribePost:
         assert sub.endpoint == VALID_SUBSCRIPTION["endpoint"]
         assert sub.p256dh == VALID_SUBSCRIPTION["p256dh"]
         assert sub.auth == VALID_SUBSCRIPTION["auth"]
+        assert sub.user_agent == "Test Browser"
+        assert sub.last_seen_at is not None
+        assert sub.last_seen_at >= before
 
     def test_updates_existing_subscription_for_same_endpoint(
         self, authenticated_client, user
@@ -105,6 +113,7 @@ class TestPushSubscribePost:
         sub = PushSubscription.objects.get(user=user)
         assert sub.p256dh == "new-p256dh"
         assert sub.auth == "new-auth"
+        assert sub.last_seen_at is not None
 
     def test_same_user_can_have_multiple_endpoints(self, authenticated_client, user):
         """One user can subscribe from multiple devices."""
