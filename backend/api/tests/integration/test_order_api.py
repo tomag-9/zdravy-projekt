@@ -75,7 +75,7 @@ class TestOrderCreation:
         url = reverse("dailyorder-list")
         response = api_client.post(url, {"date": str(MONDAY)}, format="json")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_staff_cannot_create_orders(self, admin_client, admin_user):
         """Staff/admin users cannot place orders."""
@@ -312,7 +312,7 @@ class TestPlannedOrdersEndpoint:
         url = reverse("planned-orders-list")
         response = api_client.get(url)
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_planned_orders_staff_can_access(self, admin_client):
         """Admin/staff can access planned orders endpoint."""

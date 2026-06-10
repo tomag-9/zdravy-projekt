@@ -377,7 +377,7 @@ class TestAdminTriggerAutoOrders:
         url = reverse("trigger-auto-orders-list")
         response = api_client.post(url, {"date": str(TUESDAY)}, format="json")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_trigger_without_date_uses_next_workday(self, admin_client, user):
         """Omitting date parameter uses next workday calculation."""
