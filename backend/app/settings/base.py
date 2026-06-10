@@ -259,8 +259,12 @@ REFRESH_TOKEN_COOKIE_PATH = "/api/token"
 # Django REST Framework
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
+        # JWT must be first: DRF uses the first authenticator's authenticate_header()
+        # to decide between 401 and 403.  SessionAuthentication returns None (no header)
+        # which causes DRF to emit 403 for all auth failures — including expired tokens —
+        # so the frontend's 401→refresh flow never fires.  JWT first → 401 → refresh. ✓
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",

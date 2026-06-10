@@ -237,6 +237,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         setUser(userData);
         return userData;
       }
+      // 401 after apiFetch already attempted a refresh → session is truly gone.
+      if (response.status === 401) {
+        await logout();
+      }
       return null;
     } catch (e) {
       if (!isNetworkFetchError(e)) {
@@ -246,7 +250,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [apiFetch]);
+  }, [apiFetch, logout]);
 
   useEffect(() => {
     const existingToken = localStorage.getItem("access_token");

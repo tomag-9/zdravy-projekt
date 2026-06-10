@@ -66,10 +66,10 @@ class TestVapidPublicKeyView:
 
 @pytest.mark.django_db
 class TestPushSubscribePost:
-    def test_unauthenticated_returns_403_forbidden(self, api_client):
-        """Unauthenticated requests are rejected with 403 FORBIDDEN."""
+    def test_unauthenticated_returns_401_unauthorized(self, api_client):
+        """Unauthenticated requests are rejected with 401 UNAUTHORIZED."""
         response = api_client.post(SUBSCRIBE_URL, VALID_SUBSCRIPTION, format="json")
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_creates_subscription(self, authenticated_client, user):
         """Valid subscription data is saved to the database."""
@@ -168,13 +168,13 @@ class TestPushSubscribePost:
 
 @pytest.mark.django_db
 class TestPushSubscribeDelete:
-    def test_unauthenticated_returns_403_forbidden(self, api_client):
+    def test_unauthenticated_returns_401_unauthorized(self, api_client):
         response = api_client.delete(
             SUBSCRIBE_URL,
             {"endpoint": "https://example.com/ep"},
             format="json",
         )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_removes_existing_subscription(self, authenticated_client, user):
         """Deleting a subscription removes it from the database."""
@@ -237,11 +237,11 @@ class TestAdminSendPushView:
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    def test_unauthenticated_returns_403_forbidden(self, api_client):
+    def test_unauthenticated_returns_401_unauthorized(self, api_client):
         response = api_client.post(
             ADMIN_SEND_URL, {"title": "Test", "body": "Hello"}, format="json"
         )
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_missing_title_returns_400(self, admin_client):
         response = admin_client.post(ADMIN_SEND_URL, {"body": "Hello"}, format="json")
