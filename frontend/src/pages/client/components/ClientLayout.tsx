@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, BookOpen, Plus } from "lucide-react";
+import { useStableViewportHeight } from "../../../hooks/useStableViewportHeight";
 
 const tabs = [
   { to: "/menu", label: "Jedálniček", icon: BookOpen },
@@ -18,6 +19,7 @@ const INDICATOR_LEFT = ["8px", "calc(33.333% + 4px)", "calc(66.667%)"];
 const ClientLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  useStableViewportHeight();
 
   const activeTabIdx = tabs.findIndex(
       (t) =>
@@ -52,7 +54,12 @@ const ClientLayout = () => {
   return (
     <div
       className="zp-phone"
-      style={{ width: "100%", height: "100dvh", borderRadius: 0, boxShadow: "none" }}
+      style={{
+        width: "100%",
+        height: "var(--zp-app-height, 100dvh)",
+        borderRadius: 0,
+        boxShadow: "none",
+      }}
     >
       <div
         className="zp-route-body"

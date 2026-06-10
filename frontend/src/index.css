@@ -175,6 +175,16 @@
 
 * { box-sizing: border-box; }
 
+html,
+body,
+#root {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    margin: 0;
+    overflow: hidden;
+}
+
 .zp-app {
     background: var(--bg-cream);
     color: var(--ink-1);
@@ -1219,7 +1229,8 @@
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
-    padding-bottom: 92px;
+    overscroll-behavior-y: contain;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
 }
 .zp-route-body--notab { padding-bottom: 24px; }
 
@@ -1238,7 +1249,7 @@
 /* Bottom tab nav */
 .zp-tabbar {
     position: absolute;
-    left: 12px; right: 12px; bottom: 12px;
+    left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
     background: var(--bg-cream-warm);
     border: 1px solid var(--line-soft);
     border-radius: 24px;
