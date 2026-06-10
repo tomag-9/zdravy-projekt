@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
 from rest_framework.request import Request
@@ -56,7 +57,12 @@ class PushSubscribeView(APIView):
         obj, created = PushSubscription.objects.update_or_create(
             user=request.user,
             endpoint=endpoint,
-            defaults={"p256dh": p256dh, "auth": auth},
+            defaults={
+                "p256dh": p256dh,
+                "auth": auth,
+                "user_agent": request.META.get("HTTP_USER_AGENT", "")[:2000],
+                "last_seen_at": timezone.now(),
+            },
         )
         http_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response({"status": "subscribed"}, status=http_status)

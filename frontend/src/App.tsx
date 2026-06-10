@@ -5,6 +5,7 @@ import {
   Navigate,
   Outlet,
 } from "react-router-dom";
+import { useEffect } from "react";
 
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
@@ -12,6 +13,7 @@ import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
 import { usePWA } from "./hooks/usePWA";
+import { usePushNotifications } from "./hooks/usePushNotifications";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import NotificationGuard from "./components/NotificationGuard";
 import PWAUpdateBanner from "./components/PWAUpdateBanner";
@@ -98,6 +100,28 @@ const AdminRoute = () => {
   return <ErrorBoundary><AdminLayout /></ErrorBoundary>;
 };
 
+function PushSubscriptionReconciler() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+  const { ensureSubscriptionRegistration } = usePushNotifications();
+
+  useEffect(() => {
+    if (
+      isLoading ||
+      !isAuthenticated ||
+      !user ||
+      user.is_staff ||
+      !("Notification" in window) ||
+      Notification.permission !== "granted"
+    ) {
+      return;
+    }
+
+    ensureSubscriptionRegistration();
+  }, [ensureSubscriptionRegistration, isAuthenticated, isLoading, user]);
+
+  return null;
+}
+
 /**
  * AppContent — shown inside all providers.
  * Displays AppLoadingScreen while auth is initialising.
@@ -128,6 +152,7 @@ export default function App() {
         <AuthProvider>
           <ToastProvider>
             <AppContent>
+              <PushSubscriptionReconciler />
               {/* Banner only shown in browser (non-standalone) mode */}
               <PWAUpdateBanner />
               <Routes>

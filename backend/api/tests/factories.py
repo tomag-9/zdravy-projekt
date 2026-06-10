@@ -12,6 +12,7 @@ from api.models import (
     DailyOrder,
     Diet,
     PasswordResetToken,
+    PushNotificationAttempt,
     PushSubscription,
     UserProfile,
 )
@@ -108,3 +109,16 @@ class PushSubscriptionFactory(DjangoModelFactory):
     )
     p256dh = factory.Sequence(lambda n: f"fake-p256dh-key-{n}")
     auth = factory.Sequence(lambda n: f"fake-auth-{n}")
+
+
+class PushNotificationAttemptFactory(DjangoModelFactory):
+    class Meta:
+        model = PushNotificationAttempt
+
+    subscription = factory.SubFactory(PushSubscriptionFactory)
+    user = factory.SelfAttribute("subscription.user")
+    endpoint = factory.SelfAttribute("subscription.endpoint")
+    title = "Test notification"
+    body = "Test body"
+    url = "/home"
+    status = PushNotificationAttempt.STATUS_SENT

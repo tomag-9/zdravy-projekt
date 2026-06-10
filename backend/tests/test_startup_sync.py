@@ -11,7 +11,7 @@ import pytest
 from django_celery_beat.models import PeriodicTask
 
 from api.models import GlobalSettings
-from api.signals import PUSH_REMINDER_TASK_PREFIX
+from api.signals import PUSH_REMINDER_TASK_PREFIX, WEEKLY_REMINDER_TASK_NAME
 
 
 def _make_settings(**kwargs):
@@ -46,6 +46,19 @@ class TestStartupSync:
         assert PeriodicTask.objects.filter(
             name__startswith=PUSH_REMINDER_TASK_PREFIX
         ).exists()
+
+    def test_weekly_reminder_task_created_on_startup(self):
+        """Startup sync also self-heals the Sunday weekly reminder."""
+        from api.signals import _sync_weekly_reminder_schedule
+
+        _make_settings()
+
+        PeriodicTask.objects.filter(name=WEEKLY_REMINDER_TASK_NAME).delete()
+        assert not PeriodicTask.objects.filter(name=WEEKLY_REMINDER_TASK_NAME).exists()
+
+        _sync_weekly_reminder_schedule()
+
+        assert PeriodicTask.objects.filter(name=WEEKLY_REMINDER_TASK_NAME).exists()
 
     def test_startup_sync_is_idempotent(self):
         """Running the startup sync twice does not duplicate tasks."""

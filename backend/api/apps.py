@@ -22,6 +22,7 @@ class ApiConfig(AppConfig):
                 _sync_auto_order_schedule,
                 _sync_daily_report_schedule,
                 _sync_push_reminder_schedule,
+                _sync_weekly_reminder_schedule,
             )
 
             global_settings = GlobalSettings.objects.filter(pk=1).first()
@@ -31,6 +32,7 @@ class ApiConfig(AppConfig):
             _sync_auto_order_schedule(global_settings)
             _sync_daily_report_schedule(global_settings)
             _sync_push_reminder_schedule(global_settings)
+            _sync_weekly_reminder_schedule()
             logger.info("Startup periodic-task sync completed.")
         except (OperationalError, ProgrammingError):
             # DB not ready yet (common during migrate/startup); skip silently.

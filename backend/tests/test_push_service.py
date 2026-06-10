@@ -13,7 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from api.models import PushSubscription
+from api.models import PushNotificationAttempt, PushSubscription
 from api.services.push_notification_service import PushNotificationService
 from api.tests.factories import PushSubscriptionFactory, UserFactory
 
@@ -44,6 +44,8 @@ class TestSendToSubscription:
             )
 
         assert result == (False, False)
+        attempt = PushNotificationAttempt.objects.get(subscription=sub)
+        assert attempt.status == PushNotificationAttempt.STATUS_UNAVAILABLE
 
     def test_returns_true_on_success(self, settings):
         from pywebpush import WebPushException
@@ -63,6 +65,11 @@ class TestSendToSubscription:
         assert result == (True, False)
         mock_wp = mock_loader.return_value[1]
         mock_wp.assert_called_once()
+        sub.refresh_from_db()
+        assert sub.last_success_at is not None
+        assert sub.failure_count == 0
+        attempt = PushNotificationAttempt.objects.get(subscription=sub)
+        assert attempt.status == PushNotificationAttempt.STATUS_SENT
 
     def test_returns_false_and_deletes_on_410(self, settings):
         """HTTP 410 (Gone) marks subscription as stale and removes it."""
@@ -86,6 +93,9 @@ class TestSendToSubscription:
 
         assert result == (False, True)
         assert not PushSubscription.objects.filter(pk=sub_pk).exists()
+        attempt = PushNotificationAttempt.objects.get(endpoint=sub.endpoint)
+        assert attempt.status == PushNotificationAttempt.STATUS_STALE_REMOVED
+        assert attempt.http_status == 410
 
     def test_returns_false_and_deletes_on_404(self, settings):
         """HTTP 404 (endpoint not found) also removes the stale subscription."""
@@ -133,6 +143,48 @@ class TestSendToSubscription:
         assert result == (False, False)
         # Record should still be present
         assert PushSubscription.objects.filter(pk=sub_pk).exists()
+        sub.refresh_from_db()
+        assert sub.last_failure_at is not None
+        assert sub.failure_count == 2
+        assert (
+            PushNotificationAttempt.objects.filter(
+                subscription=sub,
+                status=PushNotificationAttempt.STATUS_FAILED,
+                http_status=500,
+            ).count()
+            == 2
+        )
+
+    def test_retries_transient_http_error_and_succeeds(self, settings):
+        """Transient push provider errors are retried once."""
+        from pywebpush import WebPushException
+
+        settings.VAPID_PRIVATE_KEY = "fake-key"
+        settings.VAPID_ADMIN_EMAIL = "admin@example.com"
+        sub = PushSubscriptionFactory()
+        mock_webpush = MagicMock(side_effect=[_make_push_exception(503), None])
+
+        with patch(
+            "api.services.push_notification_service._load_pywebpush",
+            return_value=(WebPushException, mock_webpush),
+        ):
+            result = PushNotificationService.send_to_subscription(
+                sub, title="Test", body="Body"
+            )
+
+        assert result == (True, False)
+        assert mock_webpush.call_count == 2
+        sub.refresh_from_db()
+        assert sub.last_success_at is not None
+        assert sub.failure_count == 0
+        assert list(
+            PushNotificationAttempt.objects.filter(subscription=sub)
+            .order_by("attempt_number")
+            .values_list("status", "http_status", "attempt_number")
+        ) == [
+            (PushNotificationAttempt.STATUS_FAILED, 503, 1),
+            (PushNotificationAttempt.STATUS_SENT, None, 2),
+        ]
 
     def test_returns_false_on_unexpected_exception(self, settings):
         """Non-WebPushException errors are caught and return False."""

@@ -380,6 +380,11 @@ class PushSubscription(models.Model):
     endpoint = models.TextField()
     p256dh = models.TextField()
     auth = models.TextField()
+    user_agent = models.TextField(blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    last_success_at = models.DateTimeField(null=True, blank=True)
+    last_failure_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -391,3 +396,54 @@ class PushSubscription(models.Model):
 
     def __str__(self) -> str:
         return f"PushSubscription({self.user.email}, …{self.endpoint[-20:]})"
+
+
+class PushNotificationAttempt(models.Model):
+    """Audit trail for Web Push delivery attempts."""
+
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_STALE_REMOVED = "stale_removed"
+    STATUS_UNAVAILABLE = "unavailable"
+
+    STATUS_CHOICES = [
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_STALE_REMOVED, "Stale removed"),
+        (STATUS_UNAVAILABLE, "Unavailable"),
+    ]
+
+    subscription = models.ForeignKey(
+        PushSubscription,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notification_attempts",
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="push_notification_attempts",
+    )
+    endpoint = models.TextField()
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    url = models.CharField(max_length=500, default="/home")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES)
+    http_status = models.PositiveIntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True)
+    attempt_number = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["user", "created_at"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"PushNotificationAttempt({self.status}, …{self.endpoint[-20:]})"
