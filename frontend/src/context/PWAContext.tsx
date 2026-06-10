@@ -4,6 +4,7 @@
  * Provides:
  *  - isStandalone  – true when running as installed PWA (display-mode: standalone)
  *  - isIOS         – true on iPhone/iPad (affects install instructions)
+ *  - isMobile      – true for phones/tablets based on platform or coarse pointer
  *  - canInstall    – true when beforeinstallprompt event fired (Android/Chrome)
  *  - installPrompt – call to show the OS install dialog
  *  - swRegistration
@@ -42,10 +43,20 @@ function detectStandalone(): boolean {
   );
 }
 
+function detectMobile(isIOS: boolean, isAndroid: boolean): boolean {
+  return (
+    isIOS ||
+    isAndroid ||
+    window.matchMedia('(pointer: coarse) and (max-width: 1024px)').matches
+  );
+}
+
 export function PWAProvider({ children }: { children: React.ReactNode }) {
   const [isStandalone] = useState(detectStandalone);
   const [isIOS] = useState(detectIOS);
   const [isAndroid] = useState(detectAndroid);
+  const [isMobile] = useState(() => detectMobile(detectIOS(), detectAndroid()));
+  const [isDesktop] = useState(() => !detectMobile(detectIOS(), detectAndroid()));
   const [deferredPrompt, setDeferredPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
   const [swRegistration, setSwRegistration] =
@@ -93,6 +104,8 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
         isStandalone,
         isIOS,
         isAndroid,
+        isMobile,
+        isDesktop,
         canInstall: !!deferredPrompt,
         installPrompt,
         swRegistration,

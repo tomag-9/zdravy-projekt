@@ -1,8 +1,8 @@
 /**
  * NotificationGuard
  *
- * Only active in PWA standalone mode. In a regular browser window this
- * component is transparent and renders children immediately.
+ * Only active in mobile PWA standalone mode. In a regular browser window or
+ * desktop PWA this component is transparent and renders children immediately.
  *
  * States (standalone mode only):
  *  1. 'unsupported'  → render children (graceful degrade)
@@ -21,67 +21,13 @@ interface NotificationGuardProps {
 }
 
 export default function NotificationGuard({ children }: NotificationGuardProps) {
-  const { isStandalone } = usePWA();
+  const { isStandalone, isMobile } = usePWA();
 
-  if (isStandalone) {
+  if (isStandalone && isMobile) {
     return <StandaloneNotificationGuard>{children}</StandaloneNotificationGuard>;
   }
 
-  return <BrowserNotificationPrompt>{children}</BrowserNotificationPrompt>;
-}
-
-function BrowserNotificationPrompt({ children }: NotificationGuardProps) {
-  const { permission, subscribe } = usePushNotifications();
-  const [dismissed, setDismissed] = useState(false);
-  const [requesting, setRequesting] = useState(false);
-
-  const showPrompt = !dismissed && permission === 'default';
-  useScrollLock(showPrompt);
-
-  const handleAllow = async () => {
-    setRequesting(true);
-    await subscribe();
-    setRequesting(false);
-    setDismissed(true);
-  };
-
-  return (
-    <>
-      {children}
-      {showPrompt && (
-        <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6" style={{ fontFamily: 'var(--font-display)' }}>
-              <div style={{ fontSize: 40, marginBottom: 16, textAlign: 'center' }}>🔔</div>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--ink-1)', marginBottom: 8 }}>
-                Povolenie notifikácií
-              </h3>
-              <p style={{ fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.5, marginBottom: 24 }}>
-                Budeme vás upozorňovať na blížiace sa uzávierky objednávok. Notifikácie môžete kedykoľvek vypnúť v nastaveniach zariadenia.
-              </p>
-              <div style={{ display: 'flex', gap: 12 }}>
-                <button
-                  onClick={() => setDismissed(true)}
-                  className="zp-btn zp-btn--ghost"
-                  style={{ flex: 1 }}
-                >
-                  Teraz nie
-                </button>
-                <button
-                  onClick={handleAllow}
-                  disabled={requesting}
-                  className="zp-btn zp-btn--primary"
-                  style={{ flex: 1 }}
-                >
-                  {requesting ? 'Čakajte...' : 'Povoliť'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
+  return <>{children}</>;
 }
 
 function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
@@ -95,7 +41,12 @@ function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
 
   // Notifications granted – all good
   if (permission === 'granted') {
-    return <>{children}</>;
+    return (
+      <>
+        {children}
+        <BackgroundReliabilityNotice />
+      </>
+    );
   }
 
   // Permission denied: user needs to reset it in browser settings
@@ -145,6 +96,67 @@ function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
   );
 }
 
+const BACKGROUND_NOTICE_DISMISSED_KEY = 'zdravy-background-notice-dismissed-v1';
+
+function BackgroundReliabilityNotice() {
+  const { isIOS, isAndroid } = usePWA();
+  const [dismissed, setDismissed] = useState(() => (
+    localStorage.getItem(BACKGROUND_NOTICE_DISMISSED_KEY) === '1'
+  ));
+
+  const showNotice = !dismissed && (isIOS || isAndroid);
+  useScrollLock(showNotice);
+
+  if (!showNotice) return null;
+
+  const handleDismiss = () => {
+    localStorage.setItem(BACKGROUND_NOTICE_DISMISSED_KEY, '1');
+    setDismissed(true);
+  };
+
+  return (
+    <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="p-6 space-y-4" style={{ fontFamily: 'var(--font-display)' }}>
+          <div className="text-4xl text-center">🔋</div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 mb-2">
+              Spoľahlivé notifikácie
+            </h2>
+            <p className="text-sm text-slate-500 leading-relaxed">
+              Aby pripomienky dorazili čo najspoľahlivejšie, nechajte aplikácii
+              povolené notifikácie a beh na pozadí.
+            </p>
+          </div>
+
+          {isAndroid ? (
+            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
+              <p className="font-medium">Android:</p>
+              <p>1. Otvorte Nastavenia zariadenia</p>
+              <p>2. Prejdite na Aplikácie → Zdravý Projekt → Batéria</p>
+              <p>3. Vypnite šetrenie batérie alebo povoľte neobmedzený beh</p>
+            </div>
+          ) : (
+            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
+              <p className="font-medium">iPhone:</p>
+              <p>1. Aplikácia musí byť pridaná na plochu zo Safari</p>
+              <p>2. V Nastaveniach povoľte notifikácie pre Zdravý Projekt</p>
+              <p>3. Nevypínajte notifikácie ani režim sústredenia pre aplikáciu</p>
+            </div>
+          )}
+
+          <button
+            onClick={handleDismiss}
+            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+          >
+            Rozumiem
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PermissionDeniedScreen() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
@@ -168,4 +180,3 @@ function PermissionDeniedScreen() {
     </div>
   );
 }
-

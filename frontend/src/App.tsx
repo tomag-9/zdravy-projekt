@@ -16,6 +16,7 @@ import { usePWA } from "./hooks/usePWA";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import NotificationGuard from "./components/NotificationGuard";
+import PWAInstallBanner from "./components/PWAInstallBanner";
 import PWAUpdateBanner from "./components/PWAUpdateBanner";
 import AppLoadingScreen from "./components/AppLoadingScreen";
 import HomePage from "./pages/client/pages/HomePage";
@@ -122,6 +123,16 @@ function PushSubscriptionReconciler() {
   return null;
 }
 
+function ClientInstallPrompt() {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading || !isAuthenticated || !user || user.is_staff) {
+    return null;
+  }
+
+  return <PWAInstallBanner />;
+}
+
 /**
  * AppContent — shown inside all providers.
  * Displays AppLoadingScreen while auth is initialising.
@@ -153,6 +164,7 @@ export default function App() {
           <ToastProvider>
             <AppContent>
               <PushSubscriptionReconciler />
+              <ClientInstallPrompt />
               {/* Banner only shown in browser (non-standalone) mode */}
               <PWAUpdateBanner />
               <Routes>
