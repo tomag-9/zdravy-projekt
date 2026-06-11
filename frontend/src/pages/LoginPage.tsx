@@ -2,17 +2,21 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/auth";
 import { useNavigate, Link } from "react-router-dom";
 import { useIsPC } from "../hooks/useIsPC";
+import { useStableViewportHeight } from "../hooks/useStableViewportHeight";
+import { Eye, EyeOff } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [contactEmail, setContactEmail] = useState("info@zdravyprojekt.sk");
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const isPC = useIsPC();
+  useStableViewportHeight();
 
   useEffect(() => {
     fetch(`${API_URL}/admin/global-settings/`)
@@ -94,14 +98,25 @@ const LoginPage: React.FC = () => {
 
       <div className="zp-field">
         <label className="zp-label">Heslo</label>
-        <input
-          className="zp-input"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          required
-        />
+        <div className="zp-password-field">
+          <input
+            className="zp-input"
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+          <button
+            type="button"
+            className="zp-password-toggle"
+            onClick={() => setShowPassword((value) => !value)}
+            aria-label={showPassword ? "Skryť heslo" : "Zobraziť heslo"}
+            title={showPassword ? "Skryť heslo" : "Zobraziť heslo"}
+          >
+            {showPassword ? <EyeOff aria-hidden="true" /> : <Eye aria-hidden="true" />}
+          </button>
+        </div>
         <div style={{ textAlign: "right", marginTop: 8 }}>
           <Link to="/forgot-password" className="zp-link">
             Zabudli ste heslo?
@@ -157,7 +172,7 @@ const LoginPage: React.FC = () => {
   }
 
   return (
-    <div className="zp-app" style={{ minHeight: "100vh" }}>
+    <div className="zp-app zp-app--login">
       <div className="zp-login">
         <div className="zp-login-brand">
           <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />

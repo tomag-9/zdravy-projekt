@@ -375,10 +375,11 @@ body {
 
 /* ===== LOGIN =============================================== */
 .pc-login {
-    height: 100vh;
+    height: var(--zp-app-height, 100dvh);
     display: grid;
     grid-template-columns: 1.05fr 1fr;
     background: var(--bg-cream);
+    overflow: hidden;
 }
 .pc-login-art {
     position: relative;
@@ -411,6 +412,9 @@ body {
 
 .pc-login-panel {
     display: flex; align-items: center; justify-content: center; padding: 40px;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .pc-login-card { width: 100%; max-width: 380px; }
 .pc-login-card .logoimg { width: 200px; height: auto; display: block; margin: 0 0 30px; }

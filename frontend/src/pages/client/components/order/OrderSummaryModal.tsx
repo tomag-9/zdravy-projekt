@@ -112,7 +112,6 @@ const OrderSummaryModal = ({
   const anyMealEditable = (["breakfast", "lunch", "olovrant"] as const).some(
     (meal) => OrderService.checkDeadline(orderDate, meal, globalDeadlines),
   );
-  const canDelete = !isPredicted && !isAuto && anyMealEditable;
 
   const mealMeta: Record<
     MealKey,
@@ -207,6 +206,19 @@ const OrderSummaryModal = ({
   };
 
   const hasAnyOrder = Object.values(summaries).some((s) => s !== null);
+  const orderedMealKeys = (["breakfast", "lunch", "olovrant"] as const).filter(
+    (meal) =>
+      summaries[meal] !== null ||
+      (isPredicted && (predictedMealCount?.[meal] ?? 0) > 0),
+  );
+  const allOrderedMealsEditable =
+    orderedMealKeys.length > 0 &&
+    orderedMealKeys.every((meal) =>
+      OrderService.checkDeadline(orderDate, meal, globalDeadlines),
+    );
+  const canEdit = anyMealEditable;
+  const canZero = !!onZero && allOrderedMealsEditable;
+  const canDelete = !isPredicted && !isAuto && allOrderedMealsEditable;
   const canDeleteOrder = canDelete && hasAnyOrder;
 
   const handleEdit = () => {
@@ -665,45 +677,37 @@ const OrderSummaryModal = ({
           )}
 
           {/* ── Footer buttons: Edit | Erase | Delete ── */}
-          <div className="pt-3 sm:pt-4 flex gap-2">
-            <Button
-              className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm"
-              onClick={handleEdit}
-            >
-              <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              Upraviť
-            </Button>
-            <Button
-              className={[
-                "flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm",
-                onZero
-                  ? "bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
-                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
-              ].join(" ")}
-              onClick={onZero ?? undefined}
-              disabled={!onZero}
-            >
-              <Eraser className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              Vynulovať
-            </Button>
-            <Button
-              className={[
-                "flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm",
-                canDeleteOrder
-                  ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-                  : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed opacity-60",
-              ].join(" ")}
-              onClick={
-                canDeleteOrder
-                  ? () => setDeleteConfirmation(true)
-                  : undefined
-              }
-              disabled={!canDeleteOrder}
-            >
-              <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
-              Vymazať
-            </Button>
-          </div>
+          {(canEdit || canZero || canDeleteOrder) && (
+            <div className="pt-3 sm:pt-4 flex gap-2">
+              {canEdit && (
+                <Button
+                  className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm"
+                  onClick={handleEdit}
+                >
+                  <Edit className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  Upraviť
+                </Button>
+              )}
+              {canZero && (
+                <Button
+                  className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100"
+                  onClick={onZero}
+                >
+                  <Eraser className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  Vynulovať
+                </Button>
+              )}
+              {canDeleteOrder && (
+                <Button
+                  className="flex-1 gap-1 sm:gap-2 px-2 sm:px-4 text-xs sm:text-sm border shadow-sm bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                  onClick={() => setDeleteConfirmation(true)}
+                >
+                  <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+                  Vymazať
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
