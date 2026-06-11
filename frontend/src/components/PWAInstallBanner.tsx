@@ -44,62 +44,74 @@ export default function PWAInstallBanner() {
   };
 
   return (
-    <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-6 space-y-5" style={{ fontFamily: 'var(--font-display)' }}>
-          <div className="text-center space-y-2">
-            <div className="text-4xl">📱</div>
-            <h2 className="text-xl font-bold text-slate-800">
+    <div className="zp-centered-modal" style={{ zIndex: 50, background: 'rgba(23,53,5,0.42)', backdropFilter: 'blur(3px)' }}>
+      <div style={{
+        background: 'var(--bg-cream)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        width: '100%',
+        maxWidth: 380,
+        overflow: 'hidden',
+        fontFamily: 'var(--font-display)',
+      }}>
+        <div style={{ padding: '28px 28px 24px' }}>
+          <div style={{ textAlign: 'center', marginBottom: 20 }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>📱</div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--green-900)', margin: '0 0 8px' }}>
               Nainštalovať aplikáciu
             </h2>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              Pre najspoľahlivejšie notifikácie a pohodlné používanie si
-              pridajte Zdravý Projekt na plochu telefónu.
+            <p style={{ fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.5, margin: 0 }}>
+              Pre najspoľahlivejšie notifikácie a pohodlné používanie si pridajte Zdravý Projekt na plochu telefónu.
             </p>
           </div>
 
           {isIOS ? (
-            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-              <p className="font-medium">Najlepšie cez Safari:</p>
-              <p>1. Otvorte aplikáciu v Safari</p>
-              <p>2. Klepnite na Zdieľať</p>
-              <p>3. Vyberte Pridať na plochu</p>
+            <div style={{
+              background: 'var(--bg-cream-soft)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 20,
+            }}>
+              <p style={{ fontWeight: 600, margin: '0 0 6px' }}>Najlepšie cez Safari:</p>
+              <p style={{ margin: '0 0 3px' }}>1. Otvorte aplikáciu v Safari</p>
+              <p style={{ margin: '0 0 3px' }}>2. Klepnite na Zdieľať</p>
+              <p style={{ margin: 0 }}>3. Vyberte Pridať na plochu</p>
             </div>
           ) : isAndroid ? (
-            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-              <p className="font-medium">Najlepšie cez Chrome:</p>
-              <p>1. Otvorte aplikáciu v Chrome</p>
-              <p>2. V menu vyberte Inštalovať aplikáciu</p>
-              <p>3. Potvrďte pridanie na plochu</p>
+            <div style={{
+              background: 'var(--bg-cream-soft)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 20,
+            }}>
+              <p style={{ fontWeight: 600, margin: '0 0 6px' }}>Najlepšie cez Chrome:</p>
+              <p style={{ margin: '0 0 3px' }}>1. Otvorte aplikáciu v Chrome</p>
+              <p style={{ margin: '0 0 3px' }}>2. V menu vyberte Inštalovať aplikáciu</p>
+              <p style={{ margin: 0 }}>3. Potvrďte pridanie na plochu</p>
             </div>
           ) : (
-            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600">
-              Otvorte stránku v mobilnom prehliadači Chrome alebo Safari a
-              pridajte si ju na plochu.
+            <div style={{
+              background: 'var(--bg-cream-soft)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 20,
+            }}>
+              Otvorte stránku v mobilnom prehliadači Chrome alebo Safari a pridajte si ju na plochu.
             </div>
           )}
 
-          <div className="flex gap-3">
-            <button
-              onClick={handleDismiss}
-              className="zp-btn zp-btn--ghost flex-1"
-            >
-              Teraz nie
-            </button>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button onClick={handleDismiss} className="zp-btn zp-btn--ghost" style={{ flex: 1 }}>Teraz nie</button>
             {canInstall ? (
-              <button
-                onClick={installPrompt}
-                className="zp-btn zp-btn--primary flex-1"
-              >
-                Inštalovať
-              </button>
+              <button onClick={installPrompt} className="zp-btn zp-btn--primary" style={{ flex: 1 }}>Inštalovať</button>
             ) : (
-              <button
-                onClick={handleDismiss}
-                className="zp-btn zp-btn--primary flex-1"
-              >
-                Rozumiem
-              </button>
+              <button onClick={handleDismiss} className="zp-btn zp-btn--primary" style={{ flex: 1 }}>Rozumiem</button>
             )}
           </div>
         </div>

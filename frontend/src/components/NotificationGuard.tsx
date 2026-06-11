@@ -62,33 +62,49 @@ function StandaloneNotificationGuard({ children }: NotificationGuardProps) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-      <div className="max-w-sm w-full bg-white rounded-2xl shadow-lg p-8 space-y-6">
-        <div className="text-5xl">🔔</div>
-        <div>
-          <h1 className="text-xl font-bold text-slate-800 mb-2">
-            Povolenie notifikácií
-          </h1>
-          <p className="text-slate-500 text-sm">
-            Na správne fungovanie aplikácie potrebujeme vaše povolenie na
-            zasielanie push notifikácií. Budeme vás upozorňovať na blížiace
-            sa uzávierky objednávok.
-          </p>
-        </div>
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--bg-cream)',
+      padding: 24,
+      textAlign: 'center',
+    }}>
+      <div style={{
+        maxWidth: 380,
+        width: '100%',
+        background: 'var(--bg-cream-warm)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-md)',
+        padding: 32,
+        fontFamily: 'var(--font-display)',
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🔔</div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--green-900)', margin: '0 0 8px' }}>
+          Povolenie notifikácií
+        </h1>
+        <p style={{ color: 'var(--ink-3)', fontSize: 14, lineHeight: 1.5, margin: '0 0 20px' }}>
+          Na správne fungovanie aplikácie potrebujeme vaše povolenie na
+          zasielanie push notifikácií. Budeme vás upozorňovať na blížiace
+          sa uzávierky objednávok.
+        </p>
 
         {error && (
-          <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3">{error}</p>
+          <p style={{ fontSize: 13, color: 'var(--coral-600)', background: 'rgba(201,46,82,0.08)', borderRadius: 'var(--radius-md)', padding: '10px 14px', marginBottom: 16 }}>{error}</p>
         )}
 
         <button
           onClick={handleAllow}
           disabled={requesting}
-          className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold rounded-xl transition-colors"
+          className="zp-btn zp-btn--primary zp-btn--block"
+          style={{ marginBottom: 12 }}
         >
           {requesting ? 'Čakajte...' : 'Povoliť notifikácie'}
         </button>
 
-        <p className="text-xs text-slate-400">
+        <p style={{ fontSize: 11, color: 'var(--ink-3)', margin: 0 }}>
           Notifikácie môžete kedykoľvek vypnúť v nastaveniach zariadenia.
         </p>
       </div>
@@ -115,39 +131,58 @@ function BackgroundReliabilityNotice() {
   };
 
   return (
-    <div className="zp-centered-modal z-50 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-6 space-y-4" style={{ fontFamily: 'var(--font-display)' }}>
-          <div className="text-4xl text-center">🔋</div>
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 mb-2">
-              Spoľahlivé notifikácie
-            </h2>
-            <p className="text-sm text-slate-500 leading-relaxed">
-              Aby pripomienky dorazili čo najspoľahlivejšie, nechajte aplikácii
-              povolené notifikácie a beh na pozadí.
-            </p>
-          </div>
+    <div className="zp-centered-modal" style={{ zIndex: 50, background: 'rgba(23,53,5,0.42)', backdropFilter: 'blur(3px)' }}>
+      <div style={{
+        background: 'var(--bg-cream)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-lg)',
+        width: '100%',
+        maxWidth: 380,
+        overflow: 'hidden',
+        fontFamily: 'var(--font-display)',
+      }}>
+        <div style={{ padding: '28px 28px 24px' }}>
+          <div style={{ fontSize: 40, textAlign: 'center', marginBottom: 12 }}>🔋</div>
+          <h2 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 18, color: 'var(--green-900)', margin: '0 0 8px' }}>
+            Spoľahlivé notifikácie
+          </h2>
+          <p style={{ fontSize: 14, color: 'var(--ink-3)', lineHeight: 1.5, margin: '0 0 16px' }}>
+            Aby pripomienky dorazili čo najspoľahlivejšie, nechajte aplikácii povolené notifikácie a beh na pozadí.
+          </p>
 
           {isAndroid ? (
-            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-              <p className="font-medium">Android:</p>
-              <p>1. Otvorte Nastavenia zariadenia</p>
-              <p>2. Prejdite na Aplikácie → Zdravý Projekt → Batéria</p>
-              <p>3. Vypnite šetrenie batérie alebo povoľte neobmedzený beh</p>
+            <div style={{
+              background: 'var(--bg-cream-soft)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 20,
+            }}>
+              <p style={{ fontWeight: 600, margin: '0 0 6px' }}>Android:</p>
+              <p style={{ margin: '0 0 3px' }}>1. Otvorte Nastavenia zariadenia</p>
+              <p style={{ margin: '0 0 3px' }}>2. Prejdite na Aplikácie → Zdravý Projekt → Batéria</p>
+              <p style={{ margin: 0 }}>3. Vypnite šetrenie batérie alebo povoľte neobmedzený beh</p>
             </div>
           ) : (
-            <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-              <p className="font-medium">iPhone:</p>
-              <p>1. Aplikácia musí byť pridaná na plochu zo Safari</p>
-              <p>2. V Nastaveniach povoľte notifikácie pre Zdravý Projekt</p>
-              <p>3. Nevypínajte notifikácie ani režim sústredenia pre aplikáciu</p>
+            <div style={{
+              background: 'var(--bg-cream-soft)',
+              borderRadius: 'var(--radius-md)',
+              padding: '14px 16px',
+              fontSize: 13,
+              color: 'var(--ink-2)',
+              marginBottom: 20,
+            }}>
+              <p style={{ fontWeight: 600, margin: '0 0 6px' }}>iPhone:</p>
+              <p style={{ margin: '0 0 3px' }}>1. Aplikácia musí byť pridaná na plochu zo Safari</p>
+              <p style={{ margin: '0 0 3px' }}>2. V Nastaveniach povoľte notifikácie pre Zdravý Projekt</p>
+              <p style={{ margin: 0 }}>3. Nevypínajte notifikácie ani režim sústredenia pre aplikáciu</p>
             </div>
           )}
 
           <button
             onClick={handleDismiss}
-            className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-colors"
+            className="zp-btn zp-btn--primary zp-btn--block"
           >
             Rozumiem
           </button>
@@ -159,22 +194,46 @@ function BackgroundReliabilityNotice() {
 
 function PermissionDeniedScreen() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-      <div className="max-w-sm w-full bg-white rounded-2xl shadow-lg p-8 space-y-4">
-        <div className="text-5xl">🚫</div>
-        <h1 className="text-xl font-bold text-slate-800">
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--bg-cream)',
+      padding: 24,
+      textAlign: 'center',
+    }}>
+      <div style={{
+        maxWidth: 380,
+        width: '100%',
+        background: 'var(--bg-cream-warm)',
+        borderRadius: 'var(--radius-xl)',
+        boxShadow: 'var(--shadow-md)',
+        padding: 32,
+        fontFamily: 'var(--font-display)',
+      }}>
+        <div style={{ fontSize: 48, marginBottom: 16 }}>🚫</div>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: 20, color: 'var(--green-900)', margin: '0 0 8px' }}>
           Notifikácie sú zablokované
         </h1>
-        <p className="text-slate-500 text-sm">
+        <p style={{ color: 'var(--ink-3)', fontSize: 14, lineHeight: 1.5, margin: '0 0 16px' }}>
           Aby ste mohli používať aplikáciu, je potrebné povoliť notifikácie.
           Otvorte nastavenia prehliadača alebo zariadenia a povolte notifikácie
           pre túto stránku.
         </p>
-        <div className="bg-slate-50 rounded-xl p-4 text-left text-sm text-slate-600 space-y-1">
-          <p className="font-medium">Ako to napraviť:</p>
-          <p>1. Otvorte Nastavenia zariadenia</p>
-          <p>2. Prejdite na Oznámenia</p>
-          <p>3. Nájdite „Zdravý Projekt" a povolte</p>
+        <div style={{
+          background: 'var(--bg-cream-soft)',
+          borderRadius: 'var(--radius-md)',
+          padding: '14px 16px',
+          fontSize: 13,
+          color: 'var(--ink-2)',
+          textAlign: 'left',
+        }}>
+          <p style={{ fontWeight: 600, margin: '0 0 6px' }}>Ako to napraviť:</p>
+          <p style={{ margin: '0 0 3px' }}>1. Otvorte Nastavenia zariadenia</p>
+          <p style={{ margin: '0 0 3px' }}>2. Prejdite na Oznámenia</p>
+          <p style={{ margin: 0 }}>3. Nájdite „Zdravý Projekt" a povolte</p>
         </div>
       </div>
     </div>

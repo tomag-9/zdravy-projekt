@@ -16,6 +16,7 @@ import {
 import { useAuth } from "../../../context/auth";
 import { useApp } from "../context/AppContext";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
+import { useIsPC } from "../../../hooks/useIsPC";
 
 type View = "main" | "portions" | "diets";
 
@@ -23,136 +24,101 @@ const Settings = () => {
   const [view, setView] = useState<View>("main");
   const [showLogout, setShowLogout] = useState(false);
   const { user, logout } = useAuth();
-  const { enabledCategories, portionTypes, clientContactInfo, visibleDietDetails } = useApp();
+  const { enabledCategories, clientContactInfo, visibleDietDetails } = useApp();
   const navigate = useNavigate();
-  const portionByName = new Map(portionTypes.map((portion) => [portion.name, portion]));
+  const isPC = useIsPC();
   const contactName = clientContactInfo.name || "Zdravý projekt";
   const contactRole = clientContactInfo.role ? ` · ${clientContactInfo.role}` : "";
   const contactEmail = clientContactInfo.email || "info@zdravyprojekt.sk";
   const contactPhone = clientContactInfo.phone || "+421 000 000 000";
 
-  if (view === "portions") {
-    return (
-      <div className="zp-app">
-        <div className="zp-pageheader">
-          <button className="zp-iconbtn" onClick={() => setView("main")}>
-            <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
-          </button>
-          <div>
-            <h1>Dostupné porcie</h1>
-            <p>{enabledCategories.length} typy aktivované pre vás</p>
-          </div>
-        </div>
-
-        <div className="zp-readonly-banner">
-          <Lock style={{ width: 16, height: 16 }} />
-          <div>
-            <strong>Iba na čítanie.</strong> Povolené typy porcií nastavujeme v Zdravom Brušku.
-            Ak chcete pridať alebo upraviť typ porcie, ozvite sa nám.
-          </div>
-        </div>
-
-        {enabledCategories.map((category) => (
-          <div className="zp-portion-card" key={category}>
-            <div className="ic">
-              <Users style={{ width: 20, height: 20 }} />
-            </div>
-            <div className="body">
-              <div className="ttl">{category}</div>
-              <div className="desc">
-                Porcia pre {category.toLowerCase()}.
-              </div>
-              <span className="coef">
-                Koeficient {portionByName.get(category)?.coefficient_pct ?? 100}%
-              </span>
-            </div>
-          </div>
-        ))}
-
-        <div className="zp-contact-card">
-          <span className="eye">Potrebujete zmenu?</span>
-          <h4>Kontakt pre úpravu povolených porcií</h4>
-          <p>Pre rozšírenie alebo zmenu typov porcií kontaktujte zodpovednú osobu v Zdravom projekte.</p>
-          <div className="contact-row">
-            <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
-          </div>
-          <div className="contact-row">
-            <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
-          </div>
-          <div className="contact-row">
-            <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (view === "diets") {
-    return (
-      <div className="zp-app">
-        <div className="zp-pageheader">
-          <button className="zp-iconbtn" onClick={() => setView("main")}>
-            <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
-          </button>
-          <div>
-            <h1>Dostupné diéty</h1>
-            <p>{visibleDietDetails.length} diét · popis a alergény</p>
-          </div>
-        </div>
-
-        <div className="zp-readonly-banner">
-          <Lock style={{ width: 16, height: 16 }} />
-          <div>
-            <strong>Iba na čítanie.</strong> Zoznam diét spravujeme v Zdravom Brušku.
-            Ak chcete pridať alebo upraviť diétu, ozvite sa nám.
-          </div>
-        </div>
-
-        {visibleDietDetails.length === 0 && (
-          <div className="zp-empty">
-            <Apple />
-            <p style={{ margin: "8px 0 0", fontSize: 14 }}>Nemáte povolené žiadne diéty.</p>
-          </div>
-        )}
-
-        {visibleDietDetails.map((d) => (
-          <div className="zp-diet-readonly" key={d.id}>
-            <span className="badge">{d.name}</span>
-            <div className="body">
-              <div className="name">{d.name}</div>
-              <div className="desc">{d.description || "Bez doplňujúceho popisu."}</div>
-            </div>
-          </div>
-        ))}
-
-        <div className="zp-contact-card">
-          <span className="eye">Chýba vám niečo?</span>
-          <h4>Kontakt pre pridanie / úpravu diéty</h4>
-          <p>Ak potrebujete novú diétu, ktorá tu nie je, kontaktujte zodpovednú osobu.</p>
-          <div className="contact-row">
-            <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
-          </div>
-          <div className="contact-row">
-            <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
-          </div>
-          <div className="contact-row">
-            <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Main settings screen
-  return (
-    <div className="zp-app">
-      <div className="zp-pageheader">
+  const portionsContent = (
+    <>
+      <div className="zp-readonly-banner">
+        <Lock style={{ width: 16, height: 16 }} />
         <div>
-          <h1>Nastavenia</h1>
-          <p>Účet, povolené porcie, diéty</p>
+          <strong>Iba na čítanie.</strong> Povolené typy porcií nastavujeme v Zdravom Brušku.
+          Ak chcete pridať alebo upraviť typ porcie, ozvite sa nám.
         </div>
       </div>
 
+      {enabledCategories.map((category) => (
+        <div className="zp-portion-card" key={category}>
+          <div className="ic">
+            <Users style={{ width: 20, height: 20 }} />
+          </div>
+          <div className="body">
+            <div className="ttl">{category}</div>
+            <div className="desc">
+              Porcia pre {category.toLowerCase()}.
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div className="zp-contact-card">
+        <span className="eye">Potrebujete zmenu?</span>
+        <h4>Kontakt pre úpravu povolených porcií</h4>
+        <p>Pre rozšírenie alebo zmenu typov porcií kontaktujte zodpovednú osobu v Zdravom projekte.</p>
+        <div className="contact-row">
+          <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
+        </div>
+        <div className="contact-row">
+          <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
+        </div>
+        <div className="contact-row">
+          <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
+        </div>
+      </div>
+    </>
+  );
+
+  const dietsContent = (
+    <>
+      <div className="zp-readonly-banner">
+        <Lock style={{ width: 16, height: 16 }} />
+        <div>
+          <strong>Iba na čítanie.</strong> Zoznam diét spravujeme v Zdravom Brušku.
+          Ak chcete pridať alebo upraviť diétu, ozvite sa nám.
+        </div>
+      </div>
+
+      {visibleDietDetails.length === 0 && (
+        <div className="zp-empty">
+          <Apple />
+          <p style={{ margin: "8px 0 0", fontSize: 14 }}>Nemáte povolené žiadne diéty.</p>
+        </div>
+      )}
+
+      {visibleDietDetails.map((d) => (
+        <div className="zp-diet-readonly" key={d.id}>
+          <span className="badge">{d.name}</span>
+          <div className="body">
+            <div className="name">{d.name}</div>
+            <div className="desc">{d.description || "Bez doplňujúceho popisu."}</div>
+          </div>
+        </div>
+      ))}
+
+      <div className="zp-contact-card">
+        <span className="eye">Chýba vám niečo?</span>
+        <h4>Kontakt pre pridanie / úpravu diéty</h4>
+        <p>Ak potrebujete novú diétu, ktorá tu nie je, kontaktujte zodpovednú osobu.</p>
+        <div className="contact-row">
+          <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
+        </div>
+        <div className="contact-row">
+          <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
+        </div>
+        <div className="contact-row">
+          <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
+        </div>
+      </div>
+    </>
+  );
+
+  const mainContent = (
+    <>
       <div className="zp-settings-section">
         <h2>Účet</h2>
         <div className="zp-settings-list">
@@ -251,17 +217,93 @@ const Settings = () => {
           </button>
         </div>
       </div>
+    </>
+  );
 
-      <ConfirmationModal
-        isOpen={showLogout}
-        onClose={() => setShowLogout(false)}
-        onConfirm={logout}
-        title="Odhlásenie"
-        description="Naozaj sa chcete odhlásiť z aplikácie?"
-        confirmText="Odhlásiť sa"
-        cancelText="Zrušiť"
-        variant="danger"
-      />
+  const confirmationModal = (
+    <ConfirmationModal
+      isOpen={showLogout}
+      onClose={() => setShowLogout(false)}
+      onConfirm={logout}
+      title="Odhlásenie"
+      description="Naozaj sa chcete odhlásiť z aplikácie?"
+      confirmText="Odhlásiť sa"
+      cancelText="Zrušiť"
+      variant="danger"
+    />
+  );
+
+  if (isPC) {
+    const activeContent = view === "portions" ? portionsContent : view === "diets" ? dietsContent : mainContent;
+    return (
+      <div className="pc-wrap">
+        <div className="pc-settings-grid">
+          <aside className="pc-settings-side">
+            <button className={view === "main" ? "active" : ""} onClick={() => setView("main")}>
+              <User style={{ width: 18, height: 18 }} /><span>Účet</span>
+            </button>
+            <button className={view === "portions" ? "active" : ""} onClick={() => setView("portions")}>
+              <Users style={{ width: 18, height: 18 }} /><span>Dostupné porcie</span>
+            </button>
+            <button className={view === "diets" ? "active" : ""} onClick={() => setView("diets")}>
+              <Apple style={{ width: 18, height: 18 }} /><span>Dostupné diéty</span>
+            </button>
+          </aside>
+          <div>
+            {activeContent}
+          </div>
+        </div>
+        {confirmationModal}
+      </div>
+    );
+  }
+
+  // Mobile: full-screen sub-views
+  if (view === "portions") {
+    return (
+      <div className="zp-app">
+        <div className="zp-pageheader">
+          <button className="zp-iconbtn" onClick={() => setView("main")}>
+            <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
+          </button>
+          <div>
+            <h1>Dostupné porcie</h1>
+            <p>{enabledCategories.length} typy aktivované pre vás</p>
+          </div>
+        </div>
+        {portionsContent}
+      </div>
+    );
+  }
+
+  if (view === "diets") {
+    return (
+      <div className="zp-app">
+        <div className="zp-pageheader">
+          <button className="zp-iconbtn" onClick={() => setView("main")}>
+            <ArrowLeft style={{ width: 18, height: 18, strokeWidth: 2 }} />
+          </button>
+          <div>
+            <h1>Dostupné diéty</h1>
+            <p>{visibleDietDetails.length} diét · popis a alergény</p>
+          </div>
+        </div>
+        {dietsContent}
+      </div>
+    );
+  }
+
+  // Main settings screen (mobile)
+  return (
+    <div className="zp-app">
+      <div className="zp-pageheader">
+        <div>
+          <h1>Nastavenia</h1>
+          <p>Účet, povolené porcie, diéty</p>
+        </div>
+      </div>
+      {mainContent}
+      {confirmationModal}
     </div>
   );
 };

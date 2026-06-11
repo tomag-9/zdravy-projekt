@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Coffee, Utensils, Apple, Settings, ChevronRight, ChevronLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/auth";
+import { useIsPC } from "../../../hooks/useIsPC";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -79,6 +80,7 @@ function getWeekLabel(week: WeekDay[]): string {
 const MenuPage = () => {
   const { apiFetch } = useAuth();
   const navigate = useNavigate();
+  const isPC = useIsPC();
   const [weekOffset, setWeekOffset] = useState(0);
   const week = useMemo(() => getWorkWeek(weekOffset), [weekOffset]);
   const today = toLocalDateString(new Date());
@@ -153,6 +155,103 @@ const MenuPage = () => {
     if (letter === "V") return "v";
     return "";
   };
+
+  const mealColumns = (Object.keys(MEAL_META) as MealKey[]).map((mealKey) => {
+    const mealItems = groupedItems[mealKey];
+    const Icon = MEAL_META[mealKey].icon;
+    const weightLabel = mealItems
+      .map((item) => item.template_detail?.weight_label)
+      .filter(Boolean)
+      .join(" · ");
+
+    return (
+      <div className="zp-menu-meal" key={mealKey}>
+        <div className="zp-menu-meal-head">
+          <Icon style={{ width: 16, height: 16 }} />
+          <span className="name">{MEAL_META[mealKey].label}</span>
+          <span className="gram">{weightLabel}</span>
+        </div>
+        {mealItems.length === 0 ? (
+          <div className="zp-empty" style={{ padding: "12px 16px", fontSize: 13 }}>
+            Nie je k dispozícii
+          </div>
+        ) : (
+          mealItems.map((item) => {
+            const variant = item.menu_variant || item.template_detail?.menu_variant || "A";
+            return (
+              <div className="zp-menu-item" key={item.id}>
+                <span className={`letter ${letterClass(variant)}`}>{variant}</span>
+                <div className="body">
+                  <div className="ttl">{item.template_detail?.name}</div>
+                  {item.template_detail?.weight_label && (
+                    <div className="desc">{item.template_detail.weight_label}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  });
+
+  if (isPC) {
+    return (
+      <div className="pc-wrap">
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          {weekOffset > 0 && (
+            <button
+              className="zp-iconbtn"
+              aria-label="Predchádzajúci týždeň"
+              onClick={() => setWeekOffset((o) => o - 1)}
+            >
+              <ChevronLeft style={{ width: 18, height: 18 }} />
+            </button>
+          )}
+          <span style={{ fontFamily: "var(--font-display)", fontSize: 13, color: "var(--ink-3)", fontWeight: 600 }}>
+            {getWeekLabel(week)}
+          </span>
+          <div style={{ flex: 1 }} />
+          <button
+            className="zp-iconbtn"
+            aria-label="Nasledujúci týždeň"
+            onClick={() => setWeekOffset((o) => o + 1)}
+            disabled={!nextWeekHasData}
+            style={{ opacity: nextWeekHasData ? 1 : 0.3 }}
+          >
+            <ChevronRight style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
+
+        <div className="pc-menu-tabs">
+          {week.map((weekDay, index) => (
+            <button
+              key={weekDay.date}
+              className={`pc-menu-tab${index === dayIdx ? " active" : ""}`}
+              onClick={() => setDayIdx(index)}
+            >
+              {weekDay.label}
+              <span className="d">
+                {new Date(weekDay.date + "T12:00:00").toLocaleDateString("sk-SK", { day: "numeric", month: "long" })}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {loading && <div className="zp-empty">Načítavam jedálniček...</div>}
+
+        {!loading && (!plan?.exists || plan.items.length === 0) && (
+          <div className="zp-empty">Na tento deň zatiaľ nie je zverejnený jedálniček.</div>
+        )}
+
+        {!loading && plan?.exists && plan.items.length > 0 && (
+          <div className="pc-menu-cols">
+            {mealColumns}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="zp-app">

@@ -2,6 +2,8 @@ import { useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { Home, BookOpen, Plus } from "lucide-react";
 import { useStableViewportHeight } from "../../../hooks/useStableViewportHeight";
+import { useIsPC } from "../../../hooks/useIsPC";
+import ClientLayoutPC from "./ClientLayoutPC";
 
 const tabs = [
   { to: "/menu", label: "Jedálniček", icon: BookOpen },
@@ -19,6 +21,7 @@ const INDICATOR_LEFT = ["8px", "calc(33.333% + 4px)", "calc(66.667%)"];
 const ClientLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const isPC = useIsPC();
   useStableViewportHeight();
 
   const activeTabIdx = tabs.findIndex(
@@ -34,6 +37,10 @@ const ClientLayout = () => {
   const prevIdxRef = useRef(activeIdx);
   const dirRef = useRef<"right" | "left">("right");
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  if (isPC) {
+    return <ClientLayoutPC />;
+  }
 
   if (location.pathname !== prevPathnameRef.current) {
     dirRef.current = activeIdx >= prevIdxRef.current ? "right" : "left";

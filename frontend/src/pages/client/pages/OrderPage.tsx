@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useIsPC } from "../../../hooks/useIsPC";
 import { useApp, CATEGORIES } from "../context/AppContext";
 import DaySelector from "../components/order/DaySelector";
 import MealCard from "../components/order/MealCard";
@@ -19,6 +20,7 @@ const OrderPage = () => {
   const [searchParams] = useSearchParams();
   const toast = useToast();
   const navigate = useNavigate();
+  const isPC = useIsPC();
 
   const {
     selectedDate,
@@ -288,6 +290,196 @@ const OrderPage = () => {
   const formattedDate = dateFormatter.format(dateObj);
   const totalPortions = getTotalPortions();
 
+  const mealCardsContent = (
+    <div
+      style={holidays?.has(selectedDate) ? { opacity: 0.4, pointerEvents: "none" } : {}}
+      aria-disabled={holidays?.has(selectedDate) ? true : undefined}
+    >
+      {visibleMealsList.map((mealItem, mealIndex) => {
+        const { key: rawKey, label, icon } = mealItem;
+        const key = rawKey as "breakfast" | "lunch" | "olovrant";
+        const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
+        const isHoliday = holidays?.has(selectedDate);
+
+        return (
+          <MealCard
+            key={key}
+            title={label}
+            icon={icon}
+            isActive={isEditable && !isHoliday && activeMeals[key]}
+            onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
+            copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
+            className={!isEditable || isHoliday ? "" : ""}
+            tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
+            statusMessage={
+              !isEditable ? (
+                <>Termín uplynul · Objednávka uzavretá</>
+              ) : null
+            }
+          >
+            <div>
+              {CATEGORIES.filter((category) =>
+                enabledCategories.includes(category),
+              ).map((category, catIndex) => {
+                const data = currentOrder[key]?.[category];
+                if (!data) return null;
+
+                const dietCount = (
+                  Object.values(data.diets || {}) as number[]
+                ).reduce((a: number, b: number) => a + b, 0);
+                const availableDiets = getAvailableDiets(category);
+
+                return (
+                  <CategoryRow
+                    key={category}
+                    label={category}
+                    menuCounts={data.menuCounts}
+                    onMenuCountChange={(menuType, val) =>
+                      isEditable && !isHoliday && updateMenuCount(key, category, menuType, val)
+                    }
+                    hasDietsEnabled={availableDiets.length > 0}
+                    dietCount={dietCount}
+                    onOpenDiets={() =>
+                      isEditable && !isHoliday && setActiveDietModal({ meal: key, category })
+                    }
+                    disabled={!isEditable || !!isHoliday}
+                    visibleMenus={adminVisibleMenus}
+                    tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
+                  />
+                );
+              })}
+            </div>
+          </MealCard>
+        );
+      })}
+    </div>
+  );
+
+  const orderSummaryContent = (
+    <div data-tour-id="tour-order-summary">
+      <OrderSummary
+        onSubmit={handleSubmit}
+        onReset={
+          visibleMealsList.every((m) =>
+            OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+          )
+            ? () => setShowZeroModal(true)
+            : undefined
+        }
+        disabled={
+          holidays?.has(selectedDate) ||
+          (
+            !OrderService.checkDeadline(selectedDate, "breakfast", globalDeadlines) &&
+            !OrderService.checkDeadline(selectedDate, "lunch", globalDeadlines) &&
+            !OrderService.checkDeadline(selectedDate, "olovrant", globalDeadlines)
+          )
+        }
+        disabledMessage={
+          holidays?.has(selectedDate)
+            ? "Voľný deň – objednávky nie sú dostupné."
+            : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+        }
+      />
+    </div>
+  );
+
+  const modals = (
+    <>
+      {activeDietModal && (
+        <DietSelector
+          isOpen={true}
+          onClose={() => setActiveDietModal(null)}
+          categoryLabel={activeDietModal.category}
+          enabledDiets={getAvailableDiets(activeDietModal.category)}
+          diets={
+            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
+              activeDietModal.category
+            ].diets
+          }
+          maxPortions={
+            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
+              activeDietModal.category
+            ].menuCounts?.["A"] || 0
+          }
+          onUpdateDiet={(diet, count) =>
+            updateDiet(
+              activeDietModal.meal as "breakfast" | "lunch" | "olovrant",
+              activeDietModal.category,
+              diet,
+              count,
+            )
+          }
+        />
+      )}
+
+      <ConfirmationModal
+        isOpen={showZeroModal}
+        onClose={() => setShowZeroModal(false)}
+        onConfirm={handleReset}
+        title="Vynulovať objednávku"
+        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
+        confirmText="Vynulovať"
+        cancelText="Zrušiť"
+        variant="danger"
+      />
+
+      <ConfirmationModal
+        isOpen={showUnsavedModal}
+        onClose={() => setShowUnsavedModal(false)}
+        onConfirm={() => {
+          if (pendingNavigation) {
+            window.location.href = pendingNavigation;
+          }
+        }}
+        title="Neuložené zmeny"
+        description="Máte rozpracovanú objednávku. Naozaj chcete odísť? Vaše zmeny ostanú iba ako koncept."
+        confirmText="Odísť"
+        cancelText="Zostať"
+        variant="warning"
+      />
+    </>
+  );
+
+  if (isPC) {
+    return (
+      <div className="pc-wrap">
+        {/* PC day selector */}
+        <div className="pc-daysel-pc" data-tour-id="tour-day-selector">
+          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
+        </div>
+
+        {/* Holiday banner */}
+        {holidays?.has(selectedDate) && (
+          <div className="zp-banner zp-banner--holiday" style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <span className="icon">🏖️</span>
+            <div>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--teal-500)", fontSize: 14 }}>
+                Voľný deň
+              </div>
+              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>Na tento deň nie je možné zadať objednávku.</div>
+            </div>
+          </div>
+        )}
+
+        <div className="pc-order-grid">
+          <div>
+            {mealCardsContent}
+            <p className="zp-thanks">
+              Ďakujeme za Vašu objednávku
+              <small>Posielame ju priamo do našej kuchyne.</small>
+            </p>
+          </div>
+          <div className="pc-order-summary">
+            {orderSummaryContent}
+          </div>
+        </div>
+
+        {modals}
+        <TourOverlay />
+      </div>
+    );
+  }
+
   return (
     <div className="zp-app">
       <div className="zp-orderpage">
@@ -346,96 +538,9 @@ const OrderPage = () => {
           </div>
         )}
 
-        {/* Meal cards */}
-        <div
-          style={holidays?.has(selectedDate) ? { opacity: 0.4, pointerEvents: "none" } : {}}
-          aria-disabled={holidays?.has(selectedDate) ? true : undefined}
-        >
-          {visibleMealsList.map((mealItem, mealIndex) => {
-            const { key: rawKey, label, icon } = mealItem;
-            const key = rawKey as "breakfast" | "lunch" | "olovrant";
-            const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
-            const isHoliday = holidays?.has(selectedDate);
+        {mealCardsContent}
 
-            return (
-              <MealCard
-                key={key}
-                title={label}
-                icon={icon}
-                isActive={isEditable && !isHoliday && activeMeals[key]}
-                onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
-                copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
-                className={!isEditable || isHoliday ? "" : ""}
-                tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
-                statusMessage={
-                  !isEditable ? (
-                    <>Termín uplynul · Objednávka uzavretá</>
-                  ) : null
-                }
-              >
-                <div>
-                  {CATEGORIES.filter((category) =>
-                    enabledCategories.includes(category),
-                  ).map((category, catIndex) => {
-                    const data = currentOrder[key]?.[category];
-                    if (!data) return null;
-
-                    const dietCount = (
-                      Object.values(data.diets || {}) as number[]
-                    ).reduce((a: number, b: number) => a + b, 0);
-                    const availableDiets = getAvailableDiets(category);
-
-                    return (
-                      <CategoryRow
-                        key={category}
-                        label={category}
-                        menuCounts={data.menuCounts}
-                        onMenuCountChange={(menuType, val) =>
-                          isEditable && !isHoliday && updateMenuCount(key, category, menuType, val)
-                        }
-                        hasDietsEnabled={availableDiets.length > 0}
-                        dietCount={dietCount}
-                        onOpenDiets={() =>
-                          isEditable && !isHoliday && setActiveDietModal({ meal: key, category })
-                        }
-                        disabled={!isEditable || !!isHoliday}
-                        visibleMenus={adminVisibleMenus}
-                        tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
-                      />
-                    );
-                  })}
-                </div>
-              </MealCard>
-            );
-          })}
-        </div>
-
-        {/* Order summary */}
-        <div data-tour-id="tour-order-summary">
-          <OrderSummary
-            onSubmit={handleSubmit}
-            onReset={
-              visibleMealsList.every((m) =>
-                OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
-              )
-                ? () => setShowZeroModal(true)
-                : undefined
-            }
-            disabled={
-              holidays?.has(selectedDate) ||
-              (
-                !OrderService.checkDeadline(selectedDate, "breakfast", globalDeadlines) &&
-                !OrderService.checkDeadline(selectedDate, "lunch", globalDeadlines) &&
-                !OrderService.checkDeadline(selectedDate, "olovrant", globalDeadlines)
-              )
-            }
-            disabledMessage={
-              holidays?.has(selectedDate)
-                ? "Voľný deň – objednávky nie sú dostupné."
-                : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
-            }
-          />
-        </div>
+        {orderSummaryContent}
 
         {/* Thank-you footer */}
         <p className="zp-thanks">
@@ -444,59 +549,7 @@ const OrderPage = () => {
         </p>
       </div>
 
-      {/* Diet bottom-sheet */}
-      {activeDietModal && (
-        <DietSelector
-          isOpen={true}
-          onClose={() => setActiveDietModal(null)}
-          categoryLabel={activeDietModal.category}
-          enabledDiets={getAvailableDiets(activeDietModal.category)}
-          diets={
-            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
-              activeDietModal.category
-            ].diets
-          }
-          maxPortions={
-            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
-              activeDietModal.category
-            ].menuCounts?.["A"] || 0
-          }
-          onUpdateDiet={(diet, count) =>
-            updateDiet(
-              activeDietModal.meal as "breakfast" | "lunch" | "olovrant",
-              activeDietModal.category,
-              diet,
-              count,
-            )
-          }
-        />
-      )}
-
-      <ConfirmationModal
-        isOpen={showZeroModal}
-        onClose={() => setShowZeroModal(false)}
-        onConfirm={handleReset}
-        title="Vynulovať objednávku"
-        description="Naozaj chcete vynulovať celú objednávku? Všetky porcie a diéty budú nastavené na nulu."
-        confirmText="Vynulovať"
-        cancelText="Zrušiť"
-        variant="danger"
-      />
-
-      <ConfirmationModal
-        isOpen={showUnsavedModal}
-        onClose={() => setShowUnsavedModal(false)}
-        onConfirm={() => {
-          if (pendingNavigation) {
-            window.location.href = pendingNavigation;
-          }
-        }}
-        title="Neuložené zmeny"
-        description="Máte rozpracovanú objednávku. Naozaj chcete odísť? Vaše zmeny ostanú iba ako koncept."
-        confirmText="Odísť"
-        cancelText="Zostať"
-        variant="warning"
-      />
+      {modals}
       <TourOverlay />
     </div>
   );

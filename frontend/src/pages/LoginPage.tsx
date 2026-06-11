@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/auth";
 import { useNavigate, Link } from "react-router-dom";
+import { useIsPC } from "../hooks/useIsPC";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -11,6 +12,7 @@ const LoginPage: React.FC = () => {
   const [contactEmail, setContactEmail] = useState("info@zdravyprojekt.sk");
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
+  const isPC = useIsPC();
 
   useEffect(() => {
     fetch(`${API_URL}/admin/global-settings/`)
@@ -73,6 +75,87 @@ const LoginPage: React.FC = () => {
     }
   };
 
+  const loginForm = (
+    <>
+      <h2>Vitajte späť</h2>
+      <p className="sub">Prihláste sa, prosím, do svojho účtu.</p>
+
+      <div className="zp-field">
+        <label className="zp-label">Email</label>
+        <input
+          className="zp-input"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="vase@meno.sk"
+          required
+        />
+      </div>
+
+      <div className="zp-field">
+        <label className="zp-label">Heslo</label>
+        <input
+          className="zp-input"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="••••••••"
+          required
+        />
+        <div style={{ textAlign: "right", marginTop: 8 }}>
+          <Link to="/forgot-password" className="zp-link">
+            Zabudli ste heslo?
+          </Link>
+        </div>
+      </div>
+
+      {error && (
+        <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      <button
+        type="submit"
+        className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+        style={{ marginTop: 8 }}
+      >
+        Prihlásiť sa
+      </button>
+
+      <div className="zp-divider">Nemáte účet?</div>
+
+      <div className="zp-login-info">
+        <strong>Registráciu vykonáva poskytovateľ.</strong><br />
+        Ak máte záujem o službu, napíšte nám na{" "}
+        <a href={`mailto:${contactEmail}`}>{contactEmail}</a>{" "}
+        a my Vám vytvoríme prístup.
+      </div>
+    </>
+  );
+
+  if (isPC) {
+    return (
+      <div className="pc-login">
+        <div className="pc-login-art">
+          <div className="mk">Zdravý projekt</div>
+          <div className="pitch">
+            <span className="script">Dobré jedlo, každý deň</span>
+            <h2>Objednávky pre vašu škôlku na jednom mieste.</h2>
+            <p>Plánujte raňajky, obedy a olovranty, sledujte jedálniček a spravujte diéty — prehľadne, z počítača aj mobilu.</p>
+          </div>
+          <div className="foot">Zdravý projekt s. r. o. · klientský portál</div>
+        </div>
+        <div className="pc-login-panel">
+          <form className="pc-login-card" onSubmit={handleSubmit}>
+            <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
+            {loginForm}
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="zp-app" style={{ minHeight: "100vh" }}>
       <div className="zp-login">
@@ -81,60 +164,7 @@ const LoginPage: React.FC = () => {
         </div>
 
         <form className="zp-login-card" onSubmit={handleSubmit}>
-          <h2>Vitajte späť</h2>
-          <p className="sub">Prihláste sa, prosím, do svojho účtu.</p>
-
-          <div className="zp-field">
-            <label className="zp-label">Email</label>
-            <input
-              className="zp-input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="vase@meno.sk"
-              required
-            />
-          </div>
-
-          <div className="zp-field">
-            <label className="zp-label">Heslo</label>
-            <input
-              className="zp-input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
-            <div style={{ textAlign: "right", marginTop: 8 }}>
-              <Link to="/forgot-password" className="zp-link">
-                Zabudli ste heslo?
-              </Link>
-            </div>
-          </div>
-
-          {error && (
-            <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
-              ⚠ {error}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
-            style={{ marginTop: 8 }}
-          >
-            Prihlásiť sa
-          </button>
-
-          <div className="zp-divider">Nemáte účet?</div>
-
-          <div className="zp-login-info">
-            <strong>Registráciu vykonáva poskytovateľ.</strong><br />
-            Ak máte záujem o službu, napíšte nám na{" "}
-            <a href={`mailto:${contactEmail}`}>{contactEmail}</a>{" "}
-            a my Vám vytvoríme prístup.
-          </div>
+          {loginForm}
         </form>
 
         <div style={{ height: 24 }}></div>

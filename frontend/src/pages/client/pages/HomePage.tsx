@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useIsPC } from "../../../hooks/useIsPC";
 import {
   Plus,
   Calendar,
@@ -60,6 +61,8 @@ function firstNextWorkday(): string {
 }
 
 const HomePage = () => {
+  const isPC = useIsPC();
+  const navigate = useNavigate();
   const [plannedDays, setPlannedDays] = useState<PlannedDay[]>([]);
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
   const [allHistoryOrders, setAllHistoryOrders] = useState<HistoryOrder[]>([]);
@@ -362,6 +365,337 @@ const HomePage = () => {
     );
   };
 
+  // Shared sub-components for day cards (used in both mobile and PC)
+  const TodaySection = () => {
+    if (!todayDay) return null;
+    const day = todayDay;
+    const isEmpty = day.exists && day.is_empty;
+    const isUnset = !day.exists;
+    const hasPrediction = isUnset && day.predictedTotal > 0;
+    const isAutoFilled = isUnset && hasPrediction;
+    const totalPortions = day.exists && !day.is_empty ? day.totalPortions : isAutoFilled ? day.predictedTotal : null;
+    const mealCount = day.exists && !day.is_empty ? day.mealCount : isAutoFilled ? day.predictedMealCount : null;
+
+    return (
+      <div data-tour-id="tour-today-section" className="zp-section">
+        <h2>
+          <Clock style={{ width: 18, height: 18 }} /> Dnešná objednávka
+        </h2>
+        <div
+          className={`zp-day zp-day--today${isEmpty ? " zp-day--empty" : ""}`}
+          onClick={() => handlePlannedCardClick(day)}
+          role="button"
+        >
+          <div className="zp-day-top">
+            <div className="zp-day-left">
+              <div className="zp-day-icon">
+                {isEmpty ? (
+                  <XCircle style={{ width: 20, height: 20 }} />
+                ) : isTodayEditable ? (
+                  <Clock style={{ width: 20, height: 20 }} />
+                ) : (
+                  <Lock style={{ width: 20, height: 20 }} />
+                )}
+              </div>
+              <div className="flex1">
+                <div className="zp-day-title">
+                  {formatDate(todayStr)}
+                  <span className="pill-today">DNES</span>
+                </div>
+                {isTodayEditable ? (
+                  <span className="zp-pill zp-pill--deadline">
+                    <Clock style={{ width: 11, height: 11 }} />
+                    {day.exists && !day.is_empty ? "Upraviť do termínu" : "Vytvoriť do termínu"}
+                  </span>
+                ) : (
+                  <PlannedBadge day={day} />
+                )}
+              </div>
+            </div>
+            {totalPortions !== null && (
+              <div className="zp-day-count">
+                {totalPortions}
+                <small>porcií</small>
+              </div>
+            )}
+          </div>
+          {mealCount !== null && (
+            <div className="zp-meal-chips">
+              {mealCount.breakfast > 0 && (
+                <span className="zp-mchip zp-mchip--breakfast">Raňajky · {mealCount.breakfast}</span>
+              )}
+              {mealCount.lunch > 0 && (
+                <span className="zp-mchip zp-mchip--lunch">Obed · {mealCount.lunch}</span>
+              )}
+              {mealCount.olovrant > 0 && (
+                <span className="zp-mchip zp-mchip--olovrant">Olovrant · {mealCount.olovrant}</span>
+              )}
+            </div>
+          )}
+          {isUnset && !hasPrediction && (
+            <p className="zp-day-hint">Na dnešný deň nebola vytvorená žiadna objednávka.</p>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const PlannedSection = ({ gridClass }: { gridClass?: string }) => (
+    <div data-tour-id="tour-planned-section" className="zp-section">
+      <h2>
+        <CalendarDays style={{ width: 18, height: 18 }} /> Plánované objednávky
+      </h2>
+      <div className={gridClass}>
+        {plannedDays
+          .filter((d) => d.date !== todayStr)
+          .map((day) => {
+            const isEmpty = day.exists && day.is_empty;
+            const isUnset = !day.exists;
+            const hasPrediction = isUnset && day.predictedTotal > 0;
+            const isAutoFilled = isUnset && hasPrediction;
+            const totalPortions = day.exists && !day.is_empty ? day.totalPortions : isAutoFilled ? day.predictedTotal : null;
+            const mealCount = day.exists && !day.is_empty ? day.mealCount : isAutoFilled ? day.predictedMealCount : null;
+
+            return (
+              <div
+                key={day.date}
+                className={`zp-day${isEmpty ? " zp-day--empty" : isUnset && !hasPrediction ? " zp-day--unset" : ""}`}
+                onClick={() => handlePlannedCardClick(day)}
+                role="button"
+              >
+                <div className="zp-day-top">
+                  <div className="zp-day-left">
+                    <div className="zp-day-icon">
+                      {isEmpty ? (
+                        <XCircle style={{ width: 20, height: 20 }} />
+                      ) : isUnset ? (
+                        <Bot style={{ width: 20, height: 20 }} />
+                      ) : day.is_auto ? (
+                        <Bot style={{ width: 20, height: 20 }} />
+                      ) : (
+                        <Calendar style={{ width: 20, height: 20 }} />
+                      )}
+                    </div>
+                    <div className="flex1">
+                      <div className="zp-day-title">{formatDate(day.date)}</div>
+                      <PlannedBadge day={day} />
+                    </div>
+                  </div>
+                  {totalPortions !== null && (
+                    <div className="zp-day-count" style={totalPortions === 0 ? { color: "var(--ink-mute)" } : {}}>
+                      {totalPortions}
+                      <small>porcií</small>
+                    </div>
+                  )}
+                </div>
+                {mealCount !== null && (
+                  <div className="zp-meal-chips">
+                    {mealCount.breakfast > 0 && (
+                      <span className="zp-mchip zp-mchip--breakfast">Raňajky · {mealCount.breakfast}</span>
+                    )}
+                    {mealCount.lunch > 0 && (
+                      <span className="zp-mchip zp-mchip--lunch">Obed · {mealCount.lunch}</span>
+                    )}
+                    {mealCount.olovrant > 0 && (
+                      <span className="zp-mchip zp-mchip--olovrant">Olovrant · {mealCount.olovrant}</span>
+                    )}
+                  </div>
+                )}
+                {isUnset && !hasPrediction && (
+                  <p className="zp-day-hint">Žiadna história na predikciu</p>
+                )}
+                {isEmpty && (
+                  <p className="zp-day-hint">Bez objednávky — voľný deň pre kuchyňu.</p>
+                )}
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+
+  const MonthlySummarySection = ({ style }: { style?: React.CSSProperties }) => (
+    <>
+      <div className="zp-section">
+        <h2>
+          <CalendarDays style={{ width: 18, height: 18 }} /> Mesačný súhrn
+        </h2>
+      </div>
+      <div className="zp-monthly" style={style}>
+        <div className="eye">Tento mesiac</div>
+        <h3>
+          Mesačný súhrn
+          <small>
+            {new Date().toLocaleDateString("sk-SK", { month: "long", year: "numeric" })} · doteraz odoberané
+          </small>
+        </h3>
+        <div className="zp-monthly-grid">
+          {(() => {
+            const MEAL_LABELS = new Set(["Raňajky", "Obed", "Olovrant"]);
+            const mealItems = monthlySummary.items.filter((i) => MEAL_LABELS.has(i.label));
+            const display = mealItems.length > 0 ? mealItems : [{ label: "Zatiaľ bez odberu", count: 0 }];
+            return display;
+          })().map((item) => (
+            <div className="zp-monthly-stat" key={item.label}>
+              <div className="num">{item.count}</div>
+              <div className="lbl">{item.label}</div>
+            </div>
+          ))}
+        </div>
+        <div className="zp-monthly-foot">
+          <span>Spolu</span>
+          <span>
+            <strong>{monthlySummary.total}</strong> porcií
+          </span>
+        </div>
+      </div>
+    </>
+  );
+
+  const HistorySection = () => (
+    <div data-tour-id="tour-history-section" className="zp-section pc-hist">
+      <h2 className="with-action">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <History style={{ width: 18, height: 18 }} /> História
+        </span>
+        {allHistoryOrders.length > 5 && (
+          <button
+            className="zp-btn zp-btn--ghost zp-btn--sm"
+            onClick={() => setShowAllHistory((v) => !v)}
+          >
+            {showAllHistory ? "Menej ←" : `Viac (${allHistoryOrders.length}) →`}
+          </button>
+        )}
+      </h2>
+
+      {(showAllHistory ? allHistoryOrders : historyOrders).length === 0 ? (
+        <div className="zp-empty">
+          <UtensilsCrossed />
+          <p style={{ margin: "8px 0 0", fontSize: 14 }}>História je prázdna</p>
+        </div>
+      ) : (
+        (showAllHistory ? allHistoryOrders : historyOrders).map((order) => (
+          <div
+            key={order.date}
+            className="zp-day"
+            style={{ background: "var(--bg-cream-soft)", marginBottom: 8 }}
+            onClick={() => {
+              setModalOrderData(order.data);
+              setSelectedDate(order.date);
+            }}
+            role="button"
+          >
+            <div className="zp-day-top">
+              <div className="zp-day-left">
+                <div
+                  className="zp-day-icon"
+                  style={{ background: "rgba(114,136,75,0.12)", color: "var(--green-700)" }}
+                >
+                  <Calendar style={{ width: 20, height: 20 }} />
+                </div>
+                <div className="pc-hist-body">
+                  <div className="zp-day-title">{formatDate(order.date)}</div>
+                  <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
+                    Vybavená
+                  </span>
+                </div>
+              </div>
+              <div className="zp-day-count" style={{ fontSize: 19 }}>
+                {order.totalPortions}
+                <small>porcií</small>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  const modals = (
+    <>
+      <OrderSummaryModal
+        isOpen={!!selectedDate}
+        onClose={() => {
+          setSelectedDate(null);
+          setModalOrderId(null);
+        }}
+        orderDate={selectedDate ?? ""}
+        orderData={modalOrderData}
+        globalDeadlines={globalDeadlines}
+        isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
+        onZero={modalOrderId !== null ? handleZeroExisting : undefined}
+        onDelete={() => {
+          if (selectedDate) {
+            setPlannedDays((prev) =>
+              prev.map((d) =>
+                d.date === selectedDate
+                  ? { ...d, exists: false, is_auto: null, is_empty: null, totalPortions: 0, mealCount: { breakfast: 0, lunch: 0, olovrant: 0 } }
+                  : d,
+              ),
+            );
+            setHistoryOrders((prev) => prev.filter((o) => o.date !== selectedDate));
+            setSelectedDate(null);
+            setModalOrderId(null);
+          }
+        }}
+      />
+      <OrderSummaryModal
+        isOpen={!!predictedModalDay}
+        onClose={() => setPredictedModalDay(null)}
+        orderDate={predictedModalDay?.date ?? ""}
+        orderData={predictedModalDay?.predictedData}
+        globalDeadlines={globalDeadlines}
+        isPredicted
+        predictedMealCount={predictedModalDay?.predictedMealCount}
+        onZero={() => predictedModalDay && handleZeroPredicted(predictedModalDay)}
+      />
+    </>
+  );
+
+  if (isPC) {
+    return (
+      <div className="pc-wrap">
+        {/* Hero CTA */}
+        <a
+          data-tour-id="tour-new-order-btn"
+          href={`/order?date=${firstWorkday}`}
+          className="pc-hero"
+          onClick={(e) => { e.preventDefault(); navigate(`/order?date=${firstWorkday}`); }}
+        >
+          <div className="bubble">
+            <Plus style={{ width: 28, height: 28 }} />
+          </div>
+          <div className="body">
+            <div className="eye">Pripravte novú</div>
+            <h3>Nová objednávka</h3>
+            <div className="when">{formatLongDate(firstWorkday)}</div>
+          </div>
+          <div className="chev">
+            <ChevronRight style={{ width: 22, height: 22 }} />
+          </div>
+        </a>
+
+        <p className="zp-disclaimer">
+          Objednávky sa automaticky preklápajú na ďalší deň, pokiaľ ich manuálne neupravíte.
+        </p>
+
+        <div className="pc-home-grid">
+          <div className="pc-col">
+            <TodaySection />
+            <PlannedSection gridClass="pc-daygrid" />
+          </div>
+          <div className="pc-col">
+            <MonthlySummarySection style={{ margin: 0 }} />
+            <HistorySection />
+          </div>
+        </div>
+
+        {modals}
+        <TourOverlay />
+      </div>
+    );
+  }
+
   return (
     <div className="zp-app">
       <div className="zp-grain" style={{ minHeight: "100%" }}>
@@ -413,312 +747,14 @@ const HomePage = () => {
           Objednávky sa automaticky preklápajú na ďalší deň, pokiaľ ich manuálne neupravíte.
         </p>
 
-        {/* Today */}
-        {todayDay &&
-          (() => {
-            const day = todayDay;
-            const isEmpty = day.exists && day.is_empty;
-            const isUnset = !day.exists;
-            const hasPrediction = isUnset && day.predictedTotal > 0;
-            const isAutoFilled = isUnset && hasPrediction;
-            const totalPortions =
-              day.exists && !day.is_empty
-                ? day.totalPortions
-                : isAutoFilled
-                ? day.predictedTotal
-                : null;
-            const mealCount =
-              day.exists && !day.is_empty
-                ? day.mealCount
-                : isAutoFilled
-                ? day.predictedMealCount
-                : null;
+        <TodaySection />
+        <PlannedSection />
 
-            return (
-              <div data-tour-id="tour-today-section" className="zp-section">
-                <h2>
-                  <Clock style={{ width: 18, height: 18 }} /> Dnešná objednávka
-                </h2>
-                <div
-                  className={`zp-day zp-day--today${isEmpty ? " zp-day--empty" : ""}`}
-                  onClick={() => handlePlannedCardClick(day)}
-                  role="button"
-                >
-                  <div className="zp-day-top">
-                    <div className="zp-day-left">
-                      <div className="zp-day-icon">
-                        {isEmpty ? (
-                          <XCircle style={{ width: 20, height: 20 }} />
-                        ) : isTodayEditable ? (
-                          <Clock style={{ width: 20, height: 20 }} />
-                        ) : (
-                          <Lock style={{ width: 20, height: 20 }} />
-                        )}
-                      </div>
-                      <div className="flex1">
-                        <div className="zp-day-title">
-                          {formatDate(todayStr)}
-                          <span className="pill-today">DNES</span>
-                        </div>
-                        {isTodayEditable ? (
-                          <span className="zp-pill zp-pill--deadline">
-                            <Clock style={{ width: 11, height: 11 }} />
-                            {day.exists && !day.is_empty ? "Upraviť do termínu" : "Vytvoriť do termínu"}
-                          </span>
-                        ) : (
-                          <PlannedBadge day={day} />
-                        )}
-                      </div>
-                    </div>
-                    {totalPortions !== null && (
-                      <div className="zp-day-count">
-                        {totalPortions}
-                        <small>porcií</small>
-                      </div>
-                    )}
-                  </div>
-                  {mealCount !== null && (
-                    <div className="zp-meal-chips">
-                      {mealCount.breakfast > 0 && (
-                        <span className="zp-mchip zp-mchip--breakfast">
-                          Raňajky · {mealCount.breakfast}
-                        </span>
-                      )}
-                      {mealCount.lunch > 0 && (
-                        <span className="zp-mchip zp-mchip--lunch">
-                          Obed · {mealCount.lunch}
-                        </span>
-                      )}
-                      {mealCount.olovrant > 0 && (
-                        <span className="zp-mchip zp-mchip--olovrant">
-                          Olovrant · {mealCount.olovrant}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {isUnset && !hasPrediction && (
-                    <p className="zp-day-hint">Na dnešný deň nebola vytvorená žiadna objednávka.</p>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
+        <MonthlySummarySection />
 
-        {/* Planned */}
-        <div data-tour-id="tour-planned-section" className="zp-section">
-          <h2>
-            <CalendarDays style={{ width: 18, height: 18 }} /> Plánované objednávky
-          </h2>
+        <HistorySection />
 
-          {plannedDays
-            .filter((d) => d.date !== todayStr)
-            .map((day) => {
-              const isEmpty = day.exists && day.is_empty;
-              const isUnset = !day.exists;
-              const hasPrediction = isUnset && day.predictedTotal > 0;
-              const isAutoFilled = isUnset && hasPrediction;
-              const totalPortions =
-                day.exists && !day.is_empty
-                  ? day.totalPortions
-                  : isAutoFilled
-                  ? day.predictedTotal
-                  : null;
-              const mealCount =
-                day.exists && !day.is_empty
-                  ? day.mealCount
-                  : isAutoFilled
-                  ? day.predictedMealCount
-                  : null;
-
-              return (
-                <div
-                  key={day.date}
-                  className={`zp-day${isEmpty ? " zp-day--empty" : isUnset && !hasPrediction ? " zp-day--unset" : ""}`}
-                  onClick={() => handlePlannedCardClick(day)}
-                  role="button"
-                >
-                  <div className="zp-day-top">
-                    <div className="zp-day-left">
-                      <div className="zp-day-icon">
-                        {isEmpty ? (
-                          <XCircle style={{ width: 20, height: 20 }} />
-                        ) : isUnset ? (
-                          <Bot style={{ width: 20, height: 20 }} />
-                        ) : day.is_auto ? (
-                          <Bot style={{ width: 20, height: 20 }} />
-                        ) : (
-                          <Calendar style={{ width: 20, height: 20 }} />
-                        )}
-                      </div>
-                      <div className="flex1">
-                        <div className="zp-day-title">{formatDate(day.date)}</div>
-                        <PlannedBadge day={day} />
-                      </div>
-                    </div>
-                    {totalPortions !== null && (
-                      <div className="zp-day-count" style={totalPortions === 0 ? { color: "var(--ink-mute)" } : {}}>
-                        {totalPortions}
-                        <small>porcií</small>
-                      </div>
-                    )}
-                  </div>
-                  {mealCount !== null && (
-                    <div className="zp-meal-chips">
-                      {mealCount.breakfast > 0 && (
-                        <span className="zp-mchip zp-mchip--breakfast">Raňajky · {mealCount.breakfast}</span>
-                      )}
-                      {mealCount.lunch > 0 && (
-                        <span className="zp-mchip zp-mchip--lunch">Obed · {mealCount.lunch}</span>
-                      )}
-                      {mealCount.olovrant > 0 && (
-                        <span className="zp-mchip zp-mchip--olovrant">Olovrant · {mealCount.olovrant}</span>
-                      )}
-                    </div>
-                  )}
-                  {isUnset && !hasPrediction && (
-                    <p className="zp-day-hint">Žiadna história na predikciu</p>
-                  )}
-                  {isEmpty && (
-                    <p className="zp-day-hint">Bez objednávky — voľný deň pre kuchyňu.</p>
-                  )}
-                </div>
-              );
-            })}
-        </div>
-
-        {/* Monthly summary */}
-        <div className="zp-section">
-          <h2>
-            <CalendarDays style={{ width: 18, height: 18 }} /> Mesačný súhrn
-          </h2>
-        </div>
-        <div className="zp-monthly">
-          <div className="eye">Tento mesiac</div>
-          <h3>
-            Mesačný súhrn
-            <small>
-              {new Date().toLocaleDateString("sk-SK", { month: "long", year: "numeric" })} · doteraz odoberané
-            </small>
-          </h3>
-          <div className="zp-monthly-grid">
-            {(() => {
-              const MEAL_LABELS = new Set(["Raňajky", "Obed", "Olovrant"]);
-              const mealItems = monthlySummary.items.filter((i) => MEAL_LABELS.has(i.label));
-              const display = mealItems.length > 0 ? mealItems : [{ label: "Zatiaľ bez odberu", count: 0 }];
-              return display;
-            })().map((item) => (
-              <div className="zp-monthly-stat" key={item.label}>
-                <div className="num">{item.count}</div>
-                <div className="lbl">{item.label}</div>
-              </div>
-            ))}
-          </div>
-          <div className="zp-monthly-foot">
-            <span>Spolu</span>
-            <span>
-              <strong>{monthlySummary.total}</strong> porcií
-            </span>
-          </div>
-        </div>
-
-        {/* History */}
-        <div data-tour-id="tour-history-section" className="zp-section">
-          <h2 className="with-action">
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              <History style={{ width: 18, height: 18 }} /> História
-            </span>
-            {allHistoryOrders.length > 5 && (
-              <button
-                className="zp-btn zp-btn--ghost zp-btn--sm"
-                onClick={() => setShowAllHistory((v) => !v)}
-              >
-                {showAllHistory ? "Menej ←" : `Viac (${allHistoryOrders.length}) →`}
-              </button>
-            )}
-          </h2>
-
-          {(showAllHistory ? allHistoryOrders : historyOrders).length === 0 ? (
-            <div className="zp-empty">
-              <UtensilsCrossed />
-              <p style={{ margin: "8px 0 0", fontSize: 14 }}>História je prázdna</p>
-            </div>
-          ) : (
-            (showAllHistory ? allHistoryOrders : historyOrders).map((order) => (
-              <div
-                key={order.date}
-                className="zp-day"
-                style={{ background: "var(--bg-cream-soft)", marginBottom: 8 }}
-                onClick={() => {
-                  setModalOrderData(order.data);
-                  setSelectedDate(order.date);
-                }}
-                role="button"
-              >
-                <div className="zp-day-top">
-                  <div className="zp-day-left">
-                    <div
-                      className="zp-day-icon"
-                      style={{ background: "rgba(114,136,75,0.12)", color: "var(--green-700)" }}
-                    >
-                      <Calendar style={{ width: 20, height: 20 }} />
-                    </div>
-                    <div>
-                      <div className="zp-day-title">{formatDate(order.date)}</div>
-                      <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
-                        Vybavená
-                      </span>
-                    </div>
-                  </div>
-                  <div className="zp-day-count" style={{ fontSize: 19 }}>
-                    {order.totalPortions}
-                    <small>porcií</small>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Detail modal */}
-        <OrderSummaryModal
-          isOpen={!!selectedDate}
-          onClose={() => {
-            setSelectedDate(null);
-            setModalOrderId(null);
-          }}
-          orderDate={selectedDate ?? ""}
-          orderData={modalOrderData}
-          globalDeadlines={globalDeadlines}
-          isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
-          onZero={modalOrderId !== null ? handleZeroExisting : undefined}
-          onDelete={() => {
-            if (selectedDate) {
-              setPlannedDays((prev) =>
-                prev.map((d) =>
-                  d.date === selectedDate
-                    ? { ...d, exists: false, is_auto: null, is_empty: null, totalPortions: 0, mealCount: { breakfast: 0, lunch: 0, olovrant: 0 } }
-                    : d,
-                ),
-              );
-              setHistoryOrders((prev) => prev.filter((o) => o.date !== selectedDate));
-              setSelectedDate(null);
-              setModalOrderId(null);
-            }
-          }}
-        />
-
-        {/* Auto-predicted day preview modal */}
-        <OrderSummaryModal
-          isOpen={!!predictedModalDay}
-          onClose={() => setPredictedModalDay(null)}
-          orderDate={predictedModalDay?.date ?? ""}
-          orderData={predictedModalDay?.predictedData}
-          globalDeadlines={globalDeadlines}
-          isPredicted
-          predictedMealCount={predictedModalDay?.predictedMealCount}
-          onZero={() => predictedModalDay && handleZeroPredicted(predictedModalDay)}
-        />
-
+        {modals}
       </div>
       <TourOverlay />
     </div>
