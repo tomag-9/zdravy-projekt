@@ -1041,6 +1041,25 @@ select {
 .zp-menurow .diet-trigger:hover { background: var(--peach-400); }
 .zp-menurow .spacer { flex: 1; }
 
+.zp-menurow--occupied {
+    opacity: 0.5;
+}
+.zp-menurow--occupied .name {
+    color: var(--ink-3);
+    text-decoration: line-through;
+}
+.zp-menurow-occupied-label {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--line-soft);
+}
+
 .zp-counter {
     display: flex;
     align-items: center;
@@ -1379,7 +1398,7 @@ select {
     top: 8px;
     bottom: 8px;
     left: 8px;
-    width: calc((100% - 24px) / 3);
+    width: calc((100% - 28px) / 4);
     border-radius: 16px;
     background: var(--bg-cream-soft);
     box-shadow: 0 1px 4px rgba(0,0,0,0.06);
@@ -1669,6 +1688,62 @@ select {
     color: var(--ink-3);
     margin-top: 2px;
     line-height: 1.5;
+}
+
+/* ========================================================== *
+ * Inbox
+ * ========================================================== */
+
+.zp-inbox-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-card);
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    transition: background 150ms;
+}
+.zp-inbox-msg:hover { background: var(--bg-cream-soft); }
+
+.zp-inbox-msg--unread {
+    background: var(--bg-cream-soft);
+    border-color: var(--green-300);
+}
+.zp-inbox-msg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+.zp-inbox-msg--unread .zp-inbox-msg-dot {
+    background: var(--green-600);
+}
+.zp-inbox-msg-body { flex: 1; min-width: 0; }
+.zp-inbox-msg-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink-1);
+    margin-bottom: 3px;
+}
+.zp-inbox-msg--unread .zp-inbox-msg-title { color: var(--green-800); }
+.zp-inbox-msg-text {
+    font-size: 13px;
+    color: var(--ink-2);
+    line-height: 1.5;
+    margin-bottom: 5px;
+}
+.zp-inbox-msg-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    display: flex;
+    align-items: center;
 }
 
 /* ========================================================== *

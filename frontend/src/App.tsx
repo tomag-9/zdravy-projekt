@@ -26,6 +26,7 @@ import MenuPage from "./pages/client/pages/MenuPage";
 import Settings from "./pages/client/pages/Settings";
 import ProfilePage from "./pages/client/pages/ProfilePage";
 import AboutPage from "./pages/client/pages/AboutPage";
+import InboxPage from "./pages/client/pages/InboxPage";
 import ClientLayout from "./pages/client/components/ClientLayout";
 import LoginPage from "./pages/LoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -203,6 +204,7 @@ export default function App() {
                   <Route path="/order" element={<ErrorBoundary><OrderPage /></ErrorBoundary>} />
                   <Route path="/profile" element={<ErrorBoundary><ProfilePage /></ErrorBoundary>} />
                   <Route path="/about" element={<ErrorBoundary><AboutPage /></ErrorBoundary>} />
+                  <Route path="/inbox" element={<ErrorBoundary><InboxPage /></ErrorBoundary>} />
                 </Route>
                 <Route path="/success" element={<ErrorBoundary><SuccessPage /></ErrorBoundary>} />
               </Route>

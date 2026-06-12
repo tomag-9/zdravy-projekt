@@ -7,7 +7,7 @@ import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, CalendarDays } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -27,6 +27,8 @@ const OrderPage = () => {
     setSelectedDate,
     activeMeals,
     toggleMeal,
+    fullDayOrder,
+    toggleFullDay,
     currentOrder,
     updateMenuCount,
     updateDiet,
@@ -40,7 +42,15 @@ const OrderPage = () => {
     loadBreakfastFromPrevLunch,
     copyOlovrantFromCurrentLunch,
     holidays,
+    mealPlanAvailability,
   } = useApp();
+
+  const getOccupiedMenus = (mealKey: string): Set<string> => {
+    if (!mealPlanAvailability) return new Set();
+    const available = mealPlanAvailability[mealKey];
+    if (!available) return new Set();
+    return new Set(adminVisibleMenus.filter((m: string) => !available.has(m)));
+  };
 
   const { isTourActive, currentStep } = useOnboarding();
 
@@ -295,6 +305,20 @@ const OrderPage = () => {
       style={holidays?.has(selectedDate) ? { opacity: 0.4, pointerEvents: "none" } : {}}
       aria-disabled={holidays?.has(selectedDate) ? true : undefined}
     >
+      <MealCard
+        title="Celodenná objednávka"
+        icon={CalendarDays}
+        isActive={fullDayOrder}
+        onToggle={toggleFullDay}
+        statusMessage={null}
+        copyAction={null}
+      >
+        <div style={{ fontSize: 13, color: "var(--color-text-secondary)", padding: "4px 0" }}>
+          Objedná sa za všetky dostupné jedlá naraz.
+        </div>
+      </MealCard>
+
+      <div style={fullDayOrder ? { opacity: 0.45, pointerEvents: "none" } : {}}>
       {visibleMealsList.map((mealItem, mealIndex) => {
         const { key: rawKey, label, icon } = mealItem;
         const key = rawKey as "breakfast" | "lunch" | "olovrant";
@@ -344,6 +368,7 @@ const OrderPage = () => {
                     }
                     disabled={!isEditable || !!isHoliday}
                     visibleMenus={adminVisibleMenus}
+                    occupiedMenus={getOccupiedMenus(key)}
                     tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
                   />
                 );
@@ -352,6 +377,7 @@ const OrderPage = () => {
           </MealCard>
         );
       })}
+      </div>
     </div>
   );
 

@@ -435,6 +435,7 @@ class PushNotificationAttempt(models.Model):
     http_status = models.PositiveIntegerField(null=True, blank=True)
     error_message = models.TextField(blank=True)
     attempt_number = models.PositiveSmallIntegerField(default=1)
+    read_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -442,6 +443,7 @@ class PushNotificationAttempt(models.Model):
             models.Index(fields=["created_at"]),
             models.Index(fields=["status", "created_at"]),
             models.Index(fields=["user", "created_at"]),
+            models.Index(fields=["user", "read_at"]),
         ]
         ordering = ["-created_at"]
 

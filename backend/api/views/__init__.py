@@ -24,6 +24,9 @@ from .diet_views import DietViewSet
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
+# Inbox views
+from .inbox_views import InboxViewSet
+
 # Meal plan views
 from .meal_plan_views import (
     DailyMealPlanViewSet,
@@ -77,4 +80,6 @@ __all__ = [
     "VapidPublicKeyView",
     "PushSubscribeView",
     "AdminSendPushView",
+    # Inbox
+    "InboxViewSet",
 ]

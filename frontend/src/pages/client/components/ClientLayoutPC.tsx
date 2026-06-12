@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Plus, Settings, LogOut } from 'lucide-react';
+import { Home, BookOpen, Plus, Settings, LogOut, Bell } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import ConfirmationModal from './ui/ConfirmationModal';
 
@@ -8,6 +8,7 @@ const NAV: { to: string; label: string; icon: React.ComponentType<{ style?: Reac
   { to: '/home', label: 'Domov', icon: Home },
   { to: '/order', label: 'Nová objednávka', icon: Plus, cta: true },
   { to: '/menu', label: 'Jedálniček', icon: BookOpen },
+  { to: '/inbox', label: 'Správy', icon: Bell },
   { to: '/settings', label: 'Nastavenia', icon: Settings },
 ];
 
@@ -15,6 +16,7 @@ const PAGE_TITLES: Record<string, { eye: string; h1: string }> = {
   '/home':     { eye: 'Prehľad týždňa', h1: 'Domov' },
   '/menu':     { eye: 'Jedálniček týždňa', h1: 'Jedálniček' },
   '/order':    { eye: 'Plánovanie objednávky', h1: 'Nová objednávka' },
+  '/inbox':    { eye: 'Vaše notifikácie', h1: 'Správy' },
   '/settings': { eye: 'Účet a stravovanie', h1: 'Nastavenia' },
   '/success':  { eye: 'Hotovo', h1: 'Objednávka odoslaná' },
 };

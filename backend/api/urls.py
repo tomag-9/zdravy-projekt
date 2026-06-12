@@ -14,6 +14,7 @@ from .views import (
     EmailTokenObtainPairView,
     GlobalSettingsViewSet,
     HolidayListViewSet,
+    InboxViewSet,
     LogoutView,
     MealTemplateViewSet,
     PasswordResetConfirmView,
@@ -57,6 +58,7 @@ router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
 router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
+router.register(r"inbox", InboxViewSet, basename="inbox")
 
 urlpatterns = [
     path("", include(router.urls)),
