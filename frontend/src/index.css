@@ -474,6 +474,14 @@ select {
     transition: all 180ms cubic-bezier(.4,0,.2,1);
 }
 .zp-input::placeholder { color: var(--ink-mute); }
+.zp-input--error {
+    border-color: var(--coral-500);
+    background: var(--bg-cream-warm);
+}
+.zp-input--error:focus {
+    border-color: var(--coral-600);
+    box-shadow: 0 0 0 3px rgba(220,80,60,0.14);
+}
 .zp-input:focus {
     border-color: var(--green-600);
     background: var(--bg-cream-warm);
@@ -987,6 +995,33 @@ select {
     margin-bottom: 12px;
 }
 .zp-copybar .zp-btn { flex: 1; padding: 9px 12px; font-size: 12px; }
+
+/* Special diet section inside meal */
+.zp-special-diet {
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+.zp-special-diet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.zp-special-diet-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--ink-2);
+}
+.zp-special-diet-textarea {
+    margin-top: 12px;
+    resize: vertical;
+    min-height: 72px;
+    font-size: 14px;
+    padding: 10px 12px;
+}
 
 /* Category row inside meal */
 .zp-cat {

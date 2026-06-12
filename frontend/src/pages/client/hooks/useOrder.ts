@@ -116,6 +116,11 @@ export const useOrder = () => {
         safeParse(`fullDayOrder_${selectedDate}`, false)
     );
 
+    const defaultSpecialDiets = { breakfast: { enabled: false, note: '' }, lunch: { enabled: false, note: '' }, olovrant: { enabled: false, note: '' } };
+    const [specialDiets, setSpecialDiets] = useState<Record<string, { enabled: boolean; note: string }>>(() =>
+        safeParse(`specialDiets_${selectedDate}`, defaultSpecialDiets)
+    );
+
     const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
         // Use Factory for initial state
         const initial: DailyOrder = {
@@ -158,6 +163,7 @@ export const useOrder = () => {
     useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
     useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
     useEffect(() => { localStorage.setItem(`fullDayOrder_${selectedDateRef.current}`, JSON.stringify(fullDayOrder)); }, [fullDayOrder]);
+    useEffect(() => { localStorage.setItem(`specialDiets_${selectedDateRef.current}`, JSON.stringify(specialDiets)); }, [specialDiets]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {
@@ -180,6 +186,7 @@ export const useOrder = () => {
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
         setFullDayOrderState(safeParse(`fullDayOrder_${selectedDate}`, false));
+        setSpecialDiets(safeParse(`specialDiets_${selectedDate}`, defaultSpecialDiets));
     }, [selectedDate]);
 
     // Fetch Order from API (server authority; merges into local state)
@@ -469,6 +476,13 @@ export const useOrder = () => {
         setFullDayOrderState(prev => !prev);
     };
 
+    const updateSpecialDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', field: 'enabled' | 'note', value: boolean | string) => {
+        setSpecialDiets(prev => ({
+            ...prev,
+            [mealKey]: { ...prev[mealKey], [field]: value },
+        }));
+    };
+
 
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
@@ -511,7 +525,7 @@ export const useOrder = () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ date, status: 'submitted', data: payload })
+                body: JSON.stringify({ date, status: 'submitted', data: { ...payload, special_diets: specialDiets } })
             });
 
             if (!response.ok) {
@@ -654,6 +668,7 @@ export const useOrder = () => {
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         fullDayOrder, toggleFullDay,
+        specialDiets, updateSpecialDiet,
         updateMenuCount, updateDiet,
         getAvailableDiets,
         prevDayLunches,

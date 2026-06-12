@@ -29,6 +29,8 @@ const OrderPage = () => {
     toggleMeal,
     fullDayOrder,
     toggleFullDay,
+    specialDiets,
+    updateSpecialDiet,
     currentOrder,
     updateMenuCount,
     updateDiet,
@@ -172,6 +174,16 @@ const OrderPage = () => {
   };
 
   const handleSubmit = async () => {
+    const mealsWithMissingNote = visibleMealsList.filter(({ key }) => {
+      const mealKey = key as 'breakfast' | 'lunch' | 'olovrant';
+      const sd = specialDiets[mealKey];
+      const isActive = activeMeals[mealKey] || fullDayOrder;
+      return isActive && sd?.enabled && !sd.note.trim();
+    });
+    if (mealsWithMissingNote.length > 0) {
+      toast.error('Prosím popíšte špeciálnu diétu pred odoslaním objednávky.');
+      return;
+    }
     try {
       await submitOrder(selectedDate);
       const total = getTotalPortions();
@@ -373,6 +385,38 @@ const OrderPage = () => {
                   />
                 );
               })}
+
+              {/* Special diet toggle */}
+              <div className="zp-special-diet">
+                <div className="zp-special-diet-row">
+                  <span className="zp-special-diet-label">Špeciálna diéta</span>
+                  <div
+                    className={`zp-switch${specialDiets[key]?.enabled ? " zp-switch--on" : ""}`}
+                    role="switch"
+                    aria-checked={!!specialDiets[key]?.enabled}
+                    aria-label="Špeciálna diéta"
+                    tabIndex={0}
+                    onClick={() => isEditable && !isHoliday && updateSpecialDiet(key, 'enabled', !specialDiets[key]?.enabled)}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && isEditable && !isHoliday) {
+                        e.preventDefault();
+                        updateSpecialDiet(key, 'enabled', !specialDiets[key]?.enabled);
+                      }
+                    }}
+                    style={!isEditable || isHoliday ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
+                  />
+                </div>
+                {specialDiets[key]?.enabled && (
+                  <textarea
+                    className={`zp-input zp-special-diet-textarea${specialDiets[key]?.enabled && !specialDiets[key]?.note.trim() ? " zp-input--error" : ""}`}
+                    placeholder="Popíšte vašu špeciálnu diétu"
+                    value={specialDiets[key]?.note ?? ''}
+                    rows={3}
+                    disabled={!isEditable || !!isHoliday}
+                    onChange={(e) => updateSpecialDiet(key, 'note', e.target.value)}
+                  />
+                )}
+              </div>
             </div>
           </MealCard>
         );
