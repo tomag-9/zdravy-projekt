@@ -1016,11 +1016,35 @@ select {
     color: var(--ink-2);
 }
 .zp-special-diet-textarea {
-    margin-top: 12px;
+    margin-top: 8px;
     resize: vertical;
     min-height: 72px;
     font-size: 14px;
     padding: 10px 12px;
+}
+.zp-special-diet-note-box {
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+.zp-special-diet-note-label {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+}
+.zp-fullday-info {
+    font-size: 13px;
+    color: var(--ink-2);
+    background: var(--bg-cream-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    margin-bottom: 10px;
 }
 
 /* Category row inside meal */

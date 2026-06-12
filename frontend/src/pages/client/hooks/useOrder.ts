@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
-import { CATEGORIES } from '../config/constants';
+import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
 import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -116,9 +116,12 @@ export const useOrder = () => {
         safeParse(`fullDayOrder_${selectedDate}`, false)
     );
 
-    const defaultSpecialDiets = { breakfast: { enabled: false, note: '' }, lunch: { enabled: false, note: '' }, olovrant: { enabled: false, note: '' } };
-    const [specialDiets, setSpecialDiets] = useState<Record<string, { enabled: boolean; note: string }>>(() =>
-        safeParse(`specialDiets_${selectedDate}`, defaultSpecialDiets)
+    const [fullDayData, setFullDayData] = useState<MealData>(() =>
+        safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal())
+    );
+
+    const [specialDietNote, setSpecialDietNote] = useState<string>(() =>
+        safeParse(`specialDietNote_${selectedDate}`, '')
     );
 
     const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
@@ -163,7 +166,8 @@ export const useOrder = () => {
     useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
     useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
     useEffect(() => { localStorage.setItem(`fullDayOrder_${selectedDateRef.current}`, JSON.stringify(fullDayOrder)); }, [fullDayOrder]);
-    useEffect(() => { localStorage.setItem(`specialDiets_${selectedDateRef.current}`, JSON.stringify(specialDiets)); }, [specialDiets]);
+    useEffect(() => { localStorage.setItem(`fullDayData_${selectedDateRef.current}`, JSON.stringify(fullDayData)); }, [fullDayData]);
+    useEffect(() => { localStorage.setItem(`specialDietNote_${selectedDateRef.current}`, JSON.stringify(specialDietNote)); }, [specialDietNote]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {
@@ -186,7 +190,8 @@ export const useOrder = () => {
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
         setFullDayOrderState(safeParse(`fullDayOrder_${selectedDate}`, false));
-        setSpecialDiets(safeParse(`specialDiets_${selectedDate}`, defaultSpecialDiets));
+        setFullDayData(safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal()));
+        setSpecialDietNote(safeParse(`specialDietNote_${selectedDate}`, ''));
     }, [selectedDate]);
 
     // Fetch Order from API (server authority; merges into local state)
@@ -476,11 +481,22 @@ export const useOrder = () => {
         setFullDayOrderState(prev => !prev);
     };
 
-    const updateSpecialDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', field: 'enabled' | 'note', value: boolean | string) => {
-        setSpecialDiets(prev => ({
-            ...prev,
-            [mealKey]: { ...prev[mealKey], [field]: value },
-        }));
+    const updateFullDayMenuCount = (category: string, menuType: string, count: number) => {
+        setFullDayData(prev => {
+            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
+            return OrderService.updateMenuCount(wrapper, 'breakfast', category, menuType, count).breakfast;
+        });
+    };
+
+    const updateFullDayDiet = (category: string, diet: string, count: number) => {
+        setFullDayData(prev => {
+            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
+            return OrderService.updateDiet(wrapper, 'breakfast', category, diet, count).breakfast;
+        });
+    };
+
+    const clearFullDay = () => {
+        setFullDayData(OrderService.createEmptyMeal());
     };
 
 
@@ -513,10 +529,13 @@ export const useOrder = () => {
         const isMealActive = (key: 'breakfast' | 'lunch' | 'olovrant') =>
             fullDayOrder ? adminVisibleMeals.includes(key) : activeMeals[key];
 
+        const mealData = (key: 'breakfast' | 'lunch' | 'olovrant') =>
+            fullDayOrder ? fullDayData : currentOrder[key];
+
         const payload = {
-            breakfast: isMealActive('breakfast') ? currentOrder.breakfast : OrderService.createEmptyMeal(),
-            lunch: isMealActive('lunch') ? currentOrder.lunch : OrderService.createEmptyMeal(),
-            olovrant: isMealActive('olovrant') ? currentOrder.olovrant : OrderService.createEmptyMeal(),
+            breakfast: isMealActive('breakfast') ? mealData('breakfast') : OrderService.createEmptyMeal(),
+            lunch: isMealActive('lunch') ? mealData('lunch') : OrderService.createEmptyMeal(),
+            olovrant: isMealActive('olovrant') ? mealData('olovrant') : OrderService.createEmptyMeal(),
         };
 
         try {
@@ -525,7 +544,7 @@ export const useOrder = () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ date, status: 'submitted', data: { ...payload, special_diets: specialDiets } })
+                body: JSON.stringify({ date, status: 'submitted', data: { ...payload, special_diet_note: specialDietNote || undefined } })
             });
 
             if (!response.ok) {
@@ -606,7 +625,11 @@ export const useOrder = () => {
 
     // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
     const getAvailableDiets = (categoryName: string) => {
-        return OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
+        const diets = OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
+        if (!diets.includes(SPECIAL_DIET_NAME)) {
+            return [...diets, SPECIAL_DIET_NAME];
+        }
+        return diets;
     };
 
 
@@ -668,7 +691,8 @@ export const useOrder = () => {
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         fullDayOrder, toggleFullDay,
-        specialDiets, updateSpecialDiet,
+        fullDayData, updateFullDayMenuCount, updateFullDayDiet, clearFullDay,
+        specialDietNote, setSpecialDietNote,
         updateMenuCount, updateDiet,
         getAvailableDiets,
         prevDayLunches,
