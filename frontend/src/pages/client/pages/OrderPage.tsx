@@ -371,26 +371,27 @@ const OrderPage = () => {
         </div>
       </MealCard>
 
-      {/* Individual meal cards — disabled when fullDayOrder is on */}
-      <div style={fullDayOrder ? { opacity: 0.45, pointerEvents: "none" } : {}}>
+      {/* Individual meal cards */}
       {visibleMealsList.map((mealItem, mealIndex) => {
         const { key: rawKey, label, icon } = mealItem;
         const key = rawKey as "breakfast" | "lunch" | "olovrant";
         const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
         const isHoliday = isHolidayDay;
+        const blockedByFullDay = fullDayOrder;
 
         return (
           <MealCard
             key={key}
             title={label}
             icon={icon}
-            isActive={isEditable && !isHoliday && activeMeals[key]}
-            onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
-            copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
-            className={!isEditable || isHoliday ? "" : ""}
+            isActive={!blockedByFullDay && isEditable && !isHoliday && activeMeals[key]}
+            onToggle={() => !blockedByFullDay && isEditable && !isHoliday && toggleMeal(key)}
+            copyAction={!blockedByFullDay && isEditable && !isHoliday ? handleCopyTrigger(key) : null}
             tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
             statusMessage={
-              !isEditable ? (
+              blockedByFullDay ? (
+                <>Celodenná objednávka je aktívna</>
+              ) : !isEditable ? (
                 <>Termín uplynul · Objednávka uzavretá</>
               ) : null
             }
@@ -425,7 +426,6 @@ const OrderPage = () => {
           </MealCard>
         );
       })}
-      </div>
     </div>
   );
 
