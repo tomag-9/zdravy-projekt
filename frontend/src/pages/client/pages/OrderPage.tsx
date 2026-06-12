@@ -189,7 +189,7 @@ const OrderPage = () => {
 
   const handleSubmit = async () => {
     if (hasSpecialDietOrdered() && !specialDietNote.trim()) {
-      toast.error('Prosím špecifikujte špeciálnu objednávku pred odoslaním.');
+      toast.error('Prosím špecifikujte špeciálnu diétu pred odoslaním.');
       return;
     }
     try {
@@ -432,11 +432,11 @@ const OrderPage = () => {
   const specialDietNoteContent = hasSpecialDietOrdered() && (
     <div className="zp-special-diet-note-box">
       <label className="zp-special-diet-note-label">
-        Špecifikujte špeciálnu objednávku <span style={{ color: "var(--color-danger)" }}>*</span>
+        Špecifikujte špeciálnu diétu <span style={{ color: "var(--color-danger)" }}>*</span>
       </label>
       <textarea
         className={`zp-input zp-special-diet-textarea${!specialDietNote.trim() ? " zp-input--error" : ""}`}
-        placeholder="Popíšte vašu špeciálnu objednávku"
+        placeholder="Popíšte vašu špeciálnu diétu"
         value={specialDietNote}
         rows={3}
         onChange={e => setSpecialDietNote(e.target.value)}

@@ -14,6 +14,7 @@ import {
   History,
   ChevronRight,
   Settings,
+  Mail,
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useAuth } from "../../../context/auth";
@@ -706,14 +707,23 @@ const HomePage = () => {
             alt="Zdravý projekt"
             style={{ height: 32, width: "auto", display: "block" }}
           />
-          <Link
-            to="/settings"
-            className="zp-iconbtn"
-            aria-label="Nastavenia"
-            data-tour-id="tour-profile-btn"
-          >
-            <Settings />
-          </Link>
+          <div style={{ display: "flex", gap: 4 }}>
+            <Link
+              to="/inbox"
+              className="zp-iconbtn"
+              aria-label="Správy"
+            >
+              <Mail />
+            </Link>
+            <Link
+              to="/settings"
+              className="zp-iconbtn"
+              aria-label="Nastavenia"
+              data-tour-id="tour-profile-btn"
+            >
+              <Settings />
+            </Link>
+          </div>
         </div>
 
         {/* Greeting */}

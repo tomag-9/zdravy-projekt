@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Plus, Settings, LogOut, Bell } from 'lucide-react';
+import { Home, BookOpen, Plus, Settings, LogOut, Mail } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import ConfirmationModal from './ui/ConfirmationModal';
 
@@ -8,7 +8,6 @@ const NAV: { to: string; label: string; icon: React.ComponentType<{ style?: Reac
   { to: '/home', label: 'Domov', icon: Home },
   { to: '/order', label: 'Nová objednávka', icon: Plus, cta: true },
   { to: '/menu', label: 'Jedálniček', icon: BookOpen },
-  { to: '/inbox', label: 'Správy', icon: Bell },
   { to: '/settings', label: 'Nastavenia', icon: Settings },
 ];
 
@@ -81,6 +80,14 @@ export default function ClientLayoutPC() {
             <h1>{title.h1}</h1>
           </div>
           <div className="pc-topbar-actions">
+            <NavLink
+              to="/inbox"
+              className="pc-iconbtn"
+              aria-label="Správy"
+              title="Správy"
+            >
+              <Mail style={{ width: 20, height: 20 }} />
+            </NavLink>
             <button
               className="pc-iconbtn"
               aria-label="Odhlásiť sa"

@@ -1238,6 +1238,16 @@ select {
     display: flex;
     flex-direction: column;
 }
+.pc-app .zp-sheet-scrim {
+    align-items: center;
+    justify-content: center;
+}
+.pc-app .zp-sheet {
+    width: 420px;
+    border-radius: var(--radius-xl);
+    min-height: unset;
+    max-height: 70vh;
+}
 .zp-sheet-grab {
     width: 44px;
     height: 4px;
@@ -1457,7 +1467,7 @@ select {
     top: 8px;
     bottom: 8px;
     left: 8px;
-    width: calc((100% - 28px) / 4);
+    width: calc((100% - 24px) / 3);
     border-radius: 16px;
     background: var(--bg-cream-soft);
     box-shadow: 0 1px 4px rgba(0,0,0,0.06);

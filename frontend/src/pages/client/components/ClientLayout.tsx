@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { Home, BookOpen, Plus, Bell } from "lucide-react";
+import { Home, BookOpen, Plus } from "lucide-react";
 import { useStableViewportHeight } from "../../../hooks/useStableViewportHeight";
 import { useIsPC } from "../../../hooks/useIsPC";
 import ClientLayoutPC from "./ClientLayoutPC";
@@ -9,17 +9,15 @@ const tabs = [
   { to: "/menu", label: "Jedálniček", icon: BookOpen },
   { to: "/home", label: "Domov", icon: Home },
   { to: "/order", label: "Objednávka", icon: Plus, action: true },
-  { to: "/inbox", label: "Správy", icon: Bell },
 ];
 
 // left position of the indicator pill for each tab index.
-// Derived from: padding=8px, gap=4px, 4 equal tabs.
-// Each tab width = (W-28px)/4  (28 = 16px padding + 12px gaps)
+// Derived from: padding=8px, gap=4px, 3 equal tabs.
+// Each tab width = (W-24px)/3  (24 = 16px padding + 8px gaps)
 // Tab 0: 8px
-// Tab 1: (W-28)/4 + 12 = W/4 + 5 = calc(25% + 5px)
-// Tab 2: 2*(W-28)/4 + 16 = W/2 + 2 = calc(50% + 2px)
-// Tab 3: 3*(W-28)/4 + 20 = 3W/4 - 1 = calc(75% - 1px)
-const INDICATOR_LEFT = ["8px", "calc(25% + 5px)", "calc(50% + 2px)", "calc(75% - 1px)"];
+// Tab 1: (W-24)/3 + 12 = W/3 + 4 = calc(33.333% + 4px)
+// Tab 2: 2*(W-24)/3 + 16 = 2W/3 - 0 = calc(66.666%)
+const INDICATOR_LEFT = ["8px", "calc(33.333% + 4px)", "calc(66.666%)"];
 
 const ClientLayout = () => {
   const location = useLocation();
