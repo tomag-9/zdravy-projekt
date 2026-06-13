@@ -7,9 +7,20 @@ interface MenuCounterProps {
     onOpenDiets: (() => void) | null;
     dietCount: number;
     disabled?: boolean;
+    isOccupied?: boolean;
 }
 
-const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled }: MenuCounterProps) => {
+const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled, isOccupied }: MenuCounterProps) => {
+    if (isOccupied) {
+        return (
+            <div className="zp-menurow zp-menurow--occupied">
+                <span className="name">Menu {type}</span>
+                <span className="spacer"></span>
+                <span className="zp-menurow-occupied-label">zasednutá</span>
+            </div>
+        );
+    }
+
     return (
         <div className="zp-menurow">
             <span className="name">Menu {type}</span>
@@ -51,6 +62,7 @@ interface CategoryRowProps {
     hasDietsEnabled: boolean;
     disabled?: boolean;
     visibleMenus?: string[];
+    occupiedMenus?: Set<string>;
     tourId?: string;
 }
 
@@ -63,6 +75,7 @@ const CategoryRow = ({
     hasDietsEnabled,
     disabled,
     visibleMenus,
+    occupiedMenus,
     tourId,
 }: CategoryRowProps) => {
     let menus = Object.keys(menuCounts || {});
@@ -88,6 +101,7 @@ const CategoryRow = ({
                     onOpenDiets={hasDietsEnabled && menuType === 'A' && !disabled ? onOpenDiets : null}
                     dietCount={dietCount}
                     disabled={disabled}
+                    isOccupied={occupiedMenus?.has(menuType)}
                 />
             ))}
         </div>

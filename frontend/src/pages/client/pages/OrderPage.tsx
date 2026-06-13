@@ -7,7 +7,7 @@ import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, CalendarDays } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -27,6 +27,14 @@ const OrderPage = () => {
     setSelectedDate,
     activeMeals,
     toggleMeal,
+    fullDayOrder,
+    toggleFullDay,
+    fullDayData,
+    updateFullDayMenuCount,
+    updateFullDayDiet,
+    clearFullDay,
+    specialDietNote,
+    setSpecialDietNote,
     currentOrder,
     updateMenuCount,
     updateDiet,
@@ -40,12 +48,20 @@ const OrderPage = () => {
     loadBreakfastFromPrevLunch,
     copyOlovrantFromCurrentLunch,
     holidays,
+    mealPlanAvailability,
   } = useApp();
+
+  const getOccupiedMenus = (mealKey: string): Set<string> => {
+    if (!mealPlanAvailability) return new Set();
+    const available = mealPlanAvailability[mealKey];
+    if (!available) return new Set();
+    return new Set(adminVisibleMenus.filter((m: string) => !available.has(m)));
+  };
 
   const { isTourActive, currentStep } = useOnboarding();
 
   const [activeDietModal, setActiveDietModal] = useState<{
-    meal: "breakfast" | "lunch" | "olovrant";
+    meal: "breakfast" | "lunch" | "olovrant" | "fullDay";
     category: string;
   } | null>(null);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
@@ -161,7 +177,21 @@ const OrderPage = () => {
     return total;
   };
 
+  const hasSpecialDietOrdered = (): boolean => {
+    const checkMeal = (meal: Record<string, CategoryData>) =>
+      Object.values(meal).some(cat => (cat.diets?.['Špeciálna'] ?? 0) > 0);
+    if (fullDayOrder) return checkMeal(fullDayData);
+    return visibleMealsList.some(({ key }) => {
+      const mealKey = key as "breakfast" | "lunch" | "olovrant";
+      return activeMeals[mealKey] && checkMeal(currentOrder[mealKey]);
+    });
+  };
+
   const handleSubmit = async () => {
+    if (hasSpecialDietOrdered() && !specialDietNote.trim()) {
+      toast.error('Prosím špecifikujte špeciálnu diétu pred odoslaním.');
+      return;
+    }
     try {
       await submitOrder(selectedDate);
       const total = getTotalPortions();
@@ -290,45 +320,88 @@ const OrderPage = () => {
   const formattedDate = dateFormatter.format(dateObj);
   const totalPortions = getTotalPortions();
 
+  const fullDayMealLabels = visibleMealsList.map(m => m.label).join(' · ');
+  const isHolidayDay = holidays?.has(selectedDate);
+
   const mealCardsContent = (
     <div
-      style={holidays?.has(selectedDate) ? { opacity: 0.4, pointerEvents: "none" } : {}}
-      aria-disabled={holidays?.has(selectedDate) ? true : undefined}
+      style={isHolidayDay ? { opacity: 0.4, pointerEvents: "none" } : {}}
+      aria-disabled={isHolidayDay ? true : undefined}
     >
+      {/* Celodenná objednávka */}
+      <MealCard
+        title="Celodenná objednávka"
+        icon={CalendarDays}
+        isActive={fullDayOrder}
+        onToggle={toggleFullDay}
+        statusMessage={null}
+        copyAction={fullDayOrder ? (
+          <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
+            style={{ flex: 1 }}
+            onClick={() => clearFullDay()}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+          </button>
+        ) : null}
+      >
+        <div>
+          <div className="zp-fullday-info">
+            Bude objednané: <strong>{fullDayMealLabels}</strong>
+          </div>
+          {CATEGORIES.filter(cat => enabledCategories.includes(cat)).map(category => {
+            const data = fullDayData[category];
+            if (!data) return null;
+            const dietCount = (Object.values(data.diets || {}) as number[]).reduce((a, b) => a + b, 0);
+            const availableDiets = getAvailableDiets(category);
+            return (
+              <CategoryRow
+                key={category}
+                label={category}
+                menuCounts={data.menuCounts}
+                onMenuCountChange={(menuType, val) => updateFullDayMenuCount(category, menuType, val)}
+                hasDietsEnabled={availableDiets.length > 0}
+                dietCount={dietCount}
+                onOpenDiets={() => setActiveDietModal({ meal: "fullDay", category })}
+                disabled={false}
+                visibleMenus={adminVisibleMenus}
+              />
+            );
+          })}
+        </div>
+      </MealCard>
+
+      {/* Individual meal cards */}
       {visibleMealsList.map((mealItem, mealIndex) => {
         const { key: rawKey, label, icon } = mealItem;
         const key = rawKey as "breakfast" | "lunch" | "olovrant";
         const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
-        const isHoliday = holidays?.has(selectedDate);
+        const isHoliday = isHolidayDay;
+        const blockedByFullDay = fullDayOrder;
 
         return (
           <MealCard
             key={key}
             title={label}
             icon={icon}
-            isActive={isEditable && !isHoliday && activeMeals[key]}
-            onToggle={() => isEditable && !isHoliday && toggleMeal(key)}
-            copyAction={isEditable && !isHoliday ? handleCopyTrigger(key) : null}
-            className={!isEditable || isHoliday ? "" : ""}
+            isActive={!blockedByFullDay && isEditable && !isHoliday && activeMeals[key]}
+            onToggle={() => !blockedByFullDay && isEditable && !isHoliday && toggleMeal(key)}
+            copyAction={!blockedByFullDay && isEditable && !isHoliday ? handleCopyTrigger(key) : null}
             tourId={mealIndex === 0 ? "tour-meal-card" : undefined}
             statusMessage={
-              !isEditable ? (
+              blockedByFullDay ? (
+                <>Celodenná objednávka je aktívna</>
+              ) : !isEditable ? (
                 <>Termín uplynul · Objednávka uzavretá</>
               ) : null
             }
           >
             <div>
-              {CATEGORIES.filter((category) =>
-                enabledCategories.includes(category),
-              ).map((category, catIndex) => {
+              {CATEGORIES.filter(category => enabledCategories.includes(category)).map((category, catIndex) => {
                 const data = currentOrder[key]?.[category];
                 if (!data) return null;
-
-                const dietCount = (
-                  Object.values(data.diets || {}) as number[]
-                ).reduce((a: number, b: number) => a + b, 0);
+                const dietCount = (Object.values(data.diets || {}) as number[]).reduce((a, b) => a + b, 0);
                 const availableDiets = getAvailableDiets(category);
-
                 return (
                   <CategoryRow
                     key={category}
@@ -344,6 +417,7 @@ const OrderPage = () => {
                     }
                     disabled={!isEditable || !!isHoliday}
                     visibleMenus={adminVisibleMenus}
+                    occupiedMenus={getOccupiedMenus(key)}
                     tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
                   />
                 );
@@ -352,6 +426,21 @@ const OrderPage = () => {
           </MealCard>
         );
       })}
+    </div>
+  );
+
+  const specialDietNoteContent = hasSpecialDietOrdered() && (
+    <div className="zp-special-diet-note-box">
+      <label className="zp-special-diet-note-label">
+        Špecifikujte špeciálnu diétu <span style={{ color: "var(--color-danger)" }}>*</span>
+      </label>
+      <textarea
+        className={`zp-input zp-special-diet-textarea${!specialDietNote.trim() ? " zp-input--error" : ""}`}
+        placeholder="Popíšte vašu špeciálnu diétu"
+        value={specialDietNote}
+        rows={3}
+        onChange={e => setSpecialDietNote(e.target.value)}
+      />
     </div>
   );
 
@@ -385,32 +474,28 @@ const OrderPage = () => {
 
   const modals = (
     <>
-      {activeDietModal && (
-        <DietSelector
-          isOpen={true}
-          onClose={() => setActiveDietModal(null)}
-          categoryLabel={activeDietModal.category}
-          enabledDiets={getAvailableDiets(activeDietModal.category)}
-          diets={
-            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
-              activeDietModal.category
-            ].diets
-          }
-          maxPortions={
-            currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"][
-              activeDietModal.category
-            ].menuCounts?.["A"] || 0
-          }
-          onUpdateDiet={(diet, count) =>
-            updateDiet(
-              activeDietModal.meal as "breakfast" | "lunch" | "olovrant",
-              activeDietModal.category,
-              diet,
-              count,
-            )
-          }
-        />
-      )}
+      {activeDietModal && (() => {
+        const isFullDay = activeDietModal.meal === "fullDay";
+        const mealData = isFullDay
+          ? fullDayData
+          : currentOrder[activeDietModal.meal as "breakfast" | "lunch" | "olovrant"];
+        const catData = mealData[activeDietModal.category];
+        return (
+          <DietSelector
+            isOpen={true}
+            onClose={() => setActiveDietModal(null)}
+            categoryLabel={activeDietModal.category}
+            enabledDiets={getAvailableDiets(activeDietModal.category)}
+            diets={catData.diets}
+            maxPortions={catData.menuCounts?.["A"] || 0}
+            onUpdateDiet={(diet, count) =>
+              isFullDay
+                ? updateFullDayDiet(activeDietModal.category, diet, count)
+                : updateDiet(activeDietModal.meal as "breakfast" | "lunch" | "olovrant", activeDietModal.category, diet, count)
+            }
+          />
+        );
+      })()}
 
       <ConfirmationModal
         isOpen={showZeroModal}
@@ -464,6 +549,7 @@ const OrderPage = () => {
         <div className="pc-order-grid">
           <div>
             {mealCardsContent}
+            {specialDietNoteContent}
             <p className="zp-thanks">
               Ďakujeme za Vašu objednávku
               <small>Posielame ju priamo do našej kuchyne.</small>
@@ -539,6 +625,8 @@ const OrderPage = () => {
         )}
 
         {mealCardsContent}
+
+        {specialDietNoteContent}
 
         {orderSummaryContent}
 

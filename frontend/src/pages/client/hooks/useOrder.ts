@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
-import { CATEGORIES } from '../config/constants';
+import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
 import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -112,6 +112,18 @@ export const useOrder = () => {
 
     const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false }));
 
+    const [fullDayOrder, setFullDayOrderState] = useState<boolean>(() =>
+        safeParse(`fullDayOrder_${selectedDate}`, false)
+    );
+
+    const [fullDayData, setFullDayData] = useState<MealData>(() =>
+        safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal())
+    );
+
+    const [specialDietNote, setSpecialDietNote] = useState<string>(() =>
+        safeParse(`specialDietNote_${selectedDate}`, '')
+    );
+
     const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
         // Use Factory for initial state
         const initial: DailyOrder = {
@@ -153,6 +165,9 @@ export const useOrder = () => {
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
     useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
+    useEffect(() => { localStorage.setItem(`fullDayOrder_${selectedDateRef.current}`, JSON.stringify(fullDayOrder)); }, [fullDayOrder]);
+    useEffect(() => { localStorage.setItem(`fullDayData_${selectedDateRef.current}`, JSON.stringify(fullDayData)); }, [fullDayData]);
+    useEffect(() => { localStorage.setItem(`specialDietNote_${selectedDateRef.current}`, JSON.stringify(specialDietNote)); }, [specialDietNote]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {
@@ -174,6 +189,9 @@ export const useOrder = () => {
         setTouchedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
+        setFullDayOrderState(safeParse(`fullDayOrder_${selectedDate}`, false));
+        setFullDayData(safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal()));
+        setSpecialDietNote(safeParse(`specialDietNote_${selectedDate}`, ''));
     }, [selectedDate]);
 
     // Fetch Order from API (server authority; merges into local state)
@@ -272,6 +290,34 @@ export const useOrder = () => {
         };
         if (user) fetchPortionTypes();
     }, [apiFetch, user]);
+
+    // Meal plan availability: mealKey → Set of available menu_variants; null = no plan = no restriction
+    const [mealPlanAvailability, setMealPlanAvailability] = useState<Record<string, Set<string>> | null>(null);
+
+    useEffect(() => {
+        const fetchMealPlanAvailability = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`);
+                if (!res.ok) { setMealPlanAvailability(null); return; }
+                const data = await res.json();
+                if (!data.exists || !Array.isArray(data.items) || data.items.length === 0) {
+                    setMealPlanAvailability(null);
+                    return;
+                }
+                const availability: Record<string, Set<string>> = {};
+                for (const item of data.items) {
+                    const mealKey: string = item.category;
+                    if (!availability[mealKey]) availability[mealKey] = new Set();
+                    if (item.menu_variant) availability[mealKey].add(item.menu_variant);
+                }
+                setMealPlanAvailability(availability);
+            } catch (e) {
+                logger.error("Failed to fetch meal plan availability", e);
+                setMealPlanAvailability(null);
+            }
+        };
+        if (user) fetchMealPlanAvailability();
+    }, [selectedDate, apiFetch, user]);
 
     // Holidays: set of date strings "YYYY-MM-DD" that are blocked
     const [holidays, setHolidays] = useState<Set<string>>(new Set());
@@ -431,6 +477,28 @@ export const useOrder = () => {
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
     };
 
+    const toggleFullDay = () => {
+        setFullDayOrderState(prev => !prev);
+    };
+
+    const updateFullDayMenuCount = (category: string, menuType: string, count: number) => {
+        setFullDayData(prev => {
+            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
+            return OrderService.updateMenuCount(wrapper, 'breakfast', category, menuType, count).breakfast;
+        });
+    };
+
+    const updateFullDayDiet = (category: string, diet: string, count: number) => {
+        setFullDayData(prev => {
+            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
+            return OrderService.updateDiet(wrapper, 'breakfast', category, diet, count).breakfast;
+        });
+    };
+
+    const clearFullDay = () => {
+        setFullDayData(OrderService.createEmptyMeal());
+    };
+
 
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
@@ -458,11 +526,16 @@ export const useOrder = () => {
 
 
     const submitOrder = async (date: string) => {
-        // Prepare payload - only active meals
+        const isMealActive = (key: 'breakfast' | 'lunch' | 'olovrant') =>
+            fullDayOrder ? adminVisibleMeals.includes(key) : activeMeals[key];
+
+        const mealData = (key: 'breakfast' | 'lunch' | 'olovrant') =>
+            fullDayOrder ? fullDayData : currentOrder[key];
+
         const payload = {
-            breakfast: activeMeals.breakfast ? currentOrder.breakfast : OrderService.createEmptyMeal(),
-            lunch: activeMeals.lunch ? currentOrder.lunch : OrderService.createEmptyMeal(),
-            olovrant: activeMeals.olovrant ? currentOrder.olovrant : OrderService.createEmptyMeal(),
+            breakfast: isMealActive('breakfast') ? mealData('breakfast') : OrderService.createEmptyMeal(),
+            lunch: isMealActive('lunch') ? mealData('lunch') : OrderService.createEmptyMeal(),
+            olovrant: isMealActive('olovrant') ? mealData('olovrant') : OrderService.createEmptyMeal(),
         };
 
         try {
@@ -471,7 +544,7 @@ export const useOrder = () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ date, status: 'submitted', data: payload })
+                body: JSON.stringify({ date, status: 'submitted', data: { ...payload, special_diet_note: specialDietNote || undefined } })
             });
 
             if (!response.ok) {
@@ -552,7 +625,11 @@ export const useOrder = () => {
 
     // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
     const getAvailableDiets = (categoryName: string) => {
-        return OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
+        const diets = OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
+        if (!diets.includes(SPECIAL_DIET_NAME)) {
+            return [...diets, SPECIAL_DIET_NAME];
+        }
+        return diets;
     };
 
 
@@ -613,6 +690,9 @@ export const useOrder = () => {
         visibleDietDetails,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
+        fullDayOrder, toggleFullDay,
+        fullDayData, updateFullDayMenuCount, updateFullDayDiet, clearFullDay,
+        specialDietNote, setSpecialDietNote,
         updateMenuCount, updateDiet,
         getAvailableDiets,
         prevDayLunches,
@@ -625,5 +705,6 @@ export const useOrder = () => {
         globalDeadlines,
         clientContactInfo,
         holidays,
+        mealPlanAvailability,
     };
 };

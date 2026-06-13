@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { Home, BookOpen, Plus, Settings, LogOut } from 'lucide-react';
+import { Home, BookOpen, Plus, Settings, LogOut, Mail } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import ConfirmationModal from './ui/ConfirmationModal';
 
@@ -15,6 +15,7 @@ const PAGE_TITLES: Record<string, { eye: string; h1: string }> = {
   '/home':     { eye: 'Prehľad týždňa', h1: 'Domov' },
   '/menu':     { eye: 'Jedálniček týždňa', h1: 'Jedálniček' },
   '/order':    { eye: 'Plánovanie objednávky', h1: 'Nová objednávka' },
+  '/inbox':    { eye: 'Vaše notifikácie', h1: 'Správy' },
   '/settings': { eye: 'Účet a stravovanie', h1: 'Nastavenia' },
   '/success':  { eye: 'Hotovo', h1: 'Objednávka odoslaná' },
 };
@@ -79,6 +80,14 @@ export default function ClientLayoutPC() {
             <h1>{title.h1}</h1>
           </div>
           <div className="pc-topbar-actions">
+            <NavLink
+              to="/inbox"
+              className="pc-iconbtn"
+              aria-label="Správy"
+              title="Správy"
+            >
+              <Mail style={{ width: 20, height: 20 }} />
+            </NavLink>
             <button
               className="pc-iconbtn"
               aria-label="Odhlásiť sa"

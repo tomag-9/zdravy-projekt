@@ -139,6 +139,8 @@ body {
     border-bottom: 1px solid var(--line-soft);
     background: rgba(254,249,241,0.72);
     backdrop-filter: blur(8px);
+    position: relative;
+    z-index: 10;
 }
 .pc-topbar .crumb { flex: 1; min-width: 0; }
 .pc-topbar .crumb .eye {

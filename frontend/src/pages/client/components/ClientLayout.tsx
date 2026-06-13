@@ -8,15 +8,16 @@ import ClientLayoutPC from "./ClientLayoutPC";
 const tabs = [
   { to: "/menu", label: "Jedálniček", icon: BookOpen },
   { to: "/home", label: "Domov", icon: Home },
-  { to: "/order", label: "Nová objednávka", icon: Plus, action: true },
+  { to: "/order", label: "Objednávka", icon: Plus, action: true },
 ];
 
 // left position of the indicator pill for each tab index.
 // Derived from: padding=8px, gap=4px, 3 equal tabs.
-// Tab 0: left=8px
-// Tab 1: left = (W-24px)/3 + 12px = W/3 + 4px = calc(33.333% + 4px)
-// Tab 2: left = 2(W-24px)/3 + 16px = 2W/3 = calc(66.667%)
-const INDICATOR_LEFT = ["8px", "calc(33.333% + 4px)", "calc(66.667%)"];
+// Each tab width = (W-24px)/3  (24 = 16px padding + 8px gaps)
+// Tab 0: 8px
+// Tab 1: (W-24)/3 + 12 = W/3 + 4 = calc(33.333% + 4px)
+// Tab 2: 2*(W-24)/3 + 16 = 2W/3 - 0 = calc(66.666%)
+const INDICATOR_LEFT = ["8px", "calc(33.333% + 4px)", "calc(66.666%)"];
 
 const ClientLayout = () => {
   const location = useLocation();

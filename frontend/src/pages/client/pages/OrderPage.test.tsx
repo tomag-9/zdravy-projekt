@@ -88,6 +88,10 @@ vi.mock("../services/OrderService", async (importOriginal) => {
   };
 });
 
+// Use local date (not UTC) to match what useOrder's selectedDate key uses.
+const localDateStr = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 describe("OrderPage Logic & Triggers", () => {
   // Helper to interact with real localStorage in tests
   const localStorageMock = (function () {
@@ -172,7 +176,7 @@ describe("OrderPage Logic & Triggers", () => {
   };
 
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {
-    const date = new Date().toISOString().split("T")[0];
+    const date = localDateStr();
     // 1. Seed existing order with Lunch data using VALID category keys (e.g. Škôlka)
     const mockOrder = {
       status: "draft",
@@ -210,10 +214,10 @@ describe("OrderPage Logic & Triggers", () => {
   });
 
   it("Copy Breakfast: Copies from Previous Day Lunch", async () => {
-    const today = new Date().toISOString().split("T")[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    const today = localDateStr();
+    const prevDay = new Date();
+    prevDay.setDate(prevDay.getDate() - 1);
+    const yesterdayStr = localDateStr(prevDay);
 
     // 1. Seed YESTERDAY's order
     const prevOrder = {
@@ -362,5 +366,113 @@ describe("OrderPage Logic & Triggers", () => {
     expect(
       screen.queryByText("Technicky detail zo servera"),
     ).not.toBeInTheDocument();
+  });
+
+  // ── Celodenná objednávka (Full-day order) ───────────────────────────────────
+
+  it("Celodenná: renders the full-day card alongside individual meal cards", () => {
+    renderPage();
+    expect(screen.getAllByText("Celodenná objednávka")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Raňajky")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Obed")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Olovrant")[0]).toBeInTheDocument();
+  });
+
+  it("Celodenná: toggling ON locks all individual meal cards with status message", async () => {
+    renderPage();
+
+    const fullDaySwitch = screen.getByRole("switch", {
+      name: /Celodenná objednávka/i,
+    });
+    fireEvent.click(fullDaySwitch);
+
+    await waitFor(() => {
+      const lockBanners = screen.getAllByText("Celodenná objednávka je aktívna");
+      // One banner per individual meal card (Raňajky, Obed, Olovrant) = 3
+      expect(lockBanners.length).toBeGreaterThanOrEqual(3);
+    });
+  });
+
+  it("Celodenná: submitting sends the same full-day data for all three meals", async () => {
+    const date = localDateStr();
+
+    // Seed full-day portion data. fullDayOrder itself cannot be pre-seeded via
+    // localStorage because safeParse/enforceStructure returns the fallback for
+    // primitive (boolean) values. We enable it through the UI toggle instead.
+    localStorageMock.setItem(
+      `fullDayData_${date}`,
+      JSON.stringify({
+        Škôlka: { menuCounts: { A: 7 }, diets: {} },
+      }),
+    );
+
+    renderPage();
+
+    // Enable full-day order via the toggle switch
+    const fullDaySwitch = screen.getByRole("switch", {
+      name: /Celodenná objednávka/i,
+    });
+    fireEvent.click(fullDaySwitch);
+
+    // Wait until individual cards show the lock banner (confirms fullDayOrder is ON)
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Celodenná objednávka je aktívna").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    // Verify the POST request has all 3 meals with full-day data
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+
+      const body = JSON.parse(postCall![1].body as string);
+
+      // All three meals must carry the identical full-day portion data
+      expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(7);
+    });
+  });
+
+  it("Celodenná: submitting with fullDayOrder OFF sends per-meal data independently", async () => {
+    const date = localDateStr();
+
+    // Full-day order is NOT active; each meal has its own data
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 2 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 1 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: true }),
+    );
+
+    renderPage();
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+
+      const body = JSON.parse(postCall![1].body as string);
+
+      // Each meal must have its own distinct count — NOT the same value
+      expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(2);
+      expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(5);
+      expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(1);
+    });
   });
 });

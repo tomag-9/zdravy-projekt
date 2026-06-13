@@ -2,8 +2,11 @@ export const CATEGORIES = ['Jasle', 'Škôlka', 'ZŠ 1.stupeň', 'ZŠ 2.stupeň'
 
 export const DIETS = [
     'Bez lepku', 'Bez laktózy', 'Vegetariánske', 'Vegánske', 'Diabetické',
-    'Nízky obsah soli', 'Bez orechov', 'Bez vajec', 'Bez sóje', 'Jemná / light'
+    'Nízky obsah soli', 'Bez orechov', 'Bez vajec', 'Bez sóje', 'Jemná / light',
+    'Špeciálna',
 ];
+
+export const SPECIAL_DIET_NAME = 'Špeciálna';
 
 export const GROUP_CONFIG: Record<string, string[]> = {
     'Jasle': ['A'],

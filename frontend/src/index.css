@@ -474,6 +474,14 @@ select {
     transition: all 180ms cubic-bezier(.4,0,.2,1);
 }
 .zp-input::placeholder { color: var(--ink-mute); }
+.zp-input--error {
+    border-color: var(--coral-500);
+    background: var(--bg-cream-warm);
+}
+.zp-input--error:focus {
+    border-color: var(--coral-600);
+    box-shadow: 0 0 0 3px rgba(220,80,60,0.14);
+}
 .zp-input:focus {
     border-color: var(--green-600);
     background: var(--bg-cream-warm);
@@ -988,6 +996,57 @@ select {
 }
 .zp-copybar .zp-btn { flex: 1; padding: 9px 12px; font-size: 12px; }
 
+/* Special diet section inside meal */
+.zp-special-diet {
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+.zp-special-diet-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.zp-special-diet-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--ink-2);
+}
+.zp-special-diet-textarea {
+    margin-top: 8px;
+    resize: vertical;
+    min-height: 72px;
+    font-size: 14px;
+    padding: 10px 12px;
+}
+.zp-special-diet-note-box {
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+.zp-special-diet-note-label {
+    display: block;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--ink-2);
+    margin-bottom: 4px;
+}
+.zp-fullday-info {
+    font-size: 13px;
+    color: var(--ink-2);
+    background: var(--bg-cream-soft);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    margin-bottom: 10px;
+}
+
 /* Category row inside meal */
 .zp-cat {
     background: var(--bg-cream-warm);
@@ -1040,6 +1099,25 @@ select {
 .zp-menurow .diet-trigger svg { width: 10px; height: 10px; }
 .zp-menurow .diet-trigger:hover { background: var(--peach-400); }
 .zp-menurow .spacer { flex: 1; }
+
+.zp-menurow--occupied {
+    opacity: 0.5;
+}
+.zp-menurow--occupied .name {
+    color: var(--ink-3);
+    text-decoration: line-through;
+}
+.zp-menurow-occupied-label {
+    font-family: var(--font-display);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--line-soft);
+}
 
 .zp-counter {
     display: flex;
@@ -1159,6 +1237,16 @@ select {
     max-height: 80%;
     display: flex;
     flex-direction: column;
+}
+.pc-app .zp-sheet-scrim {
+    align-items: center;
+    justify-content: center;
+}
+.pc-app .zp-sheet {
+    width: 420px;
+    border-radius: var(--radius-xl);
+    min-height: unset;
+    max-height: 70vh;
 }
 .zp-sheet-grab {
     width: 44px;
@@ -1669,6 +1757,62 @@ select {
     color: var(--ink-3);
     margin-top: 2px;
     line-height: 1.5;
+}
+
+/* ========================================================== *
+ * Inbox
+ * ========================================================== */
+
+.zp-inbox-msg {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    background: var(--bg-cream-warm);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-card);
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+    transition: background 150ms;
+}
+.zp-inbox-msg:hover { background: var(--bg-cream-soft); }
+
+.zp-inbox-msg--unread {
+    background: var(--bg-cream-soft);
+    border-color: var(--green-300);
+}
+.zp-inbox-msg-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: transparent;
+    flex-shrink: 0;
+    margin-top: 5px;
+}
+.zp-inbox-msg--unread .zp-inbox-msg-dot {
+    background: var(--green-600);
+}
+.zp-inbox-msg-body { flex: 1; min-width: 0; }
+.zp-inbox-msg-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink-1);
+    margin-bottom: 3px;
+}
+.zp-inbox-msg--unread .zp-inbox-msg-title { color: var(--green-800); }
+.zp-inbox-msg-text {
+    font-size: 13px;
+    color: var(--ink-2);
+    line-height: 1.5;
+    margin-bottom: 5px;
+}
+.zp-inbox-msg-meta {
+    font-size: 11px;
+    color: var(--ink-3);
+    display: flex;
+    align-items: center;
 }
 
 /* ========================================================== *
