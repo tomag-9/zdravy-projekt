@@ -426,8 +426,7 @@ describe("OrderPage Logic & Triggers", () => {
     // Verify the POST request has all 3 meals with full-day data
     await waitFor(() => {
       const postCall = mockApiFetch.mock.calls.find(
-        ([url, init]: [string, RequestInit]) =>
-          url.includes("/orders/") && init?.method === "POST",
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
       );
       expect(postCall).toBeDefined();
 
@@ -464,8 +463,7 @@ describe("OrderPage Logic & Triggers", () => {
 
     await waitFor(() => {
       const postCall = mockApiFetch.mock.calls.find(
-        ([url, init]: [string, RequestInit]) =>
-          url.includes("/orders/") && init?.method === "POST",
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
       );
       expect(postCall).toBeDefined();
 
