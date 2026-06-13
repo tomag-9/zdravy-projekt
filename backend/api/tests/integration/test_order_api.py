@@ -366,23 +366,19 @@ class TestOrderEmpty:
 
     def test_zero_portions_is_empty(self, authenticated_client, user):
         """Order with all zero portions shows as empty."""
-        # Create order for a future workday we know will be in planned orders
         from django.utils import timezone
 
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
-        # Get first workday
-        import datetime as dt
-
+        # Use localdate() to match the view's timezone (Europe/Bratislava).
+        today = timezone.localdate()
         test_date = today
-        while test_date.weekday() >= 5:  # Skip weekends
-            test_date += dt.timedelta(days=1)
+        while test_date.weekday() >= 5:
+            test_date += datetime.timedelta(days=1)
 
         DailyOrder.objects.create(user=user, date=test_date, data=EMPTY_DATA)
 
         url = reverse("planned-orders-list")
         response = authenticated_client.get(url)
 
-        # Find test_date in response
         item = next(
             (item for item in response.data if item["date"] == str(test_date)), None
         )
@@ -393,12 +389,11 @@ class TestOrderEmpty:
         """Order with any positive portion shows as not empty."""
         from django.utils import timezone
 
-        today = timezone.now().astimezone(datetime.timezone.utc).date()
-        import datetime as dt
-
+        # Use localdate() to match the view's timezone (Europe/Bratislava).
+        today = timezone.localdate()
         test_date = today
-        while test_date.weekday() >= 5:  # Skip weekends
-            test_date += dt.timedelta(days=1)
+        while test_date.weekday() >= 5:
+            test_date += datetime.timedelta(days=1)
 
         DailyOrder.objects.create(user=user, date=test_date, data=NON_EMPTY_DATA)
 

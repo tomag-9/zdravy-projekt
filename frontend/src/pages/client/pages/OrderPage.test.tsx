@@ -88,6 +88,10 @@ vi.mock("../services/OrderService", async (importOriginal) => {
   };
 });
 
+// Use local date (not UTC) to match what useOrder's selectedDate key uses.
+const localDateStr = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 describe("OrderPage Logic & Triggers", () => {
   // Helper to interact with real localStorage in tests
   const localStorageMock = (function () {
@@ -172,7 +176,7 @@ describe("OrderPage Logic & Triggers", () => {
   };
 
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {
-    const date = new Date().toISOString().split("T")[0];
+    const date = localDateStr();
     // 1. Seed existing order with Lunch data using VALID category keys (e.g. Škôlka)
     const mockOrder = {
       status: "draft",
@@ -210,10 +214,10 @@ describe("OrderPage Logic & Triggers", () => {
   });
 
   it("Copy Breakfast: Copies from Previous Day Lunch", async () => {
-    const today = new Date().toISOString().split("T")[0];
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split("T")[0];
+    const today = localDateStr();
+    const prevDay = new Date();
+    prevDay.setDate(prevDay.getDate() - 1);
+    const yesterdayStr = localDateStr(prevDay);
 
     // 1. Seed YESTERDAY's order
     const prevOrder = {
