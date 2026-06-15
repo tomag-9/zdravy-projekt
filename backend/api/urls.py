@@ -4,7 +4,10 @@ from rest_framework.routers import DefaultRouter
 from .health import health_check
 from .views import (
     AdminAutoOrderViewSet,
+    AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
+    AdminJedalnicekUploadViewSet,
+    AdminSchoolViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
@@ -59,6 +62,15 @@ router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan"
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
 router.register(r"inbox", InboxViewSet, basename="inbox")
+router.register(r"admin/schools", AdminSchoolViewSet, basename="admin-school")
+router.register(
+    r"admin/edupage-uploads", AdminEdupageUploadViewSet, basename="admin-edupage-upload"
+)
+router.register(
+    r"admin/jedalnicek-uploads",
+    AdminJedalnicekUploadViewSet,
+    basename="admin-jedalnicek-upload",
+)
 
 urlpatterns = [
     path("", include(router.urls)),

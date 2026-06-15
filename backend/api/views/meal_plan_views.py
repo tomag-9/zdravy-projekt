@@ -11,7 +11,13 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
+from ..models import (
+    DailyMealPlan,
+    JedalnicekEntry,
+    MealPlanItem,
+    MealTemplate,
+    PortionType,
+)
 from ..order_data import OrderData, safe_count
 from ..serializers_menu import (
     DailyMealPlanSerializer,
@@ -125,6 +131,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="by-date")
     def by_date(self, request):
         """GET /api/admin/meal-plans/by-date/?date=YYYY-MM-DD"""
+        from ..views.jedalnicek_import_views import JedalnicekEntrySerializer
+
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(
@@ -132,23 +140,46 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         date = parse_date_param(date_str)
+
+        import_entry_list = list(
+            JedalnicekEntry.objects.filter(date=date)
+            .select_related("diet")
+            .order_by("category", "menu_variant", "diet__name")
+        )
+        import_data = JedalnicekEntrySerializer(import_entry_list, many=True).data
+
+        has_import = bool(import_entry_list)
+
         try:
             plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
-            return Response(
+            payload = {
+                "exists": False,
+                "date": date_str,
+                "notes": "",
+                "items": [],
+            }
+            if has_import:
+                payload.update(
+                    {
+                        "import_entries": import_data,
+                        "has_import": True,
+                    }
+                )
+            return Response(payload)
+
+        payload = {
+            "exists": True,
+            **DailyMealPlanSerializer(plan, context={"request": request}).data,
+        }
+        if has_import:
+            payload.update(
                 {
-                    "exists": False,
-                    "date": date_str,
-                    "notes": "",
-                    "items": [],
+                    "import_entries": import_data,
+                    "has_import": True,
                 }
             )
-        return Response(
-            {
-                "exists": True,
-                **DailyMealPlanSerializer(plan, context={"request": request}).data,
-            }
-        )
+        return Response(payload)
 
     @action(detail=True, methods=["get"], url_path="gramage-report")
     def gramage_report(self, request, pk=None):

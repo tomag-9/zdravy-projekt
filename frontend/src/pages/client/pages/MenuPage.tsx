@@ -22,10 +22,24 @@ interface MealPlanItem {
   template_detail: MealTemplate;
 }
 
+export interface JedalnicekEntry {
+  id: number;
+  date: string;
+  category: MealKey;
+  category_display: string;
+  menu_variant: string;
+  diet: number | null;
+  diet_name: string | null;
+  name: string;
+  weight_grams: string | null;
+}
+
 interface MealPlanResponse {
   exists: boolean;
   date: string;
   items: MealPlanItem[];
+  import_entries: JedalnicekEntry[];
+  has_import: boolean;
 }
 
 interface WeekDay {
@@ -108,12 +122,12 @@ const MenuPage = () => {
               `${API_URL}/meal-plans/by-date/?date=${weekDay.date}`,
             );
             if (!res.ok) {
-              return [weekDay.date, { exists: false, date: weekDay.date, items: [] }];
+              return [weekDay.date, { exists: false, date: weekDay.date, items: [], import_entries: [], has_import: false }];
             }
             const data = (await res.json()) as MealPlanResponse;
             return [weekDay.date, data];
           } catch {
-            return [weekDay.date, { exists: false, date: weekDay.date, items: [] }];
+            return [weekDay.date, { exists: false, date: weekDay.date, items: [], import_entries: [], has_import: false }];
           }
         }),
       );
@@ -150,6 +164,20 @@ const MenuPage = () => {
     return grouped;
   }, [plan]);
 
+  const groupedImportEntries = useMemo(() => {
+    const grouped: Record<MealKey, JedalnicekEntry[]> = {
+      breakfast: [],
+      lunch: [],
+      snack: [],
+    };
+    (plan?.import_entries || []).forEach((entry) => {
+      if (entry.category in grouped) {
+        grouped[entry.category].push(entry);
+      }
+    });
+    return grouped;
+  }, [plan]);
+
   const letterClass = (letter: string) => {
     if (letter === "B") return "b";
     if (letter === "V") return "v";
@@ -157,12 +185,22 @@ const MenuPage = () => {
   };
 
   const mealColumns = (Object.keys(MEAL_META) as MealKey[]).map((mealKey) => {
+    const importEntries = groupedImportEntries[mealKey];
     const mealItems = groupedItems[mealKey];
+    const useImport = plan?.has_import && importEntries.length > 0;
     const Icon = MEAL_META[mealKey].icon;
-    const weightLabel = mealItems
-      .map((item) => item.template_detail?.weight_label)
-      .filter(Boolean)
-      .join(" · ");
+
+    // Weight label: from import (per-diet gramáže) or from templates
+    const weightLabel = useImport
+      ? importEntries
+          .filter((e) => !e.menu_variant || e.menu_variant === "A")
+          .filter((e) => e.weight_grams)
+          .map((e) => `${e.weight_grams}g`)
+          .slice(0, 1)
+          .join("")
+      : mealItems.map((item) => item.template_detail?.weight_label).filter(Boolean).join(" · ");
+
+    const isEmpty = !useImport && mealItems.length === 0;
 
     return (
       <div className="zp-menu-meal" key={mealKey}>
@@ -171,10 +209,38 @@ const MenuPage = () => {
           <span className="name">{MEAL_META[mealKey].label}</span>
           <span className="gram">{weightLabel}</span>
         </div>
-        {mealItems.length === 0 ? (
+        {isEmpty ? (
           <div className="zp-empty" style={{ padding: "12px 16px", fontSize: 13 }}>
             Nie je k dispozícii
           </div>
+        ) : useImport ? (
+          // Render from import entries — group by variant
+          Object.entries(
+            importEntries.reduce<Record<string, JedalnicekEntry[]>>((acc, e) => {
+              const key = e.menu_variant || "_";
+              if (!acc[key]) acc[key] = [];
+              acc[key].push(e);
+              return acc;
+            }, {})
+          ).map(([variant, entries]) => (
+            <div className="zp-menu-item" key={variant}>
+              {variant !== "_" && (
+                <span className={`letter ${letterClass(variant)}`}>{variant}</span>
+              )}
+              <div className="body">
+                {/* Show first entry's name (diets may differ but name is same) */}
+                <div className="ttl">{entries[0].name}</div>
+                {entries.some((e) => e.weight_grams) && (
+                  <div className="desc">
+                    {entries
+                      .filter((e) => e.weight_grams)
+                      .map((e) => `${e.diet_name ?? "Štandard"}: ${e.weight_grams}g`)
+                      .join(" · ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))
         ) : (
           mealItems.map((item) => {
             const variant = item.menu_variant || item.template_detail?.menu_variant || "A";

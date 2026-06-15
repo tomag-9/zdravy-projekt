@@ -46,6 +46,8 @@ import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
 import PortionTypes from "./pages/admin/PortionTypes";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
+import EdupageUpload from "./pages/admin/EdupageUpload";
+import JedalnicekImport from "./pages/admin/JedalnicekImport";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -192,6 +194,8 @@ export default function App() {
                 <Route path="settings" element={<ErrorBoundary><SystemSettings /></ErrorBoundary>} />
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
+                <Route path="edupage" element={<ErrorBoundary><EdupageUpload /></ErrorBoundary>} />
+                <Route path="jedalnicek-import" element={<ErrorBoundary><JedalnicekImport /></ErrorBoundary>} />
               </Route>
 
               {/* Client Routes */}

@@ -21,11 +21,17 @@ from .auth_views import (
 # Diet views
 from .diet_views import DietViewSet
 
+# Edupage views
+from .edupage_views import AdminEdupageUploadViewSet, AdminSchoolViewSet
+
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
 # Inbox views
 from .inbox_views import InboxViewSet
+
+# Jedálniček import views
+from .jedalnicek_import_views import AdminJedalnicekUploadViewSet
 
 # Meal plan views
 from .meal_plan_views import (
@@ -64,6 +70,11 @@ __all__ = [
     "AdminAutoOrderViewSet",
     # Admin
     "AdminUserViewSet",
+    # Edupage
+    "AdminSchoolViewSet",
+    "AdminEdupageUploadViewSet",
+    # Jedálniček import
+    "AdminJedalnicekUploadViewSet",
     # Reports
     "AdminSummaryViewSet",
     "ReportTaskViewSet",

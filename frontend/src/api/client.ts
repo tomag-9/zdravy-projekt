@@ -61,6 +61,21 @@ export class ApiClient {
     return response.json();
   }
 
+  async postForm<T>(endpoint: string, data: FormData): Promise<T> {
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      credentials: 'include',
+      body: data,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error((err as { error?: string }).error || response.statusText);
+    }
+
+    return response.json();
+  }
+
   async delete(endpoint: string): Promise<void> {
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       method: 'DELETE',
