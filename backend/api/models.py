@@ -449,3 +449,157 @@ class PushNotificationAttempt(models.Model):
 
     def __str__(self) -> str:
         return f"PushNotificationAttempt({self.status}, …{self.endpoint[-20:]})"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Edupage integration
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+class School(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class JedalnicekUpload(models.Model):
+    """Weekly meal plan file uploaded by admin (format TBD, parsed later)."""
+
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSED = "processed"
+    STATUS_ERROR = "error"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Čaká na spracovanie"),
+        (STATUS_PROCESSED, "Spracovaný"),
+        (STATUS_ERROR, "Chyba"),
+    ]
+
+    week_start = models.DateField(
+        db_index=True, help_text="Monday of the week this plan covers"
+    )
+    filename = models.CharField(max_length=500)
+    file = models.FileField(upload_to="jedalnicek_uploads/%Y/%m/")
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    error_message = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="jedalnicek_uploads",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+        indexes = [
+            models.Index(fields=["week_start", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"JedalnicekUpload({self.week_start}, {self.filename})"
+
+    @property
+    def week_end(self) -> "datetime.date":
+        return self.week_start + datetime.timedelta(days=6)
+
+
+class JedalnicekEntry(models.Model):
+    """
+    One meal+diet combination for a specific day, parsed from a JedalnicekUpload.
+
+    Indexed by (date, category, menu_variant, diet) so the client and admin
+    can query a day's full menu in a single DB round-trip.
+    """
+
+    upload = models.ForeignKey(
+        JedalnicekUpload,
+        on_delete=models.CASCADE,
+        related_name="entries",
+    )
+    date = models.DateField(db_index=True)
+    category = models.CharField(max_length=20, choices=MealCategory.choices)
+    menu_variant = models.CharField(
+        max_length=10,
+        blank=True,
+        help_text="Leave blank for breakfast/snack. E.g. 'A', 'B'.",
+    )
+    diet = models.ForeignKey(
+        "Diet",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="jedalnicek_entries",
+        help_text="Null means the entry applies to all diets / is the default.",
+    )
+    name = models.CharField(max_length=500, help_text="Name of the meal")
+    weight_grams = models.DecimalField(
+        max_digits=8,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Gram weight for this diet (replaces base_weight × coefficient)",
+    )
+
+    class Meta:
+        ordering = ["date", "category", "menu_variant", "diet__name"]
+        indexes = [
+            models.Index(fields=["date", "category", "menu_variant"]),
+            models.Index(fields=["date", "diet"]),
+        ]
+
+    def __str__(self) -> str:
+        diet_name = self.diet.name if self.diet else "všetky"
+        return (
+            f"{self.date} {self.category}{self.menu_variant} [{diet_name}]: {self.name}"
+        )
+
+
+class EdupageUpload(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSED = "processed"
+    STATUS_ERROR = "error"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Čaká na spracovanie"),
+        (STATUS_PROCESSED, "Spracovaný"),
+        (STATUS_ERROR, "Chyba"),
+    ]
+
+    school = models.ForeignKey(
+        School,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploads",
+    )
+    date = models.DateField(db_index=True, help_text="Date the orders are for")
+    filename = models.CharField(max_length=500)
+    file = models.FileField(upload_to="edupage_uploads/%Y/%m/")
+    status = models.CharField(
+        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
+    )
+    error_message = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="edupage_uploads"
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+        indexes = [
+            models.Index(fields=["date", "school"]),
+            models.Index(fields=["date", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        school_name = self.school.name if self.school else "?"
+        return f"EdupageUpload({school_name}, {self.date}, {self.filename})"

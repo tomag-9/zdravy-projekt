@@ -35,6 +35,16 @@ const SECTIONS: NavSection[] = [
         ],
     },
     {
+        id: 'edupage',
+        label: 'Edupage',
+        icon: '🏫',
+        paths: ['/admin/edupage', '/admin/jedalnicek-import'],
+        items: [
+            { to: '/admin/edupage', label: 'Objednávky (Edupage)', icon: '📤', activeColor: 'text-indigo-700', activeBg: 'bg-indigo-50' },
+            { to: '/admin/jedalnicek-import', label: 'Jedálniček (import)', icon: '📅', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
+        ],
+    },
+    {
         id: 'settings',
         label: 'Nastavenia',
         icon: '⚙️',
