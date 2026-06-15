@@ -7,16 +7,13 @@ import { logger } from '../../lib/logger';
 interface AdUser {
   id: number;
   email: string;
-  first_name: string;
-  last_name: string;
+  company_name?: string;
   is_active: boolean;
   is_staff: boolean;
 }
 
 interface ClientCreateForm {
   email: string;
-  first_name: string;
-  last_name: string;
   company_name: string;
   ico: string;
   dic: string;
@@ -26,8 +23,6 @@ interface ClientCreateForm {
 
 interface ClientEditForm {
   email: string;
-  first_name: string;
-  last_name: string;
   company_name: string;
   ico: string;
   dic: string;
@@ -35,8 +30,6 @@ interface ClientEditForm {
 
 const EMPTY_CLIENT_FORM: ClientCreateForm = {
   email: "",
-  first_name: "",
-  last_name: "",
   company_name: "",
   ico: "",
   dic: "",
@@ -79,7 +72,7 @@ const ClientList: React.FC = () => {
   // Edit modal
   const editRequestRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<AdUser | null>(null);
-  const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", first_name: "", last_name: "", company_name: "", ico: "", dic: "" });
+  const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", company_name: "", ico: "", dic: "" });
   const [saving, setSaving] = useState(false);
 
   // Delete modal
@@ -136,9 +129,7 @@ const ClientList: React.FC = () => {
     setEditTarget(user);
     setEditForm({
       email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      company_name: "",
+      company_name: user.company_name || "",
       ico: "",
       dic: "",
     });
@@ -150,8 +141,6 @@ const ClientList: React.FC = () => {
       if (editRequestRef.current !== user.id) return;
       setEditForm({
         email: data.email,
-        first_name: data.first_name,
-        last_name: data.last_name,
         company_name: data.company_name || "",
         ico: data.profile?.ico || "",
         dic: data.profile?.dic || "",
@@ -211,7 +200,7 @@ const ClientList: React.FC = () => {
   const filteredUsers = users.filter(
     (u) =>
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (u.first_name + " " + u.last_name).toLowerCase().includes(searchTerm.toLowerCase()),
+      (u.company_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -267,9 +256,7 @@ const ClientList: React.FC = () => {
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {user.first_name || user.last_name
-                                ? `${user.first_name} ${user.last_name}`.trim()
-                                : user.email}
+                              {user.company_name || user.email}
                             </div>
                             <div className="text-xs text-gray-400">{user.email}</div>
                           </div>
@@ -321,25 +308,15 @@ const ClientList: React.FC = () => {
               <button type="button" aria-label="Zavrieť" onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
-                  <input
-                    type="text"
-                    value={clientForm.first_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, first_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
-                  <input
-                    type="text"
-                    value={clientForm.last_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, last_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Názov prevádzky <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={clientForm.company_name}
+                  onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
@@ -348,15 +325,6 @@ const ClientList: React.FC = () => {
                   required
                   value={clientForm.email}
                   onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Názov spoločnosti</label>
-                <input
-                  type="text"
-                  value={clientForm.company_name}
-                  onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
@@ -437,25 +405,15 @@ const ClientList: React.FC = () => {
               <button type="button" aria-label="Zavrieť" onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleEdit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
-                  <input
-                    type="text"
-                    value={editForm.first_name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
-                  <input
-                    type="text"
-                    value={editForm.last_name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Názov prevádzky <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.company_name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, company_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
@@ -464,15 +422,6 @@ const ClientList: React.FC = () => {
                   required
                   value={editForm.email}
                   onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Názov spoločnosti</label>
-                <input
-                  type="text"
-                  value={editForm.company_name}
-                  onChange={(e) => setEditForm((f) => ({ ...f, company_name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>

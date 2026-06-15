@@ -248,8 +248,6 @@ const ClientDetail: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
-        first_name: user.first_name,
-        last_name: user.last_name,
         email: user.email,
         is_staff: user.is_staff,
         settings: {
@@ -326,9 +324,7 @@ const ClientDetail: React.FC = () => {
             </div>
             <div>
               <h2 className="text-3xl font-bold text-gray-900">
-                {user.first_name || user.last_name
-                  ? `${user.first_name} ${user.last_name}`.trim()
-                  : user.email}
+                {user.profile?.company_name || user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
               {isApiClient && (
