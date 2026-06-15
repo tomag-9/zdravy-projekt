@@ -48,7 +48,7 @@ drf-spectacular==0.28.0
 
 # Observability
 django-prometheus==2.3.1
-sentry-sdk==2.54.0
+sentry-sdk==2.62.0
 
 
 # Code quality
