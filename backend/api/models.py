@@ -570,10 +570,10 @@ class EdupageUpload(models.Model):
     class Meta:
         ordering = ["-uploaded_at"]
         indexes = [
-            models.Index(fields=["date", "school"]),
+            models.Index(fields=["date", "operation"]),
             models.Index(fields=["date", "status"]),
         ]
 
     def __str__(self) -> str:
-        school_name = self.school.name if self.school else "?"
-        return f"EdupageUpload({school_name}, {self.date}, {self.filename})"
+        op_name = self.operation.company_name if self.operation else "?"
+        return f"EdupageUpload({op_name}, {self.date}, {self.filename})"
