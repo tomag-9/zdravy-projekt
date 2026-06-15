@@ -148,26 +148,38 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         )
         import_data = JedalnicekEntrySerializer(import_entry_list, many=True).data
 
+        has_import = bool(import_entry_list)
+
         try:
             plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
-            return Response(
+            payload = {
+                "exists": False,
+                "date": date_str,
+                "notes": "",
+                "items": [],
+            }
+            if has_import:
+                payload.update(
+                    {
+                        "import_entries": import_data,
+                        "has_import": True,
+                    }
+                )
+            return Response(payload)
+
+        payload = {
+            "exists": True,
+            **DailyMealPlanSerializer(plan, context={"request": request}).data,
+        }
+        if has_import:
+            payload.update(
                 {
-                    "exists": False,
-                    "date": date_str,
-                    "notes": "",
-                    "items": [],
                     "import_entries": import_data,
-                    "has_import": bool(import_entry_list),
+                    "has_import": True,
                 }
             )
-        return Response(
-            {
-                **DailyMealPlanSerializer(plan, context={"request": request}).data,
-                "import_entries": import_data,
-                "has_import": bool(import_entry_list),
-            }
-        )
+        return Response(payload)
 
     @action(detail=True, methods=["get"], url_path="gramage-report")
     def gramage_report(self, request, pk=None):
