@@ -141,12 +141,12 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             )
         date = parse_date_param(date_str)
 
-        import_entries = (
+        import_entry_list = list(
             JedalnicekEntry.objects.filter(date=date)
             .select_related("diet")
             .order_by("category", "menu_variant", "diet__name")
         )
-        import_data = JedalnicekEntrySerializer(import_entries, many=True).data
+        import_data = JedalnicekEntrySerializer(import_entry_list, many=True).data
 
         try:
             plan = self.get_queryset().get(date=date)
@@ -158,15 +158,14 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
                     "notes": "",
                     "items": [],
                     "import_entries": import_data,
-                    "has_import": len(import_data) > 0,
+                    "has_import": bool(import_entry_list),
                 }
             )
         return Response(
             {
-                "exists": True,
-                "import_entries": import_data,
-                "has_import": len(import_data) > 0,
                 **DailyMealPlanSerializer(plan, context={"request": request}).data,
+                "import_entries": import_data,
+                "has_import": bool(import_entry_list),
             }
         )
 

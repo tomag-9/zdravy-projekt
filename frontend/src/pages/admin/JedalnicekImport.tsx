@@ -22,11 +22,14 @@ interface QueuedFile {
 }
 
 const getMondayOfWeek = (date: Date): string => {
-    const d = new Date(date);
-    const day = d.getDay();
+    const day = date.getDay();
     const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    return d.toISOString().slice(0, 10);
+    const monday = new Date(date);
+    monday.setDate(date.getDate() + diff);
+    const y = monday.getFullYear();
+    const m = String(monday.getMonth() + 1).padStart(2, '0');
+    const d = String(monday.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
 };
 
 const formatWeekRange = (weekStart: string, weekEnd: string) => {
@@ -97,15 +100,7 @@ export default function JedalnicekImport() {
             form.append('week_start', item.weekStart);
             form.append('file', item.file);
 
-            const response = await fetch('/api/admin/jedalnicek-uploads/upload/', {
-                method: 'POST',
-                credentials: 'include',
-                body: form,
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error((err as { error?: string }).error || response.statusText);
-            }
+            await apiClient.postForm('/admin/jedalnicek-uploads/upload/', form);
             setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, uploading: false, done: true } : q)));
             await loadUploads();
         } catch (e) {
@@ -122,8 +117,12 @@ export default function JedalnicekImport() {
     };
 
     const deleteUpload = async (id: number) => {
-        await apiClient.delete(`/admin/jedalnicek-uploads/${id}/remove/`);
-        await loadUploads();
+        try {
+            await apiClient.delete(`/admin/jedalnicek-uploads/${id}/remove/`);
+            await loadUploads();
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Nepodarilo sa zmazať súbor');
+        }
     };
 
     const removeFromQueue = (id: string) => setQueue((prev) => prev.filter((q) => q.id !== id));
@@ -230,8 +229,8 @@ export default function JedalnicekImport() {
                                             type="date"
                                             value={item.weekStart}
                                             onChange={(e) => {
-                                                const d = new Date(e.target.value);
-                                                // snap to Monday
+                                                // noon prevents UTC midnight → wrong weekday in UTC- timezones
+                                                const d = new Date(e.target.value + 'T12:00:00');
                                                 const monday = getMondayOfWeek(d);
                                                 setQueue((prev) =>
                                                     prev.map((q) =>

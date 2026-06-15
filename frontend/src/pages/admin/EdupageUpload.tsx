@@ -117,15 +117,7 @@ export default function EdupageUpload() {
             form.append('file', item.file);
             if (item.schoolId) form.append('school_id', item.schoolId);
 
-            const response = await fetch('/api/admin/edupage-uploads/upload/', {
-                method: 'POST',
-                credentials: 'include',
-                body: form,
-            });
-            if (!response.ok) {
-                const err = await response.json().catch(() => ({}));
-                throw new Error((err as { error?: string }).error || response.statusText);
-            }
+            await apiClient.postForm('/admin/edupage-uploads/upload/', form);
             setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, uploading: false, done: true } : q)));
             await loadStatusAndUploads(date);
         } catch (e) {
@@ -145,8 +137,12 @@ export default function EdupageUpload() {
     const clearDone = () => setQueue((prev) => prev.filter((q) => !q.done));
 
     const deleteUpload = async (id: number) => {
-        await apiClient.delete(`/admin/edupage-uploads/${id}/remove/`);
-        await loadStatusAndUploads(date);
+        try {
+            await apiClient.delete(`/admin/edupage-uploads/${id}/remove/`);
+            await loadStatusAndUploads(date);
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Nepodarilo sa zmazať súbor');
+        }
     };
 
     const addSchool = async (e: React.FormEvent) => {
@@ -157,8 +153,7 @@ export default function EdupageUpload() {
         try {
             await apiClient.post('/admin/schools/', { name: newSchoolName.trim(), is_active: true });
             setNewSchoolName('');
-            await loadSchools();
-            await loadStatusAndUploads(date);
+            await Promise.all([loadSchools(), loadStatusAndUploads(date)]);
         } catch {
             setSchoolError('Chyba pri ukladaní. Overte či škola s týmto názvom už neexistuje.');
         } finally {
@@ -168,11 +163,10 @@ export default function EdupageUpload() {
 
     const toggleSchoolActive = async (school: School) => {
         await apiClient.put(`/admin/schools/${school.id}/`, { ...school, is_active: !school.is_active });
-        await loadSchools();
-        await loadStatusAndUploads(date);
+        await Promise.all([loadSchools(), loadStatusAndUploads(date)]);
     };
 
-    const pendingCount = queue.filter((q) => !q.done).length;
+    const pendingCount = queue.filter((q) => !q.done && !q.uploading).length;
     const doneCount = queue.filter((q) => q.done).length;
 
     return (

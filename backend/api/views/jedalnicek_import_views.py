@@ -120,8 +120,14 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["delete"])
     def remove(self, request: Request, pk: int | None = None) -> Response:
         upload = self.get_object()
-        upload.file.delete(save=False)
+        file_to_delete = upload.file
         upload.delete()
+        try:
+            file_to_delete.delete(save=False)
+        except Exception:
+            logger.exception(
+                "Failed to delete file %s after DB record removed", file_to_delete.name
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"])
@@ -133,7 +139,7 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        entries = (
+        entry_list = list(
             JedalnicekEntry.objects.filter(date=date_str)
             .select_related("diet")
             .order_by("category", "menu_variant", "diet__name")
@@ -142,13 +148,17 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(
             {
                 "date": date_str,
-                "has_import": entries.exists(),
-                "entries": JedalnicekEntrySerializer(entries, many=True).data,
+                "has_import": bool(entry_list),
+                "entries": JedalnicekEntrySerializer(entry_list, many=True).data,
             }
         )
 
     @action(detail=False, methods=["get"])
     def week_status(self, request: Request) -> Response:
         """Returns upload status for weeks, showing which weeks have uploads."""
-        uploads = JedalnicekUpload.objects.order_by("-week_start")[:20]
+        from django.db.models import Count
+
+        uploads = JedalnicekUpload.objects.annotate(
+            entry_count=Count("entries")
+        ).order_by("-week_start")[:20]
         return Response(JedalnicekUploadSerializer(uploads, many=True).data)

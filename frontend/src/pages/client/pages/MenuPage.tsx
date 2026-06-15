@@ -200,7 +200,7 @@ const MenuPage = () => {
           .join("")
       : mealItems.map((item) => item.template_detail?.weight_label).filter(Boolean).join(" · ");
 
-    const isEmpty = useImport ? importEntries.length === 0 : mealItems.length === 0;
+    const isEmpty = !useImport && mealItems.length === 0;
 
     return (
       <div className="zp-menu-meal" key={mealKey}>

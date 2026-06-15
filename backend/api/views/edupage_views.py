@@ -1,3 +1,4 @@
+import datetime
 import logging
 
 from django.db.models import Count, Q
@@ -69,6 +70,14 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        try:
+            parsed_date = datetime.date.fromisoformat(date)
+        except ValueError:
+            return Response(
+                {"error": "date must be YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         school = None
         if school_id:
             try:
@@ -81,7 +90,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
         upload = EdupageUpload.objects.create(
             school=school,
-            date=date,
+            date=parsed_date,
             filename=file.name,
             file=file,
             status=EdupageUpload.STATUS_PENDING,
@@ -130,6 +139,12 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["delete"])
     def remove(self, request: Request, pk: int | None = None) -> Response:
         upload = self.get_object()
-        upload.file.delete(save=False)
+        file_to_delete = upload.file
         upload.delete()
+        try:
+            file_to_delete.delete(save=False)
+        except Exception:
+            logger.exception(
+                "Failed to delete file %s after DB record removed", file_to_delete.name
+            )
         return Response(status=status.HTTP_204_NO_CONTENT)
