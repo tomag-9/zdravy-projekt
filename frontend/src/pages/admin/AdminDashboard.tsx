@@ -89,9 +89,9 @@ interface MealColors {
 }
 
 const BREAKFAST_COLORS: MealColors = {
-  header1: "bg-amber-600", header2: "bg-amber-500", cellBg: "bg-amber-50/50",
+  header1: "bg-amber-700", header2: "bg-amber-600", cellBg: "bg-amber-50/50",
   rowBorder: "border-l-4 border-amber-400",
-  cardHeader: "bg-amber-600", cardStdBg: "bg-amber-50", cardDietBg: "bg-amber-100/60",
+  cardHeader: "bg-amber-700", cardStdBg: "bg-amber-50", cardDietBg: "bg-amber-100/60",
   cardStdText: "text-amber-900", cardDietText: "text-amber-700",
 };
 
@@ -407,14 +407,16 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const GramCells = ({
     col_grams,
     extraCellClass = "",
-    positiveClass = "text-gray-900 font-medium",
+    positiveClass,
     tintCells = false,
   }: {
     col_grams: string[][];
     extraCellClass?: string;
     positiveClass?: string;
     tintCells?: boolean;
-  }) => (
+  }) => {
+    const resolved = positiveClass ?? "text-gray-900 font-medium";
+    return (
     <>
       {col_groups.map((cg, gi) => {
         const grams = col_grams[gi] || [];
@@ -422,7 +424,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         return cg.components.map((_, ci) => (
           <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
             {grams[ci] ? (
-              <span className={parseFloat(grams[ci]) > 0 ? positiveClass : "text-gray-300"}>
+              <span className={parseFloat(grams[ci]) > 0 ? resolved : "text-gray-300"}>
                 {parseFloat(grams[ci]) > 0 ? Math.round(parseFloat(grams[ci])) : "—"}
               </span>
             ) : (
@@ -432,7 +434,8 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         ));
       })}
     </>
-  );
+    );
+  };
 
   const SummaryRow = ({
     label,
@@ -440,12 +443,14 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     col_grams,
     rowClassName,
     cellClassName,
+    positiveClass,
   }: {
     label: string;
     count: number;
     col_grams: string[][];
     rowClassName: string;
     cellClassName: string;
+    positiveClass?: string;
   }) => (
     <tr className={rowClassName}>
       <td className={`px-4 py-2 sticky left-0 z-10 ${cellClassName}`}>
@@ -454,7 +459,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <td className={`px-3 py-2 text-center font-semibold ${cellClassName}`}>
         {count > 0 ? count : "—"}
       </td>
-      <GramCells col_grams={col_grams} extraCellClass={cellClassName} />
+      <GramCells col_grams={col_grams} extraCellClass={cellClassName} positiveClass={positiveClass} />
     </tr>
   );
 
@@ -553,9 +558,9 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                         key={si}
                         className={`border-b border-gray-100 hover:bg-gray-50 transition ${
                           sr.type === "diet" ? "bg-yellow-50" : ""
-                        } ${mealColors.rowBorder}`}
+                        }`}
                       >
-                        <td className={`px-4 py-1.5 text-gray-700 sticky left-0 z-10 ${sr.type === "diet" ? "bg-yellow-50 pl-8 text-xs italic text-yellow-700" : "bg-white"}`}>
+                        <td className={`px-4 py-1.5 text-gray-700 sticky left-0 z-10 ${mealColors.rowBorder} ${sr.type === "diet" ? "bg-yellow-50 pl-8 text-xs italic text-yellow-700" : "bg-white"}`}>
                           {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
                         </td>
                         <td className={`px-3 py-1.5 text-center font-semibold ${sr.type === "diet" ? "text-yellow-700 text-xs" : "text-gray-900"}`}>
@@ -586,6 +591,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                     col_grams={row.standard_col_grams}
                     rowClassName="border-b border-emerald-100 bg-emerald-50/80"
                     cellClassName="bg-emerald-50/80 text-emerald-900"
+                    positiveClass="text-emerald-900 font-medium"
                   />
                   {row.diet_summary_rows.map((diet) => (
                     <SummaryRow
@@ -595,6 +601,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                       col_grams={diet.col_grams}
                       rowClassName="border-b border-amber-100 bg-amber-50/80"
                       cellClassName="bg-amber-50/80 text-amber-900"
+                      positiveClass="text-amber-900 font-medium"
                     />
                   ))}
                 </React.Fragment>
