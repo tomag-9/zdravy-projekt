@@ -7,7 +7,7 @@ import { logger } from '../../lib/logger';
 interface AdUser {
   id: number;
   email: string;
-  company_name?: string;
+  profile?: { company_name: string };
   is_active: boolean;
   is_staff: boolean;
 }
@@ -129,7 +129,7 @@ const ClientList: React.FC = () => {
     setEditTarget(user);
     setEditForm({
       email: user.email,
-      company_name: user.company_name || "",
+      company_name: user.profile?.company_name || "",
       ico: "",
       dic: "",
     });
@@ -200,7 +200,7 @@ const ClientList: React.FC = () => {
   const filteredUsers = users.filter(
     (u) =>
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (u.company_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()),
+      (u.profile?.company_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -256,7 +256,7 @@ const ClientList: React.FC = () => {
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {user.company_name || user.email}
+                              {user.profile?.company_name || user.email}
                             </div>
                             <div className="text-xs text-gray-400">{user.email}</div>
                           </div>
