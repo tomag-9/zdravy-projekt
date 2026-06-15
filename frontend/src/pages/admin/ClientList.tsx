@@ -20,7 +20,7 @@ interface ClientCreateForm {
   company_name: string;
   ico: string;
   dic: string;
-  client_type: "app" | "api";
+  is_edupage: boolean;
   api_identifier: string;
 }
 
@@ -31,6 +31,8 @@ interface ClientEditForm {
   company_name: string;
   ico: string;
   dic: string;
+  is_edupage: boolean;
+  api_identifier: string;
 }
 
 const EMPTY_CLIENT_FORM: ClientCreateForm = {
@@ -40,7 +42,7 @@ const EMPTY_CLIENT_FORM: ClientCreateForm = {
   company_name: "",
   ico: "",
   dic: "",
-  client_type: "app",
+  is_edupage: false,
   api_identifier: "",
 };
 
@@ -79,7 +81,7 @@ const ClientList: React.FC = () => {
   // Edit modal
   const editRequestRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<AdUser | null>(null);
-  const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", first_name: "", last_name: "", company_name: "", ico: "", dic: "" });
+  const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", first_name: "", last_name: "", company_name: "", ico: "", dic: "", is_edupage: false, api_identifier: "" });
   const [saving, setSaving] = useState(false);
 
   // Delete modal
@@ -141,6 +143,8 @@ const ClientList: React.FC = () => {
       company_name: "",
       ico: "",
       dic: "",
+      is_edupage: false,
+      api_identifier: "",
     });
     editRequestRef.current = user.id;
     try {
@@ -155,6 +159,8 @@ const ClientList: React.FC = () => {
         company_name: data.company_name || "",
         ico: data.profile?.ico || "",
         dic: data.profile?.dic || "",
+        is_edupage: data.profile?.is_edupage ?? false,
+        api_identifier: data.profile?.api_identifier || "",
       });
     } catch (e) {
       logger.error(e);
@@ -380,35 +386,24 @@ const ClientList: React.FC = () => {
                   />
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Typ klienta <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <select
-                    value={clientForm.client_type}
-                    onChange={(e) => setClientForm((f) => ({ ...f, client_type: e.target.value as "app" | "api", api_identifier: "" }))}
-                    className="block w-full px-4 py-2.5 pr-8 text-gray-700 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                  >
-                    <option value="app">Používateľ aplikácie</option>
-                    <option value="api">API používateľ</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
-                    <svg className="fill-current h-4 w-4" viewBox="0 0 20 20">
-                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  {clientForm.client_type === "app"
-                    ? "Používateľ sa prihlasuje heslom. Po vytvorení dostane email s odkazom na nastavenie hesla."
-                    : "API používateľ sa neprihlasuje. Po vytvorení dostane notifikačný email."}
-                </p>
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  id="create-is-edupage"
+                  type="checkbox"
+                  checked={clientForm.is_edupage}
+                  onChange={(e) => setClientForm((f) => ({ ...f, is_edupage: e.target.checked, api_identifier: "" }))}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="create-is-edupage" className="text-sm font-medium text-gray-700">
+                  Edupage prevádzka
+                </label>
               </div>
-              {clientForm.client_type === "api" && (
+              {clientForm.is_edupage && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">API identifikátor</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
                   <input
                     type="text"
-                    placeholder="Identifikátor pre párovanie dát"
+                    placeholder="Identifikátor pre párovanie v Edupage súboroch"
                     value={clientForm.api_identifier}
                     onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
@@ -496,6 +491,30 @@ const ClientList: React.FC = () => {
                   />
                 </div>
               </div>
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  id="edit-is-edupage"
+                  type="checkbox"
+                  checked={editForm.is_edupage}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked }))}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="edit-is-edupage" className="text-sm font-medium text-gray-700">
+                  Edupage prevádzka
+                </label>
+              </div>
+              {editForm.is_edupage && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
+                  <input
+                    type="text"
+                    placeholder="Identifikátor pre párovanie v Edupage súboroch"
+                    value={editForm.api_identifier}
+                    onChange={(e) => setEditForm((f) => ({ ...f, api_identifier: e.target.value }))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
+                </div>
+              )}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setEditTarget(null)} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors">
                   Zrušiť

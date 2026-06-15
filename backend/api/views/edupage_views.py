@@ -8,29 +8,22 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..models import EdupageUpload, School
+from ..models import EdupageUpload, UserProfile
 
 logger = logging.getLogger(__name__)
 
 
-class SchoolSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = School
-        fields = ["id", "name", "is_active", "created_at"]
-        read_only_fields = ["id", "created_at"]
-
-
 class EdupageUploadSerializer(serializers.ModelSerializer):
-    school_name = serializers.CharField(
-        source="school.name", read_only=True, allow_null=True
+    operation_name = serializers.CharField(
+        source="operation.company_name", read_only=True, allow_null=True
     )
 
     class Meta:
         model = EdupageUpload
         fields = [
             "id",
-            "school",
-            "school_name",
+            "operation",
+            "operation_name",
             "date",
             "filename",
             "status",
@@ -40,14 +33,8 @@ class EdupageUploadSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "filename", "status", "error_message", "uploaded_at"]
 
 
-class AdminSchoolViewSet(viewsets.ModelViewSet):
-    queryset = School.objects.all()
-    serializer_class = SchoolSerializer
-    permission_classes = [permissions.IsAdminUser]
-
-
 class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = EdupageUpload.objects.select_related("school", "uploaded_by").all()
+    queryset = EdupageUpload.objects.select_related("operation", "uploaded_by").all()
     serializer_class = EdupageUploadSerializer
     permission_classes = [permissions.IsAdminUser]
 
@@ -61,7 +48,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
     def upload(self, request: Request) -> Response:
         date = request.data.get("date")
-        school_id = request.data.get("school_id")
+        operation_id = request.data.get("operation_id")
         file = request.FILES.get("file")
 
         if not date or not file:
@@ -78,18 +65,18 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        school = None
-        if school_id:
+        operation = None
+        if operation_id:
             try:
-                school = School.objects.get(pk=school_id)
-            except School.DoesNotExist:
+                operation = UserProfile.objects.get(pk=operation_id, is_edupage=True)
+            except UserProfile.DoesNotExist:
                 return Response(
-                    {"error": f"School {school_id} not found"},
+                    {"error": f"Edupage operation {operation_id} not found"},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
         upload = EdupageUpload.objects.create(
-            school=school,
+            operation=operation,
             date=parsed_date,
             filename=file.name,
             file=file,
@@ -103,29 +90,29 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False, methods=["get"])
     def status_by_date(self, request: Request) -> Response:
-        """Returns per-school upload status for a given date."""
+        """Returns per-operation upload status for a given date."""
         date = request.query_params.get("date")
         if not date:
             return Response(
                 {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        schools = School.objects.filter(is_active=True).annotate(
-            upload_count=Count("uploads", filter=Q(uploads__date=date))
+        operations = UserProfile.objects.filter(is_edupage=True).annotate(
+            upload_count=Count("edupage_uploads", filter=Q(edupage_uploads__date=date))
         )
 
         result = [
             {
-                "id": s.id,
-                "name": s.name,
-                "uploaded": s.upload_count > 0,
-                "upload_count": s.upload_count,
+                "id": op.id,
+                "name": op.company_name or op.user.email,
+                "uploaded": op.upload_count > 0,
+                "upload_count": op.upload_count,
             }
-            for s in schools
+            for op in operations
         ]
 
         total = len(result)
-        uploaded = sum(1 for s in result if s["uploaded"])
+        uploaded = sum(1 for op in result if op["uploaded"])
 
         return Response(
             {

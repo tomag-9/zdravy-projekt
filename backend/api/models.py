@@ -125,18 +125,7 @@ class GlobalSettings(models.Model):
 
 
 class UserProfile(models.Model):
-    """
-    Extended user profile with company information and client type.
-    Accounts are created exclusively by admin.
-    """
-
-    CLIENT_TYPE_APP = "app"
-    CLIENT_TYPE_API = "api"
-
-    CLIENT_TYPE_CHOICES = [
-        (CLIENT_TYPE_APP, "Používateľ aplikácie"),
-        (CLIENT_TYPE_API, "API používateľ"),
-    ]
+    """Extended user profile with company information."""
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
@@ -148,16 +137,15 @@ class UserProfile(models.Model):
     dic = models.CharField(
         max_length=20, blank=True, help_text="Tax identification number (DIČ)"
     )
-    client_type = models.CharField(
-        max_length=10,
-        choices=CLIENT_TYPE_CHOICES,
-        default=CLIENT_TYPE_APP,
+    is_edupage = models.BooleanField(
+        default=False,
         db_index=True,
+        help_text="True for operations that upload orders via Edupage",
     )
     api_identifier = models.CharField(
         max_length=255,
         blank=True,
-        help_text="API key/identifier used for data pairing (API users only)",
+        help_text="Identifier used to match this operation in Edupage file parsing",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     onboarding_completed = models.BooleanField(
@@ -169,9 +157,7 @@ class UserProfile(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return (
-            f"{self.company_name or self.user.email} ({self.get_client_type_display()})"
-        )
+        return self.company_name or self.user.email
 
 
 class PasswordResetToken(models.Model):
@@ -456,18 +442,6 @@ class PushNotificationAttempt(models.Model):
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-class School(models.Model):
-    name = models.CharField(max_length=200, unique=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class JedalnicekUpload(models.Model):
     """Weekly meal plan file uploaded by admin (format TBD, parsed later)."""
 
@@ -574,12 +548,12 @@ class EdupageUpload(models.Model):
         (STATUS_ERROR, "Chyba"),
     ]
 
-    school = models.ForeignKey(
-        School,
+    operation = models.ForeignKey(
+        "UserProfile",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="uploads",
+        related_name="edupage_uploads",
     )
     date = models.DateField(db_index=True, help_text="Date the orders are for")
     filename = models.CharField(max_length=500)
