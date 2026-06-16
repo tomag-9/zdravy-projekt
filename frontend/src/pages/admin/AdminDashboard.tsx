@@ -89,7 +89,7 @@ interface MealColors {
 }
 
 const BREAKFAST_COLORS: MealColors = {
-  header1: "bg-amber-700", header2: "bg-amber-600", cellBg: "bg-amber-50/50",
+  header1: "bg-amber-700", header2: "bg-amber-600", cellBg: "bg-amber-100",
   rowBorder: "border-l-4 border-amber-400",
   cardHeader: "bg-amber-700", cardStdBg: "bg-amber-50", cardDietBg: "bg-amber-100/60",
   cardStdText: "text-amber-900", cardDietText: "text-amber-700",
@@ -97,25 +97,25 @@ const BREAKFAST_COLORS: MealColors = {
 
 const LUNCH_COLORS: Record<string, MealColors> = {
   A: {
-    header1: "bg-sky-700", header2: "bg-sky-600", cellBg: "bg-sky-50/50",
+    header1: "bg-sky-700", header2: "bg-sky-600", cellBg: "bg-sky-100",
     rowBorder: "border-l-4 border-sky-400",
     cardHeader: "bg-sky-700", cardStdBg: "bg-sky-50", cardDietBg: "bg-sky-100/60",
     cardStdText: "text-sky-900", cardDietText: "text-sky-700",
   },
   B: {
-    header1: "bg-indigo-700", header2: "bg-indigo-600", cellBg: "bg-indigo-50/50",
+    header1: "bg-indigo-700", header2: "bg-indigo-600", cellBg: "bg-indigo-100",
     rowBorder: "border-l-4 border-indigo-400",
     cardHeader: "bg-indigo-700", cardStdBg: "bg-indigo-50", cardDietBg: "bg-indigo-100/60",
     cardStdText: "text-indigo-900", cardDietText: "text-indigo-700",
   },
   C: {
-    header1: "bg-violet-700", header2: "bg-violet-600", cellBg: "bg-violet-50/50",
+    header1: "bg-violet-700", header2: "bg-violet-600", cellBg: "bg-violet-100",
     rowBorder: "border-l-4 border-violet-400",
     cardHeader: "bg-violet-700", cardStdBg: "bg-violet-50", cardDietBg: "bg-violet-100/60",
     cardStdText: "text-violet-900", cardDietText: "text-violet-700",
   },
   V: {
-    header1: "bg-purple-700", header2: "bg-purple-600", cellBg: "bg-purple-50/50",
+    header1: "bg-purple-700", header2: "bg-purple-600", cellBg: "bg-purple-100",
     rowBorder: "border-l-4 border-purple-400",
     cardHeader: "bg-purple-700", cardStdBg: "bg-purple-50", cardDietBg: "bg-purple-100/60",
     cardStdText: "text-purple-900", cardDietText: "text-purple-700",
@@ -123,7 +123,7 @@ const LUNCH_COLORS: Record<string, MealColors> = {
 };
 
 const SNACK_COLORS: MealColors = {
-  header1: "bg-emerald-700", header2: "bg-emerald-600", cellBg: "bg-emerald-50/50",
+  header1: "bg-emerald-700", header2: "bg-emerald-600", cellBg: "bg-emerald-100",
   rowBorder: "border-l-4 border-emerald-400",
   cardHeader: "bg-emerald-700", cardStdBg: "bg-emerald-50", cardDietBg: "bg-emerald-100/60",
   cardStdText: "text-emerald-900", cardDietText: "text-emerald-700",
@@ -288,12 +288,7 @@ const AdminDashboard: React.FC = () => {
         </div>
       )}
 
-      {!loading && data && hasData && (
-        <>
-          <CountSummarySection sections={data.count_summary} />
-          <GramageTable data={data} />
-        </>
-      )}
+      {!loading && data && hasData && <GramageTable data={data} />}
     </div>
   );
 };
@@ -459,7 +454,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <td className={`px-3 py-2 text-center font-semibold ${cellClassName}`}>
         {count > 0 ? count : "—"}
       </td>
-      <GramCells col_grams={col_grams} extraCellClass={cellClassName} positiveClass={positiveClass} />
+      <GramCells col_grams={col_grams} tintCells positiveClass={positiveClass} />
     </tr>
   );
 
@@ -625,7 +620,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
               <tr key={row.label} className="border-b border-amber-50 bg-amber-50/40">
                 <td className="px-4 py-2 pl-10 sticky left-0 z-10 bg-amber-50/40 text-xs italic text-amber-700">↳ {row.label}</td>
                 <td className="px-3 py-2 text-center text-xs tabular-nums font-semibold text-amber-700">{row.count > 0 ? row.count : "—"}</td>
-                <GramCells col_grams={row.col_grams} extraCellClass="bg-amber-50/40" positiveClass="text-amber-800 font-medium" />
+                <GramCells col_grams={row.col_grams} tintCells positiveClass="text-amber-800 font-medium" />
               </tr>
             ))}
             <tr className="bg-slate-700 text-white border-t-2 border-slate-800">
@@ -637,6 +632,11 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
           </tfoot>
         </table>
       </div>
+      {data.count_summary.length > 0 && (
+        <div className="border-t border-gray-100 p-5">
+          <CountSummarySection sections={data.count_summary} />
+        </div>
+      )}
     </div>
   );
 };
