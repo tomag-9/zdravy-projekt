@@ -315,36 +315,26 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     [col_groups],
   );
 
-  const aggregatedRows = useMemo(() => {
-    type NumRow = { type: "standard" | "diet"; label: string; count: number; col_grams: number[][] };
-    const map = new Map<string, NumRow>();
-    for (const clientRow of rows) {
-      for (const sr of clientRow.sub_rows) {
-        const key = `${sr.type}::${sr.label}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            type: sr.type as "standard" | "diet",
-            label: sr.label,
-            count: 0,
-            col_grams: col_groups.map((cg) => Array<number>(cg.components.length).fill(0)),
-          });
-        }
-        const agg = map.get(key)!;
-        agg.count += sr.count;
-        sr.col_grams.forEach((group, gi) => {
-          group.forEach((val, ci) => {
-            agg.col_grams[gi][ci] = (agg.col_grams[gi][ci] ?? 0) + parseFloat(val || "0");
-          });
-        });
-      }
+  // One summary entry per col_group: count from count_summary, grams from totals[gi]
+  const perMenuSummary = useMemo(() => {
+    const countMap = new Map<string, number>();
+    for (const section of data.count_summary) {
+      const key = `${section.meal}_${section.variant}`;
+      countMap.set(
+        key,
+        section.standard.reduce((s, r) => s + r.count, 0) +
+          section.diets.reduce((s, r) => s + r.count, 0),
+      );
     }
-    const toStr = (r: NumRow) => ({ ...r, col_grams: r.col_grams.map((g) => g.map(String)) });
-    const all = [...map.values()];
-    return {
-      standard: all.filter((r) => r.type === "standard").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
-      diets: all.filter((r) => r.type === "diet").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
-    };
-  }, [rows, col_groups]);
+    return col_groups.map((cg, gi) => ({
+      label: cg.label,
+      meal: cg.meal,
+      variant: cg.variant,
+      count: countMap.get(`${cg.meal}_${cg.variant}`) ?? 0,
+      // gram values only for this col_group's index; empty for all others
+      col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
+    }));
+  }, [col_groups, data.count_summary, totals]);
 
   const GramCells = ({
     col_grams,
@@ -551,119 +541,33 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             })}
           </tbody>
           <tfoot>
+            {/* ── Per-menu summary: one row per col_group ── */}
             <tr className="bg-slate-600 text-white border-t-2 border-slate-700">
               <td colSpan={2 + totalComponents} className="px-4 py-2 font-bold text-xs uppercase tracking-wider sticky left-0 bg-slate-600 z-10">
                 Súhrn porcií
               </td>
             </tr>
-            {aggregatedRows.standard.map((row) => (
-              <tr key={row.label} className="border-b border-gray-100 bg-white">
-                <td className="px-4 py-2 sticky left-0 z-10 bg-white text-sm text-gray-700">{row.label}</td>
-                <td className="px-3 py-2 text-center text-sm tabular-nums font-semibold text-gray-900">{row.count > 0 ? row.count : "—"}</td>
-                <GramCells col_grams={row.col_grams} tintCells />
-              </tr>
-            ))}
-            {aggregatedRows.diets.map((row) => (
-              <tr key={row.label} className="border-b border-amber-50 bg-amber-50/40">
-                <td className="px-4 py-2 pl-10 sticky left-0 z-10 bg-amber-50/40 text-xs italic text-amber-700">↳ {row.label}</td>
-                <td className="px-3 py-2 text-center text-xs tabular-nums font-semibold text-amber-700">{row.count > 0 ? row.count : "—"}</td>
-                <GramCells col_grams={row.col_grams} tintCells positiveClass="text-amber-800 font-medium" />
-              </tr>
-            ))}
+            {perMenuSummary.map((item, gi) => {
+              const c = colGroupColors[gi];
+              return (
+                <tr key={`pm_${gi}`} className={`border-b border-gray-100 ${c.cardStdBg}`}>
+                  <td className={`px-4 py-2 sticky left-0 z-10 font-semibold text-sm ${c.cardStdBg} ${c.cardStdText} ${c.rowBorder}`}>
+                    {item.label}
+                  </td>
+                  <td className={`px-3 py-2 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
+                    {item.count > 0 ? item.count : "—"}
+                  </td>
+                  <GramCells col_grams={item.col_grams} tintCells positiveClass={`${c.cardStdText} font-bold`} />
+                </tr>
+              );
+            })}
+            {/* ── Grand total grams ── */}
             <tr className="bg-slate-700 text-white border-t-2 border-slate-800">
               <td colSpan={2} className="px-4 py-2.5 font-bold sticky left-0 bg-slate-700 z-10">
                 CELKOM (g)
               </td>
               <TotalCells />
             </tr>
-            {/* ── Count summary rows ── */}
-            {data.count_summary.length > 0 && (
-              <>
-                <tr className="bg-slate-600 text-white border-t-2 border-slate-700">
-                  <td colSpan={2 + totalComponents} className="px-4 py-2 font-bold text-xs uppercase tracking-wider sticky left-0 bg-slate-600 z-10">
-                    Súhrn počtov porcií
-                  </td>
-                </tr>
-                {data.count_summary.map((section) => {
-                  const c = getMealColors(section.meal, section.variant);
-                  const totalStd = section.standard.reduce((s, r) => s + r.count, 0);
-                  const totalDiets = section.diets.reduce((s, r) => s + r.count, 0);
-                  const EmptyCols = () => (
-                    <>
-                      {col_groups.map((cg, gi) =>
-                        cg.components.map((_, ci) => (
-                          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 ${colGroupColors[gi].cellBg}`} />
-                        ))
-                      )}
-                    </>
-                  );
-                  return (
-                    <React.Fragment key={`cs_${section.meal}_${section.variant}`}>
-                      {/* Section label row */}
-                      <tr className={`${c.header1} text-white`}>
-                        <td className={`px-4 py-2 font-bold text-sm sticky left-0 z-10 ${c.header1}`}>
-                          {section.label}
-                        </td>
-                        <td className={`px-3 py-2 text-center font-bold text-sm ${c.header1}`}>
-                          {totalStd + totalDiets}
-                        </td>
-                        {col_groups.map((cg, gi) =>
-                          cg.components.map((_, ci) => (
-                            <td key={`${gi}-${ci}`} className={`px-2 py-2 ${c.header1}`} />
-                          ))
-                        )}
-                      </tr>
-                      {/* Standard portion type rows */}
-                      {section.standard.map((row) => (
-                        <tr key={row.name} className={`border-b border-gray-100 ${c.cardStdBg}`}>
-                          <td className={`px-4 py-1.5 sticky left-0 z-10 text-sm font-medium ${c.cardStdBg} ${c.cardStdText}`}>
-                            {row.name}
-                          </td>
-                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
-                            {row.count}
-                          </td>
-                          <EmptyCols />
-                        </tr>
-                      ))}
-                      {section.standard.length > 1 && (
-                        <tr className={`border-b border-gray-200 ${c.cardStdBg}`}>
-                          <td className={`px-4 py-1.5 sticky left-0 z-10 text-xs font-bold uppercase tracking-wide opacity-70 ${c.cardStdBg} ${c.cardStdText}`}>
-                            Spolu štandard
-                          </td>
-                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
-                            {totalStd}
-                          </td>
-                          <EmptyCols />
-                        </tr>
-                      )}
-                      {/* Diet rows */}
-                      {section.diets.map((row) => (
-                        <tr key={row.label} className={`border-b border-gray-100 ${c.cardDietBg}`}>
-                          <td className={`px-4 py-1.5 pl-8 sticky left-0 z-10 text-xs italic ${c.cardDietBg} ${c.cardDietText}`}>
-                            ↳ {row.label}
-                          </td>
-                          <td className={`px-3 py-1.5 text-center font-semibold tabular-nums text-xs ${c.cardDietText}`}>
-                            {row.count}
-                          </td>
-                          <EmptyCols />
-                        </tr>
-                      ))}
-                      {section.diets.length > 0 && (
-                        <tr className={`border-b border-gray-200 ${c.cardDietBg}`}>
-                          <td className={`px-4 py-1.5 pl-8 sticky left-0 z-10 text-xs font-bold uppercase tracking-wide opacity-70 ${c.cardDietBg} ${c.cardDietText}`}>
-                            Spolu diéty
-                          </td>
-                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-xs ${c.cardDietText}`}>
-                            {totalDiets}
-                          </td>
-                          <EmptyCols />
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </>
-            )}
           </tfoot>
         </table>
       </div>
