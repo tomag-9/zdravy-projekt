@@ -552,7 +552,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                   </tr>
 
                   {isExpanded && row.sub_rows.map((sr, si) => {
-                    const mealColors = getMealColors(sr.meal, sr.variant ?? "");
+                    const mealColors = getMealColors(sr.meal, sr.type === "standard" ? (sr.variant ?? "") : "");
                     return (
                       <tr
                         key={si}

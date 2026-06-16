@@ -145,7 +145,7 @@ const ClientList: React.FC = () => {
       if (editRequestRef.current !== user.id) return;
       setEditForm({
         email: data.email,
-        company_name: data.company_name || "",
+        company_name: data.profile?.company_name || "",
         ico: data.profile?.ico || "",
         dic: data.profile?.dic || "",
         is_edupage: data.profile?.is_edupage ?? false,
@@ -445,7 +445,7 @@ const ClientList: React.FC = () => {
                   id="edit-is-edupage"
                   type="checkbox"
                   checked={editForm.is_edupage}
-                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked }))}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked, ...(!e.target.checked && { api_identifier: "" }) }))}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <label htmlFor="edit-is-edupage" className="text-sm font-medium text-gray-700">
