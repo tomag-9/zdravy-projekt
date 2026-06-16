@@ -18,7 +18,7 @@ interface UserSettings {
 }
 
 interface UserProfile {
-  client_type: "app" | "api";
+  is_edupage: boolean;
   api_identifier: string;
   company_name: string;
 }
@@ -302,10 +302,10 @@ const ClientDetail: React.FC = () => {
   if (!user)
     return <div className="p-8 text-center text-red-500">Klient nenájdený</div>;
 
-  const isApiClient = user.profile?.client_type === "api";
+  const isEdupageClient = user.profile?.is_edupage === true;
 
   // If the current tab is not valid for this client type, reset to dashboard.
-  if (isApiClient && activeTab !== "dashboard") {
+  if (isEdupageClient && activeTab !== "dashboard") {
     setActiveTab("dashboard");
   }
 
@@ -331,7 +331,7 @@ const ClientDetail: React.FC = () => {
                   : user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
-              {isApiClient && (
+              {isEdupageClient && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                     API klient
@@ -345,7 +345,7 @@ const ClientDetail: React.FC = () => {
               )}
             </div>
           </div>
-          {!isApiClient && (
+          {!isEdupageClient && (
             <button
               onClick={handleSendPasswordReset}
               disabled={sendingReset}
@@ -373,7 +373,7 @@ const ClientDetail: React.FC = () => {
         >
           Prehľad objednávok
         </button>
-        {!isApiClient && (
+        {!isEdupageClient && (
           <>
             <button
               onClick={() => setActiveTab("settings")}
@@ -404,7 +404,7 @@ const ClientDetail: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
               <h3 className="font-bold text-gray-900">História objednávok</h3>
-              {!isApiClient && (
+              {!isEdupageClient && (
                 <button
                   onClick={() => setShowNewOrderModal(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-sm"
@@ -691,7 +691,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "settings" && !isApiClient && (
+      {activeTab === "settings" && !isEdupageClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="grid gap-8 grid-cols-1 md:grid-cols-2">
             {/* Menus Section */}
@@ -834,7 +834,7 @@ const ClientDetail: React.FC = () => {
         </div>
       )}
 
-      {activeTab === "order_note" && !isApiClient && (
+      {activeTab === "order_note" && !isEdupageClient && (
         <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">

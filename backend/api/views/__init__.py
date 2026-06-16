@@ -22,7 +22,7 @@ from .auth_views import (
 from .diet_views import DietViewSet
 
 # Edupage views
-from .edupage_views import AdminEdupageUploadViewSet, AdminSchoolViewSet
+from .edupage_views import AdminEdupageUploadViewSet
 
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
@@ -71,7 +71,6 @@ __all__ = [
     # Admin
     "AdminUserViewSet",
     # Edupage
-    "AdminSchoolViewSet",
     "AdminEdupageUploadViewSet",
     # Jedálniček import
     "AdminJedalnicekUploadViewSet",

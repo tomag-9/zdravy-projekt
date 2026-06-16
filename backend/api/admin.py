@@ -29,7 +29,7 @@ class UserProfileInline(admin.StackedInline):
         "company_name",
         "ico",
         "dic",
-        "client_type",
+        "is_edupage",
         "api_identifier",
         "created_at",
     )
@@ -123,10 +123,10 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = (
         "company_name",
         "user_email",
-        "client_type",
+        "is_edupage",
         "created_at",
     )
-    list_filter = ("client_type", "created_at")
+    list_filter = ("is_edupage", "created_at")
     search_fields = ("company_name", "ico", "dic", "user__email", "api_identifier")
     readonly_fields = ("created_at",)
 
@@ -138,9 +138,9 @@ class UserProfileAdmin(admin.ModelAdmin):
             },
         ),
         (
-            "Client Type",
+            "Edupage",
             {
-                "fields": ("client_type", "api_identifier", "created_at"),
+                "fields": ("is_edupage", "api_identifier", "created_at"),
             },
         ),
     )

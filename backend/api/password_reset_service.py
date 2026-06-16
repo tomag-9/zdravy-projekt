@@ -110,9 +110,9 @@ def request_password_reset(email: str) -> None:
         logger.debug("Password reset requested for unknown/inactive email: %s", email)
         return
 
-    # API users never log in – silently skip to avoid leaking their existence.
-    if hasattr(user, "profile") and user.profile.client_type == "api":
-        logger.debug("Password reset skipped for API user: %s", email)
+    # Edupage operations never log in – silently skip to avoid leaking their existence.
+    if hasattr(user, "profile") and user.profile.is_edupage:
+        logger.debug("Password reset skipped for Edupage operation: %s", email)
         return
 
     # ── 6. Invalidate any existing tokens ────────────────────────────────────

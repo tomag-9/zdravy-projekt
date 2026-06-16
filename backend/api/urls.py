@@ -7,7 +7,6 @@ from .views import (
     AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
     AdminJedalnicekUploadViewSet,
-    AdminSchoolViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
@@ -62,7 +61,6 @@ router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan"
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
 router.register(r"inbox", InboxViewSet, basename="inbox")
-router.register(r"admin/schools", AdminSchoolViewSet, basename="admin-school")
 router.register(
     r"admin/edupage-uploads", AdminEdupageUploadViewSet, basename="admin-edupage-upload"
 )

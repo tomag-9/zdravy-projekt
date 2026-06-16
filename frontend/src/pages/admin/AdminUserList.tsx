@@ -23,7 +23,7 @@ interface ClientCreateForm {
   email: string;
   first_name: string;
   last_name: string;
-  client_type: "app" | "api";
+  is_edupage: boolean;
   api_identifier: string;
 }
 
@@ -37,7 +37,7 @@ const EMPTY_CLIENT_FORM: ClientCreateForm = {
   email: "",
   first_name: "",
   last_name: "",
-  client_type: "app",
+  is_edupage: false,
   api_identifier: "",
 };
 
@@ -409,45 +409,26 @@ const AdminUserList: React.FC = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Typ klienta <span className="text-red-500">*</span>
+              <div className="flex items-center gap-3 py-1">
+                <input
+                  id="admin-create-is-edupage"
+                  type="checkbox"
+                  checked={clientForm.is_edupage}
+                  onChange={(e) => setClientForm((f) => ({ ...f, is_edupage: e.target.checked, api_identifier: "" }))}
+                  className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="admin-create-is-edupage" className="text-sm font-medium text-gray-700">
+                  Edupage prevádzka
                 </label>
-                <div className="relative">
-                  <select
-                    value={clientForm.client_type}
-                    onChange={(e) =>
-                      setClientForm((f) => ({
-                        ...f,
-                        client_type: e.target.value as "app" | "api",
-                        api_identifier: "",
-                      }))
-                    }
-                    className="block w-full px-4 py-2.5 pr-8 text-gray-700 bg-white border border-gray-300 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
-                  >
-                    <option value="app">Používateľ aplikácie</option>
-                    <option value="api">API používateľ</option>
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
-                    <svg className="fill-current h-4 w-4" viewBox="0 0 20 20">
-                      <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                    </svg>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">
-                  {clientForm.client_type === "app"
-                    ? "Používateľ sa prihlasuje heslom. Po vytvorení dostane email s odkazom na nastavenie hesla."
-                    : "API používateľ sa neprihlasuje. Po vytvorení dostane notifikačný email."}
-                </p>
               </div>
-              {clientForm.client_type === "api" && (
+              {clientForm.is_edupage && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    API identifikátor
+                    Edupage identifikátor
                   </label>
                   <input
                     type="text"
-                    placeholder="Identifikátor pre párovanie dát"
+                    placeholder="Identifikátor pre párovanie v Edupage súboroch"
                     value={clientForm.api_identifier}
                     onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"

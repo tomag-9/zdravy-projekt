@@ -36,7 +36,7 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
             "company_name",
             "ico",
             "dic",
-            "client_type",
+            "is_edupage",
             "api_identifier",
             "created_at",
             "onboarding_completed",
@@ -219,8 +219,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
-    client_type = serializers.ChoiceField(
-        choices=UserProfile.CLIENT_TYPE_CHOICES,
+    is_edupage = serializers.BooleanField(
         required=False,
         write_only=True,
     )
@@ -256,7 +255,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_staff",
             "settings",
             "profile",
-            "client_type",
+            "is_edupage",
             "api_identifier",
             "company_name",
             "ico",
@@ -275,7 +274,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return normalized_email
 
     def create(self, validated_data: Dict[str, Any]) -> User:
-        client_type = validated_data.pop("client_type", UserProfile.CLIENT_TYPE_APP)
+        is_edupage = validated_data.pop("is_edupage", False)
         api_identifier = validated_data.pop("api_identifier", "")
         company_name = validated_data.pop("company_name", "") or ""
         ico = validated_data.pop("ico", "") or ""
@@ -295,10 +294,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         user.set_unusable_password()
         user.save()
 
-        # Create profile with client type and optional company details
         UserProfile.objects.create(
             user=user,
-            client_type=client_type,
+            is_edupage=is_edupage,
             api_identifier=api_identifier,
             company_name=company_name,
             ico=ico,
@@ -329,7 +327,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         being applied.
         """
         settings_data = self.initial_data.get("settings", None)
-        client_type = validated_data.pop("client_type", serializers.empty)
+        is_edupage = validated_data.pop("is_edupage", serializers.empty)
         api_identifier = validated_data.pop("api_identifier", serializers.empty)
         company_name = validated_data.pop("company_name", serializers.empty)
         ico = validated_data.pop("ico", serializers.empty)
@@ -356,12 +354,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         profile_needs_update = any(
             v is not serializers.empty
-            for v in (client_type, api_identifier, company_name, ico, dic)
+            for v in (is_edupage, api_identifier, company_name, ico, dic)
         )
         if profile_needs_update:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
-            if client_type is not serializers.empty:
-                profile.client_type = client_type
+            if is_edupage is not serializers.empty:
+                profile.is_edupage = is_edupage
             if api_identifier is not serializers.empty:
                 profile.api_identifier = api_identifier
             if company_name is not serializers.empty:
