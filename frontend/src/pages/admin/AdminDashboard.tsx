@@ -293,59 +293,6 @@ const AdminDashboard: React.FC = () => {
   );
 };
 
-// ── CountSummarySection ───────────────────────────────────────────────────────
-
-const CountSummarySection: React.FC<{ sections: CountSection[] }> = ({ sections }) => {
-  if (sections.length === 0) return null;
-
-  return (
-    <div className="space-y-3">
-      <h3 className="text-lg font-bold text-gray-800">Súhrn počtov porcií</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-        {sections.map((section) => {
-          const colors = getMealColors(section.meal, section.variant);
-          const totalStd = section.standard.reduce((s, r) => s + r.count, 0);
-          const totalDiets = section.diets.reduce((s, r) => s + r.count, 0);
-          return (
-            <div key={`${section.meal}_${section.variant}`} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className={`${colors.cardHeader} text-white px-4 py-3`}>
-                <div className="font-bold text-sm">{section.label}</div>
-                <div className="text-xs opacity-80 mt-0.5">Celkom: {totalStd + totalDiets} porcií</div>
-              </div>
-              <div className="divide-y divide-gray-100">
-                {section.standard.map((row) => (
-                  <div key={row.name} className={`flex items-center justify-between px-4 py-2 ${colors.cardStdBg}`}>
-                    <span className={`text-sm font-medium ${colors.cardStdText}`}>{row.name}</span>
-                    <span className={`text-sm font-bold tabular-nums ${colors.cardStdText}`}>{row.count}</span>
-                  </div>
-                ))}
-                {section.standard.length > 1 && (
-                  <div className={`flex items-center justify-between px-4 py-2 border-t border-gray-200 ${colors.cardStdBg}`}>
-                    <span className={`text-xs font-bold uppercase tracking-wide opacity-70 ${colors.cardStdText}`}>Spolu štandard</span>
-                    <span className={`text-sm font-bold tabular-nums ${colors.cardStdText}`}>{totalStd}</span>
-                  </div>
-                )}
-                {section.diets.map((row) => (
-                  <div key={row.label} className={`flex items-center justify-between px-4 py-2 pl-7 ${colors.cardDietBg}`}>
-                    <span className={`text-xs italic ${colors.cardDietText}`}>↳ {row.label}</span>
-                    <span className={`text-xs font-semibold tabular-nums ${colors.cardDietText}`}>{row.count}</span>
-                  </div>
-                ))}
-                {section.diets.length > 0 && (
-                  <div className={`flex items-center justify-between px-4 py-2 border-t border-gray-200 ${colors.cardDietBg}`}>
-                    <span className={`text-xs font-bold uppercase tracking-wide opacity-70 ${colors.cardDietText}`}>Spolu diéty</span>
-                    <span className={`text-xs font-bold tabular-nums ${colors.cardDietText}`}>{totalDiets}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
 // ── GramageTable ──────────────────────────────────────────────────────────────
 
 const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
@@ -629,14 +576,97 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
               </td>
               <TotalCells />
             </tr>
+            {/* ── Count summary rows ── */}
+            {data.count_summary.length > 0 && (
+              <>
+                <tr className="bg-slate-600 text-white border-t-2 border-slate-700">
+                  <td colSpan={2 + totalComponents} className="px-4 py-2 font-bold text-xs uppercase tracking-wider sticky left-0 bg-slate-600 z-10">
+                    Súhrn počtov porcií
+                  </td>
+                </tr>
+                {data.count_summary.map((section) => {
+                  const c = getMealColors(section.meal, section.variant);
+                  const totalStd = section.standard.reduce((s, r) => s + r.count, 0);
+                  const totalDiets = section.diets.reduce((s, r) => s + r.count, 0);
+                  const EmptyCols = () => (
+                    <>
+                      {col_groups.map((cg, gi) =>
+                        cg.components.map((_, ci) => (
+                          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 ${colGroupColors[gi].cellBg}`} />
+                        ))
+                      )}
+                    </>
+                  );
+                  return (
+                    <React.Fragment key={`cs_${section.meal}_${section.variant}`}>
+                      {/* Section label row */}
+                      <tr className={`${c.header1} text-white`}>
+                        <td className={`px-4 py-2 font-bold text-sm sticky left-0 z-10 ${c.header1}`}>
+                          {section.label}
+                        </td>
+                        <td className={`px-3 py-2 text-center font-bold text-sm ${c.header1}`}>
+                          {totalStd + totalDiets}
+                        </td>
+                        {col_groups.map((cg, gi) =>
+                          cg.components.map((_, ci) => (
+                            <td key={`${gi}-${ci}`} className={`px-2 py-2 ${c.header1}`} />
+                          ))
+                        )}
+                      </tr>
+                      {/* Standard portion type rows */}
+                      {section.standard.map((row) => (
+                        <tr key={row.name} className={`border-b border-gray-100 ${c.cardStdBg}`}>
+                          <td className={`px-4 py-1.5 sticky left-0 z-10 text-sm font-medium ${c.cardStdBg} ${c.cardStdText}`}>
+                            {row.name}
+                          </td>
+                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
+                            {row.count}
+                          </td>
+                          <EmptyCols />
+                        </tr>
+                      ))}
+                      {section.standard.length > 1 && (
+                        <tr className={`border-b border-gray-200 ${c.cardStdBg}`}>
+                          <td className={`px-4 py-1.5 sticky left-0 z-10 text-xs font-bold uppercase tracking-wide opacity-70 ${c.cardStdBg} ${c.cardStdText}`}>
+                            Spolu štandard
+                          </td>
+                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
+                            {totalStd}
+                          </td>
+                          <EmptyCols />
+                        </tr>
+                      )}
+                      {/* Diet rows */}
+                      {section.diets.map((row) => (
+                        <tr key={row.label} className={`border-b border-gray-100 ${c.cardDietBg}`}>
+                          <td className={`px-4 py-1.5 pl-8 sticky left-0 z-10 text-xs italic ${c.cardDietBg} ${c.cardDietText}`}>
+                            ↳ {row.label}
+                          </td>
+                          <td className={`px-3 py-1.5 text-center font-semibold tabular-nums text-xs ${c.cardDietText}`}>
+                            {row.count}
+                          </td>
+                          <EmptyCols />
+                        </tr>
+                      ))}
+                      {section.diets.length > 0 && (
+                        <tr className={`border-b border-gray-200 ${c.cardDietBg}`}>
+                          <td className={`px-4 py-1.5 pl-8 sticky left-0 z-10 text-xs font-bold uppercase tracking-wide opacity-70 ${c.cardDietBg} ${c.cardDietText}`}>
+                            Spolu diéty
+                          </td>
+                          <td className={`px-3 py-1.5 text-center font-bold tabular-nums text-xs ${c.cardDietText}`}>
+                            {totalDiets}
+                          </td>
+                          <EmptyCols />
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </>
+            )}
           </tfoot>
         </table>
       </div>
-      {data.count_summary.length > 0 && (
-        <div className="border-t border-gray-100 p-5">
-          <CountSummarySection sections={data.count_summary} />
-        </div>
-      )}
     </div>
   );
 };
