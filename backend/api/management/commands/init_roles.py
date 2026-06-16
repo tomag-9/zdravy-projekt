@@ -1,7 +1,7 @@
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
-from api.models import UserProfile
+from api.models import ClientSettings, UserProfile
 
 
 class Command(BaseCommand):
@@ -56,6 +56,7 @@ class Command(BaseCommand):
                     "billing_name": "Demo prevádzka, s.r.o.",
                 },
             )
+            ClientSettings.objects.get_or_create(user=operation_user)
             self.stdout.write(self.style.SUCCESS('Created operation user "prevadzka"'))
             self.stdout.write(
                 self.style.WARNING(

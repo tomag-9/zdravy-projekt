@@ -16,6 +16,8 @@ import TourOverlay from "../components/onboarding/TourOverlay";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
 
+type MealKey = "breakfast" | "lunch" | "olovrant";
+
 const OrderPage = () => {
   const [searchParams] = useSearchParams();
   const toast = useToast();
@@ -129,6 +131,16 @@ const OrderPage = () => {
     Array.isArray(adminVisibleMeals) && adminVisibleMeals.length > 0
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
+  const firstVisibleMealKey = visibleMealsList[0]?.key as MealKey | undefined;
+  const isFullDayDeadlineOpen = firstVisibleMealKey
+    ? OrderService.checkDeadline(selectedDate, firstVisibleMealKey, globalDeadlines)
+    : false;
+
+  useEffect(() => {
+    if (fullDayOrder && !isFullDayDeadlineOpen) {
+      toggleFullDay();
+    }
+  }, [fullDayOrder, isFullDayDeadlineOpen, toggleFullDay]);
 
   useEffect(() => {
     if (!isTourActive || currentStep !== 7) return;
@@ -322,6 +334,9 @@ const OrderPage = () => {
 
   const fullDayMealLabels = visibleMealsList.map(m => m.label).join(' · ');
   const isHolidayDay = holidays?.has(selectedDate);
+  const allVisibleDeadlinesClosed = visibleMealsList.every((m) =>
+    !OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
+  );
 
   const mealCardsContent = (
     <div
@@ -332,9 +347,13 @@ const OrderPage = () => {
       <MealCard
         title="Celodenná objednávka"
         icon={CalendarDays}
-        isActive={fullDayOrder}
-        onToggle={toggleFullDay}
-        statusMessage={null}
+        isActive={fullDayOrder && isFullDayDeadlineOpen}
+        onToggle={() => isFullDayDeadlineOpen && toggleFullDay()}
+        statusMessage={
+          !isFullDayDeadlineOpen ? (
+            <>Termín prvého jedla uplynul · Celodenná objednávka je uzavretá</>
+          ) : null
+        }
         copyAction={fullDayOrder ? (
           <button
             className="zp-btn zp-btn--danger zp-btn--sm"
@@ -377,7 +396,7 @@ const OrderPage = () => {
         const key = rawKey as "breakfast" | "lunch" | "olovrant";
         const isEditable = OrderService.checkDeadline(selectedDate, key, globalDeadlines);
         const isHoliday = isHolidayDay;
-        const blockedByFullDay = fullDayOrder;
+        const blockedByFullDay = fullDayOrder && isFullDayDeadlineOpen;
 
         return (
           <MealCard
@@ -457,11 +476,7 @@ const OrderPage = () => {
         }
         disabled={
           holidays?.has(selectedDate) ||
-          (
-            !OrderService.checkDeadline(selectedDate, "breakfast", globalDeadlines) &&
-            !OrderService.checkDeadline(selectedDate, "lunch", globalDeadlines) &&
-            !OrderService.checkDeadline(selectedDate, "olovrant", globalDeadlines)
-          )
+          (fullDayOrder ? !isFullDayDeadlineOpen : allVisibleDeadlinesClosed)
         }
         disabledMessage={
           holidays?.has(selectedDate)

@@ -45,6 +45,23 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
 
+class ClientUserProfileDetailSerializer(serializers.ModelSerializer):
+    """Profile details visible to the operation itself."""
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "billing_name",
+            "ico",
+            "dic",
+            "is_edupage",
+            "api_identifier",
+            "created_at",
+            "onboarding_completed",
+        ]
+        read_only_fields = ["created_at"]
+
+
 class ClientSettingsSerializer(serializers.ModelSerializer):
     """Serializer for client-specific display settings (visible menus/meals/diets)."""
 
@@ -65,9 +82,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(required=True)
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
-    company_name = serializers.CharField(
-        source="profile.company_name", required=False, allow_blank=True, default=""
-    )
     billing_name = serializers.CharField(
         source="profile.billing_name", required=False, allow_blank=True, default=""
     )
@@ -88,7 +102,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
-            "company_name",
             "billing_name",
             "ico",
             "dic",
@@ -137,7 +150,6 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if profile_data is not None:
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile_fields = (
-                "company_name",
                 "billing_name",
                 "ico",
                 "dic",
@@ -157,7 +169,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_profile(self, obj: User) -> Optional[Dict[str, Any]]:
         """Return profile details if exists."""
         if hasattr(obj, "profile"):
-            return UserProfileDetailSerializer(obj.profile).data
+            return ClientUserProfileDetailSerializer(obj.profile).data
         return None
 
     def get_settings(self, obj: User) -> Dict[str, Any]:
@@ -316,6 +328,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             ico=ico,
             dic=dic,
         )
+        ClientSettings.objects.get_or_create(user=user)
 
         return user
 

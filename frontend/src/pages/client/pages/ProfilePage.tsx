@@ -13,7 +13,6 @@ import { logger } from '../../../lib/logger';
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface UserProfileData {
-    company_name: string;
     billing_name?: string;
     ico?: string;
     dic?: string;
@@ -26,7 +25,6 @@ interface UserProfile {
     email: string;
     first_name: string;
     last_name: string;
-    company_name: string;
     billing_name?: string;
     ico?: string;
     dic?: string;
@@ -57,7 +55,6 @@ const ProfilePage = () => {
     const [pwaMessage, setPwaMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
     const [formData, setFormData] = useState({
-        company_name: '',
         billing_name: '',
         ico: '',
         dic: '',
@@ -71,7 +68,6 @@ const ProfilePage = () => {
                 const data = await response.json();
                 setProfile(data);
                 setFormData({
-                    company_name: data.company_name || data.profile?.company_name || '',
                     billing_name: data.billing_name || data.profile?.billing_name || '',
                     ico: data.ico || data.profile?.ico || '',
                     dic: data.dic || data.profile?.dic || '',
@@ -198,7 +194,7 @@ const handleInstallPWA = () => {
                     </div>
                     <div>
                         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)", fontSize: 16 }}>
-                            {profile?.company_name || profile?.email}
+                            {profile?.billing_name || profile?.email}
                         </div>
                         <div style={{ fontSize: 13, color: "var(--ink-3)", marginTop: 2 }}>{profile?.email}</div>
                     </div>
@@ -207,22 +203,12 @@ const handleInstallPWA = () => {
 
             {/* Edit form */}
             <form onSubmit={handleSubmit}>
-                {/* Operation info section */}
+                {/* Billing info section */}
                 <div className="zp-settings-section">
-                    <h2>Informácie o prevádzke</h2>
+                    <h2>Informácie o spoločnosti</h2>
                     <div className="zp-settings-list" style={{ padding: "16px" }}>
                         <div className="zp-field">
-                            <label className="zp-label">Názov prevádzky (interný)</label>
-                            <input
-                                className="zp-input"
-                                type="text"
-                                value={formData.company_name}
-                                onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
-                                placeholder="Názov prevádzky"
-                            />
-                        </div>
-                        <div className="zp-field">
-                            <label className="zp-label">Názov spoločnosti (fakturácia)</label>
+                            <label className="zp-label">Názov spoločnosti</label>
                             <input
                                 className="zp-input"
                                 type="text"

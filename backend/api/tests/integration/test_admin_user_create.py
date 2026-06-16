@@ -15,7 +15,8 @@ import pytest
 from django.contrib.auth.models import User
 from rest_framework import status
 
-from api.models import PasswordResetToken, UserProfile
+from api.models import ClientSettings, Diet, PasswordResetToken, UserProfile
+from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
 
 pytestmark = pytest.mark.integration
 
@@ -116,6 +117,28 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="defaulttype@example.com")
         assert not user.profile.is_edupage
+
+    def test_create_user_gets_default_diet_settings(self, admin_client):
+        """Creating an operation creates settings with the default enabled diets."""
+        for name, description in DEFAULT_DIETS:
+            Diet.objects.update_or_create(
+                name=name,
+                defaults={"description": description, "is_active": True},
+            )
+
+        with patch(_SETUP_EMAIL):
+            res = admin_client.post(
+                API_URL,
+                {"email": "defaultdiets@example.com", "is_active": True},
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="defaultdiets@example.com")
+        settings = ClientSettings.objects.get(user=user)
+        assert set(settings.visible_diets.values_list("name", flat=True)) == set(
+            DEFAULT_DIET_NAMES
+        )
 
     def test_update_user_propagates_is_edupage(self, admin_client):
         """PATCH on existing user updates is_edupage on UserProfile."""

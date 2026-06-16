@@ -28,7 +28,7 @@ export default function ClientLayoutPC() {
 
   const title = PAGE_TITLES[location.pathname] ?? PAGE_TITLES['/home'];
 
-  const operationName = user?.company_name || user?.email || 'Prevádzka';
+  const operationName = user?.billing_name || user?.email || 'Prevádzka';
   const initials = operationName.slice(0, 2).toUpperCase();
 
   return (

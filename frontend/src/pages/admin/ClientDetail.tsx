@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
+import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
 
 interface Diet {
@@ -91,6 +92,7 @@ const ClientDetail: React.FC = () => {
 
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -347,7 +349,7 @@ const ClientDetail: React.FC = () => {
           </div>
           {!isEdupageClient && (
             <button
-              onClick={handleSendPasswordReset}
+              onClick={() => setShowResetConfirmation(true)}
               disabled={sendingReset}
               title="Odoslať reset hesla na email"
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition-all disabled:opacity-60"
@@ -867,6 +869,17 @@ const ClientDetail: React.FC = () => {
     </div>
 
       {/* ── Delete order confirmation modal ── */}
+      <ConfirmationModal
+        isOpen={showResetConfirmation}
+        onClose={() => setShowResetConfirmation(false)}
+        onConfirm={handleSendPasswordReset}
+        title="Odoslať reset hesla"
+        description={`Naozaj chcete odoslať reset link na ${user.email}? Prevádzka si cez tento odkaz bude môcť nastaviť nové heslo.`}
+        confirmText={sendingReset ? "Odosielam..." : "Odoslať"}
+        cancelText="Zrušiť"
+        variant="warning"
+      />
+
       {deleteOrderTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">

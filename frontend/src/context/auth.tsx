@@ -13,7 +13,6 @@ const API_URL = import.meta.env.VITE_API_URL || "/api";
 const CACHED_PROFILE_KEY = "cached_user_profile";
 
 interface UserProfile {
-  company_name: string;
   billing_name?: string;
   ico?: string;
   dic?: string;
@@ -26,7 +25,7 @@ interface User {
   email: string;
   first_name?: string;
   last_name?: string;
-  company_name?: string;
+  billing_name?: string;
   onboarding_completed?: boolean;
   groups?: string[];
   is_staff?: boolean;

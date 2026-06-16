@@ -286,6 +286,28 @@ describe("OrderPage Logic & Triggers", () => {
     expect(badges.length).toBeGreaterThan(0);
   });
 
+  it("Celodenná: is closed when the first visible meal deadline has passed", () => {
+    (OrderService.checkDeadline as Mock).mockImplementation(
+      (_date: string, meal: string) => meal !== "breakfast",
+    );
+
+    renderPage();
+
+    expect(
+      screen.getByText("Termín prvého jedla uplynul · Celodenná objednávka je uzavretá"),
+    ).toBeVisible();
+
+    const fullDaySwitch = screen.getByRole("switch", {
+      name: /Celodenná objednávka/i,
+    });
+    fireEvent.click(fullDaySwitch);
+
+    expect(
+      screen.queryByText("Celodenná objednávka je aktívna"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Odoslať objednávku").closest("button")).not.toBeDisabled();
+  });
+
   it("Submit button is disabled when ALL deadlines passed", () => {
     (OrderService.checkDeadline as Mock).mockReturnValue(false);
     renderPage();
@@ -298,7 +320,7 @@ describe("OrderPage Logic & Triggers", () => {
     ).toBeVisible();
   });
 
-  it("Submit button is enabled with 0 portions (zero order = Manuálna nulová)", () => {
+  it("Submit button is enabled with 0 portions (zero order = Bez objednávky)", () => {
     // Deadline not passed, but 0 portions → still enabled (intentional empty/null order)
     (OrderService.checkDeadline as Mock).mockReturnValue(true);
     renderPage();

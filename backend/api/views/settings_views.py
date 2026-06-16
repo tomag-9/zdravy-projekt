@@ -22,7 +22,7 @@ class UserProfileViewSet(viewsets.ViewSet):
         """
         Retrieve or update the authenticated user's profile.
 
-        - ``GET``: Return full profile including settings and company name.
+        - ``GET``: Return profile including settings and billing company name.
         - ``PUT``: Full update (all writable fields required).
         - ``PATCH``: Partial update (only provided fields are changed).
         """
