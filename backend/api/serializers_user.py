@@ -34,6 +34,7 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = [
             "company_name",
+            "billing_name",
             "ico",
             "dic",
             "is_edupage",
@@ -67,6 +68,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(
         source="profile.company_name", required=False, allow_blank=True, default=""
     )
+    billing_name = serializers.CharField(
+        source="profile.billing_name", required=False, allow_blank=True, default=""
+    )
     ico = serializers.CharField(
         source="profile.ico", required=False, allow_blank=True, allow_null=True
     )
@@ -85,6 +89,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "first_name",
             "last_name",
             "company_name",
+            "billing_name",
             "ico",
             "dic",
             "onboarding_completed",
@@ -130,18 +135,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
         user = super().update(instance, validated_data)
 
         if profile_data is not None:
-            profile = getattr(user, "profile", None)
-            if profile is not None:
-                for field in ("company_name", "ico", "dic", "onboarding_completed"):
-                    if field in profile_data:
-                        setattr(profile, field, profile_data[field])
-                profile.save(
-                    update_fields=[
-                        k
-                        for k in ("company_name", "ico", "dic", "onboarding_completed")
-                        if k in profile_data
-                    ]
-                )
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile_fields = (
+                "company_name",
+                "billing_name",
+                "ico",
+                "dic",
+                "onboarding_completed",
+            )
+            update_fields = [field for field in profile_fields if field in profile_data]
+            for field in update_fields:
+                setattr(profile, field, profile_data[field])
+            if update_fields:
+                profile.save(update_fields=update_fields)
 
         return user
 
@@ -233,6 +239,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
         allow_blank=True,
         write_only=True,
     )
+    billing_name = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
     ico = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -258,6 +269,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_edupage",
             "api_identifier",
             "company_name",
+            "billing_name",
             "ico",
             "dic",
         ]
@@ -277,6 +289,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         is_edupage = validated_data.pop("is_edupage", False)
         api_identifier = validated_data.pop("api_identifier", "")
         company_name = validated_data.pop("company_name", "") or ""
+        billing_name = validated_data.pop("billing_name", "") or ""
         ico = validated_data.pop("ico", "") or ""
         dic = validated_data.pop("dic", "") or ""
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
@@ -299,6 +312,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             is_edupage=is_edupage,
             api_identifier=api_identifier,
             company_name=company_name,
+            billing_name=billing_name,
             ico=ico,
             dic=dic,
         )
@@ -330,6 +344,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         is_edupage = validated_data.pop("is_edupage", serializers.empty)
         api_identifier = validated_data.pop("api_identifier", serializers.empty)
         company_name = validated_data.pop("company_name", serializers.empty)
+        billing_name = validated_data.pop("billing_name", serializers.empty)
         ico = validated_data.pop("ico", serializers.empty)
         dic = validated_data.pop("dic", serializers.empty)
 
@@ -354,7 +369,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         profile_needs_update = any(
             v is not serializers.empty
-            for v in (is_edupage, api_identifier, company_name, ico, dic)
+            for v in (is_edupage, api_identifier, company_name, billing_name, ico, dic)
         )
         if profile_needs_update:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
@@ -364,6 +379,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 profile.api_identifier = api_identifier
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
+            if billing_name is not serializers.empty:
+                profile.billing_name = billing_name or ""
             if ico is not serializers.empty:
                 profile.ico = ico or ""
             if dic is not serializers.empty:

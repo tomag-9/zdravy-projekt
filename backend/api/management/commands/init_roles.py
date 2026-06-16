@@ -1,6 +1,8 @@
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
+from api.models import UserProfile
+
 
 class Command(BaseCommand):
     help = "Initialize roles (groups) and test users"
@@ -37,21 +39,28 @@ class Command(BaseCommand):
         else:
             self.stdout.write('Superuser "admin" already exists')
 
-        # Create Client User
-        client_user, created = User.objects.get_or_create(
-            username="client",
-            defaults={"email": "client@example.com"},
+        # Create default operation user
+        operation_user, created = User.objects.get_or_create(
+            username="prevadzka",
+            defaults={"email": "prevadzka@example.com"},
         )
         if created:
-            client_user.set_password("client")
-            client_user.save()
+            operation_user.set_password("prevadzka")
+            operation_user.save()
             client_group = Group.objects.get(name="Client")
-            client_user.groups.add(client_group)
-            self.stdout.write(self.style.SUCCESS('Created user "client"'))
+            operation_user.groups.add(client_group)
+            UserProfile.objects.get_or_create(
+                user=operation_user,
+                defaults={
+                    "company_name": "Demo prevádzka",
+                    "billing_name": "Demo prevádzka, s.r.o.",
+                },
+            )
+            self.stdout.write(self.style.SUCCESS('Created operation user "prevadzka"'))
             self.stdout.write(
                 self.style.WARNING(
-                    "SECURITY WARNING: Created default 'client' user with weak password. CHANGE IN PRODUCTION!"
+                    "SECURITY WARNING: Created default 'prevadzka' user with weak password. CHANGE IN PRODUCTION!"
                 )
             )
         else:
-            self.stdout.write('User "client" already exists')
+            self.stdout.write('Operation user "prevadzka" already exists')

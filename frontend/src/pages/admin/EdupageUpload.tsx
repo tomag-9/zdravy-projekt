@@ -204,7 +204,7 @@ export default function EdupageUpload() {
 
                 {statusData && statusData.total_schools === 0 && (
                     <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-                        Žiadne prevádzky nie sú označené ako Edupage. Označ ich v <strong>Klienti → Správa klientov</strong>.
+                        Žiadne prevádzky nie sú označené ako Edupage. Označ ich v <strong>Prevádzky → Správa prevádzok</strong>.
                     </div>
                 )}
 

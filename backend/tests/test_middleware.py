@@ -4,7 +4,6 @@ Verifies that cache-control headers are applied to /api/ endpoints
 and not applied to non-API paths.
 """
 
-import pytest
 from django.http import HttpResponse
 from django.test import RequestFactory
 

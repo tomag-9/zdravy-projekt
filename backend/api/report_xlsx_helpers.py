@@ -3,6 +3,7 @@
 from typing import Any
 
 from .order_data import OrderData, safe_count
+from .utils import user_operation_name
 
 
 def xlsx_collect_columns(rows_data, meal_keys):
@@ -46,7 +47,7 @@ def xlsx_collect_columns(rows_data, meal_keys):
 def xlsx_build_column_meta(sorted_cats, meal_keys, meal_labels):
     """Build 3 header rows and column metadata list."""
     col_meta = [("fixed", None, "name", None)]
-    header_row_1 = ["Klient"]
+    header_row_1 = ["Prevádzka"]
     header_row_2 = [""]
     header_row_3 = [""]
 
@@ -177,8 +178,8 @@ def xlsx_write_data(ws, rows_data, meal_keys, sorted_cats, bold_font):
         user = row_info["user"]
         data = row_info["data"]
         visible_meals = row_info.get("visible_meals") or meal_keys
-        display_name = f"{user.first_name} {user.last_name}".strip() or user.email
-        row_vals = [display_name]
+        display_name = user_operation_name(user)
+        row_vals: list[Any] = [display_name]
         row_grand = 0
         for mk in meal_keys:
             meal_col_count = (

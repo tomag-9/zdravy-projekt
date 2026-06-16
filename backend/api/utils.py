@@ -16,6 +16,13 @@ def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
         raise DRFValidationError({param: "Invalid date format, use YYYY-MM-DD"})
 
 
+def user_operation_name(user) -> str:
+    """Return the internal operation name used in admin reports and exports."""
+    profile = getattr(user, "profile", None)
+    company_name = getattr(profile, "company_name", "") if profile else ""
+    return company_name or user.email
+
+
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:
     """
     Return {categories: [...], total: int} for a meal.

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Dict, List
 
 from ..order_data import OrderData, safe_count
 from ..report_xlsx_helpers import xlsx_collect_columns
+from ..utils import user_operation_name
 
 if TYPE_CHECKING:
     from openpyxl.styles import Alignment, Font, PatternFill
@@ -119,7 +120,7 @@ class XLSXReportExporter:
     def _build_column_meta(self, sorted_cats: Dict) -> tuple:
         """Build 3 header rows and column metadata list."""
         col_meta = [("fixed", None, "name", None)]
-        header_row_1 = ["Klient"]
+        header_row_1 = ["Prevádzka"]
         header_row_2 = [""]
         header_row_3 = [""]
 
@@ -255,7 +256,7 @@ class XLSXReportExporter:
             user = row_info["user"]
             data = row_info["data"]
             visible_meals = row_info.get("visible_meals") or self.meal_keys
-            display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+            display_name = user_operation_name(user)
             row_vals = [display_name]
             row_grand = 0
 

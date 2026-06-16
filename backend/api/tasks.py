@@ -41,7 +41,7 @@ def generate_report_pdf_task(self, date_str: str):
     target_date = datetime.date.fromisoformat(date_str)
     orders = (
         DailyOrder.objects.filter(date=target_date)
-        .select_related("user", "user__settings")
+        .select_related("user", "user__profile", "user__settings")
         .order_by("user__email")
     )
     pdf_bytes = PDFReportExporter(orders, date_str).generate()

@@ -21,6 +21,7 @@ interface UserProfile {
   is_edupage: boolean;
   api_identifier: string;
   company_name: string;
+  billing_name?: string;
 }
 
 interface AdminUser {
@@ -296,7 +297,7 @@ const ClientDetail: React.FC = () => {
   if (loading)
     return <div className="p-8 text-center text-gray-500">Načítavam...</div>;
   if (!user)
-    return <div className="p-8 text-center text-red-500">Klient nenájdený</div>;
+    return <div className="p-8 text-center text-red-500">Prevádzka nenájdená</div>;
 
   const isEdupageClient = user.profile?.is_edupage === true;
 
@@ -313,7 +314,7 @@ const ClientDetail: React.FC = () => {
           onClick={() => navigate("/admin/clients")}
           className="text-gray-500 hover:text-gray-900 mb-4 flex items-center"
         >
-          ← Späť na zoznam klientov
+          ← Späť na zoznam prevádzok
         </button>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -325,10 +326,15 @@ const ClientDetail: React.FC = () => {
                 {user.profile?.company_name || user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
+              {user.profile?.billing_name && (
+                <p className="text-sm text-gray-500">
+                  Fakturácia: {user.profile.billing_name}
+                </p>
+              )}
               {isEdupageClient && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    API klient
+                    Edupage prevádzka
                   </span>
                   {user.profile?.api_identifier && (
                     <span className="text-sm text-gray-500 font-mono">
@@ -416,7 +422,7 @@ const ClientDetail: React.FC = () => {
               </div>
             ) : recentOrders.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
-                Tento klient zatiaľ nemá žiadne objednávky.
+                Táto prevádzka zatiaľ nemá žiadne objednávky.
               </div>
             ) : (
               <table className="w-full text-left text-sm text-gray-600">
@@ -697,7 +703,7 @@ const ClientDetail: React.FC = () => {
                 Viditeľné menu
               </h3>
               <p className="text-sm text-gray-500 mb-4">
-                Vyberte, ktoré typy menu sa zobrazia pre tohto klienta.
+                Vyberte, ktoré typy menu sa zobrazia pre túto prevádzku.
               </p>
               <div className="space-y-3">
                 {ALL_MENUS.map((menu) => (
@@ -742,7 +748,7 @@ const ClientDetail: React.FC = () => {
                       onChange={() => {
                         if (meals.has(meal) && meals.size === 1) {
                           toastWarning(
-                            "Klient musí mať povolený aspoň jeden chod.",
+                            "Prevádzka musí mať povolený aspoň jeden chod.",
                           );
                           return;
                         }
@@ -778,7 +784,7 @@ const ClientDetail: React.FC = () => {
               </button>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Obmedzte, ktoré špeciálne diéty si klient môže vybrať.
+              Obmedzte, ktoré špeciálne diéty si prevádzka môže vybrať.
             </p>
 
             {allDiets.length === 0 ? (
@@ -836,13 +842,13 @@ const ClientDetail: React.FC = () => {
             </h3>
             <p className="text-sm text-gray-500 mb-4">
               Táto poznámka sa zobrazuje iba v admin dashboarde po rozkliknutí
-              klienta, nad súhrnnými číslami.
+              prevádzky, nad súhrnnými číslami.
             </p>
             <textarea
               value={adminOrderNote}
               onChange={(e) => setAdminOrderNote(e.target.value)}
               rows={6}
-              placeholder="Sem zadajte internú poznámku k objednávkam klienta..."
+              placeholder="Sem zadajte internú poznámku k objednávkam prevádzky..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>

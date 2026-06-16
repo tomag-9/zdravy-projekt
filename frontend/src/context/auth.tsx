@@ -14,6 +14,7 @@ const CACHED_PROFILE_KEY = "cached_user_profile";
 
 interface UserProfile {
   company_name: string;
+  billing_name?: string;
   ico?: string;
   dic?: string;
   registration_status: string;

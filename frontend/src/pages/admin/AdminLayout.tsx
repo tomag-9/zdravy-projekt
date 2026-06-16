@@ -27,11 +27,11 @@ const TOP_ITEMS: NavItem[] = [
 const SECTIONS: NavSection[] = [
     {
         id: 'clients',
-        label: 'Klienti',
+        label: 'Prevádzky',
         icon: '👥',
         paths: ['/admin/clients'],
         items: [
-            { to: '/admin/clients', label: 'Správa klientov', icon: '👥', activeColor: 'text-blue-700', activeBg: 'bg-blue-50' },
+            { to: '/admin/clients', label: 'Správa prevádzok', icon: '👥', activeColor: 'text-blue-700', activeBg: 'bg-blue-50' },
         ],
     },
     {

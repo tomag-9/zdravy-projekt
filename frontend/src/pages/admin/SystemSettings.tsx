@@ -237,9 +237,9 @@ const SystemSettings: React.FC = () => {
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Kontakt pre klientov</h2>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Kontakt pre prevádzky</h2>
                 <p className="text-sm text-gray-500 mb-6">
-                    Tieto údaje sa zobrazujú klientom pri porciách a diétach.
+                    Tieto údaje sa zobrazujú prevádzkam pri porciách a diétach.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <input

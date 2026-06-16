@@ -14,7 +14,6 @@ import time
 from unittest.mock import patch
 
 import pytest
-from django.contrib.auth.models import User
 from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone

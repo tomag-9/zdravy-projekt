@@ -28,11 +28,8 @@ export default function ClientLayoutPC() {
 
   const title = PAGE_TITLES[location.pathname] ?? PAGE_TITLES['/home'];
 
-  const initials = user?.first_name && user?.last_name
-    ? `${user.first_name[0]}${user.last_name[0]}`.toUpperCase()
-    : user?.first_name
-    ? user.first_name.slice(0, 2).toUpperCase()
-    : 'ZP';
+  const operationName = user?.company_name || user?.email || 'Prevádzka';
+  const initials = operationName.slice(0, 2).toUpperCase();
 
   return (
     <div className="pc-app">
@@ -63,12 +60,8 @@ export default function ClientLayoutPC() {
         >
           <span className="av">{initials}</span>
           <span className="who">
-            <span className="n">
-              {user?.first_name && user?.last_name
-                ? `${user.first_name} ${user.last_name}`
-                : user?.first_name || user?.company_name || 'Používateľ'}
-            </span>
-            <span className="o">{user?.company_name || ''}</span>
+            <span className="n">{operationName}</span>
+            <span className="o">{user?.email || ''}</span>
           </span>
         </button>
       </aside>

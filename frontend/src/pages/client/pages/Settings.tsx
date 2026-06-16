@@ -128,13 +128,8 @@ const Settings = () => {
             </span>
             <span className="body">
               <span className="ttl">
-                {user?.first_name && user?.last_name
-                  ? `${user.first_name} ${user.last_name}`
-                  : user?.company_name || "Môj profil"}
+                {user?.company_name || "Môj profil"}
               </span>
-              {user?.company_name && (
-                <span className="sub">{user.company_name}</span>
-              )}
               {user?.email && <span className="sub">{user.email}</span>}
             </span>
             <span className="chev">

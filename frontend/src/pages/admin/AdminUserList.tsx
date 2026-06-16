@@ -21,8 +21,8 @@ interface AdminCreateForm {
 
 interface ClientCreateForm {
   email: string;
-  first_name: string;
-  last_name: string;
+  company_name: string;
+  billing_name: string;
   is_edupage: boolean;
   api_identifier: string;
 }
@@ -35,8 +35,8 @@ const EMPTY_ADMIN_FORM: AdminCreateForm = {
 
 const EMPTY_CLIENT_FORM: ClientCreateForm = {
   email: "",
-  first_name: "",
-  last_name: "",
+  company_name: "",
+  billing_name: "",
   is_edupage: false,
   api_identifier: "",
 };
@@ -131,7 +131,7 @@ const AdminUserList: React.FC = () => {
         },
       );
       if (res.ok) {
-        success("Klient bol úspešne vytvorený.");
+        success("Prevádzka bola úspešne vytvorená.");
         setCreateMode(null);
         setClientForm(EMPTY_CLIENT_FORM);
         fetchUsers();
@@ -363,12 +363,12 @@ const AdminUserList: React.FC = () => {
         </div>
       )}
 
-      {/* ── Create client modal ── */}
+      {/* ── Create operation modal ── */}
       {createMode === "client" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Pridať klienta</h3>
+              <h3 className="text-xl font-bold text-gray-900">Pridať prevádzku</h3>
               <button
                 onClick={() => setCreateMode(null)}
                 className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
@@ -377,25 +377,30 @@ const AdminUserList: React.FC = () => {
               </button>
             </div>
             <form onSubmit={handleCreateClient} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
-                  <input
-                    type="text"
-                    value={clientForm.first_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, first_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
-                  <input
-                    type="text"
-                    value={clientForm.last_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, last_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov prevádzky <span className="text-red-500">*</span>
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(interný)</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={clientForm.company_name}
+                  onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov spoločnosti
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(fakturácia)</span>
+                </label>
+                <input
+                  type="text"
+                  value={clientForm.billing_name}
+                  onChange={(e) => setClientForm((f) => ({ ...f, billing_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

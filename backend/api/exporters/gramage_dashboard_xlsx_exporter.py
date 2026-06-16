@@ -35,7 +35,7 @@ class GramageDashboardXLSXExporter:
         right_align = Alignment(horizontal="right")
 
         # ── Column layout ───────────────────────────────────────────────────
-        # Columns: A=Klient/Riadok, B=Počet, then components
+        # Columns: A=Prevádzka/Riadok, B=Počet, then components
         BASE_COLS = 2  # A, B
         col_start = []  # 1-based start column for each col_group
         cur = BASE_COLS + 1
@@ -52,9 +52,9 @@ class GramageDashboardXLSXExporter:
         )
         ws.append([])  # blank row 2
 
-        # ── Header row 1: Klient, Počet, meal group labels ──────────────────
+        # ── Header row 1: Prevádzka, Počet, meal group labels ────────────────
         HDR_ROW = 3
-        ws.cell(row=HDR_ROW, column=1, value="Klient / Riadok")
+        ws.cell(row=HDR_ROW, column=1, value="Prevádzka / Riadok")
         ws.cell(row=HDR_ROW, column=2, value="Počet")
         ws.merge_cells(
             start_row=HDR_ROW, start_column=1, end_row=HDR_ROW + 1, end_column=1

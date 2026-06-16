@@ -164,7 +164,7 @@ const DietManager: React.FC = () => {
             type="text"
             value={newDietDescription}
             onChange={(e) => setNewDietDescription(e.target.value)}
-            placeholder="Popis diéty pre klienta"
+            placeholder="Popis diéty pre prevádzku"
             className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
           />
           <button
@@ -282,7 +282,7 @@ const DietManager: React.FC = () => {
               prev ? { ...prev, description: e.target.value } : prev,
             )
           }
-          placeholder="Popis diéty pre klienta"
+          placeholder="Popis diéty pre prevádzku"
           rows={4}
           className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none mb-6"
         />

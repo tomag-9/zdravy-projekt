@@ -14,6 +14,7 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 interface UserProfileData {
     company_name: string;
+    billing_name?: string;
     ico?: string;
     dic?: string;
     registration_status: string;
@@ -26,6 +27,7 @@ interface UserProfile {
     first_name: string;
     last_name: string;
     company_name: string;
+    billing_name?: string;
     ico?: string;
     dic?: string;
     date_joined: string;
@@ -56,10 +58,9 @@ const ProfilePage = () => {
 
     const [formData, setFormData] = useState({
         company_name: '',
+        billing_name: '',
         ico: '',
         dic: '',
-        first_name: '',
-        last_name: '',
         email: ''
     });
 
@@ -71,10 +72,9 @@ const ProfilePage = () => {
                 setProfile(data);
                 setFormData({
                     company_name: data.company_name || data.profile?.company_name || '',
+                    billing_name: data.billing_name || data.profile?.billing_name || '',
                     ico: data.ico || data.profile?.ico || '',
                     dic: data.dic || data.profile?.dic || '',
-                    first_name: data.first_name || '',
-                    last_name: data.last_name || '',
                     email: data.email || ''
                 });
             } else {
@@ -177,7 +177,7 @@ const handleInstallPWA = () => {
                 </button>
                 <div>
                     <h1>Môj profil</h1>
-                    <p>Spravujte svoje osobné údaje</p>
+                    <p>Spravujte údaje prevádzky</p>
                 </div>
                 <button
                     type="button"
@@ -207,17 +207,27 @@ const handleInstallPWA = () => {
 
             {/* Edit form */}
             <form onSubmit={handleSubmit}>
-                {/* Company info section */}
+                {/* Operation info section */}
                 <div className="zp-settings-section">
-                    <h2>Informácie o spoločnosti</h2>
+                    <h2>Informácie o prevádzke</h2>
                     <div className="zp-settings-list" style={{ padding: "16px" }}>
                         <div className="zp-field">
-                            <label className="zp-label">Názov spoločnosti</label>
+                            <label className="zp-label">Názov prevádzky (interný)</label>
                             <input
                                 className="zp-input"
                                 type="text"
                                 value={formData.company_name}
                                 onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
+                                placeholder="Názov prevádzky"
+                            />
+                        </div>
+                        <div className="zp-field">
+                            <label className="zp-label">Názov spoločnosti (fakturácia)</label>
+                            <input
+                                className="zp-input"
+                                type="text"
+                                value={formData.billing_name}
+                                onChange={(e) => setFormData({ ...formData, billing_name: e.target.value })}
                                 placeholder="Názov spoločnosti"
                             />
                         </div>
@@ -246,32 +256,10 @@ const handleInstallPWA = () => {
                     </div>
                 </div>
 
-                {/* Contact person section */}
+                {/* Account section */}
                 <div className="zp-settings-section">
-                    <h2>Kontaktná osoba</h2>
+                    <h2>Prihlasovacie údaje</h2>
                     <div className="zp-settings-list" style={{ padding: "16px" }}>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
-                            <div className="zp-field" style={{ marginBottom: 0 }}>
-                                <label className="zp-label">Krstné meno</label>
-                                <input
-                                    className="zp-input"
-                                    type="text"
-                                    value={formData.first_name}
-                                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                                    placeholder="Krstné meno"
-                                />
-                            </div>
-                            <div className="zp-field" style={{ marginBottom: 0 }}>
-                                <label className="zp-label">Priezvisko</label>
-                                <input
-                                    className="zp-input"
-                                    type="text"
-                                    value={formData.last_name}
-                                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                                    placeholder="Priezvisko"
-                                />
-                            </div>
-                        </div>
                         <div className="zp-field" style={{ marginBottom: 0 }}>
                             <label className="zp-label">
                                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>

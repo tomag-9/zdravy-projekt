@@ -326,9 +326,7 @@ const HomePage = () => {
     return `${day.charAt(0).toUpperCase() + day.slice(1)} · ${date}`;
   };
 
-  const greeting = user?.first_name
-    ? `Dobrý deň, ${user.first_name}.`
-    : user?.company_name
+  const greeting = user?.company_name
     ? `Dobrý deň, ${user.company_name}.`
     : "Dobrý deň.";
 
