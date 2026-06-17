@@ -20,6 +20,7 @@ interface OperationCreateForm {
   dic: string;
   is_edupage: boolean;
   api_identifier: string;
+  mealsguest_url: string;
 }
 
 interface OperationEditForm {
@@ -30,6 +31,7 @@ interface OperationEditForm {
   dic: string;
   is_edupage: boolean;
   api_identifier: string;
+  mealsguest_url: string;
 }
 
 const EMPTY_OPERATION_FORM: OperationCreateForm = {
@@ -40,6 +42,7 @@ const EMPTY_OPERATION_FORM: OperationCreateForm = {
   dic: "",
   is_edupage: false,
   api_identifier: "",
+  mealsguest_url: "",
 };
 
 // SVG icons
@@ -77,8 +80,10 @@ const ClientList: React.FC = () => {
   // Edit modal
   const editRequestRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<AdUser | null>(null);
-  const [editForm, setEditForm] = useState<OperationEditForm>({ email: "", company_name: "", billing_name: "", ico: "", dic: "", is_edupage: false, api_identifier: "" });
+  const [editForm, setEditForm] = useState<OperationEditForm>({ email: "", company_name: "", billing_name: "", ico: "", dic: "", is_edupage: false, api_identifier: "", mealsguest_url: "" });
   const [saving, setSaving] = useState(false);
+  const [testingUrl, setTestingUrl] = useState<"create" | "edit" | null>(null);
+  const [urlTestResult, setUrlTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   // Delete modal
   const [deleteTarget, setDeleteTarget] = useState<AdUser | null>(null);
@@ -140,6 +145,7 @@ const ClientList: React.FC = () => {
       dic: "",
       is_edupage: false,
       api_identifier: "",
+      mealsguest_url: "",
     });
     editRequestRef.current = user.id;
     try {
@@ -155,7 +161,9 @@ const ClientList: React.FC = () => {
         dic: data.profile?.dic || "",
         is_edupage: data.profile?.is_edupage ?? false,
         api_identifier: data.profile?.api_identifier || "",
+        mealsguest_url: data.profile?.mealsguest_url || "",
       });
+      setUrlTestResult(null);
     } catch (e) {
       logger.error(e);
     }
@@ -183,6 +191,29 @@ const ClientList: React.FC = () => {
       toastError("Chyba pri ukladaní.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const testMealsguestUrl = async (url: string, source: "create" | "edit") => {
+    if (!url.trim()) { setUrlTestResult({ ok: false, message: "URL je prázdna." }); return; }
+    setTestingUrl(source);
+    setUrlTestResult(null);
+    try {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/edupage-uploads/test-url/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (data.ok) {
+        setUrlTestResult({ ok: true, message: `✓ OK — ${data.total_portions} porcií (${(data.meals || []).join(", ")})${data.warnings?.length ? ` · ${data.warnings.join("; ")}` : ""}` });
+      } else {
+        setUrlTestResult({ ok: false, message: data.error || "Nepodarilo sa načítať URL." });
+      }
+    } catch (e) {
+      setUrlTestResult({ ok: false, message: "Chyba siete." });
+    } finally {
+      setTestingUrl(null);
     }
   };
 
@@ -385,7 +416,7 @@ const ClientList: React.FC = () => {
                   id="create-is-edupage"
                   type="checkbox"
                   checked={clientForm.is_edupage}
-                  onChange={(e) => setClientForm((f) => ({ ...f, is_edupage: e.target.checked, api_identifier: "" }))}
+                  onChange={(e) => setClientForm((f) => ({ ...f, is_edupage: e.target.checked, api_identifier: "", mealsguest_url: "" }))}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <label htmlFor="create-is-edupage" className="text-sm font-medium text-gray-700">
@@ -393,16 +424,41 @@ const ClientList: React.FC = () => {
                 </label>
               </div>
               {clientForm.is_edupage && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
-                  <input
-                    type="text"
-                    placeholder="Identifikátor pre párovanie v Edupage súboroch"
-                    value={clientForm.api_identifier}
-                    onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
+                    <input
+                      type="text"
+                      placeholder="Identifikátor pre párovanie v Edupage súboroch"
+                      value={clientForm.api_identifier}
+                      onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">MealsGuest URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="https://skola.edupage.org/menu/mealsGuest?id=TOKEN"
+                        value={clientForm.mealsguest_url}
+                        onChange={(e) => { setClientForm((f) => ({ ...f, mealsguest_url: e.target.value })); setUrlTestResult(null); }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                      />
+                      <button
+                        type="button"
+                        disabled={testingUrl === "create"}
+                        onClick={() => testMealsguestUrl(clientForm.mealsguest_url, "create")}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        {testingUrl === "create" ? "Testujem…" : "Test"}
+                      </button>
+                    </div>
+                    {urlTestResult && (
+                      <p className={`mt-1.5 text-xs ${urlTestResult.ok ? "text-green-600" : "text-red-600"}`}>{urlTestResult.message}</p>
+                    )}
+                  </div>
+                </>
               )}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setShowCreate(false)} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors">
@@ -486,7 +542,7 @@ const ClientList: React.FC = () => {
                   id="edit-is-edupage"
                   type="checkbox"
                   checked={editForm.is_edupage}
-                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked, ...(!e.target.checked && { api_identifier: "" }) }))}
+                  onChange={(e) => { setEditForm((f) => ({ ...f, is_edupage: e.target.checked, ...(!e.target.checked && { api_identifier: "", mealsguest_url: "" }) })); setUrlTestResult(null); }}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <label htmlFor="edit-is-edupage" className="text-sm font-medium text-gray-700">
@@ -494,16 +550,41 @@ const ClientList: React.FC = () => {
                 </label>
               </div>
               {editForm.is_edupage && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
-                  <input
-                    type="text"
-                    placeholder="Identifikátor pre párovanie v Edupage súboroch"
-                    value={editForm.api_identifier}
-                    onChange={(e) => setEditForm((f) => ({ ...f, api_identifier: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Edupage identifikátor</label>
+                    <input
+                      type="text"
+                      placeholder="Identifikátor pre párovanie v Edupage súboroch"
+                      value={editForm.api_identifier}
+                      onChange={(e) => setEditForm((f) => ({ ...f, api_identifier: e.target.value }))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">MealsGuest URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="https://skola.edupage.org/menu/mealsGuest?id=TOKEN"
+                        value={editForm.mealsguest_url}
+                        onChange={(e) => { setEditForm((f) => ({ ...f, mealsguest_url: e.target.value })); setUrlTestResult(null); }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                      />
+                      <button
+                        type="button"
+                        disabled={testingUrl === "edit"}
+                        onClick={() => testMealsguestUrl(editForm.mealsguest_url, "edit")}
+                        className="px-3 py-2 bg-gray-100 hover:bg-gray-200 disabled:opacity-50 text-gray-700 text-sm font-medium rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        {testingUrl === "edit" ? "Testujem…" : "Test"}
+                      </button>
+                    </div>
+                    {urlTestResult && (
+                      <p className={`mt-1.5 text-xs ${urlTestResult.ok ? "text-green-600" : "text-red-600"}`}>{urlTestResult.message}</p>
+                    )}
+                  </div>
+                </>
               )}
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => setEditTarget(null)} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors">

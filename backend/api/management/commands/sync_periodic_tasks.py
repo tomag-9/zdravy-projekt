@@ -84,7 +84,11 @@ class Command(BaseCommand):
                 self.style.WARNING(f"Deleted {count} daily report PeriodicTask(s)")
             )
             # Delete push reminder tasks
-            from api.signals import PUSH_REMINDER_TASK_PREFIX, WEEKLY_REMINDER_TASK_NAME
+            from api.signals import (
+                EDUPAGE_SCRAPE_TASK_PREFIX,
+                PUSH_REMINDER_TASK_PREFIX,
+                WEEKLY_REMINDER_TASK_NAME,
+            )
 
             push_count, _ = PeriodicTask.objects.filter(
                 name__startswith=PUSH_REMINDER_TASK_PREFIX
@@ -102,6 +106,14 @@ class Command(BaseCommand):
                     f"Deleted {weekly_count} weekly reminder PeriodicTask(s)"
                 )
             )
+            scrape_count, _ = PeriodicTask.objects.filter(
+                name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+            ).delete()
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Deleted {scrape_count} edupage scrape PeriodicTask(s)"
+                )
+            )
             return
 
         if mode == "verify":
@@ -109,12 +121,14 @@ class Command(BaseCommand):
             self._verify_tasks(gs)
             self._verify_push_tasks(gs)
             self._verify_weekly_task()
+            self._verify_edupage_scrape_tasks()
             return
 
         # Mode: fix
         self._sync_tasks(gs)
         self._sync_push_tasks(gs)
         self._sync_weekly_task()
+        self._sync_edupage_scrape_tasks(gs)
 
     def _verify_tasks(self, gs):
         from django_celery_beat.models import PeriodicTask
@@ -308,6 +322,51 @@ class Command(BaseCommand):
                     "  Run 'python manage.py sync_periodic_tasks --fix' to create it."
                 )
             )
+
+    def _verify_edupage_scrape_tasks(self):
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
+
+        self.stdout.write("\n--- Edupage Scrape Tasks ---")
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX)
+        )
+        if not tasks:
+            self.stdout.write(
+                self.style.ERROR(
+                    "✗ No edupage-scrape tasks found!\n"
+                    "  Run 'python manage.py sync_periodic_tasks --fix' to create them."
+                )
+            )
+        else:
+            for task in tasks:
+                schedule = (
+                    f"{task.crontab.hour}:{task.crontab.minute:02d} Mon–Fri"
+                    f" (tz: {task.crontab.timezone})"
+                    if task.crontab
+                    else "no schedule"
+                )
+                status = (
+                    self.style.SUCCESS("✓")
+                    if task.enabled
+                    else self.style.WARNING("⚠ disabled")
+                )
+                self.stdout.write(f"  {status} {task.name} → {schedule}")
+
+    def _sync_edupage_scrape_tasks(self, gs):
+        from api.signals import _sync_edupage_scrape_schedule
+
+        self.stdout.write("\n--- Syncing Edupage Scrape Tasks ---")
+        try:
+            _sync_edupage_scrape_schedule(gs)
+            self.stdout.write(self.style.SUCCESS("✓ Edupage scrape tasks synced!"))
+            self._verify_edupage_scrape_tasks()
+        except Exception as exc:
+            self.stdout.write(
+                self.style.ERROR(f"✗ Failed to sync edupage scrape tasks: {exc}")
+            )
+            logger.exception("Failed to sync edupage scrape tasks")
 
     def _sync_weekly_task(self):
         from api.signals import _sync_weekly_reminder_schedule
