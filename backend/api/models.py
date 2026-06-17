@@ -152,6 +152,11 @@ class UserProfile(models.Model):
         blank=True,
         help_text="Identifier used to match this operation in Edupage file parsing",
     )
+    mealsguest_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text="Full mealsGuest URL for HTML scraping, e.g. https://school.edupage.org/menu/mealsGuest?id=TOKEN",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     onboarding_completed = models.BooleanField(
         default=False,

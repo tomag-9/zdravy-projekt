@@ -357,6 +357,80 @@ def apply_auto_orders_task(self, date_str: str | None = None):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def scrape_edupage_orders_task(self, date_str: str | None = None):
+    """
+    Scrape mealsGuest HTML for all Edupage operations and upsert DailyOrder records.
+
+    Called by Celery Beat before each meal deadline so order counts are ready when
+    the kitchen needs them. Can also be triggered manually via the admin API.
+    """
+    try:
+        import datetime
+
+        from django.db import transaction
+        from django.utils import timezone
+
+        from api.edupage_scraper import EdupageScraper
+        from api.models import DailyOrder, UserProfile
+
+        target_date: datetime.date
+        if date_str:
+            target_date = datetime.date.fromisoformat(date_str)
+        else:
+            target_date = timezone.localdate()
+
+        profiles = (
+            UserProfile.objects.filter(is_edupage=True)
+            .exclude(mealsguest_url="")
+            .select_related("user")
+        )
+
+        scraper = EdupageScraper()
+        scraped = errors = skipped = 0
+
+        for profile in profiles:
+            try:
+                result = scraper.scrape(profile.mealsguest_url, target_date)
+            except Exception:
+                logger.exception(
+                    "scrape_edupage_orders_task: failed for %s", profile.mealsguest_url
+                )
+                errors += 1
+                continue
+
+            if not result.order_data:
+                logger.info(
+                    "scrape_edupage_orders_task: empty result for %s on %s (warnings=%s)",
+                    profile.company_name,
+                    target_date,
+                    result.warnings,
+                )
+                skipped += 1
+                continue
+
+            with transaction.atomic():
+                DailyOrder.objects.update_or_create(
+                    user=profile.user,
+                    date=target_date,
+                    defaults={"data": result.order_data},
+                )
+            scraped += 1
+
+        summary = {
+            "scraped": scraped,
+            "errors": errors,
+            "skipped": skipped,
+            "date": str(target_date),
+        }
+        logger.info("scrape_edupage_orders_task result: %s", summary)
+        return summary
+
+    except Exception as exc:
+        logger.exception("scrape_edupage_orders_task failed, retrying...")
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_daily_report_task(
     self, meals: list[str] | None = None, date_str: str | None = None
 ):

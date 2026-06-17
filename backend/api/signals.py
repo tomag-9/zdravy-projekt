@@ -27,6 +27,9 @@ PUSH_REMINDER_OFFSET_MINUTES = 15
 
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
+EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
+EDUPAGE_SCRAPE_OFFSET_MINUTES = 30
+
 
 def _capture_signal_failure(exc: Exception, area: str) -> None:
     """Report non-fatal signal sync failures when Sentry is configured."""
@@ -314,6 +317,106 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
         _capture_signal_failure(exc, "push_reminder_schedule")
 
 
+def _sync_edupage_scrape_schedule(settings_instance) -> None:
+    """
+    Create or update Celery Beat PeriodicTasks that fire EDUPAGE_SCRAPE_OFFSET_MINUTES
+    before each distinct meal deadline, Monday–Friday.
+
+    Meals sharing the same deadline are grouped → one scrape fires per unique time.
+    Orphaned tasks from previous configurations are deleted automatically.
+    """
+    import datetime
+
+    try:
+        from django.conf import settings
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+    except ImportError:
+        logger.warning(
+            "django_celery_beat not installed – skipping edupage scrape schedule sync."
+        )
+        return
+
+    try:
+        all_meal_types = ["breakfast", "lunch", "olovrant"]
+
+        # Group meal types by deadline time (ignore is_day_before — scrape is always for today)
+        groups: dict[datetime.time, list[str]] = {}
+        for meal_type in all_meal_types:
+            deadline: datetime.time = getattr(
+                settings_instance, f"deadline_{meal_type}"
+            )
+            groups.setdefault(deadline, []).append(meal_type)
+
+        new_task_names: set[str] = set()
+
+        for deadline, meal_types_group in groups.items():
+            dt = datetime.datetime.combine(datetime.date.today(), deadline)
+            scrape_dt = dt - datetime.timedelta(minutes=EDUPAGE_SCRAPE_OFFSET_MINUTES)
+
+            if scrape_dt.date() < dt.date():
+                logger.warning(
+                    "edupage-scrape for %s: deadline %s is less than %d min from midnight, clamping to 00:00.",
+                    meal_types_group,
+                    deadline,
+                    EDUPAGE_SCRAPE_OFFSET_MINUTES,
+                )
+                scrape_time = datetime.time(0, 0)
+            else:
+                scrape_time = scrape_dt.time()
+
+            meal_label = "-".join(sorted(meal_types_group))
+            task_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}{meal_label}"
+            new_task_names.add(task_name)
+
+            schedule, _ = CrontabSchedule.objects.get_or_create(
+                minute=scrape_time.minute,
+                hour=scrape_time.hour,
+                day_of_week="1-5",
+                day_of_month="*",
+                month_of_year="*",
+                timezone=settings.TIME_ZONE,
+            )
+
+            PeriodicTask.objects.update_or_create(
+                name=task_name,
+                defaults={
+                    "task": "api.tasks.scrape_edupage_orders_task",
+                    "crontab": schedule,
+                    "args": json.dumps([]),
+                    "kwargs": json.dumps({}),
+                    "enabled": True,
+                    "description": (
+                        f"Edupage scrape: import order counts {EDUPAGE_SCRAPE_OFFSET_MINUTES} min "
+                        f"before {'/'.join(sorted(meal_types_group))} deadline "
+                        f"(deadline: {deadline.strftime('%H:%M')}, fires at {scrape_time.strftime('%H:%M')})."
+                    ),
+                },
+            )
+
+            logger.info(
+                "Edupage scrape task synced: %s → %02d:%02d Mon–Fri (tz: %s)",
+                task_name,
+                scrape_time.hour,
+                scrape_time.minute,
+                settings.TIME_ZONE,
+            )
+
+        # Remove orphaned tasks from previous deadline configurations
+        deleted_count, _ = (
+            PeriodicTask.objects.filter(name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX)
+            .exclude(name__in=new_task_names)
+            .delete()
+        )
+        if deleted_count:
+            logger.info(
+                "Deleted %d orphaned edupage-scrape periodic task(s)", deleted_count
+            )
+
+    except Exception as exc:
+        logger.exception("Failed to sync edupage scrape periodic tasks: %s", exc)
+        _capture_signal_failure(exc, "edupage_scrape_schedule")
+
+
 def _sync_weekly_reminder_schedule() -> None:
     """
     Create or update the Celery Beat PeriodicTask for the Sunday weekly reminder.
@@ -367,6 +470,7 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_daily_report_schedule(instance)
         _sync_push_reminder_schedule(instance)
         _sync_weekly_reminder_schedule()
+        _sync_edupage_scrape_schedule(instance)
 
         # Invalidate GlobalSettings cache
         from api.cache_service import clear_global_settings_cache

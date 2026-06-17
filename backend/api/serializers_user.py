@@ -39,6 +39,7 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
             "dic",
             "is_edupage",
             "api_identifier",
+            "mealsguest_url",
             "created_at",
             "onboarding_completed",
         ]
@@ -246,6 +247,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
         allow_blank=True,
         write_only=True,
     )
+    mealsguest_url = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        write_only=True,
+    )
     company_name = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -280,6 +286,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "profile",
             "is_edupage",
             "api_identifier",
+            "mealsguest_url",
             "company_name",
             "billing_name",
             "ico",
@@ -300,6 +307,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data: Dict[str, Any]) -> User:
         is_edupage = validated_data.pop("is_edupage", False)
         api_identifier = validated_data.pop("api_identifier", "")
+        mealsguest_url = validated_data.pop("mealsguest_url", "")
         company_name = validated_data.pop("company_name", "") or ""
         billing_name = validated_data.pop("billing_name", "") or ""
         ico = validated_data.pop("ico", "") or ""
@@ -323,6 +331,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             user=user,
             is_edupage=is_edupage,
             api_identifier=api_identifier,
+            mealsguest_url=mealsguest_url,
             company_name=company_name,
             billing_name=billing_name,
             ico=ico,
@@ -356,6 +365,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         settings_data = self.initial_data.get("settings", None)
         is_edupage = validated_data.pop("is_edupage", serializers.empty)
         api_identifier = validated_data.pop("api_identifier", serializers.empty)
+        mealsguest_url = validated_data.pop("mealsguest_url", serializers.empty)
         company_name = validated_data.pop("company_name", serializers.empty)
         billing_name = validated_data.pop("billing_name", serializers.empty)
         ico = validated_data.pop("ico", serializers.empty)
@@ -382,7 +392,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         profile_needs_update = any(
             v is not serializers.empty
-            for v in (is_edupage, api_identifier, company_name, billing_name, ico, dic)
+            for v in (
+                is_edupage,
+                api_identifier,
+                mealsguest_url,
+                company_name,
+                billing_name,
+                ico,
+                dic,
+            )
         )
         if profile_needs_update:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
@@ -390,6 +408,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 profile.is_edupage = is_edupage
             if api_identifier is not serializers.empty:
                 profile.api_identifier = api_identifier
+            if mealsguest_url is not serializers.empty:
+                profile.mealsguest_url = mealsguest_url or ""
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
             if billing_name is not serializers.empty:

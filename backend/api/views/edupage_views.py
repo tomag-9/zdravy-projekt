@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+from django.db import transaction
 from django.db.models import Count, Q
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -8,7 +9,8 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..models import EdupageUpload, UserProfile
+from ..edupage_scraper import EdupageScraper
+from ..models import DailyOrder, EdupageUpload, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +122,128 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 "total_schools": total,
                 "uploaded_schools": uploaded,
                 "schools": result,
+            }
+        )
+
+    @action(detail=False, methods=["post"], url_path="scrape")
+    def scrape(self, request: Request) -> Response:
+        """
+        Scrape mealsGuest HTML for one or all Edupage operations for a given date
+        and upsert the result as DailyOrder records.
+
+        Body: { "date": "YYYY-MM-DD", "operation_id": <int> (optional) }
+        When operation_id is omitted, all is_edupage operations with a mealsguest_url are scraped.
+        """
+        date_str = request.data.get("date")
+        operation_id = request.data.get("operation_id")
+
+        if not date_str:
+            return Response(
+                {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            return Response(
+                {"error": "date must be YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if operation_id:
+            qs = UserProfile.objects.filter(pk=operation_id, is_edupage=True)
+        else:
+            qs = UserProfile.objects.filter(is_edupage=True).exclude(mealsguest_url="")
+
+        results = []
+        scraper = EdupageScraper()
+
+        for profile in qs.select_related("user"):
+            if not profile.mealsguest_url:
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "skipped",
+                        "reason": "no mealsguest_url",
+                    }
+                )
+                continue
+
+            try:
+                result = scraper.scrape(profile.mealsguest_url, target_date)
+            except Exception as exc:
+                logger.exception("Scrape failed for operation %s", profile.pk)
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            if not result.order_data:
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "empty",
+                        "warnings": result.warnings,
+                    }
+                )
+                continue
+
+            with transaction.atomic():
+                order, created = DailyOrder.objects.update_or_create(
+                    user=profile.user,
+                    date=target_date,
+                    defaults={"data": result.order_data},
+                )
+
+            results.append(
+                {
+                    "operation_id": profile.pk,
+                    "name": str(profile),
+                    "status": "created" if created else "updated",
+                    "order_id": order.pk,
+                    "warnings": result.warnings,
+                    "unmapped_letters": result.unmapped_letters,
+                }
+            )
+
+        return Response({"date": date_str, "results": results})
+
+    @action(detail=False, methods=["post"], url_path="test-url")
+    def test_url(self, request: Request) -> Response:
+        """
+        Diagnostic endpoint: test whether a mealsGuest URL is reachable and parseable.
+
+        Body: { "url": "https://school.edupage.org/menu/mealsGuest?id=TOKEN" }
+        Always returns HTTP 200; use the `ok` field to check success.
+        """
+        url = request.data.get("url", "").strip()
+        if not url:
+            return Response({"ok": False, "error": "url is required"})
+        if not url.startswith("https://"):
+            return Response({"ok": False, "error": "url must start with https://"})
+
+        try:
+            result = EdupageScraper().scrape(url, datetime.date.today())
+        except Exception as exc:
+            logger.warning("test_url failed for %s: %s", url, exc)
+            return Response({"ok": False, "error": str(exc)})
+
+        total = sum(
+            meal.get("menuCounts", {}).get("A", 0)
+            for meal in result.order_data.values()
+        )
+        return Response(
+            {
+                "ok": True,
+                "total_portions": total,
+                "meals": list(result.order_data.keys()),
+                "warnings": result.warnings,
+                "unmapped_letters": result.unmapped_letters,
             }
         )
 
