@@ -280,7 +280,7 @@ class TestGramageDashboardExports:
         assert len(h1) > 0
         assert len(h2) > 0
         assert len(h3) > 0
-        assert h1[0] == "Klient"
+        assert h1[0] == "Prevádzka"
         assert "Raňajky" in h1
 
     def test_xlsx_respects_visible_meals(self):

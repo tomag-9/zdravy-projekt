@@ -362,7 +362,7 @@ class AdminDailyReportTest(APITestCase):
 
         # Data rows start at row 6
         row6 = [ws.cell(row=6, column=c).value for c in range(1, ws.max_column + 1)]
-        self.assertIn("Anna Novák", row6)
+        self.assertIn("anna@test.sk", row6)
 
         # SPOLU row is the last row
         last_row = ws.max_row

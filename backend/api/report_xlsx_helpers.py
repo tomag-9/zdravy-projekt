@@ -89,7 +89,10 @@ def xlsx_style_headers(
     center,
 ):
     """Apply fills, fonts, merges to header rows."""
+    from openpyxl.styles import PatternFill
+
     total_cols = len(col_meta)
+    menu_a_fill = PatternFill("solid", fgColor="DC2626")
     current_col = 2
     for mk in meal_keys:
         cats = sorted_cats[mk]
@@ -150,6 +153,10 @@ def xlsx_style_headers(
     for c_idx in range(1, total_cols + 1):
         cell = ws.cell(row=5, column=c_idx)
         cell.fill = row45_fill.get(c_idx, header_fill_main)
+        if c_idx > 1:
+            meta = col_meta[c_idx - 1]
+            if meta[2] == "menu" and str(meta[3]).upper() in {"A", "MENU A"}:
+                cell.fill = menu_a_fill
         cell.font = header_font
         cell.alignment = center
 
@@ -233,3 +240,23 @@ def xlsx_write_data(ws, rows_data, meal_keys, sorted_cats, bold_font):
     totals_row_num = ws.max_row
     for c_idx in range(1, ws.max_column + 1):
         ws.cell(row=totals_row_num, column=c_idx).font = bold_font
+
+
+def xlsx_apply_table_grid(ws, min_row=3):
+    """Add visible vertical and horizontal table lines to the used range."""
+    from openpyxl.styles import Border, Side
+
+    thin_border = Border(
+        left=Side(style="thin", color="CBD5E1"),
+        right=Side(style="thin", color="CBD5E1"),
+        top=Side(style="thin", color="CBD5E1"),
+        bottom=Side(style="thin", color="CBD5E1"),
+    )
+    for row in ws.iter_rows(
+        min_row=min_row,
+        max_row=ws.max_row,
+        min_col=1,
+        max_col=ws.max_column,
+    ):
+        for cell in row:
+            cell.border = thin_border

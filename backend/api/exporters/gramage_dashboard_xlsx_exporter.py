@@ -11,7 +11,7 @@ class GramageDashboardXLSXExporter:
 
     def generate(self) -> bytes:
         import openpyxl
-        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
         wb = openpyxl.Workbook()
         ws = wb.active
@@ -26,6 +26,8 @@ class GramageDashboardXLSXExporter:
         hdr_font = Font(bold=True, color="FFFFFF")
         hdr_fill = PatternFill("solid", fgColor="1E40AF")
         meal_hdr_fill = PatternFill("solid", fgColor="DBEAFE")
+        menu_a_fill = PatternFill("solid", fgColor="DC2626")
+        menu_b_fill = PatternFill("solid", fgColor="2563EB")
         cat_font = Font(bold=True)
         cat_fill = PatternFill("solid", fgColor="F1F5F9")
         diet_fill = PatternFill("solid", fgColor="FEF9C3")
@@ -33,6 +35,20 @@ class GramageDashboardXLSXExporter:
         total_fill = PatternFill("solid", fgColor="1E40AF")
         center = Alignment(horizontal="center", vertical="center", wrap_text=True)
         right_align = Alignment(horizontal="right")
+        thin_border = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1"),
+        )
+
+        def menu_variant_fill(label):
+            upper = str(label).upper()
+            if "MENU A" in upper:
+                return menu_a_fill
+            if "MENU B" in upper:
+                return menu_b_fill
+            return None
 
         # ── Column layout ───────────────────────────────────────────────────
         # Columns: A=Prevádzka/Riadok, B=Počet, then components
@@ -92,6 +108,12 @@ class GramageDashboardXLSXExporter:
                 cell.fill = hdr_fill
                 cell.alignment = center
 
+        for i, cg in enumerate(col_groups):
+            for j, comp in enumerate(cg["components"]):
+                fill = menu_variant_fill(comp["label"])
+                if fill:
+                    ws.cell(row=HDR_ROW + 1, column=col_start[i] + j).fill = fill
+
         # Meal group header cells get a lighter fill for the label row
         for i, cg in enumerate(col_groups):
             cell = ws.cell(row=HDR_ROW, column=col_start[i])
@@ -145,7 +167,11 @@ class GramageDashboardXLSXExporter:
             DATA_ROW += 1
 
             for sr in row["sub_rows"]:
-                f = diet_fill if sr["type"] == "diet" else None
+                f = (
+                    diet_fill
+                    if sr["type"] == "diet"
+                    else menu_variant_fill(sr["label"])
+                )
                 write_row(
                     sr["label"],
                     sr["count"],
@@ -233,6 +259,15 @@ class GramageDashboardXLSXExporter:
                             "solid", fgColor="FEF9C3"
                         )
                     DATA_ROW += 1
+
+        for row in ws.iter_rows(
+            min_row=HDR_ROW,
+            max_row=ws.max_row,
+            min_col=1,
+            max_col=ws.max_column,
+        ):
+            for cell in row:
+                cell.border = thin_border
 
         buf = io.BytesIO()
         wb.save(buf)
