@@ -14,6 +14,11 @@ from ..models import DailyOrder, EdupageUpload, UserProfile
 
 logger = logging.getLogger(__name__)
 
+EDUPAGE_SCRAPE_ERROR = (
+    "Edupage scraping failed. Check the configured URL and try again."
+)
+EDUPAGE_TEST_URL_ERROR = "URL could not be reached or parsed."
+
 
 class EdupageUploadSerializer(serializers.ModelSerializer):
     operation_name = serializers.CharField(
@@ -170,14 +175,14 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
             try:
                 result = scraper.scrape(profile.mealsguest_url, target_date)
-            except Exception as exc:
+            except Exception:
                 logger.exception("Scrape failed for operation %s", profile.pk)
                 results.append(
                     {
                         "operation_id": profile.pk,
                         "name": str(profile),
                         "status": "error",
-                        "error": str(exc),
+                        "error": EDUPAGE_SCRAPE_ERROR,
                     }
                 )
                 continue
@@ -229,9 +234,9 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             result = EdupageScraper().scrape(url, datetime.date.today())
-        except Exception as exc:
-            logger.warning("test_url failed for %s: %s", url, exc)
-            return Response({"ok": False, "error": str(exc)})
+        except Exception:
+            logger.warning("test_url failed for %s", url, exc_info=True)
+            return Response({"ok": False, "error": EDUPAGE_TEST_URL_ERROR})
 
         total = sum(
             meal.get("menuCounts", {}).get("A", 0)

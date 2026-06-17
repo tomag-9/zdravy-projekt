@@ -5,6 +5,9 @@ on:
     branches:
       - develop
 
+permissions:
+  contents: read
+
 concurrency:
   group: staging-images
   cancel-in-progress: true
