@@ -59,6 +59,8 @@ describe("ForgotPasswordPage", () => {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: /^Odoslať$/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Skontrolujte e-mail/i)).toBeInTheDocument(),
@@ -82,6 +84,8 @@ describe("ForgotPasswordPage", () => {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: /^Odoslať$/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Príliš veľa pokusov/i)).toBeInTheDocument(),
@@ -100,6 +104,8 @@ describe("ForgotPasswordPage", () => {
       target: { value: "bad@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: /^Odoslať$/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Bad request/i)).toBeInTheDocument(),
@@ -114,6 +120,8 @@ describe("ForgotPasswordPage", () => {
       target: { value: "test@example.com" },
     });
     fireEvent.click(screen.getByRole("button", { name: /Odoslať odkaz/i }));
+    await waitFor(() => screen.getByRole("dialog"));
+    fireEvent.click(screen.getByRole("button", { name: /^Odoslať$/i }));
 
     await waitFor(() =>
       expect(screen.getByText(/Nepodarilo sa pripojiť/i)).toBeInTheDocument(),
