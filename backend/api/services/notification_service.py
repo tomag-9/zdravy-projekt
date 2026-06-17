@@ -6,6 +6,8 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.mail import send_mail
 
+from ..utils import user_operation_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +25,7 @@ class NotificationService:
         try:
             subject = "Vitajte – nastavte si heslo"
             message = (
-                f"Dobrý deň {user.first_name or user.email},\n\n"
+                f"Dobrý deň {user_operation_name(user)},\n\n"
                 "Bol vám vytvorený účet v systéme Zdravý projekt.\n\n"
                 "Pre aktiváciu účtu si prosím nastavte heslo kliknutím na odkaz nižšie:\n"
                 f"{setup_url}\n\n"
@@ -58,7 +60,7 @@ class NotificationService:
         try:
             subject = "Registrácia účtu – Zdravý projekt"
             message = (
-                f"Dobrý deň {user.first_name or user.email},\n\n"
+                f"Dobrý deň {user_operation_name(user)},\n\n"
                 "Bol vám zaregistrovaný API účet v systéme Zdravý projekt.\n\n"
                 "V prípade otázok nás kontaktujte.\n\n"
                 "S pozdravom, Tím Zdravý projekt"

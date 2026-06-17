@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import ConfirmationModal from "./client/components/ui/ConfirmationModal";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -9,9 +10,14 @@ const ForgotPasswordPage: React.FC = () => {
   const [error, setError] = useState("");
   const [rateLimitMsg, setRateLimitMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowConfirmation(true);
+  };
+
+  const handleSendResetLink = async () => {
     setError("");
     setRateLimitMsg("");
     setIsLoading(true);
@@ -117,6 +123,17 @@ const ForgotPasswordPage: React.FC = () => {
             <Link to="/login" className="zp-link">← Späť na prihlásenie</Link>
           </div>
         </form>
+
+        <ConfirmationModal
+          isOpen={showConfirmation}
+          onClose={() => setShowConfirmation(false)}
+          onConfirm={handleSendResetLink}
+          title="Odoslať odkaz"
+          description={`Naozaj chcete odoslať odkaz na obnovu hesla na ${email}?`}
+          confirmText={isLoading ? "Odosielam..." : "Odoslať"}
+          cancelText="Zrušiť"
+          variant="warning"
+        />
 
         <div style={{ height: 24 }} />
       </div>

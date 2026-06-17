@@ -7,39 +7,35 @@ import { logger } from '../../lib/logger';
 interface AdUser {
   id: number;
   email: string;
-  first_name: string;
-  last_name: string;
+  profile?: { company_name: string; billing_name: string };
   is_active: boolean;
   is_staff: boolean;
 }
 
-interface ClientCreateForm {
+interface OperationCreateForm {
   email: string;
-  first_name: string;
-  last_name: string;
   company_name: string;
+  billing_name: string;
   ico: string;
   dic: string;
   is_edupage: boolean;
   api_identifier: string;
 }
 
-interface ClientEditForm {
+interface OperationEditForm {
   email: string;
-  first_name: string;
-  last_name: string;
   company_name: string;
+  billing_name: string;
   ico: string;
   dic: string;
   is_edupage: boolean;
   api_identifier: string;
 }
 
-const EMPTY_CLIENT_FORM: ClientCreateForm = {
+const EMPTY_OPERATION_FORM: OperationCreateForm = {
   email: "",
-  first_name: "",
-  last_name: "",
   company_name: "",
+  billing_name: "",
   ico: "",
   dic: "",
   is_edupage: false,
@@ -75,13 +71,13 @@ const ClientList: React.FC = () => {
 
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
-  const [clientForm, setClientForm] = useState<ClientCreateForm>(EMPTY_CLIENT_FORM);
+  const [clientForm, setClientForm] = useState<OperationCreateForm>(EMPTY_OPERATION_FORM);
   const [creating, setCreating] = useState(false);
 
   // Edit modal
   const editRequestRef = useRef<number | null>(null);
   const [editTarget, setEditTarget] = useState<AdUser | null>(null);
-  const [editForm, setEditForm] = useState<ClientEditForm>({ email: "", first_name: "", last_name: "", company_name: "", ico: "", dic: "", is_edupage: false, api_identifier: "" });
+  const [editForm, setEditForm] = useState<OperationEditForm>({ email: "", company_name: "", billing_name: "", ico: "", dic: "", is_edupage: false, api_identifier: "" });
   const [saving, setSaving] = useState(false);
 
   // Delete modal
@@ -118,17 +114,17 @@ const ClientList: React.FC = () => {
         body: JSON.stringify({ ...clientForm, is_staff: false, is_active: true }),
       });
       if (res.ok) {
-        success("Klient bol úspešne vytvorený.");
+        success("Prevádzka bola úspešne vytvorená.");
         setShowCreate(false);
-        setClientForm(EMPTY_CLIENT_FORM);
+        setClientForm(EMPTY_OPERATION_FORM);
         fetchUsers();
       } else {
         const data = await res.json().catch(() => ({}));
-        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť klienta.");
+        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť prevádzku.");
       }
     } catch (e) {
       logger.error(e);
-      toastError("Chyba pri vytváraní klienta.");
+      toastError("Chyba pri vytváraní prevádzky.");
     } finally {
       setCreating(false);
     }
@@ -138,9 +134,8 @@ const ClientList: React.FC = () => {
     setEditTarget(user);
     setEditForm({
       email: user.email,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      company_name: "",
+      company_name: user.profile?.company_name || "",
+      billing_name: user.profile?.billing_name || "",
       ico: "",
       dic: "",
       is_edupage: false,
@@ -154,9 +149,8 @@ const ClientList: React.FC = () => {
       if (editRequestRef.current !== user.id) return;
       setEditForm({
         email: data.email,
-        first_name: data.first_name,
-        last_name: data.last_name,
-        company_name: data.company_name || "",
+        company_name: data.profile?.company_name || "",
+        billing_name: data.profile?.billing_name || "",
         ico: data.profile?.ico || "",
         dic: data.profile?.dic || "",
         is_edupage: data.profile?.is_edupage ?? false,
@@ -178,11 +172,11 @@ const ClientList: React.FC = () => {
         body: JSON.stringify(editForm),
       });
       if (res.ok) {
-        success("Klient bol upravený.");
+        success("Prevádzka bola upravená.");
         setEditTarget(null);
         fetchUsers();
       } else {
-        toastError("Nepodarilo sa upraviť klienta.");
+        toastError("Nepodarilo sa upraviť prevádzku.");
       }
     } catch (e) {
       logger.error(e);
@@ -200,11 +194,11 @@ const ClientList: React.FC = () => {
         method: "DELETE",
       });
       if (res.ok || res.status === 204) {
-        success(`Klient „${deleteTarget.email}" bol odstránený.`);
+        success(`Prevádzka „${deleteTarget.profile?.company_name || deleteTarget.email}“ bola odstránená.`);
         setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
         setDeleteTarget(null);
       } else {
-        toastError("Nepodarilo sa odstrániť klienta.");
+        toastError("Nepodarilo sa odstrániť prevádzku.");
       }
     } catch (e) {
       logger.error(e);
@@ -217,7 +211,8 @@ const ClientList: React.FC = () => {
   const filteredUsers = users.filter(
     (u) =>
       u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (u.first_name + " " + u.last_name).toLowerCase().includes(searchTerm.toLowerCase()),
+      (u.profile?.company_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (u.profile?.billing_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
@@ -225,14 +220,14 @@ const ClientList: React.FC = () => {
       <div className="space-y-6 animate-in fade-in duration-500">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-3xl font-bold text-gray-900">Správa klientov</h2>
-            <p className="text-gray-500 mt-1">Nastavenia jedál a menu pre klientov</p>
+            <h2 className="text-3xl font-bold text-gray-900">Správa prevádzok</h2>
+            <p className="text-gray-500 mt-1">Nastavenia jedál a menu pre prevádzky</p>
           </div>
           <button
-            onClick={() => { setShowCreate(true); setClientForm(EMPTY_CLIENT_FORM); }}
+            onClick={() => { setShowCreate(true); setClientForm(EMPTY_OPERATION_FORM); }}
             className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-md shadow-indigo-200 transition-all"
           >
-            <span className="text-lg leading-none">+</span> Pridať klienta
+            <span className="text-lg leading-none">+</span> Pridať prevádzku
           </button>
         </div>
 
@@ -240,7 +235,7 @@ const ClientList: React.FC = () => {
         <div className="relative">
           <input
             type="text"
-            placeholder="Hľadať klientov..."
+            placeholder="Hľadať prevádzky..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all outline-none"
@@ -254,15 +249,15 @@ const ClientList: React.FC = () => {
             <table className="w-full text-left text-sm text-gray-600">
               <thead className="bg-gray-50 text-xs uppercase font-semibold text-gray-500">
                 <tr>
-                  <th className="px-6 py-4">Klient</th>
+                  <th className="px-6 py-4">Prevádzka</th>
                   <th className="px-6 py-4 text-right">Akcie</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
-                  <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-400">Načítavam klientov...</td></tr>
+                  <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-400">Načítavam prevádzky...</td></tr>
                 ) : filteredUsers.length === 0 ? (
-                  <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-400">Žiadni klienti</td></tr>
+                  <tr><td colSpan={2} className="px-6 py-8 text-center text-gray-400">Žiadne prevádzky</td></tr>
                 ) : (
                   filteredUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50 transition-colors">
@@ -273,11 +268,14 @@ const ClientList: React.FC = () => {
                           </div>
                           <div>
                             <div className="font-semibold text-gray-900">
-                              {user.first_name || user.last_name
-                                ? `${user.first_name} ${user.last_name}`.trim()
-                                : user.email}
+                              {user.profile?.company_name || user.email}
                             </div>
                             <div className="text-xs text-gray-400">{user.email}</div>
+                            {user.profile?.billing_name && (
+                              <div className="text-xs text-gray-400">
+                                Fakturácia: {user.profile.billing_name}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </td>
@@ -318,34 +316,39 @@ const ClientList: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Create client modal ── */}
+      {/* ── Create operation modal ── */}
       {showCreate && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Pridať klienta</h3>
+              <h3 className="text-xl font-bold text-gray-900">Pridať prevádzku</h3>
               <button type="button" aria-label="Zavrieť" onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
-                  <input
-                    type="text"
-                    value={clientForm.first_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, first_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
-                  <input
-                    type="text"
-                    value={clientForm.last_name}
-                    onChange={(e) => setClientForm((f) => ({ ...f, last_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov prevádzky <span className="text-red-500">*</span>
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(interný)</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={clientForm.company_name}
+                  onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov spoločnosti
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(fakturácia)</span>
+                </label>
+                <input
+                  type="text"
+                  value={clientForm.billing_name}
+                  onChange={(e) => setClientForm((f) => ({ ...f, billing_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
@@ -354,15 +357,6 @@ const ClientList: React.FC = () => {
                   required
                   value={clientForm.email}
                   onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Názov spoločnosti</label>
-                <input
-                  type="text"
-                  value={clientForm.company_name}
-                  onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
@@ -423,34 +417,39 @@ const ClientList: React.FC = () => {
         </div>
       )}
 
-      {/* ── Edit client modal ── */}
+      {/* ── Edit operation modal ── */}
       {editTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-              <h3 className="text-xl font-bold text-gray-900">Upraviť klienta</h3>
+              <h3 className="text-xl font-bold text-gray-900">Upraviť prevádzku</h3>
               <button type="button" aria-label="Zavrieť" onClick={() => setEditTarget(null)} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">×</button>
             </div>
             <form onSubmit={handleEdit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Meno</label>
-                  <input
-                    type="text"
-                    value={editForm.first_name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, first_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Priezvisko</label>
-                  <input
-                    type="text"
-                    value={editForm.last_name}
-                    onChange={(e) => setEditForm((f) => ({ ...f, last_name: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                  />
-                </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov prevádzky <span className="text-red-500">*</span>
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(interný)</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.company_name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, company_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Názov spoločnosti
+                  <span className="ml-1 text-xs text-gray-400 font-normal">(fakturácia)</span>
+                </label>
+                <input
+                  type="text"
+                  value={editForm.billing_name}
+                  onChange={(e) => setEditForm((f) => ({ ...f, billing_name: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
@@ -459,15 +458,6 @@ const ClientList: React.FC = () => {
                   required
                   value={editForm.email}
                   onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Názov spoločnosti</label>
-                <input
-                  type="text"
-                  value={editForm.company_name}
-                  onChange={(e) => setEditForm((f) => ({ ...f, company_name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
                 />
               </div>
@@ -496,7 +486,7 @@ const ClientList: React.FC = () => {
                   id="edit-is-edupage"
                   type="checkbox"
                   checked={editForm.is_edupage}
-                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked }))}
+                  onChange={(e) => setEditForm((f) => ({ ...f, is_edupage: e.target.checked, ...(!e.target.checked && { api_identifier: "" }) }))}
                   className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                 />
                 <label htmlFor="edit-is-edupage" className="text-sm font-medium text-gray-700">
@@ -538,10 +528,10 @@ const ClientList: React.FC = () => {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
                 </svg>
               </div>
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Odstrániť klienta</h3>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Odstrániť prevádzku</h3>
               <p className="text-gray-500 mb-6 leading-relaxed">
-                Naozaj chcete odstrániť klienta <strong className="text-gray-800">{deleteTarget.email}</strong>?
-                Táto akcia je nevratná a vymaže aj všetky jeho objednávky.
+                Naozaj chcete odstrániť prevádzku <strong className="text-gray-800">{deleteTarget.profile?.company_name || deleteTarget.email}</strong>?
+                Táto akcia je nevratná a vymaže aj všetky jej objednávky.
               </p>
               <div className="flex gap-3">
                 <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="flex-1 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium rounded-xl transition-colors">

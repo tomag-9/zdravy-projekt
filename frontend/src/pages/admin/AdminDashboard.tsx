@@ -74,6 +74,67 @@ interface GramageDashboard {
   count_summary: CountSection[];
 }
 
+// ── Meal color palette ────────────────────────────────────────────────────────
+
+interface MealColors {
+  header1: string;   // primary header bg
+  header2: string;   // secondary header bg (component row)
+  cellBg: string;    // data cell tint
+  rowBorder: string; // tbody row left border
+  cardHeader: string;
+  cardStdBg: string;
+  cardDietBg: string;
+  cardStdText: string;
+  cardDietText: string;
+}
+
+const BREAKFAST_COLORS: MealColors = {
+  header1: "bg-amber-700", header2: "bg-amber-600", cellBg: "bg-amber-100",
+  rowBorder: "border-l-4 border-amber-400",
+  cardHeader: "bg-amber-700", cardStdBg: "bg-amber-50", cardDietBg: "bg-amber-100/60",
+  cardStdText: "text-amber-900", cardDietText: "text-amber-700",
+};
+
+const LUNCH_COLORS: Record<string, MealColors> = {
+  A: {
+    header1: "bg-sky-700", header2: "bg-sky-600", cellBg: "bg-sky-100",
+    rowBorder: "border-l-4 border-sky-400",
+    cardHeader: "bg-sky-700", cardStdBg: "bg-sky-50", cardDietBg: "bg-sky-100/60",
+    cardStdText: "text-sky-900", cardDietText: "text-sky-700",
+  },
+  B: {
+    header1: "bg-indigo-700", header2: "bg-indigo-600", cellBg: "bg-indigo-100",
+    rowBorder: "border-l-4 border-indigo-400",
+    cardHeader: "bg-indigo-700", cardStdBg: "bg-indigo-50", cardDietBg: "bg-indigo-100/60",
+    cardStdText: "text-indigo-900", cardDietText: "text-indigo-700",
+  },
+  C: {
+    header1: "bg-violet-700", header2: "bg-violet-600", cellBg: "bg-violet-100",
+    rowBorder: "border-l-4 border-violet-400",
+    cardHeader: "bg-violet-700", cardStdBg: "bg-violet-50", cardDietBg: "bg-violet-100/60",
+    cardStdText: "text-violet-900", cardDietText: "text-violet-700",
+  },
+  V: {
+    header1: "bg-purple-700", header2: "bg-purple-600", cellBg: "bg-purple-100",
+    rowBorder: "border-l-4 border-purple-400",
+    cardHeader: "bg-purple-700", cardStdBg: "bg-purple-50", cardDietBg: "bg-purple-100/60",
+    cardStdText: "text-purple-900", cardDietText: "text-purple-700",
+  },
+};
+
+const SNACK_COLORS: MealColors = {
+  header1: "bg-emerald-700", header2: "bg-emerald-600", cellBg: "bg-emerald-100",
+  rowBorder: "border-l-4 border-emerald-400",
+  cardHeader: "bg-emerald-700", cardStdBg: "bg-emerald-50", cardDietBg: "bg-emerald-100/60",
+  cardStdText: "text-emerald-900", cardDietText: "text-emerald-700",
+};
+
+function getMealColors(meal: string, variant: string): MealColors {
+  if (meal === "breakfast") return BREAKFAST_COLORS;
+  if (meal === "lunch") return LUNCH_COLORS[variant] ?? LUNCH_COLORS.A;
+  return SNACK_COLORS;
+}
+
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function toDateString(d: Date): string {
@@ -238,7 +299,6 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const { col_groups, rows, totals } = data;
   const [expandedClients, setExpandedClients] = useState<number[]>([]);
 
-  // Total component count across all col_groups
   const totalComponents = col_groups.reduce((s, cg) => s + cg.components.length, 0);
 
   const toggleClient = (clientId: number) => {
@@ -249,47 +309,54 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     );
   };
 
-  // Aggregate sub_rows from all clients into per-variant gram totals
-  const aggregatedRows = useMemo(() => {
-    type NumRow = { type: "standard" | "diet"; label: string; count: number; col_grams: number[][] };
-    const map = new Map<string, NumRow>();
-    for (const clientRow of rows) {
-      for (const sr of clientRow.sub_rows) {
-        const key = `${sr.type}::${sr.label}`;
-        if (!map.has(key)) {
-          map.set(key, {
-            type: sr.type as "standard" | "diet",
-            label: sr.label,
-            count: 0,
-            col_grams: col_groups.map((cg) => Array<number>(cg.components.length).fill(0)),
-          });
-        }
-        const agg = map.get(key)!;
-        agg.count += sr.count;
-        sr.col_grams.forEach((group, gi) => {
-          group.forEach((val, ci) => {
-            agg.col_grams[gi][ci] = (agg.col_grams[gi][ci] ?? 0) + parseFloat(val || "0");
-          });
-        });
-      }
-    }
-    const toStr = (r: NumRow) => ({ ...r, col_grams: r.col_grams.map((g) => g.map(String)) });
-    const all = [...map.values()];
-    return {
-      standard: all.filter((r) => r.type === "standard").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
-      diets: all.filter((r) => r.type === "diet").sort((a, b) => a.label.localeCompare(b.label, "sk")).map(toStr),
-    };
-  }, [rows, col_groups]);
+  // Precomputed per-col-group colors
+  const colGroupColors = useMemo(
+    () => col_groups.map((cg) => getMealColors(cg.meal, cg.variant)),
+    [col_groups],
+  );
 
-  // Helper: render gramage cells for a sub_row
-  const GramCells = ({ col_grams, className = "", positiveClass = "text-gray-900 font-medium" }: { col_grams: string[][]; className?: string; positiveClass?: string }) => (
+  // One summary entry per col_group: count from count_summary, grams from totals[gi]
+  const perMenuSummary = useMemo(() => {
+    const countMap = new Map<string, number>();
+    for (const section of data.count_summary) {
+      const key = `${section.meal}_${section.variant}`;
+      countMap.set(
+        key,
+        section.standard.reduce((s, r) => s + r.count, 0) +
+          section.diets.reduce((s, r) => s + r.count, 0),
+      );
+    }
+    return col_groups.map((cg, gi) => ({
+      label: cg.label,
+      meal: cg.meal,
+      variant: cg.variant,
+      count: countMap.get(`${cg.meal}_${cg.variant}`) ?? 0,
+      // gram values only for this col_group's index; empty for all others
+      col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
+    }));
+  }, [col_groups, data.count_summary, totals]);
+
+  const GramCells = ({
+    col_grams,
+    extraCellClass = "",
+    positiveClass,
+    tintCells = false,
+  }: {
+    col_grams: string[][];
+    extraCellClass?: string;
+    positiveClass?: string;
+    tintCells?: boolean;
+  }) => {
+    const resolved = positiveClass ?? "text-gray-900 font-medium";
+    return (
     <>
       {col_groups.map((cg, gi) => {
         const grams = col_grams[gi] || [];
+        const tint = tintCells ? colGroupColors[gi].cellBg : "";
         return cg.components.map((_, ci) => (
-          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${className}`}>
+          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
             {grams[ci] ? (
-              <span className={parseFloat(grams[ci]) > 0 ? positiveClass : "text-gray-300"}>
+              <span className={parseFloat(grams[ci]) > 0 ? resolved : "text-gray-300"}>
                 {parseFloat(grams[ci]) > 0 ? Math.round(parseFloat(grams[ci])) : "—"}
               </span>
             ) : (
@@ -299,7 +366,8 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         ));
       })}
     </>
-  );
+    );
+  };
 
   const SummaryRow = ({
     label,
@@ -307,12 +375,14 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     col_grams,
     rowClassName,
     cellClassName,
+    positiveClass,
   }: {
     label: string;
     count: number;
     col_grams: string[][];
     rowClassName: string;
     cellClassName: string;
+    positiveClass?: string;
   }) => (
     <tr className={rowClassName}>
       <td className={`px-4 py-2 sticky left-0 z-10 ${cellClassName}`}>
@@ -321,11 +391,10 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <td className={`px-3 py-2 text-center font-semibold ${cellClassName}`}>
         {count > 0 ? count : "—"}
       </td>
-      <GramCells col_grams={col_grams} className={cellClassName} />
+      <GramCells col_grams={col_grams} tintCells positiveClass={positiveClass} />
     </tr>
   );
 
-  // Totals row cells
   const TotalCells = () => (
     <>
       {col_groups.map((cg, gi) =>
@@ -343,19 +412,19 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <div className="overflow-x-auto">
         <table className="w-full text-sm border-collapse">
           <thead>
-            {/* Row 1: meal group headers */}
-            <tr className="bg-blue-800 text-white">
-              <th className="px-4 py-3 text-left font-semibold sticky left-0 bg-blue-800 z-10 min-w-[180px]" rowSpan={2}>
-                Klient / Riadok
+            {/* Row 1: meal group headers — each col_group gets its meal color */}
+            <tr className="text-white">
+              <th className="px-4 py-3 text-left font-semibold sticky left-0 bg-slate-700 z-10 min-w-[180px]" rowSpan={2}>
+                Prevádzka / Riadok
               </th>
-              <th className="px-3 py-3 font-semibold text-center min-w-[50px]" rowSpan={2}>
+              <th className="px-3 py-3 font-semibold text-center min-w-[50px] bg-slate-700" rowSpan={2}>
                 Počet
               </th>
-              {col_groups.map((cg) => (
+              {col_groups.map((cg, gi) => (
                 <th
                   key={cg.key}
                   colSpan={cg.components.length}
-                  className="px-3 py-2 text-center font-semibold border-l border-blue-600"
+                  className={`px-3 py-2 text-center font-semibold border-l border-white/20 ${colGroupColors[gi].header1}`}
                 >
                   {cg.label}
                   <div className="text-[10px] font-normal opacity-75 truncate max-w-[200px] mx-auto">
@@ -365,10 +434,13 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
               ))}
             </tr>
             {/* Row 2: component labels */}
-            <tr className="bg-blue-700 text-white text-xs">
-              {col_groups.map((cg) =>
+            <tr className="text-white text-xs">
+              {col_groups.map((cg, gi) =>
                 cg.components.map((comp, ci) => (
-                  <th key={`${cg.key}-${ci}`} className={`px-2 py-1.5 text-center font-medium ${ci === 0 ? "border-l border-blue-600" : ""}`}>
+                  <th
+                    key={`${cg.key}-${ci}`}
+                    className={`px-2 py-1.5 text-center font-medium ${colGroupColors[gi].header2} ${ci === 0 ? "border-l border-white/20" : ""}`}
+                  >
                     {comp.label}
                     <span className="block text-[10px] opacity-60">{comp.base_grams}g</span>
                   </th>
@@ -411,22 +483,25 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                     </td>
                   </tr>
 
-                  {isExpanded && row.sub_rows.map((sr, si) => (
-                    <tr
-                      key={si}
-                      className={`border-b border-gray-100 hover:bg-gray-50 transition ${
-                        sr.type === "diet" ? "bg-yellow-50" : ""
-                      }`}
-                    >
-                      <td className={`px-4 py-1.5 text-gray-700 sticky left-0 z-10 ${sr.type === "diet" ? "bg-yellow-50 pl-8 text-xs italic text-yellow-700" : "bg-white"}`}>
-                        {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
-                      </td>
-                      <td className={`px-3 py-1.5 text-center font-semibold ${sr.type === "diet" ? "text-yellow-700 text-xs" : "text-gray-900"}`}>
-                        {sr.count}
-                      </td>
-                      <GramCells col_grams={sr.col_grams} />
-                    </tr>
-                  ))}
+                  {isExpanded && row.sub_rows.map((sr, si) => {
+                    const mealColors = getMealColors(sr.meal, sr.type === "standard" ? (sr.variant ?? "") : "");
+                    return (
+                      <tr
+                        key={si}
+                        className={`border-b border-gray-100 hover:bg-gray-50 transition ${
+                          sr.type === "diet" ? "bg-yellow-50" : ""
+                        }`}
+                      >
+                        <td className={`px-4 py-1.5 text-gray-700 sticky left-0 z-10 ${mealColors.rowBorder} ${sr.type === "diet" ? "bg-yellow-50 pl-8 text-xs italic text-yellow-700" : "bg-white"}`}>
+                          {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
+                        </td>
+                        <td className={`px-3 py-1.5 text-center font-semibold ${sr.type === "diet" ? "text-yellow-700 text-xs" : "text-gray-900"}`}>
+                          {sr.count}
+                        </td>
+                        <GramCells col_grams={sr.col_grams} tintCells />
+                      </tr>
+                    );
+                  })}
 
                   {isExpanded && row.admin_order_note?.trim() && (
                     <tr className="border-b border-green-100 bg-green-50/40">
@@ -448,6 +523,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                     col_grams={row.standard_col_grams}
                     rowClassName="border-b border-emerald-100 bg-emerald-50/80"
                     cellClassName="bg-emerald-50/80 text-emerald-900"
+                    positiveClass="text-emerald-900 font-medium"
                   />
                   {row.diet_summary_rows.map((diet) => (
                     <SummaryRow
@@ -457,6 +533,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                       col_grams={diet.col_grams}
                       rowClassName="border-b border-amber-100 bg-amber-50/80"
                       cellClassName="bg-amber-50/80 text-amber-900"
+                      positiveClass="text-amber-900 font-medium"
                     />
                   ))}
                 </React.Fragment>
@@ -464,31 +541,29 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             })}
           </tbody>
           <tfoot>
-            {/* Section header */}
+            {/* ── Per-menu summary: one row per col_group ── */}
             <tr className="bg-slate-600 text-white border-t-2 border-slate-700">
               <td colSpan={2 + totalComponents} className="px-4 py-2 font-bold text-xs uppercase tracking-wider sticky left-0 bg-slate-600 z-10">
                 Súhrn porcií
               </td>
             </tr>
-            {/* Standard variant rows */}
-            {aggregatedRows.standard.map((row) => (
-              <tr key={row.label} className="border-b border-gray-100 bg-white">
-                <td className="px-4 py-2 sticky left-0 z-10 bg-white text-sm text-gray-700">{row.label}</td>
-                <td className="px-3 py-2 text-center text-sm tabular-nums font-semibold text-gray-900">{row.count > 0 ? row.count : "—"}</td>
-                <GramCells col_grams={row.col_grams} />
-              </tr>
-            ))}
-            {/* Diet variant rows */}
-            {aggregatedRows.diets.map((row) => (
-              <tr key={row.label} className="border-b border-amber-50 bg-amber-50/40">
-                <td className="px-4 py-2 pl-10 sticky left-0 z-10 bg-amber-50/40 text-xs italic text-amber-700">↳ {row.label}</td>
-                <td className="px-3 py-2 text-center text-xs tabular-nums font-semibold text-amber-700">{row.count > 0 ? row.count : "—"}</td>
-                <GramCells col_grams={row.col_grams} className="bg-amber-50/40" positiveClass="text-amber-800 font-medium" />
-              </tr>
-            ))}
-            {/* Grand total */}
-            <tr className="bg-blue-800 text-white border-t-2 border-blue-900">
-              <td colSpan={2} className="px-4 py-2.5 font-bold sticky left-0 bg-blue-800 z-10">
+            {perMenuSummary.map((item, gi) => {
+              const c = colGroupColors[gi];
+              return (
+                <tr key={`pm_${gi}`} className={`border-b border-gray-100 ${c.cardStdBg}`}>
+                  <td className={`px-4 py-2 sticky left-0 z-10 font-semibold text-sm ${c.cardStdBg} ${c.cardStdText} ${c.rowBorder}`}>
+                    {item.label}
+                  </td>
+                  <td className={`px-3 py-2 text-center font-bold tabular-nums text-sm ${c.cardStdText}`}>
+                    {item.count > 0 ? item.count : "—"}
+                  </td>
+                  <GramCells col_grams={item.col_grams} tintCells positiveClass={`${c.cardStdText} font-bold`} />
+                </tr>
+              );
+            })}
+            {/* ── Grand total grams ── */}
+            <tr className="bg-slate-700 text-white border-t-2 border-slate-800">
+              <td colSpan={2} className="px-4 py-2.5 font-bold sticky left-0 bg-slate-700 z-10">
                 CELKOM (g)
               </td>
               <TotalCells />

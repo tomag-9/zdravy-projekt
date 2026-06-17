@@ -9,6 +9,9 @@ interface AdminUser {
     email: string;
     first_name?: string;
     last_name?: string;
+    profile?: {
+        company_name?: string;
+    };
 }
 
 const PushNotifications: React.FC = () => {
@@ -100,7 +103,9 @@ const PushNotifications: React.FC = () => {
                             {users.map((u) => (
                                 <option key={u.id} value={String(u.id)}>
                                     {u.email}
-                                    {(u.first_name || u.last_name)
+                                    {u.profile?.company_name
+                                        ? ` (${u.profile.company_name})`
+                                        : (u.first_name || u.last_name)
                                         ? ` (${[u.first_name, u.last_name].filter(Boolean).join(' ')})`
                                         : ''}
                                 </option>

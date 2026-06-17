@@ -6,7 +6,7 @@ from typing import List
 from ..models import DailyOrder
 from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
 from ..order_data import OrderData, safe_count
-from ..utils import build_user_meal_row, merge_meal_totals
+from ..utils import build_user_meal_row, merge_meal_totals, user_operation_name
 
 
 class ReportService:
@@ -32,7 +32,7 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__settings")
+            .select_related("user", "user__profile", "user__settings")
             .order_by("user__email")
         )
 
@@ -62,7 +62,7 @@ class ReportService:
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": f"{user.first_name} {user.last_name}".strip() or user.email,
+                    "name": user_operation_name(user),
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,
@@ -92,7 +92,7 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__settings")
+            .select_related("user", "user__profile", "user__settings")
             .order_by("user__email")
         )
 

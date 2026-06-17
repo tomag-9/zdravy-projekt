@@ -1238,16 +1238,6 @@ select {
     display: flex;
     flex-direction: column;
 }
-.pc-app .zp-sheet-scrim {
-    align-items: center;
-    justify-content: center;
-}
-.pc-app .zp-sheet {
-    width: 420px;
-    border-radius: var(--radius-xl);
-    min-height: unset;
-    max-height: 70vh;
-}
 .zp-sheet-grab {
     width: 44px;
     height: 4px;
@@ -1291,6 +1281,7 @@ select {
     padding: 16px 22px 12px;
     overflow-y: auto;
     flex: 1;
+    min-height: 0;
 }
 .zp-diet-row {
     display: flex;
@@ -1324,6 +1315,29 @@ select {
     padding: 14px 22px 22px;
     border-top: 1px solid var(--line-soft);
     background: var(--bg-cream-warm);
+}
+
+@media (min-width: 768px) {
+    .zp-sheet-scrim {
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+    }
+
+    .zp-sheet {
+        width: min(440px, calc(100vw - 48px));
+        min-height: unset;
+        max-height: min(70dvh, 620px);
+        border-radius: var(--radius-xl);
+    }
+
+    .zp-sheet-grab {
+        display: none;
+    }
+
+    .zp-sheet-head {
+        padding-top: 20px;
+    }
 }
 
 /* ========================================================== *
@@ -1949,6 +1963,7 @@ select {
     transition: background 180ms;
     color: var(--ink-1);
     font-family: var(--font-sans);
+    text-decoration: none;
 }
 .zp-settings-row:last-child { border-bottom: 0; }
 .zp-settings-row:hover { background: var(--bg-cream-soft); }

@@ -31,6 +31,7 @@ from api.models import (
     MealTemplate,
     PortionType,
     PushSubscription,
+    UserProfile,
 )
 
 # ── Meal plan seed data ────────────────────────────────────────────────────────
@@ -87,50 +88,50 @@ MEALS = ["breakfast", "lunch", "olovrant"]
 
 SEED_USERS = [
     {
-        "username": "jana.novakova",
-        "first_name": "Jana",
-        "last_name": "Nováková",
-        "email": "jana.novakova@dev.local",
+        "username": "zs-novomestska",
+        "company_name": "ZŠ Novomestská",
+        "billing_name": "Základná škola Novomestská, s.r.o.",
+        "email": "zs.novomestska@dev.local",
         "categories": ["Jasle", "Škôlka"],
         "menus": ["A", "B"],
         "meals": ["breakfast", "lunch"],
         "diets": [],
     },
     {
-        "username": "peter.kral",
-        "first_name": "Peter",
-        "last_name": "Kráľ",
-        "email": "peter.kral@dev.local",
+        "username": "ms-slniecko",
+        "company_name": "MŠ Slniečko",
+        "billing_name": "Materská škola Slniečko, príspevková org.",
+        "email": "ms.slniecko@dev.local",
         "categories": ["ZŠ 1.stupeň", "ZŠ 2.stupeň"],
         "menus": ["A", "B", "V"],
         "meals": ["lunch"],
         "diets": ["Bez lepku"],
     },
     {
-        "username": "maria.horakova",
-        "first_name": "Mária",
-        "last_name": "Horáková",
-        "email": "maria.horakova@dev.local",
+        "username": "zs-priekopska",
+        "company_name": "ZŠ Priekopská",
+        "billing_name": "ZŠ s MŠ Priekopská 1, Martin",
+        "email": "zs.priekopska@dev.local",
         "categories": ["Jasle"],
         "menus": ["A"],
         "meals": ["breakfast", "lunch", "olovrant"],
         "diets": ["Bez laktózy", "Diabetické"],
     },
     {
-        "username": "lukas.fiser",
-        "first_name": "Lukáš",
-        "last_name": "Fišer",
-        "email": "lukas.fiser@dev.local",
+        "username": "ss-obchodna",
+        "company_name": "SOŠ Obchodná",
+        "billing_name": "Stredná odborná škola obchodná, Žilina",
+        "email": "ss.obchodna@dev.local",
         "categories": ["Dospelý (SŠ)"],
         "menus": ["A", "B"],
         "meals": ["breakfast", "lunch", "olovrant"],
         "diets": [],
     },
     {
-        "username": "eva.blahova",
-        "first_name": "Eva",
-        "last_name": "Bláhová",
-        "email": "eva.blahova@dev.local",
+        "username": "zs-zahradna",
+        "company_name": "ZŠ Záhradná",
+        "billing_name": "Základná škola Záhradná 4, Banská Bystrica",
+        "email": "zs.zahradna@dev.local",
         "categories": ["Škôlka", "ZŠ 1.stupeň"],
         "menus": ["A", "V"],
         "meals": ["lunch", "olovrant"],
@@ -293,25 +294,26 @@ class Command(BaseCommand):
         for seed in SEED_USERS:
             user, user_created = User.objects.get_or_create(
                 username=seed["username"],
-                defaults={
-                    "email": seed["email"],
-                    "first_name": seed["first_name"],
-                    "last_name": seed["last_name"],
-                },
+                defaults={"email": seed["email"]},
             )
             if user_created:
-                user.set_password("devpass123")
+                user.set_unusable_password()
                 user.save()
                 user.groups.add(client_group)
                 created_users += 1
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"  User created: {seed['first_name']} {seed['last_name']} "
-                        f"<{seed['email']}> / devpass123"
+                        f"  Prevádzka vytvorená: {seed['company_name']} "
+                        f"<{seed['email']}>"
                     )
                 )
             else:
-                self.stdout.write(f"  User exists: {seed['username']}")
+                self.stdout.write(f"  Prevádzka existuje: {seed['username']}")
+
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+            profile.company_name = seed["company_name"]
+            profile.billing_name = seed["billing_name"]
+            profile.save(update_fields=["company_name", "billing_name"])
 
             # ClientSettings
             cs, _ = ClientSettings.objects.get_or_create(user=user)
@@ -348,9 +350,9 @@ class Command(BaseCommand):
         #    can be verified without a real browser subscription.
         # ----------------------------------------------------------------
         try:
-            client_user = User.objects.get(username="client")
+            prevadzka_user = User.objects.get(username="prevadzka")
             _, sub_created = PushSubscription.objects.get_or_create(
-                user=client_user,
+                user=prevadzka_user,
                 endpoint="http://localhost:8000/api/dev/push-echo/",
                 defaults={
                     # Deterministic fake browser EC key pair (dev only)
@@ -361,15 +363,17 @@ class Command(BaseCommand):
             if sub_created:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        "  Dev push subscription seeded for 'client' → /api/dev/push-echo/"
+                        "  Dev push subscription seeded for 'prevadzka' → /api/dev/push-echo/"
                     )
                 )
             else:
-                self.stdout.write("  Dev push subscription for 'client' already exists")
+                self.stdout.write(
+                    "  Dev push subscription for 'prevadzka' already exists"
+                )
         except User.DoesNotExist:
             self.stdout.write(
                 self.style.WARNING(
-                    "  'client' user not found – skipping push subscription seed. "
+                    "  'prevadzka' user not found – skipping push subscription seed. "
                     "Run init_roles first."
                 )
             )
@@ -385,7 +389,7 @@ class Command(BaseCommand):
         # ----------------------------------------------------------------
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS("=== Seed complete ==="))
-        self.stdout.write(f"  Users created:       {created_users}")
+        self.stdout.write(f"  Prevádzky vytvorené: {created_users}")
         self.stdout.write(f"  Diets ensured:       {len(diet_objects)}")
         self.stdout.write(f"  Orders created:      {created_orders}")
         self.stdout.write(f"  Orders skipped:      {skipped_orders}")
@@ -393,7 +397,8 @@ class Command(BaseCommand):
         self.stdout.write(f"  Meal plans created:  {mp_plans}")
         self.stdout.write(
             self.style.WARNING(
-                "\n  All seed users have password: devpass123\n"
+                "\n  Seed prevádzky nemajú nastavené heslo (set_unusable_password).\n"
+                "  Prihlásenie cez admin panel alebo password reset.\n"
                 "  DO NOT USE IN PRODUCTION."
             )
         )

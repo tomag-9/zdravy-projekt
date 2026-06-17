@@ -7,6 +7,7 @@ import logging
 import os
 
 from ..order_data import OrderData, safe_count
+from ..utils import user_operation_name
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ class PDFReportExporter:
                 "olovrant",
             ]
 
-            display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+            display_name = user_operation_name(user)
             story.append(Paragraph(display_name, styles["user"]))
 
             any_meal = False

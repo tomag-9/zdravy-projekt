@@ -11,6 +11,8 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.mail import EmailMessage, send_mail
 
+from .utils import user_operation_name
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,7 +26,7 @@ def send_password_reset_email(user: User, token: str) -> None:
 
     subject = "Obnova hesla"
     message = (
-        f"Dobrý deň {user.first_name or user.email},\n\n"
+        f"Dobrý deň {user_operation_name(user)},\n\n"
         "Dostali sme žiadosť o obnovu Vášho hesla.\n\n"
         f"Pre obnovu hesla použite tento odkaz:\n{reset_url}\n\n"
         f"Odkaz je platný {TOKEN_EXPIRY_HOURS} hodinu.\n\n"

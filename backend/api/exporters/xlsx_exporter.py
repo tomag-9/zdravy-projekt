@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Dict, List
 
 from ..order_data import OrderData, safe_count
 from ..report_xlsx_helpers import xlsx_collect_columns
+from ..utils import user_operation_name
 
 if TYPE_CHECKING:
-    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.styles import Alignment, Border, Font, PatternFill
 
 
 class XLSXReportExporter:
@@ -49,7 +50,7 @@ class XLSXReportExporter:
         """
         # Lazy-import openpyxl to avoid startup overhead
         import openpyxl
-        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils import get_column_letter
 
         # Collect unique menu/diet combinations
@@ -75,6 +76,13 @@ class XLSXReportExporter:
         header_font = Font(bold=True, color="FFFFFF")
         bold_font = Font(bold=True)
         center = Alignment(horizontal="center", vertical="center")
+        menu_a_fill = PatternFill("solid", fgColor="DC2626")
+        thin_border = Border(
+            left=Side(style="thin", color="CBD5E1"),
+            right=Side(style="thin", color="CBD5E1"),
+            top=Side(style="thin", color="CBD5E1"),
+            bottom=Side(style="thin", color="CBD5E1"),
+        )
 
         # Add title
         ws.append([f"Denný prehľad objednávok — {self.target_date}"])
@@ -95,10 +103,12 @@ class XLSXReportExporter:
             header_fill_meal,
             header_font,
             center,
+            menu_a_fill,
         )
 
         # Write data
         self._write_data(ws, col_meta, sorted_cats, bold_font)
+        self._apply_table_grid(ws, thin_border)
 
         # Format columns
         ws.column_dimensions["A"].width = 28
@@ -119,7 +129,7 @@ class XLSXReportExporter:
     def _build_column_meta(self, sorted_cats: Dict) -> tuple:
         """Build 3 header rows and column metadata list."""
         col_meta = [("fixed", None, "name", None)]
-        header_row_1 = ["Klient"]
+        header_row_1 = ["Prevádzka"]
         header_row_2 = [""]
         header_row_3 = [""]
 
@@ -158,6 +168,7 @@ class XLSXReportExporter:
         header_fill_meal: Dict[str, PatternFill],
         header_font: Font,
         center: Alignment,
+        menu_a_fill: PatternFill,
     ) -> None:
         """Apply fills, fonts, merges to header rows."""
         total_cols = len(col_meta)
@@ -222,6 +233,10 @@ class XLSXReportExporter:
         for c_idx in range(1, total_cols + 1):
             cell = ws.cell(row=5, column=c_idx)
             cell.fill = row45_fill.get(c_idx, header_fill_main)
+            if c_idx > 1:
+                meta = col_meta[c_idx - 1]
+                if meta[2] == "menu" and str(meta[3]).upper() in {"A", "MENU A"}:
+                    cell.fill = menu_a_fill
             cell.font = header_font
             cell.alignment = center
 
@@ -255,7 +270,7 @@ class XLSXReportExporter:
             user = row_info["user"]
             data = row_info["data"]
             visible_meals = row_info.get("visible_meals") or self.meal_keys
-            display_name = f"{user.first_name} {user.last_name}".strip() or user.email
+            display_name = user_operation_name(user)
             row_vals = [display_name]
             row_grand = 0
 
@@ -316,3 +331,14 @@ class XLSXReportExporter:
         totals_row_num = ws.max_row
         for c_idx in range(1, ws.max_column + 1):
             ws.cell(row=totals_row_num, column=c_idx).font = bold_font
+
+    def _apply_table_grid(self, ws, border: Border) -> None:
+        """Add visible vertical and horizontal table lines."""
+        for row in ws.iter_rows(
+            min_row=3,
+            max_row=ws.max_row,
+            min_col=1,
+            max_col=ws.max_column,
+        ):
+            for cell in row:
+                cell.border = border

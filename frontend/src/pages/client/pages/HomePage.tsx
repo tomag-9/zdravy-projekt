@@ -326,10 +326,8 @@ const HomePage = () => {
     return `${day.charAt(0).toUpperCase() + day.slice(1)} · ${date}`;
   };
 
-  const greeting = user?.first_name
-    ? `Dobrý deň, ${user.first_name}.`
-    : user?.company_name
-    ? `Dobrý deň, ${user.company_name}.`
+  const greeting = user?.billing_name
+    ? `Dobrý deň, ${user.billing_name}.`
     : "Dobrý deň.";
 
   // Badge helpers using zp-* classes
@@ -346,7 +344,7 @@ const HomePage = () => {
       return (
         <span className="zp-pill zp-pill--empty">
           <XCircle style={{ width: 11, height: 11 }} />
-          Manuálna – nulová
+          Bez objednávky
         </span>
       );
     }
@@ -436,6 +434,9 @@ const HomePage = () => {
           {isUnset && !hasPrediction && (
             <p className="zp-day-hint">Na dnešný deň nebola vytvorená žiadna objednávka.</p>
           )}
+          {isEmpty && (
+            <p className="zp-day-hint">Bez objednávky. V tento deň vám nepríde žiadne jedlo.</p>
+          )}
         </div>
       </div>
     );
@@ -506,7 +507,7 @@ const HomePage = () => {
                   <p className="zp-day-hint">Žiadna história na predikciu</p>
                 )}
                 {isEmpty && (
-                  <p className="zp-day-hint">Bez objednávky — voľný deň pre kuchyňu.</p>
+                  <p className="zp-day-hint">Bez objednávky. V tento deň vám nepríde žiadne jedlo.</p>
                 )}
               </div>
             );

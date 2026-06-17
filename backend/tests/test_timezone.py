@@ -6,7 +6,6 @@ Ensures all clients see the same calendar regardless of their timezone.
 import datetime
 
 import pytest
-from django.contrib.auth.models import User
 from django.utils import timezone
 
 from api.models import DailyOrder

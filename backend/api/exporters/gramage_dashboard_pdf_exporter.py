@@ -42,9 +42,9 @@ class GramageDashboardPDFExporter:
         totals = self.data["totals"]
 
         # ── Build column header structure ─────────────────────────────────
-        # Row 0: Klient/Riadok | Počet | meal-group labels (merged)
+        # Row 0: Prevádzka/Riadok | Počet | meal-group labels (merged)
         # Row 1: (same) | (same) | component labels
-        hdr0 = [para("Klient / Riadok", bold=True), para("Počet", bold=True)]
+        hdr0 = [para("Prevádzka / Riadok", bold=True), para("Počet", bold=True)]
         hdr1 = ["", ""]
         for cg in col_groups:
             hdr0.append(para(cg["label"], bold=True))

@@ -9,6 +9,7 @@ from typing import Any, List
 from django.db import transaction
 
 from ..models import DailyMealPlan, EnrolledCount, MealPlanItem, MealTemplate
+from ..utils import user_operation_name
 
 
 class MealPlanService:
@@ -373,13 +374,7 @@ class MealPlanService:
         )
 
         for order in orders:
-            profile = getattr(order.user, "profile", None)
-            if profile and profile.company_name:
-                client_label = profile.company_name
-            else:
-                full_name = f"{order.user.first_name} {order.user.last_name}".strip()
-                client_label = full_name or order.user.email
-
+            client_label = user_operation_name(order.user)
             sub_rows: list[dict] = []
             client_total_count = 0
             client_standard_totals = _empty_group_totals()

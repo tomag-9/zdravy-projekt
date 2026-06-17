@@ -129,7 +129,12 @@ class UserProfile(models.Model):
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
-        max_length=255, blank=True, help_text="Primary company name"
+        max_length=255,
+        blank=True,
+        help_text="Interný názov prevádzky (používa sa interne)",
+    )
+    billing_name = models.CharField(
+        max_length=255, blank=True, help_text="Názov spoločnosti pre fakturáciu"
     )
     ico = models.CharField(
         max_length=20, blank=True, help_text="Company registration number (IČO)"

@@ -9,7 +9,6 @@ import {
   Apple,
   Info,
   LogOut,
-  Lock,
   Mail,
   Phone,
 } from "lucide-react";
@@ -31,17 +30,10 @@ const Settings = () => {
   const contactRole = clientContactInfo.role ? ` · ${clientContactInfo.role}` : "";
   const contactEmail = clientContactInfo.email || "info@zdravyprojekt.sk";
   const contactPhone = clientContactInfo.phone || "+421 000 000 000";
+  const contactPhoneHref = contactPhone.replace(/[^\d+]/g, "");
 
   const portionsContent = (
     <>
-      <div className="zp-readonly-banner">
-        <Lock style={{ width: 16, height: 16 }} />
-        <div>
-          <strong>Iba na čítanie.</strong> Povolené typy porcií nastavujeme v Zdravom Brušku.
-          Ak chcete pridať alebo upraviť typ porcie, ozvite sa nám.
-        </div>
-      </div>
-
       {enabledCategories.map((category) => (
         <div className="zp-portion-card" key={category}>
           <div className="ic">
@@ -55,34 +47,11 @@ const Settings = () => {
           </div>
         </div>
       ))}
-
-      <div className="zp-contact-card">
-        <span className="eye">Potrebujete zmenu?</span>
-        <h4>Kontakt pre úpravu povolených porcií</h4>
-        <p>Pre rozšírenie alebo zmenu typov porcií kontaktujte zodpovednú osobu v Zdravom projekte.</p>
-        <div className="contact-row">
-          <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
-        </div>
-        <div className="contact-row">
-          <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
-        </div>
-        <div className="contact-row">
-          <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
-        </div>
-      </div>
     </>
   );
 
   const dietsContent = (
     <>
-      <div className="zp-readonly-banner">
-        <Lock style={{ width: 16, height: 16 }} />
-        <div>
-          <strong>Iba na čítanie.</strong> Zoznam diét spravujeme v Zdravom Brušku.
-          Ak chcete pridať alebo upraviť diétu, ozvite sa nám.
-        </div>
-      </div>
-
       {visibleDietDetails.length === 0 && (
         <div className="zp-empty">
           <Apple />
@@ -99,21 +68,6 @@ const Settings = () => {
           </div>
         </div>
       ))}
-
-      <div className="zp-contact-card">
-        <span className="eye">Chýba vám niečo?</span>
-        <h4>Kontakt pre pridanie / úpravu diéty</h4>
-        <p>Ak potrebujete novú diétu, ktorá tu nie je, kontaktujte zodpovednú osobu.</p>
-        <div className="contact-row">
-          <User style={{ width: 14, height: 14 }} /> {contactName}{contactRole}
-        </div>
-        <div className="contact-row">
-          <Mail style={{ width: 14, height: 14 }} /> {contactEmail}
-        </div>
-        <div className="contact-row">
-          <Phone style={{ width: 14, height: 14 }} /> {contactPhone}
-        </div>
-      </div>
     </>
   );
 
@@ -128,13 +82,8 @@ const Settings = () => {
             </span>
             <span className="body">
               <span className="ttl">
-                {user?.first_name && user?.last_name
-                  ? `${user.first_name} ${user.last_name}`
-                  : user?.company_name || "Môj profil"}
+                {user?.billing_name || "Môj profil"}
               </span>
-              {user?.company_name && (
-                <span className="sub">{user.company_name}</span>
-              )}
               {user?.email && <span className="sub">{user.email}</span>}
             </span>
             <span className="chev">
@@ -185,6 +134,30 @@ const Settings = () => {
               <ChevronRight style={{ width: 18, height: 18 }} />
             </span>
           </button>
+        </div>
+      </div>
+
+      <div className="zp-settings-section">
+        <h2>Kontakt</h2>
+        <div className="zp-settings-list">
+          <a className="zp-settings-row" href={`tel:${contactPhoneHref}`}>
+            <span className="ic">
+              <Phone style={{ width: 18, height: 18 }} />
+            </span>
+            <span className="body">
+              <span className="ttl">{contactName}{contactRole}</span>
+              <span className="sub">{contactPhone}</span>
+            </span>
+          </a>
+          <a className="zp-settings-row" href={`mailto:${contactEmail}`}>
+            <span className="ic">
+              <Mail style={{ width: 18, height: 18 }} />
+            </span>
+            <span className="body">
+              <span className="ttl">Napísať správu</span>
+              <span className="sub">{contactEmail}</span>
+            </span>
+          </a>
         </div>
       </div>
 

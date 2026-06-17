@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
+import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
 
 interface Diet {
@@ -21,13 +22,12 @@ interface UserProfile {
   is_edupage: boolean;
   api_identifier: string;
   company_name: string;
+  billing_name?: string;
 }
 
 interface AdminUser {
   id: number;
   email: string;
-  first_name: string;
-  last_name: string;
   is_active: boolean;
   is_staff: boolean;
   settings: UserSettings | null;
@@ -92,6 +92,7 @@ const ClientDetail: React.FC = () => {
 
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -248,8 +249,6 @@ const ClientDetail: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
-        first_name: user.first_name,
-        last_name: user.last_name,
         email: user.email,
         is_staff: user.is_staff,
         settings: {
@@ -300,7 +299,7 @@ const ClientDetail: React.FC = () => {
   if (loading)
     return <div className="p-8 text-center text-gray-500">Načítavam...</div>;
   if (!user)
-    return <div className="p-8 text-center text-red-500">Klient nenájdený</div>;
+    return <div className="p-8 text-center text-red-500">Prevádzka nenájdená</div>;
 
   const isEdupageClient = user.profile?.is_edupage === true;
 
@@ -317,7 +316,7 @@ const ClientDetail: React.FC = () => {
           onClick={() => navigate("/admin/clients")}
           className="text-gray-500 hover:text-gray-900 mb-4 flex items-center"
         >
-          ← Späť na zoznam klientov
+          ← Späť na zoznam prevádzok
         </button>
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -326,15 +325,18 @@ const ClientDetail: React.FC = () => {
             </div>
             <div>
               <h2 className="text-3xl font-bold text-gray-900">
-                {user.first_name || user.last_name
-                  ? `${user.first_name} ${user.last_name}`.trim()
-                  : user.email}
+                {user.profile?.company_name || user.email}
               </h2>
               <p className="text-gray-500">{user.email}</p>
+              {user.profile?.billing_name && (
+                <p className="text-sm text-gray-500">
+                  Fakturácia: {user.profile.billing_name}
+                </p>
+              )}
               {isEdupageClient && (
                 <div className="flex items-center gap-2 mt-1">
                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    API klient
+                    Edupage prevádzka
                   </span>
                   {user.profile?.api_identifier && (
                     <span className="text-sm text-gray-500 font-mono">
@@ -347,7 +349,7 @@ const ClientDetail: React.FC = () => {
           </div>
           {!isEdupageClient && (
             <button
-              onClick={handleSendPasswordReset}
+              onClick={() => setShowResetConfirmation(true)}
               disabled={sendingReset}
               title="Odoslať reset hesla na email"
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-indigo-700 bg-white hover:bg-indigo-50 border border-gray-200 hover:border-indigo-200 rounded-xl transition-all disabled:opacity-60"
@@ -422,7 +424,7 @@ const ClientDetail: React.FC = () => {
               </div>
             ) : recentOrders.length === 0 ? (
               <div className="p-12 text-center text-gray-400">
-                Tento klient zatiaľ nemá žiadne objednávky.
+                Táto prevádzka zatiaľ nemá žiadne objednávky.
               </div>
             ) : (
               <table className="w-full text-left text-sm text-gray-600">
@@ -703,7 +705,7 @@ const ClientDetail: React.FC = () => {
                 Viditeľné menu
               </h3>
               <p className="text-sm text-gray-500 mb-4">
-                Vyberte, ktoré typy menu sa zobrazia pre tohto klienta.
+                Vyberte, ktoré typy menu sa zobrazia pre túto prevádzku.
               </p>
               <div className="space-y-3">
                 {ALL_MENUS.map((menu) => (
@@ -748,7 +750,7 @@ const ClientDetail: React.FC = () => {
                       onChange={() => {
                         if (meals.has(meal) && meals.size === 1) {
                           toastWarning(
-                            "Klient musí mať povolený aspoň jeden chod.",
+                            "Prevádzka musí mať povolený aspoň jeden chod.",
                           );
                           return;
                         }
@@ -784,7 +786,7 @@ const ClientDetail: React.FC = () => {
               </button>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Obmedzte, ktoré špeciálne diéty si klient môže vybrať.
+              Obmedzte, ktoré špeciálne diéty si prevádzka môže vybrať.
             </p>
 
             {allDiets.length === 0 ? (
@@ -842,13 +844,13 @@ const ClientDetail: React.FC = () => {
             </h3>
             <p className="text-sm text-gray-500 mb-4">
               Táto poznámka sa zobrazuje iba v admin dashboarde po rozkliknutí
-              klienta, nad súhrnnými číslami.
+              prevádzky, nad súhrnnými číslami.
             </p>
             <textarea
               value={adminOrderNote}
               onChange={(e) => setAdminOrderNote(e.target.value)}
               rows={6}
-              placeholder="Sem zadajte internú poznámku k objednávkam klienta..."
+              placeholder="Sem zadajte internú poznámku k objednávkam prevádzky..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
@@ -867,6 +869,17 @@ const ClientDetail: React.FC = () => {
     </div>
 
       {/* ── Delete order confirmation modal ── */}
+      <ConfirmationModal
+        isOpen={showResetConfirmation}
+        onClose={() => setShowResetConfirmation(false)}
+        onConfirm={handleSendPasswordReset}
+        title="Odoslať reset hesla"
+        description={`Naozaj chcete odoslať reset link na ${user.email}? Prevádzka si cez tento odkaz bude môcť nastaviť nové heslo.`}
+        confirmText={sendingReset ? "Odosielam..." : "Odoslať"}
+        cancelText="Zrušiť"
+        variant="warning"
+      />
+
       {deleteOrderTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">

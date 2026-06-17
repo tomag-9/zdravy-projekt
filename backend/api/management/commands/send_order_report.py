@@ -19,6 +19,7 @@ from django.core.management.base import BaseCommand
 from api.email_utils import send_daily_report_email
 from api.models import DailyOrder, GlobalSettings
 from api.report_xlsx_helpers import (
+    xlsx_apply_table_grid,
     xlsx_build_column_meta,
     xlsx_collect_columns,
     xlsx_style_headers,
@@ -123,6 +124,7 @@ def build_xlsx_bytes(
         center,
     )
     xlsx_write_data(ws, rows_data, meals, sorted_cats, bold_font)
+    xlsx_apply_table_grid(ws)
 
     ws.column_dimensions["A"].width = 28
     for c_idx in range(2, len(col_meta) + 1):
