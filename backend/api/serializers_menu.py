@@ -13,6 +13,11 @@ from .models import (
     PortionType,
 )
 
+INVALID_WEIGHT_LABEL_MESSAGE = (
+    "Nepodarilo sa rozpoznať gramáž. "
+    "Použite formát s 'g' hodnotami, napr.: 200g + 25g + 50g"
+)
+
 
 def parse_composition_grams(composition: str) -> Decimal:
     """
@@ -29,10 +34,7 @@ def parse_composition_grams(composition: str) -> Decimal:
     # (avoid false matches)
     matches = re.findall(r"(\d+(?:[.,]\d+)?)\s*g(?![a-z/])", composition, re.IGNORECASE)
     if not matches:
-        raise ValueError(
-            "Nepodarilo sa rozpoznať gramáž. "
-            "Použite formát s 'g' hodnotami, napr.: 200g + 25g + 50g"
-        )
+        raise ValueError(INVALID_WEIGHT_LABEL_MESSAGE)
     total = sum((Decimal(m.replace(",", ".")) for m in matches), Decimal(0))
     return total.quantize(Decimal("0.01"))
 
@@ -77,7 +79,7 @@ class MealTemplateSerializer(serializers.ModelSerializer):
         try:
             parse_composition_grams(value)
         except ValueError as exc:
-            raise serializers.ValidationError(str(exc))
+            raise serializers.ValidationError(INVALID_WEIGHT_LABEL_MESSAGE) from exc
         return value
 
     def _set_base_weight(self, validated_data: dict) -> dict:

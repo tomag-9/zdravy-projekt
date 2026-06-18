@@ -27,6 +27,7 @@ _CLIENT_REFRESH_LIFETIME = timedelta(days=30)
 
 _COOKIE_NAME = settings.REFRESH_TOKEN_COOKIE_NAME
 _COOKIE_PATH = settings.REFRESH_TOKEN_COOKIE_PATH
+PASSWORD_RESET_CONFIRM_ERROR = "Neplatný alebo expirovaný odkaz na obnovu hesla."
 
 
 def _set_refresh_cookie(response: Response, refresh_str: str, max_age: int) -> None:
@@ -302,8 +303,9 @@ class PasswordResetConfirmView(APIView):
         try:
             confirm_password_reset(token=token, new_password=new_password)
         except ValueError as exc:
+            logger.info("Password reset confirmation failed: %s", exc)
             return Response(
-                {"detail": str(exc)},
+                {"detail": PASSWORD_RESET_CONFIRM_ERROR},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
