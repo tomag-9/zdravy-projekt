@@ -118,7 +118,6 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
         upload = JedalnicekUpload.objects.create(
             week_start=d,
             filename=file.name,
-            file=file,
             status=JedalnicekUpload.STATUS_PENDING,
             uploaded_by=request.user,
         )
@@ -175,15 +174,7 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["delete"])
     def remove(self, request: Request, pk: int | None = None) -> Response:
-        upload = self.get_object()
-        file_to_delete = upload.file
-        upload.delete()
-        try:
-            file_to_delete.delete(save=False)
-        except Exception:
-            logger.exception(
-                "Failed to delete file %s after DB record removed", file_to_delete.name
-            )
+        self.get_object().delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["get"])

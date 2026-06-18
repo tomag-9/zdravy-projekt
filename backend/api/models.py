@@ -368,7 +368,9 @@ class JedalnicekUpload(models.Model):
         db_index=True, help_text="Monday of the week this plan covers"
     )
     filename = models.CharField(max_length=500)
-    file = models.FileField(upload_to="jedalnicek_uploads/%Y/%m/")
+    file = models.FileField(
+        upload_to="jedalnicek_uploads/%Y/%m/", null=True, blank=True
+    )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
     )
