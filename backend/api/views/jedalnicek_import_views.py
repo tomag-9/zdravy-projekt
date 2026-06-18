@@ -2,6 +2,7 @@ import datetime
 import logging
 from urllib.parse import quote
 
+from django.db import transaction
 from django.http import HttpResponse
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -124,31 +125,43 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             diet, _tag = resolve_diet(file.name)
-            entries = parse_docx(upload.file.path, d)
+            file.seek(0)
+            entries = parse_docx(file, d)
 
-            JedalnicekEntry.objects.bulk_create(
-                [
-                    JedalnicekEntry(
-                        upload=upload,
-                        date=e.date,
-                        category=e.category,
-                        menu_variant=e.menu_variant,
-                        diet=diet,
-                        name=e.name,
-                        weight_grams=e.weight_grams,
-                    )
-                    for e in entries
-                ]
-            )
-            upload.status = JedalnicekUpload.STATUS_PROCESSED
-            upload.error_message = ""
-            upload.save(update_fields=["status", "error_message"])
+            with transaction.atomic():
+                JedalnicekEntry.objects.bulk_create(
+                    [
+                        JedalnicekEntry(
+                            upload=upload,
+                            date=e.date,
+                            category=e.category,
+                            menu_variant=e.menu_variant,
+                            diet=diet,
+                            name=e.name,
+                            weight_grams=e.weight_grams,
+                        )
+                        for e in entries
+                    ]
+                )
+                upload.status = JedalnicekUpload.STATUS_PROCESSED
+                upload.error_message = ""
+                upload.save(update_fields=["status", "error_message"])
 
         except Exception as exc:
             logger.exception("Failed to parse DOCX upload %d", upload.pk)
             upload.status = JedalnicekUpload.STATUS_ERROR
             upload.error_message = str(exc)[:500]
             upload.save(update_fields=["status", "error_message"])
+
+            from django.db.models import Count
+
+            upload_with_count = JedalnicekUpload.objects.annotate(
+                entry_count=Count("entries")
+            ).get(pk=upload.pk)
+            return Response(
+                JedalnicekUploadSerializer(upload_with_count).data,
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         from django.db.models import Count
 
@@ -181,6 +194,7 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
             )
+        parse_date_param(date_str)
 
         entry_list = list(
             JedalnicekEntry.objects.filter(date=date_str)
@@ -273,13 +287,15 @@ class AdminJedalnicekEntryViewSet(viewsets.ModelViewSet):
     serializer_class = JedalnicekEntrySerializer
 
     def get_queryset(self):
+        upload_id = self.request.query_params.get("upload")
+        date = self.request.query_params.get("date")
+        if not upload_id and not date:
+            return JedalnicekEntry.objects.none()
         qs = JedalnicekEntry.objects.select_related("diet", "upload").order_by(
             "date", "category", "menu_variant", "diet__name"
         )
-        upload_id = self.request.query_params.get("upload")
         if upload_id:
             qs = qs.filter(upload_id=upload_id)
-        date = self.request.query_params.get("date")
         if date:
             qs = qs.filter(date=date)
         return qs
@@ -303,11 +319,12 @@ class JedalnicekMenuViewSet(viewsets.GenericViewSet):
             return Response(
                 {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
             )
-        entries = self.get_queryset().filter(date=date_str)
+        parse_date_param(date_str)
+        entry_list = list(self.get_queryset().filter(date=date_str))
         return Response(
             {
                 "date": date_str,
-                "has_import": entries.exists(),
-                "entries": JedalnicekEntrySerializer(entries, many=True).data,
+                "has_import": bool(entry_list),
+                "entries": JedalnicekEntrySerializer(entry_list, many=True).data,
             }
         )

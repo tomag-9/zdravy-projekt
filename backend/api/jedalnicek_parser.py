@@ -75,6 +75,8 @@ def extract_diet_tag(filename: str) -> str:
 
 def is_standard_tag(tag: str) -> bool:
     """True when the tag maps to the default (no restriction) menu."""
+    if not tag:
+        return False
     return tag.lower().split()[0] in _STANDARD_TAGS
 
 
@@ -91,7 +93,12 @@ def resolve_diet(filename: str):  # -> tuple[Diet | None, str]
     except Diet.DoesNotExist:
         pass
     try:
-        return Diet.objects.get(name__iexact=tag), tag
+        diet = Diet.objects.get(name__iexact=tag)
+        logger.warning(
+            "Diet matched by name %r (no docx_tag set) — consider setting Diet.docx_tag",
+            tag,
+        )
+        return diet, tag
     except Diet.DoesNotExist:
         pass
 
@@ -120,7 +127,7 @@ def _parse_weight(text: str) -> tuple[Decimal | None, str]:
 def _strip_allergens(name: str) -> str:
     """Remove trailing allergen number list: '...Jedlo 1, 3, 7' → '...Jedlo'."""
     cleaned = re.sub(r"(\s+\d+(?:,\s*\d+)*)\s*$", "", name).strip()
-    return cleaned if cleaned else name
+    return cleaned
 
 
 def _parse_variant_prefix(text: str) -> tuple[str, str]:
@@ -199,7 +206,7 @@ def parse_docx(
         # Day header?
         upper = raw.upper().rstrip(" :")
         day_offset = next(
-            (off for day, off in _DAY_OFFSETS.items() if upper.startswith(day)), None
+            (off for day, off in _DAY_OFFSETS.items() if upper == day), None
         )
         if day_offset is not None:
             flush()

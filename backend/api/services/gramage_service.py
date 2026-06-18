@@ -5,10 +5,13 @@ and JedalnicekEntry weights.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from typing import Any
 
 from ..utils import user_operation_name
+
+logger = logging.getLogger(__name__)
 
 
 def gramage_dashboard(date_str: str) -> dict:
@@ -104,6 +107,13 @@ def gramage_dashboard(date_str: str) -> dict:
 
     col_groups.sort(key=_cg_sort_key)
 
+    if not col_groups:
+        logger.warning(
+            "gramage_dashboard: no standard JedalnicekEntry records found for %s — "
+            "dashboard will be empty. Upload a Klasik DOCX first.",
+            date_str,
+        )
+
     # ── Portion types ─────────────────────────────────────────────────────────
     pt_by_name = {
         pt.name: pt.coefficient for pt in PortionType.objects.filter(is_active=True)
@@ -156,6 +166,8 @@ def gramage_dashboard(date_str: str) -> dict:
             for cg in meal_groups:
                 if _normalize_variant(cg["variant"]) == "A":
                     return _col_grams(meal, cg["variant"], coeff, count)
+            # No variant-A column; fall back to the first available lunch variant
+            return _col_grams(meal, meal_groups[0]["variant"], coeff, count)
         if len(meal_groups) == 1:
             return _col_grams(meal, meal_groups[0]["variant"], coeff, count)
         return [[] for _ in col_groups]
@@ -186,6 +198,11 @@ def gramage_dashboard(date_str: str) -> dict:
                 if not isinstance(portion_data, dict):
                     continue
 
+                if portion_name not in pt_by_name:
+                    logger.warning(
+                        "gramage_dashboard: unknown portion type %r — defaulting coefficient to 1.0",
+                        portion_name,
+                    )
                 coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
                 raw_menu_counts = portion_data.get("menuCounts", {})
                 menu_counts = (
