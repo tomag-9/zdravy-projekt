@@ -41,6 +41,13 @@ class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
+    docx_tag = models.CharField(
+        max_length=100,
+        blank=True,
+        unique=True,
+        null=True,
+        help_text="Filename tag used to auto-detect this diet from uploaded DOCX files, e.g. 'NoGluten'",
+    )
 
     def __str__(self) -> str:
         return self.name
@@ -215,49 +222,6 @@ class MealCategory(models.TextChoices):
     SNACK = "snack", "Olovrant"
 
 
-class MealTemplate(models.Model):
-    """
-    Reusable meal template selected when building a daily plan.
-    E.g. "Mäso + Príloha + Šalát" with base_weight_grams=225 (200+25).
-    """
-
-    category = models.CharField(
-        max_length=20, choices=MealCategory.choices, db_index=True
-    )
-    name = models.CharField(max_length=200)
-    # Human-readable composition label, e.g. "200g + 25g"
-    weight_label = models.CharField(max_length=100, blank=True)
-    # Base weight in grams used for calculations (Adult 100% portion)
-    base_weight_grams = models.DecimalField(max_digits=8, decimal_places=2)
-    # Lunch can have variants A / B / C …
-    menu_variant = models.CharField(
-        max_length=10,
-        blank=True,
-        help_text="Leave empty for breakfast/snack. E.g. 'A', 'B', 'C'.",
-    )
-    diet = models.ForeignKey(
-        "Diet",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="meal_templates",
-        help_text="Optional diet this template variant is prepared for.",
-    )
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["category", "menu_variant", "name"]
-        indexes = [
-            models.Index(fields=["category", "is_active"]),
-        ]
-
-    def __str__(self) -> str:
-        variant = f" [{self.menu_variant}]" if self.menu_variant else ""
-        return f"{self.get_category_display()}{variant}: {self.name}"
-
-
 class PortionType(models.Model):
     """
     Defines a consumer group and their weight coefficient.
@@ -279,71 +243,6 @@ class PortionType(models.Model):
     def __str__(self) -> str:
         pct = int(self.coefficient * 100)
         return f"{self.name} ({pct}%)"
-
-
-class DailyMealPlan(models.Model):
-    """
-    The meal plan for one calendar day.
-    Contains the template selections and the enrolled person counts.
-    """
-
-    date = models.DateField(unique=True, db_index=True)
-    notes = models.TextField(blank=True)
-    created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name="meal_plans_created"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-date"]
-
-    def __str__(self) -> str:
-        return f"Jedálniček {self.date}"
-
-
-class MealPlanItem(models.Model):
-    """
-    One meal slot within a DailyMealPlan.
-    One item per (meal_plan, category, menu_variant) combination.
-    """
-
-    meal_plan = models.ForeignKey(
-        DailyMealPlan, on_delete=models.CASCADE, related_name="items"
-    )
-    template = models.ForeignKey(
-        MealTemplate, on_delete=models.PROTECT, related_name="plan_items"
-    )
-    # Denormalised for query convenience
-    category = models.CharField(max_length=20, choices=MealCategory.choices)
-    menu_variant = models.CharField(max_length=10, blank=True)
-
-    class Meta:
-        unique_together = ["meal_plan", "category", "menu_variant"]
-
-    def __str__(self) -> str:
-        return f"{self.meal_plan.date} {self.category} {self.menu_variant}"
-
-
-class EnrolledCount(models.Model):
-    """
-    How many persons of a given PortionType are enrolled on a specific DailyMealPlan.
-    Used to compute total gramage per day.
-    """
-
-    meal_plan = models.ForeignKey(
-        DailyMealPlan, on_delete=models.CASCADE, related_name="enrolled_counts"
-    )
-    portion_type = models.ForeignKey(
-        PortionType, on_delete=models.PROTECT, related_name="enrolled_counts"
-    )
-    count = models.PositiveIntegerField(default=0)
-
-    class Meta:
-        unique_together = ["meal_plan", "portion_type"]
-
-    def __str__(self) -> str:
-        return f"{self.meal_plan.date} {self.portion_type.name}: {self.count}"
 
 
 class Holiday(models.Model):
@@ -469,7 +368,9 @@ class JedalnicekUpload(models.Model):
         db_index=True, help_text="Monday of the week this plan covers"
     )
     filename = models.CharField(max_length=500)
-    file = models.FileField(upload_to="jedalnicek_uploads/%Y/%m/")
+    file = models.FileField(
+        upload_to="jedalnicek_uploads/%Y/%m/", null=True, blank=True
+    )
     status = models.CharField(
         max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
     )

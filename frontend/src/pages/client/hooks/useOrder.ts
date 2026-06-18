@@ -300,12 +300,12 @@ export const useOrder = () => {
                 const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`);
                 if (!res.ok) { setMealPlanAvailability(null); return; }
                 const data = await res.json();
-                if (!data.exists || !Array.isArray(data.items) || data.items.length === 0) {
+                if (!data.has_import || !Array.isArray(data.entries) || data.entries.length === 0) {
                     setMealPlanAvailability(null);
                     return;
                 }
                 const availability: Record<string, Set<string>> = {};
-                for (const item of data.items) {
+                for (const item of data.entries) {
                     const mealKey: string = item.category;
                     if (!availability[mealKey]) availability[mealKey] = new Set();
                     if (item.menu_variant) availability[mealKey].add(item.menu_variant);

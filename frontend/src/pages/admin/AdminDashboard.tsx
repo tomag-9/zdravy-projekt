@@ -67,7 +67,6 @@ interface CountSection {
 
 interface GramageDashboard {
   date: string;
-  meal_plan_id: number | null;
   col_groups: ColGroup[];
   rows: ClientRow[];
   totals: string[][];
@@ -184,7 +183,7 @@ const AdminDashboard: React.FC = () => {
     setLoading(true);
     setData(null);
     try {
-      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}`);
+      const res = await apiFetch(`${API}/admin/jedalnicek-uploads/gramage-dashboard/?date=${date}`);
       if (res.ok) setData(await res.json());
     } catch (e) { logger.error(e); }
     finally { setLoading(false); }
@@ -195,7 +194,7 @@ const AdminDashboard: React.FC = () => {
   const handleExport = useCallback(async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
     setFmt(true);
     try {
-      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard-${fmt}/?date=${date}`);
+      const res = await apiFetch(`${API}/admin/jedalnicek-uploads/gramage-dashboard-${fmt}/?date=${date}`);
       if (!res.ok) { toastError("Chyba pri generovaní súboru."); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -282,9 +281,6 @@ const AdminDashboard: React.FC = () => {
       {!loading && data && !hasData && (
         <div className="text-center py-16 text-gray-400 text-sm italic">
           Pre tento deň nie sú žiadne dáta.
-          {!data.meal_plan_id && (
-            <span className="block mt-1 text-xs">Jedálniček pre tento deň nebol naplánovaný.</span>
-          )}
         </div>
       )}
 

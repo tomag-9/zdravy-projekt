@@ -10,14 +10,8 @@ from openpyxl import load_workbook
 
 from api.exporters import PDFReportExporter, XLSXReportExporter
 from api.exporters.gramage_dashboard_xlsx_exporter import GramageDashboardXLSXExporter
-from api.models import (
-    DailyMealPlan,
-    DailyOrder,
-    MealPlanItem,
-    MealTemplate,
-    PortionType,
-)
-from api.services.meal_plan_service import MealPlanService
+from api.models import DailyOrder, JedalnicekEntry, JedalnicekUpload, PortionType
+from api.services.gramage_service import gramage_dashboard
 
 
 @pytest.mark.django_db
@@ -92,56 +86,34 @@ class TestGramageDashboardExports:
             first_name="Dashboard",
             last_name="Client",
         )
-        portion_type = PortionType.objects.create(
-            name="Škôlka", coefficient=Decimal("1.0000"), sort_order=1
+        PortionType.objects.get_or_create(
+            name="Škôlka", defaults={"coefficient": Decimal("1.0000"), "sort_order": 1}
         )
-        plan = DailyMealPlan.objects.create(
-            date=datetime.date(2024, 1, 15),
-            created_by=user,
+        target_date = datetime.date(2024, 1, 15)
+        upload = JedalnicekUpload.objects.create(
+            week_start=datetime.date(2024, 1, 15),
+            filename="Week 032024_Klasik.docx",
+            status=JedalnicekUpload.STATUS_PROCESSED,
+            uploaded_by=user,
         )
-        breakfast = MealTemplate.objects.create(
-            category="breakfast",
-            name="Kaša",
-            weight_label="100g",
-            base_weight_grams=Decimal("100.00"),
-        )
-        lunch_a = MealTemplate.objects.create(
-            category="lunch",
-            name="Menu A",
-            weight_label="200g",
-            base_weight_grams=Decimal("200.00"),
-            menu_variant="A",
-        )
-        lunch_b = MealTemplate.objects.create(
-            category="lunch",
-            name="Menu B",
-            weight_label="250g",
-            base_weight_grams=Decimal("250.00"),
-            menu_variant="B",
-        )
-        snack = MealTemplate.objects.create(
-            category="snack",
-            name="Ovocie",
-            weight_label="50g",
-            base_weight_grams=Decimal("50.00"),
-        )
-        MealPlanItem.objects.create(
-            meal_plan=plan, template=breakfast, category="breakfast", menu_variant=""
-        )
-        MealPlanItem.objects.create(
-            meal_plan=plan, template=lunch_a, category="lunch", menu_variant="A"
-        )
-        MealPlanItem.objects.create(
-            meal_plan=plan, template=lunch_b, category="lunch", menu_variant="B"
-        )
-        MealPlanItem.objects.create(
-            meal_plan=plan, template=snack, category="snack", menu_variant=""
-        )
-        plan.enrolled_counts.create(portion_type=portion_type, count=1)
+        for cat, mv, name, grams in [
+            ("breakfast", "", "Kaša", "100.00"),
+            ("lunch", "A", "Menu A", "200.00"),
+            ("lunch", "B", "Menu B", "250.00"),
+            ("snack", "", "Ovocie", "50.00"),
+        ]:
+            JedalnicekEntry.objects.create(
+                upload=upload,
+                date=target_date,
+                category=cat,
+                menu_variant=mv,
+                name=name,
+                weight_grams=grams,
+            )
 
         DailyOrder.objects.create(
             user=user,
-            date=plan.date,
+            date=target_date,
             data={
                 "breakfast": {
                     "Škôlka": {"menuCounts": {"A": 4}, "diets": {"Vegan": 1}}
@@ -156,7 +128,7 @@ class TestGramageDashboardExports:
             },
         )
 
-        data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+        data = gramage_dashboard(target_date.isoformat())
         row = data["rows"][0]
         standard_rows = [sr for sr in row["sub_rows"] if sr["type"] == "standard"]
 

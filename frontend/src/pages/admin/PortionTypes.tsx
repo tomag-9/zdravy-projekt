@@ -76,7 +76,7 @@ const PortionTypes: React.FC = () => {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link
-          to="/admin/meal-plan"
+          to="/admin/dashboard"
           className="p-2 rounded-lg hover:bg-gray-100 text-gray-500 transition"
         >
           ← Späť
