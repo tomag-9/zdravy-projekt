@@ -1,13 +1,12 @@
 """
 Development-only management command to seed the database with realistic sample
-data: users, diets, client settings, orders, meal plan templates and plans.
+data: users, diets, client settings, orders.
 
 Usage:
     python manage.py seed_dev_data
     python manage.py seed_dev_data --flush --confirm-flush FLUSH
                                                # wipe existing seed data first
-    python manage.py seed_dev_data --days 10  # seed N past weekdays
-                                               # (orders + meal plans)
+    python manage.py seed_dev_data --days 10  # seed N past weekdays (orders)
     python manage.py seed_dev_data --allow-staging --days 10
                                                # allow run with staging settings
 """
@@ -22,58 +21,12 @@ from django.core.management.base import BaseCommand
 
 from api.models import (
     ClientSettings,
-    DailyMealPlan,
     DailyOrder,
     Diet,
-    EnrolledCount,
     GlobalSettings,
-    MealPlanItem,
-    MealTemplate,
-    PortionType,
     PushSubscription,
     UserProfile,
 )
-
-# ── Meal plan seed data ────────────────────────────────────────────────────────
-
-MEAL_TEMPLATES = [
-    {
-        "category": "breakfast",
-        "name": "Chlieb + maslo + kakao",
-        "weight_label": "50g + 10g + 200g",
-        "menu_variant": "",
-    },
-    {
-        "category": "lunch",
-        "name": "Kurací vývar s rezancami",
-        "weight_label": "250g + 50g",
-        "menu_variant": "A",
-    },
-    {
-        "category": "lunch",
-        "name": "Kuracie prsia + ryža + šalát",
-        "weight_label": "120g + 80g + 50g",
-        "menu_variant": "A",
-    },
-    {
-        "category": "lunch",
-        "name": "Zeleninová polievka + chlieb",
-        "weight_label": "250g + 50g",
-        "menu_variant": "B",
-    },
-    {
-        "category": "lunch",
-        "name": "Šošovicový prívarok + knedľa",
-        "weight_label": "200g + 100g",
-        "menu_variant": "V",
-    },
-    {
-        "category": "snack",
-        "name": "Jogurt + ovocie",
-        "weight_label": "150g + 50g",
-        "menu_variant": "",
-    },
-]
 
 ORDER_CATEGORIES = ["Jasle", "Škôlka", "ZŠ 1.stupeň", "ZŠ 2.stupeň", "Dospelý (SŠ)"]
 MENUS = ["A", "B", "V"]  # V = vegetariánske menu
@@ -379,10 +332,9 @@ class Command(BaseCommand):
             )
 
         # ----------------------------------------------------------------
-        # 7. Reference data (portion types) + meal plan templates/plans
+        # 7. Reference data (portion types)
         # ----------------------------------------------------------------
         call_command("init_reference_data", verbosity=options.get("verbosity", 1))
-        mp_templates, mp_plans = self._seed_meal_plan_data(days, flush)
 
         # ----------------------------------------------------------------
         # Summary
@@ -393,8 +345,6 @@ class Command(BaseCommand):
         self.stdout.write(f"  Diets ensured:       {len(diet_objects)}")
         self.stdout.write(f"  Orders created:      {created_orders}")
         self.stdout.write(f"  Orders skipped:      {skipped_orders}")
-        self.stdout.write(f"  Templates ensured:   {mp_templates}")
-        self.stdout.write(f"  Meal plans created:  {mp_plans}")
         self.stdout.write(
             self.style.WARNING(
                 "\n  Seed prevádzky nemajú nastavené heslo (set_unusable_password).\n"
@@ -402,85 +352,3 @@ class Command(BaseCommand):
                 "  DO NOT USE IN PRODUCTION."
             )
         )
-
-    # ------------------------------------------------------------------
-    # Meal plan seeding (templates + daily plans)
-    # ------------------------------------------------------------------
-
-    def _seed_meal_plan_data(self, days: int, flush: bool) -> tuple[int, int]:
-        from api.serializers_menu import parse_composition_grams
-
-        if flush:
-            DailyMealPlan.objects.all().delete()
-            MealTemplate.objects.all().delete()
-
-        # ── Seed templates ────────────────────────────────────────────
-        for tpl_data in MEAL_TEMPLATES:
-            MealTemplate.objects.get_or_create(
-                name=tpl_data["name"],
-                category=tpl_data["category"],
-                defaults={
-                    "weight_label": tpl_data["weight_label"],
-                    "base_weight_grams": parse_composition_grams(
-                        tpl_data["weight_label"]
-                    ),
-                    "menu_variant": tpl_data["menu_variant"],
-                },
-            )
-
-        # Build lookup by (category, menu_variant) → first matching template
-        tpl_by_slot: dict[tuple, MealTemplate] = {}
-        for tpl in MealTemplate.objects.filter(
-            name__in=[t["name"] for t in MEAL_TEMPLATES]
-        ):
-            key = (tpl.category, tpl.menu_variant)
-            tpl_by_slot.setdefault(key, tpl)
-
-        portion_types = {pt.name: pt for pt in PortionType.objects.all()}
-        enrolled_config = [
-            ("Jasle", 5),
-            ("Škôlka", 15),
-            ("ZŠ 1.stupeň", 10),
-            ("ZŠ 2.stupeň", 8),
-            ("Dospelý (SŠ)", 3),
-        ]
-
-        # Slot definitions: (category, menu_variant)
-        slots = [
-            ("breakfast", ""),
-            ("lunch", "A"),
-            ("lunch", "B"),
-            ("lunch", "V"),
-            ("snack", ""),
-        ]
-
-        plans_created = 0
-        for day in _past_weekdays(days):
-            plan, created = DailyMealPlan.objects.get_or_create(
-                date=day,
-                defaults={"notes": "Demo jedálniček"},
-            )
-            if not created:
-                continue
-
-            for cat, variant in slots:
-                tpl = tpl_by_slot.get((cat, variant))
-                if tpl:
-                    MealPlanItem.objects.get_or_create(
-                        meal_plan=plan,
-                        category=cat,
-                        menu_variant=variant,
-                        defaults={"template": tpl},
-                    )
-
-            for pt_name, count in enrolled_config:
-                if pt_name in portion_types:
-                    EnrolledCount.objects.get_or_create(
-                        meal_plan=plan,
-                        portion_type=portion_types[pt_name],
-                        defaults={"count": count},
-                    )
-
-            plans_created += 1
-
-        return len(MEAL_TEMPLATES), plans_created
