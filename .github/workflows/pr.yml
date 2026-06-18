@@ -31,20 +31,20 @@ jobs:
       - name: Run flake8
         working-directory: ./backend
         run: |
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          python -m flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Check formatting with black
         working-directory: ./backend
-        run: black --check .
+        run: python -m black --check .
 
       - name: Check imports with isort
         working-directory: ./backend
-        run: isort --check-only .
+        run: python -m isort --check-only .
 
       - name: Type check with mypy
         working-directory: ./backend
-        run: mypy api --ignore-missing-imports
+        run: python -m mypy api --ignore-missing-imports
 
   frontend-lint:
     name: Frontend Lint
@@ -114,7 +114,7 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: 5432
         run: |
-          pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
+          python -m pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
