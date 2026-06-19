@@ -1,7 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useAuth } from '../../context/auth';
-
-const API = import.meta.env.VITE_API_URL || '/api';
+import { apiClient } from '../../api/client';
 
 interface JedalnicekUpload {
     id: number;
@@ -55,7 +53,6 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function JedalnicekImport() {
-    const { apiFetch } = useAuth();
     const [uploads, setUploads] = useState<JedalnicekUpload[]>([]);
     const [queue, setQueue] = useState<QueuedFile[]>([]);
     const [isDragging, setIsDragging] = useState(false);
@@ -67,14 +64,12 @@ export default function JedalnicekImport() {
     const loadUploads = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await apiFetch(`${API}/admin/jedalnicek-uploads/`);
-            if (!res.ok) return;
-            const data: JedalnicekUpload[] = await res.json();
+            const data = await apiClient.get<JedalnicekUpload[]>('/admin/jedalnicek-uploads/');
             setUploads(data);
         } finally {
             setLoading(false);
         }
-    }, [apiFetch]);
+    }, []);
 
     useEffect(() => {
         void loadUploads();
@@ -105,16 +100,7 @@ export default function JedalnicekImport() {
             form.append('week_start', item.weekStart);
             form.append('file', item.file);
 
-            const res = await apiFetch(`${API}/admin/jedalnicek-uploads/upload/`, {
-                method: 'POST',
-                body: form,
-            });
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({})) as Record<string, string>;
-                const msg = err.error || err.detail || res.statusText || 'Neznáma chyba';
-                setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, uploading: false, error: msg } : q)));
-                return;
-            }
+            await apiClient.postForm('/admin/jedalnicek-uploads/upload/', form);
             setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, uploading: false, done: true } : q)));
             await loadUploads();
         } catch (e) {
@@ -132,11 +118,7 @@ export default function JedalnicekImport() {
 
     const deleteUpload = async (id: number) => {
         try {
-            const res = await apiFetch(`${API}/admin/jedalnicek-uploads/${id}/remove/`, { method: 'DELETE' });
-            if (!res.ok) {
-                alert('Nepodarilo sa zmazať súbor');
-                return;
-            }
+            await apiClient.delete(`/admin/jedalnicek-uploads/${id}/remove/`);
             await loadUploads();
         } catch (e) {
             alert(e instanceof Error ? e.message : 'Nepodarilo sa zmazať súbor');

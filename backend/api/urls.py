@@ -6,19 +6,19 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
-    AdminJedalnicekEntryViewSet,
     AdminJedalnicekUploadViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
+    DailyMealPlanViewSet,
     DailyOrderViewSet,
     DietViewSet,
     EmailTokenObtainPairView,
     GlobalSettingsViewSet,
     HolidayListViewSet,
     InboxViewSet,
-    JedalnicekMenuViewSet,
     LogoutView,
+    MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PlannedOrdersViewSet,
@@ -54,7 +54,10 @@ router.register(
     ReportTaskViewSet,
     basename="report-task",
 )
+router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")
 router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
+router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
+router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
 router.register(r"inbox", InboxViewSet, basename="inbox")
@@ -66,12 +69,6 @@ router.register(
     AdminJedalnicekUploadViewSet,
     basename="admin-jedalnicek-upload",
 )
-router.register(
-    r"admin/jedalnicek-entries",
-    AdminJedalnicekEntryViewSet,
-    basename="admin-jedalnicek-entry",
-)
-router.register(r"meal-plans", JedalnicekMenuViewSet, basename="meal-plans")
 
 urlpatterns = [
     path("", include(router.urls)),

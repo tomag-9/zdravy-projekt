@@ -7,6 +7,7 @@ from .auto_order_service import (
     _next_workday,
     apply_auto_orders,
 )
+from .meal_plan_service import MealPlanService
 from .notification_service import NotificationService
 from .order_service import OrderService
 from .report_service import ReportService
@@ -24,4 +25,5 @@ __all__ = [
     "OrderService",
     "ReportService",
     "RegistrationError",
+    "MealPlanService",
 ]
