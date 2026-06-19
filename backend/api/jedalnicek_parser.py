@@ -39,12 +39,16 @@ _CATEGORY_PREFIXES: dict[str, str] = {
 }
 
 # Matches leading weight like "120g", "200ml", "120g (110g/10g)"
+# Group 1: total weight digits; Group 2: sub-weight string inside parens (optional)
 _WEIGHT_RE = re.compile(
-    r"^(\d+(?:[.,]\d+)?)\s*(?:g|ml)\b(?:\s*\([^)]*\))?\s*",
+    r"^(\d+(?:[.,]\d+)?)\s*(?:g|ml)\b(?:\s*\(([^)]*)\))?\s*",
     re.IGNORECASE,
 )
 
-_STANDARD_TAGS = {"klasik", "classic"}
+_SUB_WEIGHT_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(?:g|ml)\b", re.IGNORECASE)
+
+# "učiteľ" is a menu-C source file, not a diet restriction → treat as standard (diet=NULL)
+_STANDARD_TAGS = {"klasik", "classic", "učiteľ", "ucitel"}
 
 _METADATA_KEYWORDS = ("zostavili:", "alergény:", "nápoj týždňa:", "nápoj tyzdna:")
 
@@ -80,6 +84,22 @@ def is_standard_tag(tag: str) -> bool:
     return tag.lower().split()[0] in _STANDARD_TAGS
 
 
+def menu_only_variant(tag: str) -> str | None:
+    """
+    Return the single menu_variant letter to keep when uploading this file,
+    or None to keep all entries.
+
+    "Klasik Menu B" → "B"  (B: lines only; A and soup come from Klasik.docx)
+    "Učiteľ"        → "C"  (C: lines only; A/B come from their respective files)
+    """
+    m = re.search(r"\bMenu\s+([A-Z])\b", tag, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    if tag.lower() in {"učiteľ", "ucitel"}:
+        return "C"
+    return None
+
+
 def resolve_diet(filename: str):  # -> tuple[Diet | None, str]
     """Return (Diet | None, tag).  None means standard / no restriction."""
     from .models import Diet
@@ -111,17 +131,62 @@ def resolve_diet(filename: str):  # -> tuple[Diet | None, str]
 # ── Text helpers ──────────────────────────────────────────────────────────────
 
 
-def _parse_weight(text: str) -> tuple[Decimal | None, str]:
-    """Strip leading weight, return (grams, remaining_name)."""
+def _parse_weight(text: str) -> tuple[Decimal | None, list[Decimal | None], str]:
+    """Strip leading weight spec, return (total_grams, sub_weights, remaining_name)."""
     m = _WEIGHT_RE.match(text)
     if not m:
-        return None, text.strip()
+        return None, [], text.strip()
     raw = m.group(1).replace(",", ".")
     try:
         weight = Decimal(raw)
     except InvalidOperation:
         weight = None
-    return weight, text[m.end() :].strip()
+    sub_weights: list[Decimal | None] = []
+    if m.group(2):
+        for sm in _SUB_WEIGHT_RE.finditer(m.group(2)):
+            raw_sub = sm.group(1).replace(",", ".")
+            try:
+                sub_weights.append(Decimal(raw_sub))
+            except InvalidOperation:
+                sub_weights.append(None)
+    return weight, sub_weights, text[m.end() :].strip()
+
+
+def _split_components(name: str) -> list[str]:
+    """Split compound item; comma+space+letter starts a new component."""
+    return re.split(r",\s+(?=[^\d])", name)
+
+
+def _make_entries_from_text(
+    date: datetime.date,
+    category: str,
+    variant: str,
+    text: str,
+) -> list[ParsedEntry]:
+    """Parse a raw item text into one or more ParsedEntry objects."""
+    total_weight, sub_weights, name_part = _parse_weight(text)
+    components = _split_components(name_part)
+    result = []
+    for i, comp in enumerate(components):
+        comp = _strip_allergens(comp.strip())
+        if not comp:
+            continue
+        if sub_weights and i < len(sub_weights):
+            weight = sub_weights[i]
+        elif i == 0:
+            weight = total_weight
+        else:
+            weight = None
+        result.append(
+            ParsedEntry(
+                date=date,
+                category=category,
+                menu_variant=variant,
+                name=comp,
+                weight_grams=weight,
+            )
+        )
+    return result
 
 
 def _strip_allergens(name: str) -> str:
@@ -182,18 +247,9 @@ def parse_docx(
             buf_variant = ""
             return
         full = " ".join(buf_parts)
-        weight, name = _parse_weight(full)
-        name = _strip_allergens(name)
-        if name:
-            entries.append(
-                ParsedEntry(
-                    date=current_date,
-                    category=current_category,
-                    menu_variant=buf_variant,
-                    name=name,
-                    weight_grams=weight,
-                )
-            )
+        entries.extend(
+            _make_entries_from_text(current_date, current_category, buf_variant, full)
+        )
         buf_parts = []
         buf_variant = ""
 
@@ -231,18 +287,11 @@ def parse_docx(
             after_colon = re.sub(r"^[^:]+:\s*", "", raw).strip()
             if after_colon and current_date is not None:
                 variant, rest = _parse_variant_prefix(after_colon)
-                weight, name = _parse_weight(rest)
-                name = _strip_allergens(name)
-                if name:
-                    entries.append(
-                        ParsedEntry(
-                            date=current_date,
-                            category=current_category,
-                            menu_variant=variant,
-                            name=name,
-                            weight_grams=weight,
-                        )
+                entries.extend(
+                    _make_entries_from_text(
+                        current_date, current_category, variant, rest
                     )
+                )
             continue
 
         if current_date is None or current_category is None:

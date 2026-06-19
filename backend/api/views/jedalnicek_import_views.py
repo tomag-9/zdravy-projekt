@@ -10,7 +10,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..jedalnicek_parser import parse_docx, resolve_diet
+from ..jedalnicek_parser import menu_only_variant, parse_docx, resolve_diet
 from ..models import JedalnicekEntry, JedalnicekUpload
 from ..utils import parse_date_param
 
@@ -70,6 +70,7 @@ class JedalnicekEntrySerializer(serializers.ModelSerializer):
 
 class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
 
     def get_queryset(self):
         from django.db.models import Count
@@ -123,9 +124,13 @@ class AdminJedalnicekUploadViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         try:
-            diet, _tag = resolve_diet(file.name)
+            diet, tag = resolve_diet(file.name)
             file.seek(0)
             entries = parse_docx(file, d)
+
+            only = menu_only_variant(tag)
+            if only:
+                entries = [e for e in entries if e.menu_variant == only]
 
             with transaction.atomic():
                 JedalnicekEntry.objects.bulk_create(

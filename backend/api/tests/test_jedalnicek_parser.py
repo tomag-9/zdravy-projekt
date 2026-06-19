@@ -10,6 +10,7 @@ import pytest
 from api.jedalnicek_parser import (
     extract_diet_tag,
     is_standard_tag,
+    menu_only_variant,
     parse_docx,
     resolve_diet,
 )
@@ -50,8 +51,25 @@ class TestIsStandardTag:
     def test_nogluten_is_not_standard(self):
         assert is_standard_tag("NoGluten") is False
 
-    def test_ucitel_is_not_standard(self):
-        assert is_standard_tag("Učiteľ") is False
+    def test_ucitel_is_standard(self):
+        assert is_standard_tag("Učiteľ") is True
+
+
+class TestMenuOnlyVariant:
+    def test_klasik_menu_b(self):
+        assert menu_only_variant("Klasik Menu B") == "B"
+
+    def test_klasik_menu_c(self):
+        assert menu_only_variant("Klasik Menu C") == "C"
+
+    def test_ucitel_returns_c(self):
+        assert menu_only_variant("Učiteľ") == "C"
+
+    def test_klasik_returns_none(self):
+        assert menu_only_variant("Klasik") is None
+
+    def test_nogluten_returns_none(self):
+        assert menu_only_variant("NoGluten") is None
 
 
 # ── resolve_diet ──────────────────────────────────────────────────────────────
@@ -124,7 +142,8 @@ class TestParseDocx:
             ]
         )
         entries = parse_docx(buf, WEEK_START)
-        assert len(entries) == 5
+        # "Kuracie stehno, zemiaková kaša" splits into two components
+        assert len(entries) == 6
 
         breakfast_entries = [e for e in entries if e.category == "breakfast"]
         assert len(breakfast_entries) == 2
@@ -134,9 +153,13 @@ class TestParseDocx:
         assert breakfast_entries[1].weight_grams == Decimal("50")
 
         lunch_entries = [e for e in entries if e.category == "lunch"]
-        assert len(lunch_entries) == 2
+        assert len(lunch_entries) == 3
         assert lunch_entries[0].name == "Paradajková polievka"
         assert lunch_entries[0].weight_grams == Decimal("200")
+        assert lunch_entries[1].name == "Kuracie stehno"
+        assert lunch_entries[1].weight_grams == Decimal("225")
+        assert lunch_entries[2].name == "zemiaková kaša"
+        assert lunch_entries[2].weight_grams is None
 
         snack_entries = [e for e in entries if e.category == "snack"]
         assert len(snack_entries) == 1
@@ -186,7 +209,22 @@ class TestParseDocx:
         assert b_entry.name == "Menu B jedlo"
         assert b_entry.weight_grams == Decimal("275")
 
-    def test_allergen_numbers_stripped(self):
+    def test_compound_item_splits_into_components(self):
+        buf = _make_docx(
+            [
+                "PONDELOK",
+                "Raňajky-desiata: 120g (110g/10g) Čučoriedkový tvaroháčik 7, sladké krutóny 1, 3",
+            ]
+        )
+        entries = parse_docx(buf, WEEK_START)
+        assert len(entries) == 2
+        assert entries[0].name == "Čučoriedkový tvaroháčik"
+        assert entries[0].weight_grams == Decimal("110")
+        assert entries[1].name == "sladké krutóny"
+        assert entries[1].weight_grams == Decimal("10")
+
+    def test_compound_item_no_sub_weights(self):
+        # Without sub-weights, first component gets total, rest get None
         buf = _make_docx(
             [
                 "PONDELOK",
@@ -194,7 +232,27 @@ class TestParseDocx:
             ]
         )
         entries = parse_docx(buf, WEEK_START)
-        assert entries[0].name == "Čučoriedkový tvaroháčik 7, sladké krutóny"
+        assert len(entries) == 2
+        assert entries[0].name == "Čučoriedkový tvaroháčik"
+        assert entries[0].weight_grams == Decimal("120")
+        assert entries[1].name == "sladké krutóny"
+        assert entries[1].weight_grams is None
+
+    def test_three_component_with_sub_weights(self):
+        buf = _make_docx(
+            [
+                "PONDELOK",
+                "Obed: 225g (90g/110g/25g) Tekvicový prívarok 7, varené zemiaky s pažítkou, vajíčko 3",
+            ]
+        )
+        entries = parse_docx(buf, WEEK_START)
+        assert len(entries) == 3
+        assert entries[0].name == "Tekvicový prívarok"
+        assert entries[0].weight_grams == Decimal("90")
+        assert entries[1].name == "varené zemiaky s pažítkou"
+        assert entries[1].weight_grams == Decimal("110")
+        assert entries[2].name == "vajíčko"
+        assert entries[2].weight_grams == Decimal("25")
 
     def test_no_weight_entry(self):
         buf = _make_docx(
