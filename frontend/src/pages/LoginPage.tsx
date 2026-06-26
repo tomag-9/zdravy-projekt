@@ -85,10 +85,11 @@ const LoginPage: React.FC = () => {
       <p className="sub">Prihláste sa, prosím, do svojho účtu.</p>
 
       <div className="zp-field">
-        <label className="zp-label">Email</label>
+        <label className="zp-label">Email alebo login</label>
         <input
           className="zp-input"
-          type="email"
+          type="text"
+          inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="vase@meno.sk"

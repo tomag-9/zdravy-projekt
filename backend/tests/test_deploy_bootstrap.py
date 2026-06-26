@@ -49,11 +49,12 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
         username=f"{school['subdomain']}@edupage.local",
         email=f"{school['subdomain']}@edupage.local",
     )
-    UserProfile.objects.create(user=user, company_name=school["company_name"])
+    UserProfile.objects.create(user=user)
 
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
     user.refresh_from_db()
+    assert user.profile.company_name == school["company_name"]
     assert user.profile.billing_name == school["company_name"]
     assert user.profile.is_edupage is True
     assert user.profile.mealsguest_url == school["mealsguest_url"]
@@ -63,12 +64,22 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
 def test_deploy_bootstrap_creates_edupage_scrape_tasks(settings):
     settings.DEBUG = False
 
-    management.call_command("ensure_global_settings")
-    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
-    management.call_command("sync_periodic_tasks", "--fix")
+    management.call_command("deploy_bootstrap", "--skip-migrate")
 
     assert PeriodicTask.objects.filter(
         name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX,
         enabled=True,
         task="api.tasks.scrape_edupage_orders_task",
     ).exists()
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_does_not_create_demo_logins_in_production(
+    settings, monkeypatch
+):
+    settings.DEBUG = False
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "app.settings.prod")
+
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    assert not User.objects.filter(username__in=["admin", "prevadzka"]).exists()
