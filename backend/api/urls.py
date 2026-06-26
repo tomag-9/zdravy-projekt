@@ -6,7 +6,6 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
-    AdminJedalnicekUploadViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
@@ -18,11 +17,9 @@ from .views import (
     HolidayListViewSet,
     InboxViewSet,
     LogoutView,
-    MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PlannedOrdersViewSet,
-    PortionTypeViewSet,
     PushSubscribeView,
     ReportTaskViewSet,
     SafeTokenRefreshView,
@@ -54,8 +51,6 @@ router.register(
     ReportTaskViewSet,
     basename="report-task",
 )
-router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")
-router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
 router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
@@ -64,12 +59,6 @@ router.register(r"inbox", InboxViewSet, basename="inbox")
 router.register(
     r"admin/edupage-uploads", AdminEdupageUploadViewSet, basename="admin-edupage-upload"
 )
-router.register(
-    r"admin/jedalnicek-uploads",
-    AdminJedalnicekUploadViewSet,
-    basename="admin-jedalnicek-upload",
-)
-
 urlpatterns = [
     path("", include(router.urls)),
     path("token/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),

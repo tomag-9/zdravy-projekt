@@ -232,7 +232,7 @@ class TestOrderCRUD:
         assert response.data["meal_counts"]["breakfast"] == 2
         assert response.data["meal_counts"]["lunch"] == 103
 
-    def test_portion_types_list_is_available_to_clients(self, authenticated_client):
+    def test_portion_types_admin_endpoint_is_removed(self, authenticated_client):
         PortionType.objects.create(
             name="Škôlka", coefficient="1.0000", sort_order=1, is_active=True
         )
@@ -242,9 +242,7 @@ class TestOrderCRUD:
 
         response = authenticated_client.get("/api/admin/portion-types/")
 
-        assert response.status_code == status.HTTP_200_OK
-        names = [item["name"] for item in response.data.get("results", response.data)]
-        assert names == ["Škôlka"]
+        assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db

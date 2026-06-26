@@ -8,11 +8,7 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
-if not SECRET_KEY.strip() or SECRET_KEY.startswith("django-insecure"):  # noqa: F405
-    raise RuntimeError(
-        "DJANGO_SECRET_KEY env var is missing or insecure. "
-        "Set a strong secret key before running in staging."
-    )
+validate_deployed_secret_key(SECRET_KEY, "staging")  # noqa: F405
 
 if "django_prometheus" not in INSTALLED_APPS:
     INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]

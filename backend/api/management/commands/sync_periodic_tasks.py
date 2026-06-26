@@ -17,6 +17,14 @@ from django.core.management.base import BaseCommand
 logger = logging.getLogger(__name__)
 
 
+def _format_crontab_time(crontab) -> str:
+    hour = str(crontab.hour)
+    minute = str(crontab.minute)
+    if minute.isdigit():
+        minute = minute.zfill(2)
+    return f"{hour}:{minute}"
+
+
 class Command(BaseCommand):
     help = (
         "Verify and recreate Celery Beat PeriodicTasks for daily reports and push reminders. "
@@ -170,10 +178,8 @@ class Command(BaseCommand):
                 )
             )
             if task_breakfast.crontab:
-                hour = str(task_breakfast.crontab.hour)
-                minute = str(task_breakfast.crontab.minute)
                 self.stdout.write(
-                    f"    Schedule: {hour}:{minute} "
+                    f"    Schedule: {_format_crontab_time(task_breakfast.crontab)} "
                     f"Mon–Fri (tz: {task_breakfast.crontab.timezone})"
                 )
         else:
@@ -191,7 +197,7 @@ class Command(BaseCommand):
             )
             if task_all.crontab:
                 self.stdout.write(
-                    f"    Schedule: {task_all.crontab.hour:02d}:{task_all.crontab.minute:02d} "
+                    f"    Schedule: {_format_crontab_time(task_all.crontab)} "
                     f"Mon–Fri (tz: {task_all.crontab.timezone})"
                 )
         else:
@@ -272,7 +278,7 @@ class Command(BaseCommand):
         else:
             for task in tasks:
                 schedule = (
-                    f"{task.crontab.hour}:{task.crontab.minute} Mon–Fri"
+                    f"{_format_crontab_time(task.crontab)} Mon–Fri"
                     f" (tz: {task.crontab.timezone})"
                     if task.crontab
                     else "no schedule"
@@ -305,7 +311,7 @@ class Command(BaseCommand):
         task = PeriodicTask.objects.filter(name=WEEKLY_REMINDER_TASK_NAME).first()
         if task:
             schedule = (
-                f"Sun {task.crontab.hour}:{task.crontab.minute} (tz: {task.crontab.timezone})"
+                f"Sun {_format_crontab_time(task.crontab)} (tz: {task.crontab.timezone})"
                 if task.crontab
                 else "no schedule"
             )
@@ -342,7 +348,7 @@ class Command(BaseCommand):
         else:
             for task in tasks:
                 schedule = (
-                    f"{task.crontab.hour}:{task.crontab.minute:02d} Mon–Fri"
+                    f"{_format_crontab_time(task.crontab)} Mon–Fri"
                     f" (tz: {task.crontab.timezone})"
                     if task.crontab
                     else "no schedule"

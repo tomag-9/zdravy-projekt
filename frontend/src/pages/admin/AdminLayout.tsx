@@ -38,21 +38,18 @@ const SECTIONS: NavSection[] = [
         id: 'import',
         label: 'Import',
         icon: '📥',
-        paths: ['/admin/edupage', '/admin/jedalnicek-import'],
+        paths: ['/admin/edupage'],
         items: [
             { to: '/admin/edupage', label: 'Objednávky (Edupage)', icon: '📤', activeColor: 'text-indigo-700', activeBg: 'bg-indigo-50' },
-            { to: '/admin/jedalnicek-import', label: 'Jedálniček (import)', icon: '📅', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
         ],
     },
     {
         id: 'settings',
         label: 'Nastavenia',
         icon: '⚙️',
-        paths: ['/admin/diets', '/admin/meal-plan-templates', '/admin/portion-types', '/admin/settings', '/admin/holidays'],
+        paths: ['/admin/diets', '/admin/settings', '/admin/holidays'],
         items: [
             { to: '/admin/diets', label: 'Diety', icon: '🥗', activeColor: 'text-green-700', activeBg: 'bg-green-50' },
-            { to: '/admin/meal-plan-templates', label: 'Šablóny jedál', icon: '📋', activeColor: 'text-lime-700', activeBg: 'bg-lime-50' },
-            { to: '/admin/portion-types', label: 'Typy porcií', icon: '🥄', activeColor: 'text-amber-700', activeBg: 'bg-amber-50' },
             { to: '/admin/settings', label: 'Systémové nastavenia', icon: '⚙️', activeColor: 'text-gray-900', activeBg: 'bg-gray-100' },
             { to: '/admin/holidays', label: 'Voľné dni', icon: '🏖️', activeColor: 'text-sky-700', activeBg: 'bg-sky-50' },
         ],

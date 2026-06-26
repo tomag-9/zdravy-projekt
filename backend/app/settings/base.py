@@ -35,6 +35,24 @@ SECRET_KEY = env(
     "DJANGO_SECRET_KEY", "django-insecure-development-key-change-in-production"
 )
 
+
+def validate_deployed_secret_key(secret_key: str, environment: str) -> None:
+    """Fail fast when deployed environments use an unsafe Django/JWT HMAC key."""
+    if not secret_key.strip() or secret_key.startswith("django-insecure"):
+        raise RuntimeError(
+            "DJANGO_SECRET_KEY env var is missing or insecure. "
+            f"Set a strong secret key before running in {environment}."
+        )
+
+    key_length = len(secret_key.encode("utf-8"))
+    if key_length < 32:
+        raise RuntimeError(
+            "DJANGO_SECRET_KEY must be at least 32 bytes for JWT HS256 signing "
+            f"({key_length} bytes configured). Generate a new secret key before "
+            f"running in {environment}."
+        )
+
+
 # Application definition
 INSTALLED_APPS = [
     # Prometheus metrics monitoring

@@ -1,12 +1,17 @@
 """Tests for deploy-time scheduled task synchronization."""
 
 import datetime
+from io import StringIO
 
 import pytest
 from django_celery_beat.models import PeriodicTask
 
 from api.models import GlobalSettings
-from api.signals import PUSH_REMINDER_TASK_PREFIX, WEEKLY_REMINDER_TASK_NAME
+from api.signals import (
+    EDUPAGE_SCRAPE_TASK_PREFIX,
+    PUSH_REMINDER_TASK_PREFIX,
+    WEEKLY_REMINDER_TASK_NAME,
+)
 
 
 def _make_settings(**kwargs):
@@ -39,6 +44,24 @@ class TestStartupSync:
 
         assert PeriodicTask.objects.filter(
             name__startswith=PUSH_REMINDER_TASK_PREFIX
+        ).exists()
+
+    def test_edupage_scrape_sync_verify_handles_string_crontab_values(self):
+        """
+        django-celery-beat stores crontab hour/minute fields as strings. The
+        verify output must not format them with integer-only format codes.
+        """
+        from django.core import management
+
+        _make_settings()
+        out = StringIO()
+
+        management.call_command("sync_periodic_tasks", "--fix", stdout=out)
+
+        output = out.getvalue()
+        assert "Failed to sync edupage scrape tasks" not in output
+        assert PeriodicTask.objects.filter(
+            name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
         ).exists()
 
     def test_weekly_reminder_task_created_on_startup(self):

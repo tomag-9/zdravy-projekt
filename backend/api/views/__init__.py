@@ -30,15 +30,8 @@ from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 # Inbox views
 from .inbox_views import InboxViewSet
 
-# Jedálniček import views
-from .jedalnicek_import_views import AdminJedalnicekUploadViewSet
-
 # Meal plan views
-from .meal_plan_views import (
-    DailyMealPlanViewSet,
-    MealTemplateViewSet,
-    PortionTypeViewSet,
-)
+from .meal_plan_views import DailyMealPlanViewSet
 
 # Order views
 from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrdersViewSet
@@ -72,8 +65,6 @@ __all__ = [
     "AdminUserViewSet",
     # Edupage
     "AdminEdupageUploadViewSet",
-    # Jedálniček import
-    "AdminJedalnicekUploadViewSet",
     # Reports
     "AdminSummaryViewSet",
     "ReportTaskViewSet",
@@ -83,8 +74,6 @@ __all__ = [
     # Diet
     "DietViewSet",
     # Meal plan
-    "MealTemplateViewSet",
-    "PortionTypeViewSet",
     "DailyMealPlanViewSet",
     # Push notifications
     "VapidPublicKeyView",
