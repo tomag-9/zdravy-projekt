@@ -1,9 +1,4 @@
-"""
-Tests for the startup self-heal in api/apps.py.
-
-Verifies that ApiConfig.ready() (via _sync_push_reminder_schedule) creates
-push-reminder PeriodicTasks on boot, so a fresh deploy never silently loses them.
-"""
+"""Tests for deploy-time scheduled task synchronization."""
 
 import datetime
 
@@ -26,12 +21,11 @@ def _make_settings(**kwargs):
 
 @pytest.mark.django_db
 class TestStartupSync:
-    def test_push_reminder_tasks_created_on_startup(self):
+    def test_push_reminder_tasks_created_by_sync_command(self):
         """
-        Simulating startup (calling _sync_push_reminder_schedule directly as
-        apps.py does) creates push-reminder tasks when none exist.
+        The explicit deploy sync path creates push-reminder tasks when none exist.
         """
-        from api.signals import _sync_push_reminder_schedule
+        from django.core import management
 
         gs = _make_settings()
 
@@ -41,7 +35,7 @@ class TestStartupSync:
             name__startswith=PUSH_REMINDER_TASK_PREFIX
         ).exists()
 
-        _sync_push_reminder_schedule(gs)
+        management.call_command("sync_periodic_tasks", "--fix")
 
         assert PeriodicTask.objects.filter(
             name__startswith=PUSH_REMINDER_TASK_PREFIX
@@ -78,23 +72,13 @@ class TestStartupSync:
 
         assert count_after_first == count_after_second
 
-    def test_startup_sync_skipped_when_no_global_settings(self):
+    def test_app_ready_does_not_query_database(self, django_assert_num_queries):
         """
-        If GlobalSettings doesn't exist yet (fresh DB), ApiConfig.ready() exits
-        cleanly without raising and does not create push-reminder tasks.
+        AppConfig.ready() should only register signals. Deploy-time data sync
+        runs through management commands so Django startup stays side-effect free.
         """
         import api
         from api.apps import ApiConfig
 
-        assert not GlobalSettings.objects.filter(pk=1).exists()
-
-        pre_count = PeriodicTask.objects.filter(
-            name__startswith=PUSH_REMINDER_TASK_PREFIX
-        ).count()
-
-        ApiConfig("api", api).ready()
-
-        post_count = PeriodicTask.objects.filter(
-            name__startswith=PUSH_REMINDER_TASK_PREFIX
-        ).count()
-        assert pre_count == post_count
+        with django_assert_num_queries(0):
+            ApiConfig("api", api).ready()

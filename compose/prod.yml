@@ -32,7 +32,11 @@ services:
       - app
       - dokploy-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -fsS -H \"Host: ${PROD_HOST:?Set PROD_HOST in Dokploy env}\" -H \"X-Forwarded-Proto: https\" http://127.0.0.1:8000/api/health/ >/dev/null",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

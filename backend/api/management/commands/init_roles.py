@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
@@ -5,7 +7,17 @@ from api.models import ClientSettings, UserProfile
 
 
 class Command(BaseCommand):
-    help = "Initialize roles (groups) and test users"
+    help = "Initialize roles and, outside production, optional demo users"
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--create-default-users",
+            action="store_true",
+            help=(
+                "Create the legacy demo admin/prevadzka users. This is refused "
+                "when DJANGO_SETTINGS_MODULE points to staging/production."
+            ),
+        )
 
     def handle(self, *args, **options):
         roles = ["Client", "Admin", "Staff"]
@@ -15,6 +27,25 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f'Created group "{role_name}"'))
             else:
                 self.stdout.write(f'Group "{role_name}" already exists')
+
+        settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+        is_deployed_environment = settings_module.endswith((".staging", ".prod"))
+        create_default_users = (
+            options["create_default_users"] or not is_deployed_environment
+        )
+
+        if not create_default_users:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "Deployed environment detected: roles initialized; default demo users skipped."
+                )
+            )
+            return
+
+        if is_deployed_environment:
+            raise RuntimeError(
+                "Refusing to create default users with weak passwords in staging/production."
+            )
 
         # Create Admin User
         admin_user, created = User.objects.get_or_create(
