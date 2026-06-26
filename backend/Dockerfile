@@ -43,9 +43,9 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Run migrations, seed roles, seed reference data, and start server
-CMD ["sh", "-c", "python manage.py migrate && python manage.py init_roles && python manage.py init_reference_data && gunicorn -c gunicorn.conf.py app.wsgi:application"]
+# Run deployment bootstrap and start server.
+CMD ["sh", "-c", "python manage.py deploy_bootstrap && gunicorn -c gunicorn.conf.py app.wsgi:application"]
 
 # Healthcheck for the main app
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
-  CMD curl -f http://localhost:8000/api/health/ || exit 1
+  CMD curl -fsS -H "Host: ${PROD_HOST:-localhost}" -H "X-Forwarded-Proto: https" http://127.0.0.1:8000/api/health/ >/dev/null || exit 1

@@ -68,7 +68,6 @@ limit_request_line_value_sz = 8190
 # SSL
 keyfile = None
 certfile = None
-ssl_version = None
 cert_reqs = 0
 ca_certs = None
 do_handshake_on_connect = False

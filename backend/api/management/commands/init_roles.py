@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
@@ -5,7 +7,17 @@ from api.models import ClientSettings, UserProfile
 
 
 class Command(BaseCommand):
-    help = "Initialize roles (groups) and test users"
+    help = "Initialize roles and, outside production, optional demo users"
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--create-default-users",
+            action="store_true",
+            help=(
+                "Create the legacy demo admin/prevadzka users. This is refused "
+                "when DJANGO_SETTINGS_MODULE points to production."
+            ),
+        )
 
     def handle(self, *args, **options):
         roles = ["Client", "Admin", "Staff"]
@@ -16,11 +28,28 @@ class Command(BaseCommand):
             else:
                 self.stdout.write(f'Group "{role_name}" already exists')
 
+        settings_module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
+        is_production = settings_module.endswith(".prod")
+        create_default_users = options["create_default_users"] or not is_production
+
+        if not create_default_users:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    "Production mode detected: roles initialized; default demo users skipped."
+                )
+            )
+            return
+
+        if is_production:
+            raise RuntimeError(
+                "Refusing to create default users with weak passwords in production."
+            )
+
         # Create Admin User
         admin_user, created = User.objects.get_or_create(
             username="admin",
             defaults={
-                "email": "admin@example.com",
+                "email": "admin",
                 "is_staff": True,
                 "is_superuser": True,
             },
@@ -42,7 +71,7 @@ class Command(BaseCommand):
         # Create default operation user
         operation_user, created = User.objects.get_or_create(
             username="prevadzka",
-            defaults={"email": "prevadzka@example.com"},
+            defaults={"email": "prevadzka"},
         )
         if created:
             operation_user.set_password("prevadzka")

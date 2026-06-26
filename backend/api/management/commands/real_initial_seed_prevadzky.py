@@ -134,6 +134,7 @@ class Command(BaseCommand):
                 user=user,
                 defaults={
                     "company_name": school["company_name"],
+                    "billing_name": school["company_name"],
                     "is_edupage": True,
                     "mealsguest_url": school["mealsguest_url"],
                 },
@@ -141,11 +142,17 @@ class Command(BaseCommand):
             if not profile_created:
                 # Update URL and flags in case they changed
                 updated = False
+                if not profile.company_name:
+                    profile.company_name = school["company_name"]
+                    updated = True
                 if profile.mealsguest_url != school["mealsguest_url"]:
                     profile.mealsguest_url = school["mealsguest_url"]
                     updated = True
                 if not profile.is_edupage:
                     profile.is_edupage = True
+                    updated = True
+                if not profile.billing_name:
+                    profile.billing_name = school["company_name"]
                     updated = True
                 if updated:
                     profile.save()
