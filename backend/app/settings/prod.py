@@ -100,24 +100,29 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
+        "admin_log_buffer": {
+            "class": "api.logging_buffer.InMemoryLogHandler",
+            "formatter": "verbose",
+            "level": "INFO",
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "admin_log_buffer"],
         "level": "INFO",
     },
     "loggers": {
         "django": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },
         "api": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },
         "celery": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },

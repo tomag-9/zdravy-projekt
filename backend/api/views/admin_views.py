@@ -3,7 +3,9 @@ import logging
 from django.contrib.auth.models import User
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
+from rest_framework.response import Response
 
+from ..logging_buffer import get_log_records
 from ..serializers_user import AdminUserSerializer
 
 logger = logging.getLogger(__name__)
@@ -61,3 +63,54 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             logger.exception(
                 "Failed to send onboarding email for new user %s", user.email
             )
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["admin"]),
+)
+class AdminLogViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAdminUser]
+
+    def list(self, request):
+        records = get_log_records()
+        levels = {
+            level.strip().upper()
+            for level in request.query_params.get("level", "").split(",")
+            if level.strip()
+        }
+        logger_filter = request.query_params.get("logger", "").strip().lower()
+        search = request.query_params.get("search", "").strip().lower()
+        ordering = request.query_params.get("ordering", "-timestamp")
+
+        try:
+            limit = min(max(int(request.query_params.get("limit", "200")), 1), 500)
+        except ValueError:
+            limit = 200
+
+        if levels:
+            records = [item for item in records if item["level"].upper() in levels]
+        if logger_filter:
+            records = [
+                item for item in records if logger_filter in item["logger"].lower()
+            ]
+        if search:
+            records = [
+                item
+                for item in records
+                if search in item["message"].lower()
+                or (item["traceback"] and search in item["traceback"].lower())
+            ]
+
+        reverse = ordering != "timestamp"
+        records = sorted(records, key=lambda item: item["id"], reverse=reverse)
+        records = records[:limit]
+
+        logger_names = sorted({item["logger"] for item in get_log_records()})
+
+        return Response(
+            {
+                "results": records,
+                "count": len(records),
+                "available_loggers": logger_names,
+            }
+        )

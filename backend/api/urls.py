@@ -6,6 +6,7 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
+    AdminLogViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
@@ -36,6 +37,7 @@ router.register(r"orders", DailyOrderViewSet, basename="dailyorder")
 router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
+router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
 router.register(r"admin/summary", AdminSummaryViewSet, basename="adminsummary")
 router.register(
     r"admin/global-settings",

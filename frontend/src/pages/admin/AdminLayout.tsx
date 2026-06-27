@@ -47,11 +47,12 @@ const SECTIONS: NavSection[] = [
         id: 'settings',
         label: 'Nastavenia',
         icon: '⚙️',
-        paths: ['/admin/diets', '/admin/settings', '/admin/holidays'],
+        paths: ['/admin/diets', '/admin/settings', '/admin/holidays', '/admin/logs'],
         items: [
             { to: '/admin/diets', label: 'Diety', icon: '🥗', activeColor: 'text-green-700', activeBg: 'bg-green-50' },
             { to: '/admin/settings', label: 'Systémové nastavenia', icon: '⚙️', activeColor: 'text-gray-900', activeBg: 'bg-gray-100' },
             { to: '/admin/holidays', label: 'Voľné dni', icon: '🏖️', activeColor: 'text-sky-700', activeBg: 'bg-sky-50' },
+            { to: '/admin/logs', label: 'Logy', icon: '🧾', activeColor: 'text-slate-900', activeBg: 'bg-slate-100' },
         ],
     },
     {
