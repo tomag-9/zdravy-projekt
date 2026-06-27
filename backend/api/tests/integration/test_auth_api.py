@@ -205,6 +205,22 @@ class TestTokenRefreshFlow:
         # Rotation: new refresh cookie must be set
         assert COOKIE_NAME in refresh_response.cookies
 
+    def test_token_refresh_uses_valid_duplicate_cookie(self, api_client, user):
+        login_response = _login(api_client, "client@example.com", "client123")
+        valid_refresh = login_response.cookies[COOKIE_NAME].value
+        api_client.cookies.clear()
+
+        response = api_client.post(
+            reverse("token_refresh"),
+            format="json",
+            HTTP_COOKIE=(
+                f"{COOKIE_NAME}=aaa.bbb.ccc; " f"{COOKIE_NAME}={valid_refresh}"
+            ),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "access" in response.data
+
     def test_token_refresh_rotates_cookie(self, api_client, user):
         """Each refresh call produces a new refresh cookie (rotation)."""
         _login(api_client, "client@example.com", "client123")
