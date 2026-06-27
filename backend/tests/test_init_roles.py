@@ -10,7 +10,9 @@ def test_init_roles_skips_default_users_in_production(monkeypatch):
     management.call_command("init_roles")
 
     assert Group.objects.filter(name__in=["Client", "Admin", "Staff"]).count() == 3
-    assert not User.objects.filter(username__in=["admin", "prevadzka"]).exists()
+    assert not User.objects.filter(
+        email__in=["admin@example.com", "prevadzka@example.com"]
+    ).exists()
 
 
 @pytest.mark.django_db
@@ -19,14 +21,14 @@ def test_init_roles_creates_default_users_in_staging(monkeypatch):
 
     management.call_command("init_roles")
 
-    admin_user = User.objects.get(username="admin")
-    operation_user = User.objects.get(username="prevadzka")
+    admin_user = User.objects.get(email="admin@example.com")
+    operation_user = User.objects.get(email="prevadzka@example.com")
 
     assert Group.objects.filter(name__in=["Client", "Admin", "Staff"]).count() == 3
-    assert admin_user.email == "admin"
+    assert admin_user.username == "admin@example.com"
     assert admin_user.is_superuser is True
     assert admin_user.check_password("admin")
-    assert operation_user.email == "prevadzka"
+    assert operation_user.username == "prevadzka@example.com"
     assert operation_user.check_password("prevadzka")
 
 
@@ -36,5 +38,29 @@ def test_init_roles_creates_default_users_outside_production(monkeypatch):
 
     management.call_command("init_roles")
 
-    assert User.objects.filter(username="admin", is_superuser=True).exists()
-    assert User.objects.filter(username="prevadzka").exists()
+    assert User.objects.filter(
+        username="admin@example.com",
+        email="admin@example.com",
+        is_superuser=True,
+    ).exists()
+    assert User.objects.filter(
+        username="prevadzka@example.com",
+        email="prevadzka@example.com",
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_init_roles_migrates_legacy_demo_logins(monkeypatch):
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "app.settings.dev")
+    User.objects.create_user(username="admin", email="admin", password="old")
+    User.objects.create_user(username="prevadzka", email="prevadzka", password="old")
+
+    management.call_command("init_roles")
+
+    admin_user = User.objects.get(email="admin@example.com")
+    operation_user = User.objects.get(email="prevadzka@example.com")
+
+    assert admin_user.username == "admin@example.com"
+    assert admin_user.check_password("admin")
+    assert operation_user.username == "prevadzka@example.com"
+    assert operation_user.check_password("prevadzka")

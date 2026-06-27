@@ -345,12 +345,12 @@ class Command(BaseCommand):
                     skipped_orders += 1
 
         # ----------------------------------------------------------------
-        # 6. Fake push subscription for the 'client' user
+        # 6. Fake push subscription for the demo prevádzka user
         #    Points to the dev push echo endpoint so admin push sends
         #    can be verified without a real browser subscription.
         # ----------------------------------------------------------------
         try:
-            prevadzka_user = User.objects.get(username="prevadzka")
+            prevadzka_user = User.objects.get(email__iexact="prevadzka@example.com")
             _, sub_created = PushSubscription.objects.get_or_create(
                 user=prevadzka_user,
                 endpoint="http://localhost:8000/api/dev/push-echo/",
@@ -363,17 +363,17 @@ class Command(BaseCommand):
             if sub_created:
                 self.stdout.write(
                     self.style.SUCCESS(
-                        "  Dev push subscription seeded for 'prevadzka' → /api/dev/push-echo/"
+                        "  Dev push subscription seeded for 'prevadzka@example.com' → /api/dev/push-echo/"
                     )
                 )
             else:
                 self.stdout.write(
-                    "  Dev push subscription for 'prevadzka' already exists"
+                    "  Dev push subscription for 'prevadzka@example.com' already exists"
                 )
         except User.DoesNotExist:
             self.stdout.write(
                 self.style.WARNING(
-                    "  'prevadzka' user not found – skipping push subscription seed. "
+                    "  'prevadzka@example.com' user not found – skipping push subscription seed. "
                     "Run init_roles first."
                 )
             )
