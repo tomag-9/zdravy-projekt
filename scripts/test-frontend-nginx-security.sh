@@ -22,7 +22,7 @@ assert_status() {
   local status
 
   status="$(
-    docker exec "$container_name" sh -c "wget -qO- --server-response 'http://127.0.0.1${path}' 2>&1 || true" \
+    docker exec "$container_name" sh -c "wget -qO- -S 'http://127.0.0.1${path}' 2>&1 || true" \
       | sed -n 's/^  HTTP\/[^ ]* \([0-9][0-9][0-9]\).*/\1/p' \
       | tail -n 1
   )"

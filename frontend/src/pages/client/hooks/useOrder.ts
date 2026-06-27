@@ -6,6 +6,14 @@ import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+interface PortionType {
+    id: number;
+    name: string;
+    coefficient: string;
+    coefficient_pct: number;
+    is_active: boolean;
+}
+
 interface ClientContactInfo {
     name: string;
     role: string;
@@ -65,6 +73,8 @@ export const useOrder = () => {
     const { apiFetch, user } = useAuth();
     const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     // Settings
+
+    const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
 
     const [settings] = useState(() => {
         const defaultSettings = {
@@ -263,6 +273,21 @@ export const useOrder = () => {
             }
         };
         if (user) fetchSettings();
+    }, [apiFetch, user]);
+
+    useEffect(() => {
+        const fetchPortionTypes = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/portion-types/`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
+                setPortionTypes(items.filter((item) => item.is_active));
+            } catch (e) {
+                logger.error("Failed to fetch portion types", e);
+            }
+        };
+        if (user) fetchPortionTypes();
     }, [apiFetch, user]);
 
     // Meal plan availability: mealKey → Set of available menu_variants; null = no plan = no restriction
@@ -655,10 +680,12 @@ export const useOrder = () => {
         return true;
     };
 
-    const enabledCategories = CATEGORIES;
+    const enabledCategories =
+        portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
 
     return {
         enabledCategories,
+        portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,

@@ -20,6 +20,7 @@ from .views import (
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PlannedOrdersViewSet,
+    PortionTypeViewSet,
     PushSubscribeView,
     ReportTaskViewSet,
     SafeTokenRefreshView,
@@ -52,6 +53,7 @@ router.register(
     basename="report-task",
 )
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
+router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
 router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")

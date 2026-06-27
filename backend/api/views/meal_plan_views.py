@@ -11,13 +11,26 @@ from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import DailyMealPlan, JedalnicekEntry, MealPlanItem
+from ..models import DailyMealPlan, JedalnicekEntry, MealPlanItem, PortionType
 from ..order_data import OrderData, safe_count
-from ..serializers_menu import DailyMealPlanSerializer
+from ..serializers_menu import DailyMealPlanSerializer, PortionTypeSerializer
 from ..services.meal_plan_service import MealPlanService
 from ..utils import parse_date_param
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """List portion types; non-staff see only active entries."""
+
+    serializer_class = PortionTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = PortionType.objects.all()
+        if not self.request.user.is_staff:
+            qs = qs.filter(is_active=True)
+        return qs
 
 
 class JedalnicekEntrySerializer(serializers.ModelSerializer):
@@ -115,7 +128,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         except DailyMealPlan.DoesNotExist:
             payload = {
                 "exists": False,
-                "date": date_str,
+                "date": str(date),
                 "notes": "",
                 "items": [],
             }

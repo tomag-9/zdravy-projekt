@@ -23,12 +23,10 @@ C_DAY_BG = "2E75B6"  # mid-blue
 C_DAY_FG = "FFFFFF"
 C_MEAL_BG = "BDD7EE"  # light blue
 C_MEAL_FG = "1F4E79"
-C_INPUT_BG = "FFF2CC"  # yellow - admin can edit any amount
-C_PREFILL_BG = "EBF3FB"  # ice blue - prefilled, still editable
+C_INPUT_BG = "FFF2CC"  # yellow - manual input
 C_ALT_BG = "F5F5F5"  # light grey alternating row
 C_NOTE_BG = "EDEDED"  # grey
-C_UCITEL_BG = "E2EFDA"  # light green for teacher menu
-C_UCITEL_FG = "375623"
+C_UNIT_BG = "E8F0FE"  # light blue-grey for unit column
 C_RED_NOTE = "C00000"
 
 
@@ -46,18 +44,21 @@ def border_thin():
     return Border(left=s, right=s, top=s, bottom=s)
 
 
-def border_medium_bottom():
-    thin = Side(style="thin", color="CCCCCC")
-    med = Side(style="medium", color="999999")
-    return Border(left=thin, right=thin, top=thin, bottom=med)
-
-
 def center():
     return Alignment(horizontal="center", vertical="center", wrap_text=True)
 
 
 def left(wrap=True):
     return Alignment(horizontal="left", vertical="center", wrap_text=wrap)
+
+
+def derive_unit(note):
+    n = note.lower()
+    if "ks" in n:
+        return "ks"
+    if "ml" in n:
+        return "ml"
+    return "g"
 
 
 def parse_args():
@@ -86,23 +87,10 @@ def week_context(year, week):
     }
 
 
-def scaled_amount(amount, multiplier):
-    if amount is None:
-        return None
-    if isinstance(amount, (int, float)):
-        value = amount * multiplier
-        return round(value, 1) if value % 1 else int(value)
-    return amount
-
-
-def is_no_diet(diet_name):
-    return diet_name.startswith("No ")
-
-
 # ── meal data ─────────────────────────────────────────────────────────────────
 # Each entry: (meal_type, component_name, klasik_grams, alergeny, note)
 # meal_type: 'Raňajky-desiata' | 'Polievka' | 'Obed' | 'Obed Menu B' | 'Obed Menu C' | 'Olovrant'
-# klasik_grams: int/float or None (None = admin must fill)
+# klasik_grams: kept for data continuity but never rendered in the template
 
 PON = "PONDELOK"
 UTO = "UTOROK"
@@ -472,16 +460,6 @@ DIETS = [
 if diet_has_difference(KLASIK, MONTE):
     DIETS.append(("Klasik Monte", MONTE, "D9E1F2", "203864"))
 
-# ── PORTION CONFIG ────────────────────────────────────────────────────────────
-# Multipliers are only used to prefill editable values. The workbook never uses formulas.
-PORTIONS = [
-    ("JASLE / Predškolák", 0.75, "JASLE"),
-    ("KLASIK", 1.0, "KLASIK"),
-    ("ZŠ 1. stupeň", 1.25, "ZŠ 1.st."),
-    ("ZŠ 2. stupeň", 1.5, "ZŠ 2.st."),
-    ("DOSPELÝ", 2.0, "DOSPELÝ"),
-]
-
 # ── Excel builder ─────────────────────────────────────────────────────────────
 MEAL_TYPE_ORDER = [R, P, OA, OB, OC, OL]
 MEAL_TYPE_LABEL = {
@@ -501,156 +479,102 @@ MEAL_TYPE_COLOR = {
     OL: ("FFF3E0", "E65100"),
 }
 
-
-def set_row_style(
-    ws,
-    row,
-    col_start,
-    col_end,
-    bg=None,
-    fg="000000",
-    bold=False,
-    size=10,
-    center_align=False,
-):
-    for c in range(col_start, col_end + 1):
-        cell = ws.cell(row=row, column=c)
-        if bg:
-            cell.fill = fill(bg)
-        cell.font = Font(bold=bold, color=fg, size=size)
-        cell.alignment = center() if center_align else left()
-        cell.border = border_thin()
+# Column indices
+COL_DEN = 1
+COL_CHOD = 2
+COL_KOMPONENT = 3
+COL_ALERGENY = 4
+COL_MNOZSTVO = 5
+COL_JEDNOTKA = 6
+COL_POZNAMKY = 7
+TOTAL_COLS = 7
 
 
 def write_instructions(wb, ctx):
     ws = wb.create_sheet("INŠTRUKCIE", 0)
     ws.sheet_properties.tabColor = "1F4E79"
-    ws.column_dimensions["A"].width = 30
-    ws.column_dimensions["B"].width = 80
+    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["B"].width = 30
+    ws.column_dimensions["C"].width = 50
 
-    rows = [
-        (
-            "JEDÁLNIČEK - ŠABLÓNA NA VSTUP MNOŽSTIEV",
-            None,
-            C_TITLE_BG,
-            C_TITLE_FG,
-            True,
-            14,
-        ),
-        (
-            f"{ctx['label']} | {ctx['date_range']}",
-            None,
-            C_TITLE_BG,
-            C_TITLE_FG,
-            False,
-            11,
-        ),
-        ("", None, None, "000000", False, 10),
-        ("Ako používať túto šablónu", None, C_DAY_BG, C_DAY_FG, True, 12),
-        ("", None, None, "000000", False, 10),
-        (
-            "Záložka",
-            "Každá záložka = jeden typ jedálnička (Klasik, Vege, No Gluten ...)",
-            None,
-            "000000",
-            False,
-            10,
-        ),
-        ("Deň", "Každý deň je farebne oddelená sekcia.", None, "000000", False, 10),
-        (
-            "Chod",
-            "Raňajky-desiata / Polievka / Obed (Menu A, B, C) / Olovrant",
-            None,
-            "000000",
-            False,
-            10,
-        ),
-        (
-            "Komponent",
-            "Každá zložka jedla = jeden riadok (napr. hrášok, ryža, 1 ks).",
-            None,
-            "000000",
-            False,
-            10,
-        ),
-        (
-            "Alergény",
-            "Číslice alergénov podľa EÚ klasifikácie.",
-            None,
-            "000000",
-            False,
-            10,
-        ),
-        ("", None, None, "000000", False, 10),
-        ("Množstvá", None, C_DAY_BG, C_DAY_FG, True, 12),
-        ("", None, None, "000000", False, 10),
-        (
-            "Žlté bunky",
-            "Ručný vstup. Admin môže hodnotu upraviť.",
-            C_INPUT_BG,
-            "000000",
-            True,
-            10,
-        ),
-        (
-            "Modré bunky",
-            "Predvyplnené orientačne podľa veľkosti porcie, ale stále ručne upraviteľné. V zošite nie sú vzorce.",
-            C_PREFILL_BG,
-            "000000",
-            False,
-            10,
-        ),
-        (
-            "No diéty",
-            "Majú samostatnú tabuľku pre každú veľkosť porcie.",
-            C_PREFILL_BG,
-            "000000",
-            False,
-            10,
-        ),
-        (
-            "Klasik",
-            "Obsahuje Menu A, odlišné položky Menu B a Menu C v jednej záložke.",
-            C_PREFILL_BG,
-            "000000",
-            False,
-            10,
-        ),
-        ("", None, None, "000000", False, 10),
-        (
-            "Poznámka",
-            "Množstvo nemusí byť vždy v gramoch; môže byť aj kusovo, napr. 1 ks.",
-            None,
-            "000000",
-            True,
-            10,
-        ),
-    ]
+    def title_row(row, text):
+        ws.merge_cells(f"A{row}:C{row}")
+        c = ws.cell(row=row, column=1, value=text)
+        c.fill = fill(C_TITLE_BG)
+        c.font = Font(bold=True, color=C_TITLE_FG, size=13)
+        c.alignment = center()
+        c.border = border_thin()
+        ws.row_dimensions[row].height = 28
 
-    for i, row_data in enumerate(rows, 1):
-        col_a, col_b, bg, fg, bold, size = row_data
-        ws.row_dimensions[i].height = 20
-        ca = ws.cell(row=i, column=1, value=col_a)
-        cb = ws.cell(row=i, column=2, value=col_b)
-        for cell, _ in [(ca, col_a), (cb, col_b)]:
-            if bg:
-                cell.fill = fill(bg)
-            cell.font = Font(bold=bold, color=fg, size=size)
-            cell.alignment = left()
-            cell.border = border_thin()
+    def section_row(row, text):
+        ws.merge_cells(f"A{row}:C{row}")
+        c = ws.cell(row=row, column=1, value=text)
+        c.fill = fill(C_DAY_BG)
+        c.font = Font(bold=True, color=C_DAY_FG, size=11)
+        c.alignment = left()
+        c.border = border_thin()
+        ws.row_dimensions[row].height = 22
+
+    def data_row(row, label, val_b, val_c=None, bold_b=False, bg_b=None):
+        ws.row_dimensions[row].height = 20
+        ca = ws.cell(row=row, column=1, value=label)
+        ca.font = Font(bold=True, color="000000", size=10)
+        ca.alignment = left()
+        ca.border = border_thin()
+        cb = ws.cell(row=row, column=2, value=val_b)
+        cb.font = Font(bold=bold_b, color="000000", size=10)
+        cb.alignment = center()
+        cb.border = border_thin()
+        if bg_b:
+            cb.fill = fill(bg_b)
+        cc = ws.cell(row=row, column=3, value=val_c or "")
+        cc.font = Font(color="555555", size=9, italic=True)
+        cc.alignment = left()
+        cc.border = border_thin()
+
+    title_row(1, "JEDÁLNIČEK – ŠABLÓNA NA VSTUP MNOŽSTIEV")
+
+    # ── Week metadata in separate cells for parsing ───────────────────────────
+    section_row(2, "Identifikácia týždňa")
+    data_row(3, "Rok", ctx["year"], "")
+    data_row(4, "Týždeň", ctx["week"], "")
+    data_row(5, "Dátum od", ctx["start"].strftime("%d.%m.%Y"), "")
+    data_row(6, "Dátum do", ctx["end"].strftime("%d.%m.%Y"), "")
+
+    # ── Instructions ──────────────────────────────────────────────────────────
+    section_row(8, "Ako používať túto šablónu")
+    data_row(9, "Záložka", "Každá záložka = jeden typ jedálnička (Klasik, Vege, No Gluten ...)")
+    data_row(10, "Deň", "Každý deň je farebne oddelená sekcia.")
+    data_row(11, "Chod", "Raňajky-desiata / Polievka / Obed (Menu A, B, C) / Olovrant")
+    data_row(12, "Komponent", "Každá zložka jedla = jeden riadok.")
+    data_row(13, "Alergény", "Číslice alergénov podľa EÚ klasifikácie.")
+
+    section_row(15, "Vypĺňanie množstiev")
+    data_row(16, "Množstvo", "Ručný vstup – admin vypĺňa.", None, bold_b=True, bg_b=C_INPUT_BG)
+    data_row(17, "Jednotka", "g / ks / ml – predvyplnené, manuálne prepísateľné.", None, bg_b=C_UNIT_BG)
+    data_row(18, "Poznámky", "Doplňujúce info (Menu A/B/C, špeciálne požiadavky ...).", None, bg_b="EDEDED")
 
 
-def write_table_header(ws, row, total_cols, header_bg, header_fg, headers):
+def write_table_header(ws, row, headers):
+    header_bgs = {
+        "Deň": C_DAY_BG,
+        "Chod": C_DAY_BG,
+        "Komponent / Jedlo": C_DAY_BG,
+        "Alergény": C_DAY_BG,
+        "Množstvo": C_INPUT_BG,
+        "Jednotka": C_UNIT_BG,
+        "Poznámky": C_NOTE_BG,
+    }
     for ci, h in enumerate(headers, 1):
         cell = ws.cell(row=row, column=ci, value=h)
-        cell.fill = fill(header_bg)
-        cell.font = Font(bold=True, color=header_fg, size=10)
+        cell.fill = fill(header_bgs.get(h, C_DAY_BG))
+        cell.font = Font(bold=True, color="000000" if h in ("Množstvo", "Jednotka", "Poznámky") else C_DAY_FG, size=10)
         cell.alignment = center()
         cell.border = border_thin()
-    ws.row_dimensions[row].height = 36
+    ws.row_dimensions[row].height = 30
 
 
-def write_diet_rows(ws, start_row, data, total_cols, amount_columns):
+def write_diet_rows(ws, start_row, data):
     current_row = start_row
     alt = False
 
@@ -659,7 +583,7 @@ def write_diet_rows(ws, start_row, data, total_cols, amount_columns):
         if not day_data:
             continue
 
-        ws.merge_cells(f"A{current_row}:{get_column_letter(total_cols)}{current_row}")
+        ws.merge_cells(f"A{current_row}:{get_column_letter(TOTAL_COLS)}{current_row}")
         c = ws.cell(row=current_row, column=1, value=f"  {day}")
         c.fill = fill(C_DAY_BG)
         c.font = Font(bold=True, color=C_DAY_FG, size=11)
@@ -681,12 +605,12 @@ def write_diet_rows(ws, start_row, data, total_cols, amount_columns):
             entries = grouped[mt]
 
             ws.merge_cells(
-                f"B{current_row}:{get_column_letter(total_cols)}{current_row}"
+                f"B{current_row}:{get_column_letter(TOTAL_COLS)}{current_row}"
             )
-            c = ws.cell(row=current_row, column=1)
+            c = ws.cell(row=current_row, column=COL_DEN)
             c.fill = fill(mt_bg)
             c.border = border_thin()
-            c = ws.cell(row=current_row, column=2, value=mt_label)
+            c = ws.cell(row=current_row, column=COL_CHOD, value=mt_label)
             c.fill = fill(mt_bg)
             c.font = Font(bold=True, color=mt_fg, size=9)
             c.alignment = left()
@@ -695,46 +619,49 @@ def write_diet_rows(ws, start_row, data, total_cols, amount_columns):
             current_row += 1
 
             for comp_row in entries:
-                _, comp_name, base_amount, alergeny, note = comp_row
+                _, comp_name, _base_amount, alergeny, note = comp_row
                 row_bg = C_ALT_BG if alt else "FFFFFF"
                 alt = not alt
 
-                for col in (1, 2):
+                # Deň + Chod columns (empty, styled)
+                for col in (COL_DEN, COL_CHOD):
                     c = ws.cell(row=current_row, column=col)
                     c.fill = fill(row_bg)
                     c.border = border_thin()
 
-                c = ws.cell(row=current_row, column=3, value=comp_name)
+                # Komponent
+                c = ws.cell(row=current_row, column=COL_KOMPONENT, value=comp_name)
                 c.fill = fill(row_bg)
                 c.font = font(size=10)
                 c.alignment = left()
                 c.border = border_thin()
 
-                c = ws.cell(row=current_row, column=4, value=alergeny)
+                # Alergény
+                c = ws.cell(row=current_row, column=COL_ALERGENY, value=alergeny)
                 c.fill = fill(row_bg)
                 c.font = font(size=9, color="666666")
                 c.alignment = center()
                 c.border = border_thin()
 
-                for col_idx, multiplier, is_reference in amount_columns:
-                    c = ws.cell(
-                        row=current_row,
-                        column=col_idx,
-                        value=scaled_amount(base_amount, multiplier),
-                    )
-                    c.fill = fill(C_INPUT_BG if is_reference else C_PREFILL_BG)
-                    c.font = font(
-                        bold=base_amount is not None and is_reference, size=10
-                    )
-                    c.alignment = center()
-                    c.border = border_thin()
-                    c.number_format = "0.0"
+                # Množstvo – empty, manual input
+                c = ws.cell(row=current_row, column=COL_MNOZSTVO, value=None)
+                c.fill = fill(C_INPUT_BG)
+                c.alignment = center()
+                c.border = border_thin()
+                c.number_format = "0.##"
 
-                c = ws.cell(row=current_row, column=total_cols, value=note or "")
+                # Jednotka – derived, manually overridable
+                unit = derive_unit(note)
+                c = ws.cell(row=current_row, column=COL_JEDNOTKA, value=unit)
+                c.fill = fill(C_UNIT_BG)
+                c.font = font(size=10, color="1F4E79")
+                c.alignment = center()
+                c.border = border_thin()
+
+                # Poznámky
+                c = ws.cell(row=current_row, column=COL_POZNAMKY, value=note or "")
                 c.fill = fill(C_NOTE_BG)
-                c.font = font(
-                    size=9, color=C_RED_NOTE if note else "555555", italic=True
-                )
+                c.font = font(size=9, color=C_RED_NOTE if note else "555555", italic=True)
                 c.alignment = left()
                 c.border = border_thin()
 
@@ -742,182 +669,41 @@ def write_diet_rows(ws, start_row, data, total_cols, amount_columns):
                 current_row += 1
 
         ws.row_dimensions[current_row].height = 8
-        for ci in range(1, total_cols + 1):
+        for ci in range(1, TOTAL_COLS + 1):
             ws.cell(row=current_row, column=ci).fill = fill("DDDDDD")
         current_row += 1
 
     return current_row
 
 
-def build_diet_sheet(
-    wb, diet_name, data, header_bg, header_fg, ctx, separate_portion_tables=False
-):
-    # Sanitize sheet name (max 31 chars, no special chars)
+def build_diet_sheet(wb, diet_name, data, header_bg, header_fg):
     sheet_name = diet_name[:31]
     ws = wb.create_sheet(sheet_name)
     ws.sheet_properties.tabColor = header_bg.replace("#", "")
 
-    # Freeze top rows
     ws.freeze_panes = "A3"
 
-    # Column widths
-    ws.column_dimensions["A"].width = 12  # Deň
-    ws.column_dimensions["B"].width = 20  # Chod
-    ws.column_dimensions["C"].width = 40  # Komponent
-    ws.column_dimensions["D"].width = 12  # Alergény
-    if separate_portion_tables:
-        ws.column_dimensions["E"].width = 16  # Množstvo
-        ws.column_dimensions["F"].width = 24  # Poznámky
-        total_cols = 6
-    else:
-        ws.column_dimensions["E"].width = 14
-        ws.column_dimensions["F"].width = 16
-        ws.column_dimensions["G"].width = 14
-        ws.column_dimensions["H"].width = 14
-        ws.column_dimensions["I"].width = 14
-        ws.column_dimensions["J"].width = 24
-        total_cols = 10
+    ws.column_dimensions["A"].width = 12   # Deň
+    ws.column_dimensions["B"].width = 20   # Chod
+    ws.column_dimensions["C"].width = 42   # Komponent
+    ws.column_dimensions["D"].width = 12   # Alergény
+    ws.column_dimensions["E"].width = 12   # Množstvo
+    ws.column_dimensions["F"].width = 9    # Jednotka
+    ws.column_dimensions["G"].width = 28   # Poznámky
 
-    # ── Row 1: diet title ────────────────────────────────────────────────────
-    ws.merge_cells(f"A1:{get_column_letter(total_cols)}1")
+    # Row 1: diet name only (no week info — week is only on INŠTRUKCIE)
+    ws.merge_cells(f"A1:{get_column_letter(TOTAL_COLS)}1")
     c = ws["A1"]
-    c.value = (
-        f"JEDÁLNIČEK - {diet_name.upper()}  |  {ctx['label']}  |  {ctx['date_range']}"
-    )
+    c.value = f"JEDÁLNIČEK – {diet_name.upper()}"
     c.fill = fill(C_TITLE_BG)
     c.font = Font(bold=True, color=C_TITLE_FG, size=12)
     c.alignment = center()
     c.border = border_thin()
     ws.row_dimensions[1].height = 28
 
-    if separate_portion_tables:
-        current_row = 2
-        for portion_name, multiplier, _short_name in PORTIONS:
-            ws.merge_cells(
-                f"A{current_row}:{get_column_letter(total_cols)}{current_row}"
-            )
-            c = ws.cell(
-                row=current_row, column=1, value=f"{portion_name} - samostatná tabuľka"
-            )
-            c.fill = fill(C_PREFILL_BG)
-            c.font = Font(bold=True, color="000000", size=11)
-            c.alignment = left()
-            c.border = border_thin()
-            ws.row_dimensions[current_row].height = 22
-            current_row += 1
-
-            write_table_header(
-                ws,
-                current_row,
-                total_cols,
-                header_bg,
-                header_fg,
-                [
-                    "Deň",
-                    "Chod",
-                    "Komponent / Jedlo",
-                    "Alergény",
-                    "Množstvo",
-                    "Poznámky",
-                ],
-            )
-            current_row = write_diet_rows(
-                ws,
-                current_row + 1,
-                data,
-                total_cols,
-                [(5, multiplier, multiplier == 1.0)],
-            )
-            current_row += 1
-    else:
-        headers = ["Deň", "Chod", "Komponent / Jedlo", "Alergény"]
-        headers += [short_name for _, _, short_name in PORTIONS]
-        headers += ["Poznámky"]
-        write_table_header(ws, 2, total_cols, header_bg, header_fg, headers)
-        amount_columns = [
-            (idx, multiplier, multiplier == 1.0)
-            for idx, (_, multiplier, _) in enumerate(PORTIONS, 5)
-        ]
-        write_diet_rows(ws, 3, data, total_cols, amount_columns)
-
-
-def build_summary_sheet(wb, ctx):
-    """Overview sheet showing editable prefill defaults."""
-    ws = wb.create_sheet("PORCIE – PREHĽAD")
-    ws.sheet_properties.tabColor = "2E75B6"
-    ws.column_dimensions["A"].width = 25
-    ws.column_dimensions["B"].width = 16
-    ws.column_dimensions["C"].width = 16
-    ws.column_dimensions["D"].width = 40
-
-    data = [
-        ("PREHĽAD VEĽKOSTÍ PORCIÍ", None, None, None),
-        (
-            "Týždeň",
-            ctx["label"],
-            ctx["date_range"],
-            "Nastavuje sa parametrami --week a --year",
-        ),
-        ("Porcia", "Predvyplnenie", "Príklad pri KLASIK=100", "Poznámka"),
-        ("JASLE / Predškolák", "orientačne 0,75", "75", "Bunka je editovateľná"),
-        ("KLASIK", "referencia", "100", "Bunka je editovateľná"),
-        ("ZŠ 1. stupeň", "orientačne 1,25", "125", "Bunka je editovateľná"),
-        ("ZŠ 2. stupeň", "orientačne 1,50", "150", "Bunka je editovateľná"),
-        ("DOSPELÝ", "orientačne 2,00", "200", "Bunka je editovateľná"),
-        ("", None, None, None),
-        ("Klasik", None, None, None),
-        ("Menu A", "ručný vstup", "-", "Základné jedlo"),
-        ("Menu B", "ručný vstup", "-", "Vypisujú sa len položky odlišné od Menu A"),
-        ("Menu C", "ručný vstup", "-", "Vypisuje sa v Klasik záložke"),
-        (
-            "No diéty",
-            "samostatné tabuľky",
-            "-",
-            "Každá veľkosť porcie má vlastnú tabuľku",
-        ),
-    ]
-    bgs = [
-        C_TITLE_BG,
-        C_DAY_BG,
-        C_DAY_BG,
-        C_PREFILL_BG,
-        C_INPUT_BG,
-        C_PREFILL_BG,
-        C_PREFILL_BG,
-        C_PREFILL_BG,
-        None,
-        C_UCITEL_BG,
-        C_UCITEL_BG,
-        C_UCITEL_BG,
-        C_UCITEL_BG,
-        C_UCITEL_BG,
-    ]
-    fgs = [
-        C_TITLE_FG,
-        C_DAY_FG,
-        C_DAY_FG,
-        "000000",
-        "000000",
-        "000000",
-        "000000",
-        "000000",
-        "000000",
-        C_UCITEL_FG,
-        C_UCITEL_FG,
-        C_UCITEL_FG,
-        C_UCITEL_FG,
-        C_UCITEL_FG,
-    ]
-
-    for i, (row, bg, fg) in enumerate(zip(data, bgs, fgs), 1):
-        ws.row_dimensions[i].height = 22
-        for ci, val in enumerate(row, 1):
-            c = ws.cell(row=i, column=ci, value=val)
-            if bg:
-                c.fill = fill(bg)
-            c.font = Font(bold=(i in [1, 2, 3, 10]), color=fg or "000000", size=10)
-            c.alignment = left()
-            c.border = border_thin()
+    headers = ["Deň", "Chod", "Komponent / Jedlo", "Alergény", "Množstvo", "Jednotka", "Poznámky"]
+    write_table_header(ws, 2, headers)
+    write_diet_rows(ws, 3, data)
 
 
 def main():
@@ -934,22 +720,12 @@ def main():
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     wb = openpyxl.Workbook()
-    # Remove default sheet
     wb.remove(wb.active)
 
     write_instructions(wb, ctx)
-    build_summary_sheet(wb, ctx)
 
     for diet_name, data, h_bg, h_fg in DIETS:
-        build_diet_sheet(
-            wb,
-            diet_name,
-            data,
-            h_bg,
-            h_fg,
-            ctx,
-            separate_portion_tables=is_no_diet(diet_name),
-        )
+        build_diet_sheet(wb, diet_name, data, h_bg, h_fg)
 
     wb.save(out_path)
     print(f"✓ Saved: {out_path}")

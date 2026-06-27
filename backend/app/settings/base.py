@@ -38,7 +38,8 @@ SECRET_KEY = env(
 
 def validate_deployed_secret_key(secret_key: str, environment: str) -> None:
     """Fail fast when deployed environments use an unsafe Django/JWT HMAC key."""
-    if not secret_key.strip() or secret_key.startswith("django-insecure"):
+    stripped = secret_key.strip()
+    if not stripped or stripped.startswith("django-insecure"):
         raise RuntimeError(
             "DJANGO_SECRET_KEY env var is missing or insecure. "
             f"Set a strong secret key before running in {environment}."

@@ -31,7 +31,7 @@ from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 from .inbox_views import InboxViewSet
 
 # Meal plan views
-from .meal_plan_views import DailyMealPlanViewSet
+from .meal_plan_views import DailyMealPlanViewSet, PortionTypeViewSet
 
 # Order views
 from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrdersViewSet
@@ -75,6 +75,7 @@ __all__ = [
     "DietViewSet",
     # Meal plan
     "DailyMealPlanViewSet",
+    "PortionTypeViewSet",
     # Push notifications
     "VapidPublicKeyView",
     "PushSubscribeView",

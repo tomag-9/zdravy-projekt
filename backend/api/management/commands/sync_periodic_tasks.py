@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 def _format_crontab_time(crontab) -> str:
     hour = str(crontab.hour)
     minute = str(crontab.minute)
+    if hour.isdigit():
+        hour = hour.zfill(2)
     if minute.isdigit():
         minute = minute.zfill(2)
     return f"{hour}:{minute}"
