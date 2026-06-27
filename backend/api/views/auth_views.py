@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -11,6 +12,8 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from api.management.commands.init_roles import DEMO_ADMIN_EMAIL, DEMO_OPERATION_EMAIL
 
 from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
 
@@ -52,6 +55,16 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     username_field = "email"
 
     @staticmethod
+    def _sync_dev_demo_user(email: str) -> None:
+        if not settings.DEBUG:
+            return
+
+        if email not in {DEMO_ADMIN_EMAIL, DEMO_OPERATION_EMAIL}:
+            return
+
+        call_command("init_roles", verbosity=0)
+
+    @staticmethod
     def _find_user_for_login(email: str, password: str) -> User:
         """
         Return the active user whose password matches email, or raise
@@ -62,6 +75,8 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         Materialising the queryset once avoids the 3-query pattern that
         existed when .exists(), .count(), and iteration hit the DB separately.
         """
+        EmailTokenObtainPairSerializer._sync_dev_demo_user(email)
+
         candidates = list(
             User.objects.filter(email__iexact=email).order_by("-is_active", "id")
         )

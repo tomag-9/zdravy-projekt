@@ -171,6 +171,18 @@ class TestLoginFlow:
         lifetime_days = (refresh.payload["exp"] - refresh.payload["iat"]) / 86400
         assert abs(lifetime_days - 1) < 0.1  # within ~2.5 hours tolerance
 
+    def test_dev_demo_email_login_migrates_legacy_user(self, api_client, settings):
+        settings.DEBUG = True
+        User.objects.create_user(username="admin", email="admin", password="old")
+
+        response = _login(api_client, "admin@example.com", "admin")
+
+        assert response.status_code == status.HTTP_200_OK
+        migrated = User.objects.get(email="admin@example.com")
+        assert migrated.username == "admin@example.com"
+        assert migrated.is_staff is True
+        assert migrated.is_superuser is True
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # TOKEN REFRESH
