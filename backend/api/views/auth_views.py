@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
 from rest_framework.response import Response
@@ -11,6 +12,8 @@ from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+from api.management.commands.init_roles import DEMO_ADMIN_EMAIL, DEMO_OPERATION_EMAIL
 
 from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
 
@@ -46,10 +49,39 @@ def _delete_refresh_cookie(response: Response) -> None:
     response.delete_cookie(_COOKIE_NAME, path=_COOKIE_PATH)
 
 
+def _refresh_cookie_candidates(request) -> list[str]:
+    raw_cookie = request.META.get("HTTP_COOKIE", "")
+    values: list[str] = []
+    for part in raw_cookie.split(";"):
+        name, separator, value = part.strip().partition("=")
+        if separator and name == _COOKIE_NAME and value:
+            values.append(value)
+
+    fallback = request.COOKIES.get(_COOKIE_NAME)
+    if fallback:
+        values.append(fallback)
+
+    unique_values = []
+    for value in values:
+        if value not in unique_values:
+            unique_values.append(value)
+    return unique_values
+
+
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     """JWT token serializer that authenticates via email instead of username."""
 
     username_field = "email"
+
+    @staticmethod
+    def _sync_dev_demo_user(email: str) -> None:
+        if not settings.DEBUG:
+            return
+
+        if email not in {DEMO_ADMIN_EMAIL, DEMO_OPERATION_EMAIL}:
+            return
+
+        call_command("init_roles", verbosity=0)
 
     @staticmethod
     def _find_user_for_login(email: str, password: str) -> User:
@@ -62,6 +94,8 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         Materialising the queryset once avoids the 3-query pattern that
         existed when .exists(), .count(), and iteration hit the DB separately.
         """
+        EmailTokenObtainPairSerializer._sync_dev_demo_user(email)
+
         candidates = list(
             User.objects.filter(email__iexact=email).order_by("-is_active", "id")
         )
@@ -149,23 +183,32 @@ class SafeTokenRefreshView(TokenRefreshView):
     """
 
     def post(self, request, *args, **kwargs):
-        refresh_str = request.COOKIES.get(_COOKIE_NAME)
-        if not refresh_str:
+        refresh_candidates = _refresh_cookie_candidates(request)
+        if not refresh_candidates:
             raise InvalidToken("Refresh token nenájdený.")
 
-        # Inject the cookie value into request data so the parent serializer can read it
-        data = (
-            request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
-        )
-        data["refresh"] = refresh_str
+        last_error: Exception | None = None
+        serializer = None
+        for refresh_str in refresh_candidates:
+            data = (
+                request.data.copy()
+                if hasattr(request.data, "copy")
+                else dict(request.data)
+            )
+            data["refresh"] = refresh_str
+            candidate_serializer = self.get_serializer(data=data)
+            try:
+                candidate_serializer.is_valid(raise_exception=True)
+            except (InvalidToken, TokenError, User.DoesNotExist) as exc:
+                last_error = exc
+                continue
+            serializer = candidate_serializer
+            break
 
-        serializer = self.get_serializer(data=data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except TokenError as exc:
-            raise InvalidToken(exc.args[0]) from exc
-        except User.DoesNotExist:
-            raise InvalidToken("Token neplatný alebo expirovaný.")
+        if serializer is None:
+            if isinstance(last_error, (InvalidToken, TokenError)):
+                raise InvalidToken(last_error.args[0]) from last_error
+            raise InvalidToken("Token neplatný alebo expirovaný.") from last_error
 
         new_access: str = serializer.validated_data["access"]
         # ROTATE_REFRESH_TOKENS=True → the serializer returns a new refresh token.
@@ -205,18 +248,25 @@ class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        refresh_str = request.COOKIES.get(_COOKIE_NAME)
-        if refresh_str:
+        refresh_candidates = _refresh_cookie_candidates(request)
+        if refresh_candidates:
+            blacklisted = False
             try:
-                token = RefreshToken(refresh_str)
-                token.blacklist()
+                for refresh_str in refresh_candidates:
+                    try:
+                        token = RefreshToken(refresh_str)  # type: ignore[arg-type]
+                        token.blacklist()
+                        blacklisted = True
+                    except TokenError:
+                        continue
             except Exception:
-                # Token already blacklisted, expired, or malformed — all safe to ignore.
-                # Log at WARNING so a DB outage during logout is visible in monitoring.
+                # DB failures during logout should remain visible in monitoring.
                 logger.warning(
-                    "Could not blacklist refresh token on logout (already invalid or DB error)",
+                    "Could not blacklist refresh token on logout",
                     exc_info=True,
                 )
+            if not blacklisted:
+                logger.info("Logout received only invalid refresh token cookies")
 
         response = Response(
             {"detail": "Odhlásenie bolo úspešné."}, status=status.HTTP_200_OK

@@ -206,7 +206,13 @@ class EdupageScraper:
             warnings.append("prehlad block not found in HTML")
             return ScrapeResult(date=target_date, order_data={}, warnings=warnings)
 
-        prehlad: dict = prehlad_raw.get("prehlad", {})
+        prehlad = prehlad_raw.get("prehlad", {})
+        if isinstance(prehlad, list):
+            prehlad = {}
+        if not isinstance(prehlad, dict):
+            warnings.append("prehlad block has unexpected format")
+            return ScrapeResult(date=target_date, order_data={}, warnings=warnings)
+
         nazov_menu: dict = nazov_menu_raw or {}
         nastavenia: list = nastavenia_raw or []
 

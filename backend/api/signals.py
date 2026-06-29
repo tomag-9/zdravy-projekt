@@ -322,7 +322,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
     Create or update Celery Beat PeriodicTasks that fire EDUPAGE_SCRAPE_OFFSET_MINUTES
     before each distinct meal deadline, Monday–Friday.
 
-    Meals sharing the same deadline are grouped → one scrape fires per unique time.
+    Meals sharing the same deadline and target-day rule are grouped.
     Orphaned tasks from previous configurations are deleted automatically.
     """
     import datetime
@@ -339,17 +339,20 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
     try:
         all_meal_types = ["breakfast", "lunch", "olovrant"]
 
-        # Group meal types by deadline time (ignore is_day_before — scrape is always for today)
-        groups: dict[datetime.time, list[str]] = {}
+        # Group meal types by deadline time and target-day rule.
+        groups: dict[tuple[datetime.time, bool], list[str]] = {}
         for meal_type in all_meal_types:
             deadline: datetime.time = getattr(
                 settings_instance, f"deadline_{meal_type}"
             )
-            groups.setdefault(deadline, []).append(meal_type)
+            is_day_before: bool = getattr(
+                settings_instance, f"deadline_{meal_type}_is_day_before", False
+            )
+            groups.setdefault((deadline, is_day_before), []).append(meal_type)
 
         new_task_names: set[str] = set()
 
-        for deadline, meal_types_group in groups.items():
+        for (deadline, is_day_before), meal_types_group in groups.items():
             dt = datetime.datetime.combine(datetime.date.today(), deadline)
             scrape_dt = dt - datetime.timedelta(minutes=EDUPAGE_SCRAPE_OFFSET_MINUTES)
 
@@ -383,12 +386,14 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                     "task": "api.tasks.scrape_edupage_orders_task",
                     "crontab": schedule,
                     "args": json.dumps([]),
-                    "kwargs": json.dumps({}),
+                    "kwargs": json.dumps({"meal_types": sorted(meal_types_group)}),
                     "enabled": True,
                     "description": (
                         f"Edupage scrape: import order counts {EDUPAGE_SCRAPE_OFFSET_MINUTES} min "
                         f"before {'/'.join(sorted(meal_types_group))} deadline "
-                        f"(deadline: {deadline.strftime('%H:%M')}, fires at {scrape_time.strftime('%H:%M')})."
+                        f"(deadline: {deadline.strftime('%H:%M')}, "
+                        f"target: {'next workday' if is_day_before else 'today'}, "
+                        f"fires at {scrape_time.strftime('%H:%M')})."
                     ),
                 },
             )

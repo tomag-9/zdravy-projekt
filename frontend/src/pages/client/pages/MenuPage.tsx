@@ -32,6 +32,8 @@ export interface JedalnicekEntry {
   diet_name: string | null;
   name: string;
   weight_grams: string | null;
+  unit: string;
+  portion_weights?: Record<string, string>;
 }
 
 interface MealPlanResponse {
@@ -189,6 +191,26 @@ const MenuPage = () => {
     const mealItems = groupedItems[mealKey];
     const useImport = plan?.has_import && importEntries.length > 0;
     const Icon = MEAL_META[mealKey].icon;
+    const importGroups = Object.entries(
+      importEntries.reduce<Record<string, { variant: string; name: string; weights: string[] }>>((acc, entry) => {
+        const variant = entry.menu_variant || "_";
+        const key = `${variant}::${entry.name}`;
+        if (!acc[key]) {
+          acc[key] = { variant, name: entry.name, weights: [] };
+        }
+        const portionWeights = Object.entries(entry.portion_weights || {});
+        if (portionWeights.length > 0) {
+          acc[key].weights.push(
+            `${entry.diet_name ?? "Štandard"}: ${portionWeights
+              .map(([portion, amount]) => `${portion} ${amount}${entry.unit || "g"}`)
+              .join(", ")}`
+          );
+        } else if (entry.weight_grams) {
+          acc[key].weights.push(`${entry.diet_name ?? "Štandard"}: ${entry.weight_grams}g`);
+        }
+        return acc;
+      }, {})
+    ).map(([, value]) => value);
 
     // Weight label: from import (per-diet gramáže) or from templates
     const weightLabel = useImport
@@ -214,29 +236,15 @@ const MenuPage = () => {
             Nie je k dispozícii
           </div>
         ) : useImport ? (
-          // Render from import entries — group by variant
-          Object.entries(
-            importEntries.reduce<Record<string, JedalnicekEntry[]>>((acc, e) => {
-              const key = e.menu_variant || "_";
-              if (!acc[key]) acc[key] = [];
-              acc[key].push(e);
-              return acc;
-            }, {})
-          ).map(([variant, entries]) => (
-            <div className="zp-menu-item" key={variant}>
-              {variant !== "_" && (
-                <span className={`letter ${letterClass(variant)}`}>{variant}</span>
+          importGroups.map((entry) => (
+            <div className="zp-menu-item" key={`${entry.variant}-${entry.name}`}>
+              {entry.variant !== "_" && (
+                <span className={`letter ${letterClass(entry.variant)}`}>{entry.variant}</span>
               )}
               <div className="body">
-                {/* Show first entry's name (diets may differ but name is same) */}
-                <div className="ttl">{entries[0].name}</div>
-                {entries.some((e) => e.weight_grams) && (
-                  <div className="desc">
-                    {entries
-                      .filter((e) => e.weight_grams)
-                      .map((e) => `${e.diet_name ?? "Štandard"}: ${e.weight_grams}g`)
-                      .join(" · ")}
-                  </div>
+                <div className="ttl">{entry.name}</div>
+                {entry.weights.length > 0 && (
+                  <div className="desc">{entry.weights.join(" · ")}</div>
                 )}
               </div>
             </div>

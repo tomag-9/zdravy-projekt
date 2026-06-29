@@ -5,6 +5,8 @@ Tests for unauthorized access and production security.
 from django.test import Client, TestCase, override_settings
 from rest_framework.test import APIClient
 
+from app.settings.base import validate_deployed_secret_key
+
 
 class AdminSecurityTests(TestCase):
     """Test Django admin security."""
@@ -27,6 +29,12 @@ class AdminSecurityTests(TestCase):
         from django.apps import apps
 
         self.assertTrue(apps.is_installed("django.contrib.admin"))
+
+    def test_deployed_secret_key_requires_at_least_32_bytes(self):
+        with self.assertRaisesRegex(RuntimeError, "at least 32 bytes"):
+            validate_deployed_secret_key("short-secret-key-1", "production")
+
+        validate_deployed_secret_key("x" * 32, "production")
 
 
 class InvalidRouteRedirectTests(TestCase):

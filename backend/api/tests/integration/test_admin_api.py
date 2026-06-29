@@ -4,6 +4,7 @@ from datetime import date
 import openpyxl
 import pytest
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -11,7 +12,10 @@ from api.models import (
     ClientSettings,
     DailyMealPlan,
     DailyOrder,
+    Diet,
     EnrolledCount,
+    JedalnicekEntry,
+    JedalnicekUpload,
     MealPlanItem,
     MealTemplate,
     PortionType,
@@ -162,6 +166,168 @@ class ClientMealPlanAccessTest(APITestCase):
             "/api/meal-plans/",
             {"date": "2026-03-17"},
             format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AdminJedalnicekUploadApiTest(APITestCase):
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username="jedalnicek-admin@example.com",
+            password="password",
+            email="jedalnicek-admin@example.com",
+            is_staff=True,
+        )
+        self.client_user = User.objects.create_user(
+            username="jedalnicek-client@example.com",
+            password="password",
+            email="jedalnicek-client@example.com",
+            is_staff=False,
+        )
+
+    def _xlsx_file(self, name="jedalnicek.xlsx", amount=120):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "INŠTRUKCIE"
+        ws["B3"] = 2026
+        ws["B4"] = 12
+        ws["B5"] = "16.03.2026"
+        ws["B6"] = "20.03.2026"
+
+        sheet = wb.create_sheet("Klasik")
+        sheet.append(["JEDÁLNIČEK - KLASIK"])
+        sheet.append(
+            [
+                "Deň",
+                "Chod",
+                "Komponent / Jedlo",
+                "Alergény",
+                "Množstvo Jasle",
+                "Množstvo Škôlka",
+                "Množstvo ZŠ 1.stupeň",
+                "Množstvo ZŠ 2.stupeň",
+                "Množstvo Dospelý (SŠ)",
+                "Jednotka",
+                "Poznámky",
+            ]
+        )
+        sheet.append(["PONDELOK", None, None, None, None, None])
+        sheet.append([None, "Obed (Menu A)", None, None, None, None])
+        sheet.append(
+            [None, None, "Kuracie rizoto", "1,7", 80, amount, 135, 150, 180, "g", ""]
+        )
+
+        vege = wb.create_sheet("Vege")
+        vege.append(["JEDÁLNIČEK - VEGE"])
+        vege.append(
+            [
+                "Deň",
+                "Chod",
+                "Komponent / Jedlo",
+                "Alergény",
+                "Množstvo Jasle",
+                "Množstvo Škôlka",
+                "Množstvo ZŠ 1.stupeň",
+                "Množstvo ZŠ 2.stupeň",
+                "Množstvo Dospelý (SŠ)",
+                "Jednotka",
+                "Poznámky",
+            ]
+        )
+        vege.append(["PONDELOK", None, None, None, None, None])
+        vege.append([None, "Obed (Menu A)", None, None, None, None])
+        vege.append(
+            [None, None, "Zeleninové rizoto", "7", 70, 100, 115, 130, 150, "g", ""]
+        )
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        return SimpleUploadedFile(
+            name,
+            buffer.getvalue(),
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+
+    def test_admin_uploads_jedalnicek_xlsx_and_client_reads_import_entries(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/jedalnicek-uploads/upload/",
+            {"file": self._xlsx_file()},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["week_start"], "2026-03-16")
+        self.assertEqual(payload["entries_count"], 2)
+        self.assertEqual(JedalnicekUpload.objects.count(), 1)
+        self.assertEqual(JedalnicekEntry.objects.count(), 2)
+        self.assertTrue(Diet.objects.filter(name="VEGGIE").exists())
+        entry = JedalnicekEntry.objects.get(name="Kuracie rizoto")
+        self.assertEqual(entry.portion_weights["Škôlka"], "120.00")
+        self.assertEqual(entry.portion_weights["Dospelý (SŠ)"], "180.00")
+
+        self.client.force_authenticate(user=self.client_user)
+        by_date = self.client.get("/api/meal-plans/by-date/?date=2026-03-16")
+        self.assertEqual(by_date.status_code, status.HTTP_200_OK)
+        by_date_payload = by_date.json()
+        self.assertFalse(by_date_payload["exists"])
+        self.assertTrue(by_date_payload["has_import"])
+        names = {entry["name"] for entry in by_date_payload["import_entries"]}
+        self.assertEqual(names, {"Kuracie rizoto", "Zeleninové rizoto"})
+        imported = next(
+            entry
+            for entry in by_date_payload["import_entries"]
+            if entry["name"] == "Kuracie rizoto"
+        )
+        self.assertEqual(imported["portion_weights"]["Škôlka"], "120.00")
+
+        self.client.force_authenticate(user=self.admin)
+        calendar = self.client.get(
+            "/api/admin/meal-plans/?from=2026-03-01&to=2026-03-31"
+        )
+        self.assertEqual(calendar.status_code, status.HTTP_200_OK)
+        self.assertIn(
+            {"date": "2026-03-16", "has_import": True},
+            [
+                {"date": item["date"], "has_import": item.get("has_import", False)}
+                for item in calendar.json()
+            ],
+        )
+
+    def test_reupload_same_week_replaces_previous_import(self):
+        self.client.force_authenticate(user=self.admin)
+
+        first = self.client.post(
+            "/api/admin/jedalnicek-uploads/upload/",
+            {"file": self._xlsx_file("first.xlsx", amount=120)},
+            format="multipart",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(
+            "/api/admin/jedalnicek-uploads/upload/",
+            {"file": self._xlsx_file("second.xlsx", amount=150)},
+            format="multipart",
+        )
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.json()["replaced_uploads"], 1)
+        self.assertEqual(JedalnicekUpload.objects.count(), 1)
+        self.assertEqual(JedalnicekEntry.objects.count(), 2)
+        entry = JedalnicekEntry.objects.get(name="Kuracie rizoto")
+        self.assertEqual(str(entry.weight_grams), "150.00")
+
+    def test_client_cannot_upload_jedalnicek_xlsx(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            "/api/admin/jedalnicek-uploads/upload/",
+            {"file": self._xlsx_file()},
+            format="multipart",
         )
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)

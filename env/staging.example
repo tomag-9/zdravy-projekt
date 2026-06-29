@@ -1,6 +1,6 @@
 # Django settings
 DJANGO_SETTINGS_MODULE=app.settings.staging
-DJANGO_SECRET_KEY=super-secret-key-123
+DJANGO_SECRET_KEY=replace-with-at-least-32-random-bytes-from-get-random-secret-key
 
 # Database (Dokploy managed Postgres)
 POSTGRES_DB=zdravy_projekt_staging

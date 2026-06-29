@@ -7,80 +7,57 @@ from urllib.parse import quote
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, status, viewsets
+from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import (
-    DailyMealPlan,
-    JedalnicekEntry,
-    MealPlanItem,
-    MealTemplate,
-    PortionType,
-)
+from ..models import DailyMealPlan, JedalnicekEntry, MealPlanItem, PortionType
 from ..order_data import OrderData, safe_count
-from ..serializers_menu import (
-    DailyMealPlanSerializer,
-    MealTemplateSerializer,
-    PortionTypeSerializer,
-)
+from ..serializers_menu import DailyMealPlanSerializer, PortionTypeSerializer
 from ..services.meal_plan_service import MealPlanService
 from ..utils import parse_date_param
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-@extend_schema_view(
-    list=extend_schema(tags=["meal-plan"]),
-    retrieve=extend_schema(tags=["meal-plan"]),
-    create=extend_schema(tags=["meal-plan"]),
-    update=extend_schema(tags=["meal-plan"]),
-    partial_update=extend_schema(tags=["meal-plan"]),
-    destroy=extend_schema(tags=["meal-plan"]),
-)
-class MealTemplateViewSet(viewsets.ModelViewSet):
-    """Admin CRUD for meal templates."""
+class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
+    """List portion types; non-staff see only active entries."""
 
-    serializer_class = MealTemplateSerializer
-    permission_classes = [permissions.IsAdminUser]
+    serializer_class = PortionTypeSerializer
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = MealTemplate.objects.select_related("diet")
-        category = self.request.query_params.get("category")
-        menu_variant = self.request.query_params.get("menu_variant")
-        active_only = self.request.query_params.get("active_only", "true").lower()
-        if active_only == "true":
+        qs = PortionType.objects.all()
+        if not self.request.user.is_staff:
             qs = qs.filter(is_active=True)
-        if category:
-            qs = qs.filter(category=category)
-        if menu_variant is not None:
-            qs = qs.filter(menu_variant=menu_variant)
         return qs
 
 
-@extend_schema_view(
-    list=extend_schema(tags=["meal-plan"]),
-    retrieve=extend_schema(tags=["meal-plan"]),
-    create=extend_schema(tags=["meal-plan"]),
-    update=extend_schema(tags=["meal-plan"]),
-    partial_update=extend_schema(tags=["meal-plan"]),
-    destroy=extend_schema(tags=["meal-plan"]),
-)
-class PortionTypeViewSet(viewsets.ModelViewSet):
-    """Admin CRUD for portion types."""
+class JedalnicekEntrySerializer(serializers.ModelSerializer):
+    diet_name = serializers.CharField(
+        source="diet.name", read_only=True, allow_null=True
+    )
+    category_display = serializers.CharField(
+        source="get_category_display", read_only=True
+    )
 
-    serializer_class = PortionTypeSerializer
-
-    def get_permissions(self):
-        if self.action == "list":
-            return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
-
-    def get_queryset(self):
-        queryset = PortionType.objects.all()
-        if not self.request.user.is_staff:
-            queryset = queryset.filter(is_active=True)
-        return queryset
+    class Meta:
+        model = JedalnicekEntry
+        fields = [
+            "id",
+            "upload",
+            "date",
+            "category",
+            "category_display",
+            "menu_variant",
+            "diet",
+            "diet_name",
+            "name",
+            "weight_grams",
+            "unit",
+            "portion_weights",
+        ]
+        read_only_fields = ["id", "upload"]
 
 
 @extend_schema_view(
@@ -128,11 +105,50 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save()
 
+    def list(self, request, *args, **kwargs):
+        if not self._is_admin_route():
+            return super().list(request, *args, **kwargs)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        plan_dates = {plan.date for plan in queryset}
+        payload = list(
+            DailyMealPlanSerializer(
+                queryset, many=True, context={"request": request}
+            ).data
+        )
+
+        import_qs = JedalnicekEntry.objects.all()
+        from_date = request.query_params.get("from")
+        to_date = request.query_params.get("to")
+        if from_date:
+            import_qs = import_qs.filter(date__gte=parse_date_param(from_date, "from"))
+        if to_date:
+            import_qs = import_qs.filter(date__lte=parse_date_param(to_date, "to"))
+
+        import_dates = sorted(
+            set(import_qs.values_list("date", flat=True)) - plan_dates,
+            reverse=True,
+        )
+        payload.extend(
+            {
+                "id": None,
+                "date": import_date.isoformat(),
+                "notes": "",
+                "items": [],
+                "enrolled_counts": [],
+                "created_by": None,
+                "created_at": None,
+                "updated_at": None,
+                "has_import": True,
+            }
+            for import_date in import_dates
+        )
+
+        return Response(payload)
+
     @action(detail=False, methods=["get"], url_path="by-date")
     def by_date(self, request):
         """GET /api/admin/meal-plans/by-date/?date=YYYY-MM-DD"""
-        from ..views.jedalnicek_import_views import JedalnicekEntrySerializer
-
         date_str = request.query_params.get("date")
         if not date_str:
             return Response(
@@ -155,7 +171,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         except DailyMealPlan.DoesNotExist:
             payload = {
                 "exists": False,
-                "date": date_str,
+                "date": str(date),
                 "notes": "",
                 "items": [],
             }
@@ -241,7 +257,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
           - diet counts per meal  (how many portions of each special diet per meal)
           - menu variant totals per meal (how many total portions per menu variant)
 
-        Used by the Report tab in MealPlanEditor to show special-diet requirements
+        Used by the admin report view to show special-diet requirements
         alongside the gramage preview.
         """
         date_str = request.query_params.get("date")
