@@ -30,6 +30,9 @@ from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 # Inbox views
 from .inbox_views import InboxViewSet
 
+# Jedalnicek import views
+from .jedalnicek_upload_views import AdminJedalnicekUploadViewSet
+
 # Meal plan views
 from .meal_plan_views import DailyMealPlanViewSet, PortionTypeViewSet
 
@@ -66,6 +69,7 @@ __all__ = [
     "AdminUserViewSet",
     # Edupage
     "AdminEdupageUploadViewSet",
+    "AdminJedalnicekUploadViewSet",
     # Reports
     "AdminSummaryViewSet",
     "ReportTaskViewSet",

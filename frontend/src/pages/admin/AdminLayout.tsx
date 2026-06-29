@@ -38,9 +38,10 @@ const SECTIONS: NavSection[] = [
         id: 'import',
         label: 'Import',
         icon: '📥',
-        paths: ['/admin/edupage'],
+        paths: ['/admin/edupage', '/admin/jedalnicek-import'],
         items: [
             { to: '/admin/edupage', label: 'Objednávky (Edupage)', icon: '📤', activeColor: 'text-indigo-700', activeBg: 'bg-indigo-50' },
+            { to: '/admin/jedalnicek-import', label: 'Jedálničky (XLSX)', icon: '📄', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
         ],
     },
     {

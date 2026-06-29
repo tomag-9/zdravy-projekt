@@ -54,6 +54,8 @@ class JedalnicekEntrySerializer(serializers.ModelSerializer):
             "diet_name",
             "name",
             "weight_grams",
+            "unit",
+            "portion_weights",
         ]
         read_only_fields = ["id", "upload"]
 
@@ -102,6 +104,47 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save()
+
+    def list(self, request, *args, **kwargs):
+        if not self._is_admin_route():
+            return super().list(request, *args, **kwargs)
+
+        queryset = self.filter_queryset(self.get_queryset())
+        plan_dates = {plan.date for plan in queryset}
+        payload = list(
+            DailyMealPlanSerializer(
+                queryset, many=True, context={"request": request}
+            ).data
+        )
+
+        import_qs = JedalnicekEntry.objects.all()
+        from_date = request.query_params.get("from")
+        to_date = request.query_params.get("to")
+        if from_date:
+            import_qs = import_qs.filter(date__gte=parse_date_param(from_date, "from"))
+        if to_date:
+            import_qs = import_qs.filter(date__lte=parse_date_param(to_date, "to"))
+
+        import_dates = sorted(
+            set(import_qs.values_list("date", flat=True)) - plan_dates,
+            reverse=True,
+        )
+        payload.extend(
+            {
+                "id": None,
+                "date": import_date.isoformat(),
+                "notes": "",
+                "items": [],
+                "enrolled_counts": [],
+                "created_by": None,
+                "created_at": None,
+                "updated_at": None,
+                "has_import": True,
+            }
+            for import_date in import_dates
+        )
+
+        return Response(payload)
 
     @action(detail=False, methods=["get"], url_path="by-date")
     def by_date(self, request):

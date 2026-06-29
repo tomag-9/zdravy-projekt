@@ -532,6 +532,12 @@ class JedalnicekEntry(models.Model):
         blank=True,
         help_text="Gram weight for this diet (replaces base_weight × coefficient)",
     )
+    unit = models.CharField(max_length=10, default="g")
+    portion_weights = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Per-portion quantities from XLSX, e.g. {'Škôlka': '120.00'}",
+    )
 
     class Meta:
         ordering = ["date", "category", "menu_variant", "diet__name"]

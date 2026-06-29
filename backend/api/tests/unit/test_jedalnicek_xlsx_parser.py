@@ -7,6 +7,7 @@ that returns ParseResult dataclasses. Django is not involved.
 
 import datetime
 import io
+import os
 from decimal import Decimal
 
 import openpyxl
@@ -514,9 +515,9 @@ class TestIngredientExtraction:
         row = self._parse_ingredient("Kaša", "", 100, "g", "")
         assert row.unit == "g"
 
-    def test_unit_ml_extracted(self):
+    def test_unit_ml_defaults_to_g(self):
         row = self._parse_ingredient("Polievka", "", 200, "ml", "")
-        assert row.unit == "ml"
+        assert row.unit == "g"
 
     def test_unit_ks_extracted(self):
         row = self._parse_ingredient("Vajce", "", 1, "ks", "")
@@ -645,7 +646,11 @@ class TestParseResultStructure:
 
 # ── 8. Integration: parse the generated template ──────────────────────────────
 
-TEMPLATE_PATH = (
+TEMPLATE_UKAZKA_PATH = (
+    "/home/tomas-magula/Documents/Projects/ZB/zdravy-projekt"
+    "/test/jedalnicky/jedalnicky_template_ukazka_W22_2026.xlsx"
+)
+CLEAN_TEMPLATE_PATH = (
     "/home/tomas-magula/Documents/Projects/ZB/zdravy-projekt"
     "/test/jedalnicky/jedalnicky_template_W22_2026.xlsx"
 )
@@ -655,20 +660,18 @@ TEMPLATE_PATH = (
 class TestIntegrationGeneratedTemplate:
     @pytest.fixture(autouse=True)
     def require_template(self):
-        import os
-
-        if not os.path.exists(TEMPLATE_PATH):
+        if not os.path.exists(TEMPLATE_UKAZKA_PATH):
             pytest.skip(
-                "Template file not generated yet — run generate_jedalnicky_template.py first"
+                "Ukazka template file not generated yet — run generate_jedalnicky_template.py first"
             )
 
     def test_parse_succeeds_with_no_errors(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         assert result.ok, f"Errors: {result.errors}"
 
     def test_week_metadata_correct(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         assert result.week_year == 2026
         assert result.week_number == 22
@@ -676,7 +679,7 @@ class TestIntegrationGeneratedTemplate:
         assert result.week_end == datetime.date(2026, 5, 29)
 
     def test_all_diet_sheets_produce_rows(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         diet_sheets = {r.diet_sheet for r in result.rows}
         # At minimum Klasik and Vege should be present
@@ -684,14 +687,14 @@ class TestIntegrationGeneratedTemplate:
         assert "Vege" in diet_sheets
 
     def test_all_five_days_represented_in_klasik(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         klasik_dates = {r.date for r in result.rows if r.diet_sheet == "Klasik"}
         expected_dates = {datetime.date(2026, 5, d) for d in (25, 26, 27, 28, 29)}
         assert klasik_dates == expected_dates
 
     def test_all_meal_categories_present_in_klasik(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         klasik_categories = {
             r.category for r in result.rows if r.diet_sheet == "Klasik"
@@ -701,7 +704,7 @@ class TestIntegrationGeneratedTemplate:
         assert "snack" in klasik_categories
 
     def test_menu_variants_abc_present_in_klasik(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         klasik_lunch_variants = {
             r.menu_variant
@@ -714,38 +717,92 @@ class TestIntegrationGeneratedTemplate:
         assert "P" in klasik_lunch_variants
 
     def test_amounts_are_none_because_template_is_empty(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         # All amounts must be None — nobody filled in the template
         assert all(r.amount is None for r in result.rows)
 
     def test_units_are_valid_values(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
-        valid_units = {"g", "ml", "ks"}
+        valid_units = {"g", "ks"}
         for row in result.rows:
             assert (
                 row.unit in valid_units
             ), f"Unexpected unit '{row.unit}' for {row.component_name}"
 
-    def test_units_include_ml_for_soups(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+    def test_units_do_not_include_ml(self):
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
-        polievka_units = {
-            r.unit
-            for r in result.rows
-            if r.category == "lunch" and r.menu_variant == "P"
-        }
-        assert "ml" in polievka_units
+        assert {r.unit for r in result.rows}.issubset({"g", "ks"})
 
     def test_no_empty_component_names(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         empty_names = [r for r in result.rows if not r.component_name.strip()]
         assert empty_names == [], f"Found rows with empty component name: {empty_names}"
 
     def test_total_row_count_is_reasonable(self):
-        with open(TEMPLATE_PATH, "rb") as f:
+        with open(TEMPLATE_UKAZKA_PATH, "rb") as f:
             result = JedalnicekXlsxParser().parse(f)
         # Each diet has ~40 rows per week × at least 6 diets → 240+
         assert len(result.rows) >= 200, f"Only {len(result.rows)} rows parsed"
+
+    def test_clean_template_has_no_rows(self):
+        with open(CLEAN_TEMPLATE_PATH, "rb") as f:
+            result = JedalnicekXlsxParser().parse(f)
+        assert result.ok
+        assert result.rows == []
+
+    def test_clean_template_keeps_day_and_meal_skeleton_without_notes(self):
+        if not os.path.exists(CLEAN_TEMPLATE_PATH):
+            pytest.skip(
+                "Clean template file not generated yet — run generate_jedalnicky_template.py --blank first"
+            )
+
+        wb = openpyxl.load_workbook(CLEAN_TEMPLATE_PATH, read_only=True, data_only=True)
+        ws_klasik = wb["Klasik"]
+        ws_vege = wb["Vege"]
+        headers = [cell.value for cell in ws_klasik[2]]
+        meal_labels = {
+            "Raňajky-desiata",
+            "Polievka",
+            "Obed (Menu A)",
+            "Obed (Menu B)",
+            "Obed (Menu C)",
+            "Olovrant",
+        }
+        meals = [
+            row[1]
+            for row in ws_klasik.iter_rows(min_row=3, values_only=True)
+            if row[1] in meal_labels
+        ]
+        vege_meals = [
+            row[1]
+            for row in ws_vege.iter_rows(min_row=3, values_only=True)
+            if row[1] in meal_labels
+        ]
+        component_rows = [
+            row for row in ws_klasik.iter_rows(min_row=3, values_only=True) if row[2]
+        ]
+
+        assert "Poznámky" not in headers
+        assert len(meals) == 30
+        assert meals[:6] == [
+            "Raňajky-desiata",
+            "Polievka",
+            "Obed (Menu A)",
+            "Obed (Menu B)",
+            "Obed (Menu C)",
+            "Olovrant",
+        ]
+        assert len(vege_meals) == 20
+        assert "Obed (Menu B)" not in vege_meals
+        assert "Obed (Menu C)" not in vege_meals
+        assert vege_meals[:4] == [
+            "Raňajky-desiata",
+            "Polievka",
+            "Obed (Menu A)",
+            "Olovrant",
+        ]
+        assert component_rows == []

@@ -44,6 +44,7 @@ import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
 import EdupageUpload from "./pages/admin/EdupageUpload";
+import JedalnicekUpload from "./pages/admin/JedalnicekUpload";
 import AdminLogs from "./pages/admin/AdminLogs";
 
 const ProtectedRoute = () => {
@@ -189,6 +190,7 @@ export default function App() {
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
                 <Route path="edupage" element={<ErrorBoundary><EdupageUpload /></ErrorBoundary>} />
+                <Route path="jedalnicek-import" element={<ErrorBoundary><JedalnicekUpload /></ErrorBoundary>} />
                 <Route path="logs" element={<ErrorBoundary><AdminLogs /></ErrorBoundary>} />
               </Route>
 
