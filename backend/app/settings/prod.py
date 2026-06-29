@@ -8,11 +8,7 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
-if not SECRET_KEY.strip() or SECRET_KEY.startswith("django-insecure"):  # noqa: F405
-    raise RuntimeError(
-        "DJANGO_SECRET_KEY env var is missing or insecure. "
-        "Set a strong secret key before running in production."
-    )
+validate_deployed_secret_key(SECRET_KEY, "production")  # noqa: F405
 
 # Remove Django admin in production for security
 INSTALLED_APPS = [app for app in INSTALLED_APPS if app != "django.contrib.admin"]
@@ -104,24 +100,29 @@ LOGGING = {
             "class": "logging.StreamHandler",
             "formatter": "verbose",
         },
+        "admin_log_buffer": {
+            "class": "api.logging_buffer.InMemoryLogHandler",
+            "formatter": "verbose",
+            "level": "INFO",
+        },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "admin_log_buffer"],
         "level": "INFO",
     },
     "loggers": {
         "django": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },
         "api": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },
         "celery": {
-            "handlers": ["console"],
+            "handlers": ["console", "admin_log_buffer"],
             "level": "INFO",
             "propagate": False,
         },

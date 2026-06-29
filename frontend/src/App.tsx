@@ -41,13 +41,11 @@ import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
 import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
-import MealPlanEditor from "./pages/admin/MealPlanEditor";
-import MealPlanTemplates from "./pages/admin/MealPlanTemplates";
-import PortionTypes from "./pages/admin/PortionTypes";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
 import EdupageUpload from "./pages/admin/EdupageUpload";
-import JedalnicekImport from "./pages/admin/JedalnicekImport";
+import JedalnicekUpload from "./pages/admin/JedalnicekUpload";
+import AdminLogs from "./pages/admin/AdminLogs";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -188,14 +186,12 @@ export default function App() {
                 <Route path="roles/:id" element={<ErrorBoundary><AdminUserDetail /></ErrorBoundary>} />
                 <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />
                 <Route path="meal-plan" element={<ErrorBoundary><MealPlanCalendar /></ErrorBoundary>} />
-                <Route path="meal-plan/:date" element={<ErrorBoundary><MealPlanEditor /></ErrorBoundary>} />
-                <Route path="meal-plan-templates" element={<ErrorBoundary><MealPlanTemplates /></ErrorBoundary>} />
-                <Route path="portion-types" element={<ErrorBoundary><PortionTypes /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><SystemSettings /></ErrorBoundary>} />
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
                 <Route path="edupage" element={<ErrorBoundary><EdupageUpload /></ErrorBoundary>} />
-                <Route path="jedalnicek-import" element={<ErrorBoundary><JedalnicekImport /></ErrorBoundary>} />
+                <Route path="jedalnicek-import" element={<ErrorBoundary><JedalnicekUpload /></ErrorBoundary>} />
+                <Route path="logs" element={<ErrorBoundary><AdminLogs /></ErrorBoundary>} />
               </Route>
 
               {/* Client Routes */}

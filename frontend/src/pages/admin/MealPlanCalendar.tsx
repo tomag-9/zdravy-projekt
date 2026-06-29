@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/auth";
 import { logger } from '../../lib/logger';
 
@@ -33,7 +32,6 @@ const DOW = ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"];
 
 const MealPlanCalendar: React.FC = () => {
   const { apiFetch } = useAuth();
-  const navigate = useNavigate();
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
   const [month, setMonth] = useState(today.getMonth());
@@ -99,20 +97,6 @@ const MealPlanCalendar: React.FC = () => {
           <h2 className="text-3xl font-bold text-gray-900">Jedálniček</h2>
           <p className="text-gray-500 mt-1">Plánujte jedálniček pre každý deň</p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            to="/admin/meal-plan-templates"
-            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition"
-          >
-            Šablóny jedál
-          </Link>
-          <Link
-            to="/admin/portion-types"
-            className="px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 transition"
-          >
-            Typy porcií
-          </Link>
-        </div>
       </div>
 
       {/* Month navigation */}
@@ -167,14 +151,12 @@ const MealPlanCalendar: React.FC = () => {
                 const isWeekend = ((startDow + day - 1) % 7) >= 5;
 
                 return (
-                  <button
+                  <div
                     key={dateStr}
-                    onClick={() => navigate(`/admin/meal-plan/${dateStr}`)}
                     className={`
                       relative min-h-[72px] p-2 rounded-xl text-left transition-all duration-150 border
                       ${isToday ? "border-teal-400 bg-teal-50" : "border-gray-100 bg-white"}
                       ${isWeekend && !isToday ? "bg-gray-50" : ""}
-                      hover:border-teal-300 hover:shadow-sm
                     `}
                   >
                     <span
@@ -192,10 +174,7 @@ const MealPlanCalendar: React.FC = () => {
                         </span>
                       </div>
                     )}
-                    {!plan && !isWeekend && (
-                      <div className="mt-1 text-xs text-gray-300">+ pridať</div>
-                    )}
-                  </button>
+                  </div>
                 );
               })}
             </div>

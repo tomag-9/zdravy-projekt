@@ -11,6 +11,8 @@ import { logger } from '../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 const CACHED_PROFILE_KEY = "cached_user_profile";
+const REFRESH_LOCK_KEY = "auth_refresh_in_progress";
+const REFRESH_LOCK_TIMEOUT_MS = 5000;
 
 interface UserProfile {
   billing_name?: string;
@@ -87,6 +89,46 @@ function loadCachedProfile(): User | null {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function readRefreshLock(): number | null {
+  const raw = localStorage.getItem(REFRESH_LOCK_KEY);
+  if (!raw) return null;
+  const timestamp = Number(raw);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function isRefreshLocked(): boolean {
+  const timestamp = readRefreshLock();
+  return timestamp !== null && Date.now() - timestamp < REFRESH_LOCK_TIMEOUT_MS;
+}
+
+async function waitForCrossTabRefresh(
+  tokenBeforeRefresh: string | null,
+): Promise<string | null> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < REFRESH_LOCK_TIMEOUT_MS) {
+    const refreshedByAnotherTab = localStorage.getItem("access_token");
+    if (
+      refreshedByAnotherTab &&
+      refreshedByAnotherTab !== tokenBeforeRefresh
+    ) {
+      return refreshedByAnotherTab;
+    }
+
+    if (!isRefreshLocked()) {
+      return null;
+    }
+
+    await sleep(100);
+  }
+
+  return null;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
@@ -142,6 +184,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
     if (refreshInFlight.current) return refreshInFlight.current;
 
     const doRefresh = async (): Promise<boolean> => {
+      const tokenBeforeRefresh = localStorage.getItem("access_token");
+
+      if (isRefreshLocked()) {
+        const refreshedByAnotherTab =
+          await waitForCrossTabRefresh(tokenBeforeRefresh);
+        if (refreshedByAnotherTab) {
+          setToken(refreshedByAnotherTab);
+          return true;
+        }
+      }
+
+      localStorage.setItem(REFRESH_LOCK_KEY, String(Date.now()));
+
       try {
         const response = await fetch(`${API_URL}/token/refresh/`, {
           method: "POST",
@@ -155,7 +210,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
           setToken(data.access);
           return true;
         } else if (response.status === 401 || response.status === 403) {
-          // Refresh cookie is invalid or blacklisted — session is truly over
+          const refreshedByAnotherTab =
+            await waitForCrossTabRefresh(tokenBeforeRefresh);
+          if (refreshedByAnotherTab) {
+            setToken(refreshedByAnotherTab);
+            return true;
+          }
+
+          // Refresh cookie is invalid or blacklisted — session is truly over.
           await logout();
           return false;
         } else {
@@ -170,6 +232,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
         }
         return false;
       } finally {
+        localStorage.removeItem(REFRESH_LOCK_KEY);
         refreshInFlight.current = null;
       }
     };

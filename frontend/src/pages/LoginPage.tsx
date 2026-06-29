@@ -6,12 +6,17 @@ import { useStableViewportHeight } from "../hooks/useStableViewportHeight";
 import { Eye, EyeOff } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
+const DEV_LOGIN_USERS = [
+  { label: "Admin", email: "admin@example.com", password: "admin" },
+  { label: "Prevádzka", email: "prevadzka@example.com", password: "prevadzka" },
+];
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [contactEmail, setContactEmail] = useState("info@zdravyprojekt.sk");
   const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
@@ -37,9 +42,9 @@ const LoginPage: React.FC = () => {
     }
   }, [isAuthenticated, user, navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const performLogin = async (loginEmail: string, loginPassword: string) => {
     setError("");
+    setIsSubmitting(true);
 
     try {
       const response = await fetch(`${API_URL}/token/`, {
@@ -48,7 +53,7 @@ const LoginPage: React.FC = () => {
           "Content-Type": "application/json",
         },
         credentials: "include", // allows the httpOnly refresh cookie to be set
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
       });
 
       if (!response.ok) {
@@ -76,7 +81,20 @@ const LoginPage: React.FC = () => {
       setError(
         "Nepodarilo sa pripojiť k serveru. Skontrolujte pripojenie na internet.",
       );
+    } finally {
+      setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await performLogin(email, password);
+  };
+
+  const handleDevLogin = async (loginEmail: string, loginPassword: string) => {
+    setEmail(loginEmail);
+    setPassword(loginPassword);
+    await performLogin(loginEmail, loginPassword);
   };
 
   const loginForm = (
@@ -135,9 +153,29 @@ const LoginPage: React.FC = () => {
         type="submit"
         className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
         style={{ marginTop: 8 }}
+        disabled={isSubmitting}
       >
-        Prihlásiť sa
+        {isSubmitting ? "Prihlasujem..." : "Prihlásiť sa"}
       </button>
+
+      {import.meta.env.DEV && (
+        <div style={{ marginTop: 14 }}>
+          <div className="zp-divider" style={{ margin: "12px 0" }}>Dev prihlásenie</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            {DEV_LOGIN_USERS.map((devUser) => (
+              <button
+                key={devUser.email}
+                type="button"
+                className="zp-btn zp-btn--secondary zp-btn--block"
+                onClick={() => void handleDevLogin(devUser.email, devUser.password)}
+                disabled={isSubmitting}
+              >
+                {devUser.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="zp-divider">Nemáte účet?</div>
 

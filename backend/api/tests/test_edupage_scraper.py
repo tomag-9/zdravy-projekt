@@ -244,6 +244,14 @@ class TestParse(unittest.TestCase):
 
         self.assertEqual(result.order_data, {})
 
+    def test_parse_empty_prehlad_list_is_not_error(self):
+        prehlad = {"prehlad": [], "mamUnknown": False, "unknownTypyIDS": []}
+        html = _make_html(prehlad, {}, [], self.DATE_STR)
+        result = self._scrape_html(html)
+
+        self.assertEqual(result.order_data, {})
+        self.assertEqual(result.warnings, [])
+
     def test_parse_missing_prehlad_block(self):
         html = "<html><body>nothing here</body></html>"
         result = self._scrape_html(html)

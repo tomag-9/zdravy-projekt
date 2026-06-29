@@ -171,6 +171,18 @@ class TestLoginFlow:
         lifetime_days = (refresh.payload["exp"] - refresh.payload["iat"]) / 86400
         assert abs(lifetime_days - 1) < 0.1  # within ~2.5 hours tolerance
 
+    def test_dev_demo_email_login_migrates_legacy_user(self, api_client, settings):
+        settings.DEBUG = True
+        User.objects.create_user(username="admin", email="admin", password="old")
+
+        response = _login(api_client, "admin@example.com", "admin")
+
+        assert response.status_code == status.HTTP_200_OK
+        migrated = User.objects.get(email="admin@example.com")
+        assert migrated.username == "admin@example.com"
+        assert migrated.is_staff is True
+        assert migrated.is_superuser is True
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # TOKEN REFRESH
@@ -192,6 +204,22 @@ class TestTokenRefreshFlow:
         assert "access" in refresh_response.data
         # Rotation: new refresh cookie must be set
         assert COOKIE_NAME in refresh_response.cookies
+
+    def test_token_refresh_uses_valid_duplicate_cookie(self, api_client, user):
+        login_response = _login(api_client, "client@example.com", "client123")
+        valid_refresh = login_response.cookies[COOKIE_NAME].value
+        api_client.cookies.clear()
+
+        response = api_client.post(
+            reverse("token_refresh"),
+            format="json",
+            HTTP_COOKIE=(
+                f"{COOKIE_NAME}=aaa.bbb.ccc; " f"{COOKIE_NAME}={valid_refresh}"
+            ),
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "access" in response.data
 
     def test_token_refresh_rotates_cookie(self, api_client, user):
         """Each refresh call produces a new refresh cookie (rotation)."""

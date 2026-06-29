@@ -356,8 +356,27 @@ def apply_auto_orders_task(self, date_str: str | None = None):
         raise self.retry(exc=exc)
 
 
+def _filter_order_data_by_meals(order_data, meal_types):
+    if meal_types is None:
+        return order_data
+    return {
+        meal_type: order_data[meal_type]
+        for meal_type in meal_types
+        if order_data.get(meal_type)
+    }
+
+
+def _merge_order_data(existing_data, imported_data):
+    merged = dict(existing_data or {})
+    for meal_type, meal_data in imported_data.items():
+        merged[meal_type] = meal_data
+    return merged
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def scrape_edupage_orders_task(self, date_str: str | None = None):
+def scrape_edupage_orders_task(
+    self, date_str: str | None = None, meal_types: list[str] | None = None
+):
     """
     Scrape mealsGuest HTML for all Edupage operations and upsert DailyOrder records.
 
@@ -371,13 +390,50 @@ def scrape_edupage_orders_task(self, date_str: str | None = None):
         from django.utils import timezone
 
         from api.edupage_scraper import EdupageScraper
-        from api.models import DailyOrder, UserProfile
+        from api.models import DailyOrder, GlobalSettings, UserProfile
+        from api.services import _next_workday
 
-        target_date: datetime.date
+        valid_meal_types = {"breakfast", "lunch", "olovrant"}
+        if isinstance(meal_types, str):
+            meal_types = [meal_types]
+        if meal_types is not None:
+            invalid = [meal for meal in meal_types if meal not in valid_meal_types]
+            if invalid:
+                logger.error(
+                    "scrape_edupage_orders_task: invalid meal_types=%s, no retry",
+                    invalid,
+                )
+                return {"error": "invalid_meal_type", "meal_types": meal_types}
+
+        date_to_meals: dict[datetime.date, list[str] | None]
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
+            date_to_meals = {target_date: meal_types}
         else:
-            target_date = timezone.localdate()
+            today = timezone.localdate()
+            if meal_types is None:
+                date_to_meals = {today: None}
+            else:
+                try:
+                    gs = GlobalSettings.objects.get(pk=1)
+                except GlobalSettings.DoesNotExist:
+                    logger.error(
+                        "scrape_edupage_orders_task: GlobalSettings(pk=1) missing, no retry"
+                    )
+                    return {
+                        "error": "missing_global_settings",
+                        "meal_types": meal_types,
+                    }
+
+                date_to_meals = {}
+                for meal_type in meal_types:
+                    is_day_before = getattr(
+                        gs, f"deadline_{meal_type}_is_day_before", False
+                    )
+                    target_date = _next_workday(today) if is_day_before else today
+                    target_meals = date_to_meals.setdefault(target_date, [])
+                    assert target_meals is not None
+                    target_meals.append(meal_type)
 
         profiles = (
             UserProfile.objects.filter(is_edupage=True)
@@ -389,38 +445,47 @@ def scrape_edupage_orders_task(self, date_str: str | None = None):
         scraped = errors = skipped = 0
 
         for profile in profiles:
-            try:
-                result = scraper.scrape(profile.mealsguest_url, target_date)
-            except Exception:
-                logger.exception(
-                    "scrape_edupage_orders_task: failed for %s", profile.mealsguest_url
-                )
-                errors += 1
-                continue
+            for target_date, requested_meals in date_to_meals.items():
+                try:
+                    result = scraper.scrape(profile.mealsguest_url, target_date)
+                except Exception:
+                    logger.exception(
+                        "scrape_edupage_orders_task: failed for %s",
+                        profile.mealsguest_url,
+                    )
+                    errors += 1
+                    continue
 
-            if not result.order_data:
-                logger.info(
-                    "scrape_edupage_orders_task: empty result for %s on %s (warnings=%s)",
-                    profile.company_name,
-                    target_date,
-                    result.warnings,
+                imported_data = _filter_order_data_by_meals(
+                    result.order_data, requested_meals
                 )
-                skipped += 1
-                continue
+                if not imported_data:
+                    logger.info(
+                        "scrape_edupage_orders_task: empty result for %s on %s meals=%s (warnings=%s)",
+                        profile.company_name,
+                        target_date,
+                        requested_meals,
+                        result.warnings,
+                    )
+                    skipped += 1
+                    continue
 
-            with transaction.atomic():
-                DailyOrder.objects.update_or_create(
-                    user=profile.user,
-                    date=target_date,
-                    defaults={"data": result.order_data},
-                )
-            scraped += 1
+                with transaction.atomic():
+                    order, _ = DailyOrder.objects.select_for_update().get_or_create(
+                        user=profile.user,
+                        date=target_date,
+                        defaults={"data": {}},
+                    )
+                    order.data = _merge_order_data(order.data, imported_data)
+                    order.save(update_fields=["data", "updated_at"])
+                scraped += 1
 
         summary = {
             "scraped": scraped,
             "errors": errors,
             "skipped": skipped,
-            "date": str(target_date),
+            "dates": [str(target_date) for target_date in date_to_meals],
+            "meal_types": meal_types,
         }
         logger.info("scrape_edupage_orders_task result: %s", summary)
         return summary

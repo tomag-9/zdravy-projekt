@@ -8,11 +8,7 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = False
 
-if not SECRET_KEY.strip() or SECRET_KEY.startswith("django-insecure"):  # noqa: F405
-    raise RuntimeError(
-        "DJANGO_SECRET_KEY env var is missing or insecure. "
-        "Set a strong secret key before running in staging."
-    )
+validate_deployed_secret_key(SECRET_KEY, "staging")  # noqa: F405
 
 if "django_prometheus" not in INSTALLED_APPS:
     INSTALLED_APPS = ["django_prometheus", *INSTALLED_APPS]
@@ -96,13 +92,43 @@ _init_sentry()
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {name}:{lineno} {message}",
+            "style": "{",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "admin_log_buffer": {
+            "class": "api.logging_buffer.InMemoryLogHandler",
+            "formatter": "verbose",
+            "level": "INFO",
         },
     },
     "root": {
-        "handlers": ["console"],
+        "handlers": ["console", "admin_log_buffer"],
         "level": "INFO",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "admin_log_buffer"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "api": {
+            "handlers": ["console", "admin_log_buffer"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "celery": {
+            "handlers": ["console", "admin_log_buffer"],
+            "level": "INFO",
+            "propagate": False,
+        },
     },
 }

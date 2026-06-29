@@ -82,4 +82,6 @@ def test_deploy_bootstrap_does_not_create_demo_logins_in_production(
 
     management.call_command("deploy_bootstrap", "--skip-migrate")
 
-    assert not User.objects.filter(username__in=["admin", "prevadzka"]).exists()
+    assert not User.objects.filter(
+        email__in=["admin@example.com", "prevadzka@example.com"]
+    ).exists()

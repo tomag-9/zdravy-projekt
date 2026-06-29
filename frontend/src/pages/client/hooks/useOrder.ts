@@ -282,8 +282,7 @@ export const useOrder = () => {
                 if (!res.ok) return;
                 const data = await res.json();
                 const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
-                const activeItems = items.filter((item) => item.is_active);
-                setPortionTypes(activeItems);
+                setPortionTypes(items.filter((item) => item.is_active));
             } catch (e) {
                 logger.error("Failed to fetch portion types", e);
             }
