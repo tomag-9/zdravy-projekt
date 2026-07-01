@@ -9,8 +9,9 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..edupage_scraper import EdupageScraper
+from ..edupage_scraper import EdupageScraper, nest_order_data_by_category
 from ..models import DailyOrder, EdupageUpload, UserProfile
+from ..utils import user_operation_name
 
 logger = logging.getLogger(__name__)
 
@@ -198,11 +199,15 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 continue
 
+            order_data = nest_order_data_by_category(
+                result.order_data, user_operation_name(profile.user)
+            )
+
             with transaction.atomic():
                 order, created = DailyOrder.objects.update_or_create(
                     user=profile.user,
                     date=target_date,
-                    defaults={"data": result.order_data},
+                    defaults={"data": order_data},
                 )
 
             results.append(

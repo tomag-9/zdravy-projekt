@@ -59,7 +59,7 @@ flowchart TB
     Beat --> DB
 ```
 
-V staging/production compose stackoch frontend/backend bezia ako kontajnery za reverse proxy vrstvou. Development stack navyse seeduje data a inicializuje role pri starte backendu.
+V staging/production compose stackoch frontend/backend bezia ako kontajnery za reverse proxy vrstvou. Development stack navyse inicializuje role, referencne data, realne EduPage prevadzky a pri starte backendu nacita aktualne EduPage objednavky.
 
 ## Hlavne moduly
 
