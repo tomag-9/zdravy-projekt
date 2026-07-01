@@ -4,7 +4,6 @@ from datetime import date
 import openpyxl
 import pytest
 from django.contrib.auth.models import User
-from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APITestCase
 
@@ -12,10 +11,7 @@ from api.models import (
     ClientSettings,
     DailyMealPlan,
     DailyOrder,
-    Diet,
     EnrolledCount,
-    JedalnicekEntry,
-    JedalnicekUpload,
     MealPlanItem,
     MealTemplate,
     PortionType,
@@ -129,11 +125,10 @@ class ClientMealPlanAccessTest(APITestCase):
         )
         self.plan_date = date(2026, 3, 16)
         self.template = MealTemplate.objects.create(
-            category="lunch",
+            category="main_course",
             name="Kuracie soté",
             weight_label="200g + 50g",
             base_weight_grams="250.00",
-            menu_variant="A",
             is_active=True,
         )
         self.plan = DailyMealPlan.objects.create(
@@ -143,8 +138,7 @@ class ClientMealPlanAccessTest(APITestCase):
         MealPlanItem.objects.create(
             meal_plan=self.plan,
             template=self.template,
-            category="lunch",
-            menu_variant="A",
+            category="main_course",
         )
 
     def test_client_can_read_meal_plan_by_date(self):
@@ -171,166 +165,68 @@ class ClientMealPlanAccessTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
-class AdminJedalnicekUploadApiTest(APITestCase):
+class MealTemplateCatalogApiTest(APITestCase):
     def setUp(self):
+        from django.core.management import call_command
+
+        call_command("seed_meal_weight_catalog")
         self.admin = User.objects.create_user(
-            username="jedalnicek-admin@example.com",
+            username="catalog-admin@example.com",
             password="password",
-            email="jedalnicek-admin@example.com",
+            email="catalog-admin@example.com",
             is_staff=True,
         )
         self.client_user = User.objects.create_user(
-            username="jedalnicek-client@example.com",
+            username="catalog-client@example.com",
             password="password",
-            email="jedalnicek-client@example.com",
+            email="catalog-client@example.com",
             is_staff=False,
         )
 
-    def _xlsx_file(self, name="jedalnicek.xlsx", amount=120):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "INŠTRUKCIE"
-        ws["B3"] = 2026
-        ws["B4"] = 12
-        ws["B5"] = "16.03.2026"
-        ws["B6"] = "20.03.2026"
-
-        sheet = wb.create_sheet("Klasik")
-        sheet.append(["JEDÁLNIČEK - KLASIK"])
-        sheet.append(
-            [
-                "Deň",
-                "Chod",
-                "Komponent / Jedlo",
-                "Alergény",
-                "Množstvo Jasle",
-                "Množstvo Škôlka",
-                "Množstvo ZŠ 1.stupeň",
-                "Množstvo ZŠ 2.stupeň",
-                "Množstvo Dospelý (SŠ)",
-                "Jednotka",
-                "Poznámky",
-            ]
-        )
-        sheet.append(["PONDELOK", None, None, None, None, None])
-        sheet.append([None, "Obed (Menu A)", None, None, None, None])
-        sheet.append(
-            [None, None, "Kuracie rizoto", "1,7", 80, amount, 135, 150, 180, "g", ""]
-        )
-
-        vege = wb.create_sheet("Vege")
-        vege.append(["JEDÁLNIČEK - VEGE"])
-        vege.append(
-            [
-                "Deň",
-                "Chod",
-                "Komponent / Jedlo",
-                "Alergény",
-                "Množstvo Jasle",
-                "Množstvo Škôlka",
-                "Množstvo ZŠ 1.stupeň",
-                "Množstvo ZŠ 2.stupeň",
-                "Množstvo Dospelý (SŠ)",
-                "Jednotka",
-                "Poznámky",
-            ]
-        )
-        vege.append(["PONDELOK", None, None, None, None, None])
-        vege.append([None, "Obed (Menu A)", None, None, None, None])
-        vege.append(
-            [None, None, "Zeleninové rizoto", "7", 70, 100, 115, 130, 150, "g", ""]
-        )
-
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        return SimpleUploadedFile(
-            name,
-            buffer.getvalue(),
-            content_type=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-
-    def test_admin_uploads_jedalnicek_xlsx_and_client_reads_import_entries(self):
+    def test_admin_can_filter_meal_templates_by_category(self):
         self.client.force_authenticate(user=self.admin)
 
+        response = self.client.get("/api/admin/meal-templates/?category=soup")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        results = payload if isinstance(payload, list) else payload["results"]
+        self.assertEqual(len(results), 4)
+        self.assertTrue(all(r["category"] == "soup" for r in results))
+
+    def test_admin_day_editor_saves_soup_and_main_course_as_separate_items(self):
+        self.client.force_authenticate(user=self.admin)
+        soup = MealTemplate.objects.get(name="Polievka 2")
+        main_course = MealTemplate.objects.get(name="Hlavný chod 3")
+
         response = self.client.post(
-            "/api/admin/jedalnicek-uploads/upload/",
-            {"file": self._xlsx_file()},
-            format="multipart",
+            "/api/admin/meal-plans/",
+            {
+                "date": "2026-04-01",
+                "items_write": [
+                    {"template_id": soup.id, "menu_variant": ""},
+                    {"template_id": main_course.id, "menu_variant": ""},
+                ],
+            },
+            format="json",
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        payload = response.json()
-        self.assertEqual(payload["week_start"], "2026-03-16")
-        self.assertEqual(payload["entries_count"], 2)
-        self.assertEqual(JedalnicekUpload.objects.count(), 1)
-        self.assertEqual(JedalnicekEntry.objects.count(), 2)
-        self.assertTrue(Diet.objects.filter(name="VEGGIE").exists())
-        entry = JedalnicekEntry.objects.get(name="Kuracie rizoto")
-        self.assertEqual(entry.portion_weights["Škôlka"], "120.00")
-        self.assertEqual(entry.portion_weights["Dospelý (SŠ)"], "180.00")
+        plan = DailyMealPlan.objects.get(date="2026-04-01")
+        self.assertEqual(plan.items.count(), 2)
+        self.assertEqual(
+            set(plan.items.values_list("category", flat=True)),
+            {"soup", "main_course"},
+        )
 
+        # Backend keeps soup/main_course as separate items; the frontend merges
+        # them into a single "Obed" section for the client.
         self.client.force_authenticate(user=self.client_user)
-        by_date = self.client.get("/api/meal-plans/by-date/?date=2026-03-16")
+        by_date = self.client.get("/api/meal-plans/by-date/?date=2026-04-01")
         self.assertEqual(by_date.status_code, status.HTTP_200_OK)
-        by_date_payload = by_date.json()
-        self.assertFalse(by_date_payload["exists"])
-        self.assertTrue(by_date_payload["has_import"])
-        names = {entry["name"] for entry in by_date_payload["import_entries"]}
-        self.assertEqual(names, {"Kuracie rizoto", "Zeleninové rizoto"})
-        imported = next(
-            entry
-            for entry in by_date_payload["import_entries"]
-            if entry["name"] == "Kuracie rizoto"
-        )
-        self.assertEqual(imported["portion_weights"]["Škôlka"], "120.00")
-
-        self.client.force_authenticate(user=self.admin)
-        calendar = self.client.get(
-            "/api/admin/meal-plans/?from=2026-03-01&to=2026-03-31"
-        )
-        self.assertEqual(calendar.status_code, status.HTTP_200_OK)
-        self.assertIn(
-            {"date": "2026-03-16", "has_import": True},
-            [
-                {"date": item["date"], "has_import": item.get("has_import", False)}
-                for item in calendar.json()
-            ],
-        )
-
-    def test_reupload_same_week_replaces_previous_import(self):
-        self.client.force_authenticate(user=self.admin)
-
-        first = self.client.post(
-            "/api/admin/jedalnicek-uploads/upload/",
-            {"file": self._xlsx_file("first.xlsx", amount=120)},
-            format="multipart",
-        )
-        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
-
-        second = self.client.post(
-            "/api/admin/jedalnicek-uploads/upload/",
-            {"file": self._xlsx_file("second.xlsx", amount=150)},
-            format="multipart",
-        )
-        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(second.json()["replaced_uploads"], 1)
-        self.assertEqual(JedalnicekUpload.objects.count(), 1)
-        self.assertEqual(JedalnicekEntry.objects.count(), 2)
-        entry = JedalnicekEntry.objects.get(name="Kuracie rizoto")
-        self.assertEqual(str(entry.weight_grams), "150.00")
-
-    def test_client_cannot_upload_jedalnicek_xlsx(self):
-        self.client.force_authenticate(user=self.client_user)
-
-        response = self.client.post(
-            "/api/admin/jedalnicek-uploads/upload/",
-            {"file": self._xlsx_file()},
-            format="multipart",
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        payload = by_date.json()
+        categories = {item["category"] for item in payload["items"]}
+        self.assertEqual(categories, {"soup", "main_course"})
 
 
 class AdminDailyReportTest(APITestCase):
@@ -628,20 +524,20 @@ class AdminMealPlanApiTest(APITestCase):
             name="Dospelý (SŠ)", coefficient="1.0000", sort_order=2
         )
         self.breakfast_template = MealTemplate.objects.create(
-            category="breakfast",
+            category="breakfast_snack",
             name="Chlieb + maslo",
             weight_label="80g + 20g",
             base_weight_grams="100.00",
         )
         self.lunch_template = MealTemplate.objects.create(
-            category="lunch",
+            category="main_course",
             name="Kuracie prsia + ryža",
             weight_label="120g + 80g",
             base_weight_grams="200.00",
             menu_variant="A",
         )
         self.snack_template = MealTemplate.objects.create(
-            category="snack",
+            category="afternoon_snack",
             name="Jablko",
             weight_label="50g",
             base_weight_grams="50.00",
@@ -657,19 +553,19 @@ class AdminMealPlanApiTest(APITestCase):
         MealPlanItem.objects.create(
             meal_plan=plan,
             template=self.breakfast_template,
-            category="breakfast",
+            category="breakfast_snack",
             menu_variant="",
         )
         MealPlanItem.objects.create(
             meal_plan=plan,
             template=self.lunch_template,
-            category="lunch",
+            category="main_course",
             menu_variant="A",
         )
         MealPlanItem.objects.create(
             meal_plan=plan,
             template=self.snack_template,
-            category="snack",
+            category="afternoon_snack",
             menu_variant="",
         )
         EnrolledCount.objects.create(
@@ -722,12 +618,14 @@ class AdminMealPlanApiTest(APITestCase):
         payload = response.json()
         self.assertEqual(payload["date"], "2026-03-16")
         self.assertEqual(
-            payload["sections"]["breakfast"]["section_total_grams"], "700.00"
+            payload["sections"]["breakfast_snack"]["section_total_grams"], "700.00"
         )
         self.assertEqual(
-            payload["sections"]["lunch"]["A"]["section_total_grams"], "1400.00"
+            payload["sections"]["main_course"]["section_total_grams"], "1400.00"
         )
-        self.assertEqual(payload["sections"]["snack"]["section_total_grams"], "350.00")
+        self.assertEqual(
+            payload["sections"]["afternoon_snack"]["section_total_grams"], "350.00"
+        )
         self.assertEqual(payload["grand_total_grams"], "2450.00")
 
     def test_meal_plan_exports_return_downloadable_files(self):

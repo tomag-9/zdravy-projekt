@@ -16,8 +16,10 @@ class MealPlanXLSXExporter:
     """
 
     SECTION_LABELS = {
-        "breakfast": "Raňajky",
-        "snack": "Olovrant",
+        "breakfast_snack": "Raňajky-desiata",
+        "soup": "Polievka",
+        "main_course": "Hlavný chod",
+        "afternoon_snack": "Olovrant",
     }
 
     def __init__(self, gramage_list: List[dict]):
@@ -152,27 +154,13 @@ class MealPlanXLSXExporter:
                 cell.font = total_font
             grand_total += float(section_total)
 
-        # Breakfast
-        write_section(
-            "Raňajky",
-            sections["breakfast"]["items"],
-            sections["breakfast"]["section_total_grams"],
-        )
-
-        # Lunch variants
-        for variant, variant_data in sorted(sections["lunch"].items()):
+        for category, label in self.SECTION_LABELS.items():
+            section = sections.get(category, {})
             write_section(
-                f"Obed – Menu {variant}",
-                variant_data["items"],
-                variant_data["section_total_grams"],
+                label,
+                section.get("items", []),
+                section.get("section_total_grams", "0.00"),
             )
-
-        # Snack
-        write_section(
-            "Olovrant",
-            sections["snack"]["items"],
-            sections["snack"]["section_total_grams"],
-        )
 
         # Grand total
         ws.append([])

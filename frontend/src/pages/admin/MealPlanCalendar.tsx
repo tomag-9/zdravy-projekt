@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../context/auth";
 import { logger } from '../../lib/logger';
 
@@ -9,6 +9,36 @@ interface PlanSummary {
   date: string;
   grand_total_grams?: string;
 }
+
+type MealCategory = "breakfast_snack" | "soup" | "main_course" | "afternoon_snack";
+
+interface MealTemplateOption {
+  id: number;
+  category: MealCategory;
+  name: string;
+  weight_label: string;
+}
+
+interface MealPlanItem {
+  id: number;
+  category: MealCategory;
+  menu_variant: string;
+  template: number;
+  template_detail: MealTemplateOption;
+}
+
+interface DayPlanResponse {
+  exists: boolean;
+  date: string;
+  items: MealPlanItem[];
+}
+
+const CATEGORY_LABELS: Record<MealCategory, string> = {
+  breakfast_snack: "Raňajky-desiata",
+  soup: "Polievka",
+  main_course: "Hlavný chod",
+  afternoon_snack: "Olovrant",
+};
 
 function daysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -30,6 +60,185 @@ const MONTH_NAMES = [
 ];
 const DOW = ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"];
 
+const DayEditorPanel: React.FC<{
+  date: string;
+  templates: MealTemplateOption[];
+  onClose: () => void;
+  onSaved: () => void;
+}> = ({ date, templates, onClose, onSaved }) => {
+  const { apiFetch } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<MealCategory, number | "">>({
+    breakfast_snack: "",
+    soup: "",
+    main_course: "",
+    afternoon_snack: "",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await apiFetch(`${API}/admin/meal-plans/by-date/?date=${date}`);
+        if (res.ok) {
+          const data: DayPlanResponse = await res.json();
+          if (!cancelled) {
+            const next: Record<MealCategory, number | ""> = {
+              breakfast_snack: "",
+              soup: "",
+              main_course: "",
+              afternoon_snack: "",
+            };
+            for (const item of data.items || []) {
+              if (item.category in next) {
+                next[item.category] = item.template;
+              }
+            }
+            setSelected(next);
+          }
+        }
+      } catch (e) {
+        logger.error(e);
+        if (!cancelled) setError("Nepodarilo sa načítať jedálniček pre tento deň.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [apiFetch, date]);
+
+  const templatesByCategory = useMemo(() => {
+    const grouped: Record<MealCategory, MealTemplateOption[]> = {
+      breakfast_snack: [],
+      soup: [],
+      main_course: [],
+      afternoon_snack: [],
+    };
+    for (const t of templates) {
+      if (t.category in grouped) grouped[t.category].push(t);
+    }
+    return grouped;
+  }, [templates]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    const items_write = (Object.keys(selected) as MealCategory[])
+      .filter((cat) => selected[cat] !== "")
+      .map((cat) => ({ template_id: selected[cat], menu_variant: "" }));
+    try {
+      const res = await apiFetch(`${API}/admin/meal-plans/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, items_write }),
+      });
+      if (!res.ok) {
+        setError("Uloženie zlyhalo. Skúste to znova.");
+        return;
+      }
+      onSaved();
+      onClose();
+    } catch (e) {
+      logger.error(e);
+      setError("Uloženie zlyhalo. Skúste to znova.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const renderSelect = (category: MealCategory) => (
+    <select
+      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+      value={selected[category]}
+      onChange={(e) =>
+        setSelected((s) => ({
+          ...s,
+          [category]: e.target.value ? Number(e.target.value) : "",
+        }))
+      }
+    >
+      <option value="">— nevybraté —</option>
+      {templatesByCategory[category].map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.name} ({t.weight_label})
+        </option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 space-y-5">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-gray-900">Jedálniček — {date}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700">✕</button>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin w-6 h-6 border-4 border-teal-500 border-t-transparent rounded-full" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                {CATEGORY_LABELS.breakfast_snack}
+              </label>
+              {renderSelect("breakfast_snack")}
+            </div>
+
+            <div className="border border-gray-100 rounded-xl p-3 space-y-3">
+              <div className="text-sm font-semibold text-gray-700">Obed</div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  {CATEGORY_LABELS.soup}
+                </label>
+                {renderSelect("soup")}
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">
+                  {CATEGORY_LABELS.main_course}
+                </label>
+                {renderSelect("main_course")}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                {CATEGORY_LABELS.afternoon_snack}
+              </label>
+              {renderSelect("afternoon_snack")}
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition"
+          >
+            Zrušiť
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || loading}
+            className="px-4 py-2 rounded-lg bg-teal-600 text-white hover:bg-teal-700 transition disabled:opacity-50"
+          >
+            {saving ? "Ukladám…" : "Uložiť"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MealPlanCalendar: React.FC = () => {
   const { apiFetch } = useAuth();
   const today = new Date();
@@ -37,6 +246,8 @@ const MealPlanCalendar: React.FC = () => {
   const [month, setMonth] = useState(today.getMonth());
   const [plans, setPlans] = useState<Record<string, PlanSummary>>({});
   const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<MealTemplateOption[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const fetchPlans = useCallback(
     async (y: number, m: number) => {
@@ -64,9 +275,26 @@ const MealPlanCalendar: React.FC = () => {
     [apiFetch]
   );
 
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API}/admin/meal-templates/`);
+      if (res.ok) {
+        const data = await res.json();
+        const list: MealTemplateOption[] = Array.isArray(data) ? data : data.results || [];
+        setTemplates(list);
+      }
+    } catch (e) {
+      logger.error(e);
+    }
+  }, [apiFetch]);
+
   useEffect(() => {
     fetchPlans(year, month);
   }, [fetchPlans, year, month]);
+
+  useEffect(() => {
+    fetchTemplates();
+  }, [fetchTemplates]);
 
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
@@ -151,12 +379,14 @@ const MealPlanCalendar: React.FC = () => {
                 const isWeekend = ((startDow + day - 1) % 7) >= 5;
 
                 return (
-                  <div
+                  <button
                     key={dateStr}
+                    onClick={() => setSelectedDate(dateStr)}
                     className={`
                       relative min-h-[72px] p-2 rounded-xl text-left transition-all duration-150 border
                       ${isToday ? "border-teal-400 bg-teal-50" : "border-gray-100 bg-white"}
                       ${isWeekend && !isToday ? "bg-gray-50" : ""}
+                      hover:border-teal-300
                     `}
                   >
                     <span
@@ -174,7 +404,7 @@ const MealPlanCalendar: React.FC = () => {
                         </span>
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -193,6 +423,15 @@ const MealPlanCalendar: React.FC = () => {
           Dnešný deň
         </span>
       </div>
+
+      {selectedDate && (
+        <DayEditorPanel
+          date={selectedDate}
+          templates={templates}
+          onClose={() => setSelectedDate(null)}
+          onSaved={() => fetchPlans(year, month)}
+        />
+      )}
     </div>
   );
 };

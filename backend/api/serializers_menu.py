@@ -66,6 +66,8 @@ class MealTemplateSerializer(serializers.ModelSerializer):
             "name",
             "weight_label",
             "base_weight_grams",
+            "components",
+            "unit_exception",
             "menu_variant",
             "diet",
             "diet_name",

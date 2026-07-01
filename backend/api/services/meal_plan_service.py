@@ -8,7 +8,13 @@ from typing import Any, List
 
 from django.db import transaction
 
-from ..models import DailyMealPlan, EnrolledCount, MealPlanItem, MealTemplate
+from ..models import (
+    DailyMealPlan,
+    EnrolledCount,
+    MealCategory,
+    MealPlanItem,
+    MealTemplate,
+)
 from ..utils import user_operation_name
 
 
@@ -59,15 +65,52 @@ class MealPlanService:
         return plan
 
     @staticmethod
+    def _unit_exception_breakdown(
+        template: MealTemplate, enrolled_lookup: dict
+    ) -> list:
+        """
+        For templates with a fixed piece-count exception (e.g. vajce, gulička),
+        return one breakdown line per portion type using the exact count from
+        the catalog instead of base_weight_grams × coefficient.
+        """
+        exc = template.unit_exception
+        if not exc:
+            return []
+        counts_by_pt = exc.get("counts_by_portion_type", {})
+        unit = exc.get("unit", "ks")
+        label = exc.get("component_label", "")
+        lines = []
+        for pt_id, (count, pt) in enrolled_lookup.items():
+            per_person = Decimal(str(counts_by_pt.get(pt.name, "0")))
+            total_units = per_person * count
+            lines.append(
+                {
+                    "portion_type_id": pt_id,
+                    "portion_type": pt.name,
+                    "component_label": label,
+                    "unit": unit,
+                    "count": count,
+                    "per_person_units": str(per_person),
+                    "total_units": str(total_units),
+                }
+            )
+        return lines
+
+    @staticmethod
     def calculate_gramage(plan: DailyMealPlan) -> dict:
         """
         Core calculation: final_weight = base_weight_grams * coefficient * count
+
+        Templates with a `unit_exception` (fixed piece-count per portion type,
+        e.g. vajce/gulička) get their gram total computed as usual, plus a
+        separate `unit_breakdown` list of fixed-count lines (not multiplied by
+        the coefficient).
 
         Returns structured dict:
         {
           "date": "2026-03-13",
           "sections": {
-            "breakfast": {
+            "breakfast_snack": {
               "items": [
                 {
                   "template_id": 1,
@@ -79,16 +122,15 @@ class MealPlanService:
                      "coefficient": "0.5000", "count": 12, "total_grams": "1560.00"},
                     ...
                   ],
+                  "unit_breakdown": [...],
                   "item_total_grams": "4950.00"
                 }
               ],
               "section_total_grams": "4950.00"
             },
-            "lunch": {
-              "A": { "items": [...], "section_total_grams": "..." },
-              "B": { "items": [...], "section_total_grams": "..." },
-            },
-            "snack": { ... },
+            "soup": { "items": [...], "section_total_grams": "..." },
+            "main_course": { "items": [...], "section_total_grams": "..." },
+            "afternoon_snack": { "items": [...], "section_total_grams": "..." },
           },
           "grand_total_grams": "12450.00",
           "enrolled_summary": [
@@ -119,9 +161,8 @@ class MealPlanService:
             )
 
         sections: dict = {
-            "breakfast": {"items": [], "section_total_grams": Decimal("0")},
-            "lunch": {},
-            "snack": {"items": [], "section_total_grams": Decimal("0")},
+            category: {"items": [], "section_total_grams": Decimal("0")}
+            for category in MealCategory.values
         }
 
         grand_total = Decimal("0")
@@ -148,40 +189,25 @@ class MealPlanService:
             item_dict = {
                 "template_id": template.id,
                 "template_name": template.name,
+                "menu_variant": item.menu_variant,
                 "base_weight_grams": str(base),
                 "weight_label": template.weight_label,
                 "breakdown": breakdown,
+                "unit_breakdown": MealPlanService._unit_exception_breakdown(
+                    template, enrolled_lookup
+                ),
                 "item_total_grams": str(item_total.quantize(Decimal("0.01"))),
             }
 
             grand_total += item_total
 
-            if item.category == "lunch":
-                variant = item.menu_variant or "A"
-                if variant not in sections["lunch"]:
-                    sections["lunch"][variant] = {
-                        "items": [],
-                        "section_total_grams": Decimal("0"),
-                    }
-                sections["lunch"][variant]["items"].append(item_dict)
-                sections["lunch"][variant]["section_total_grams"] += item_total
-            elif item.category == "breakfast":
-                sections["breakfast"]["items"].append(item_dict)
-                sections["breakfast"]["section_total_grams"] += item_total
-            elif item.category == "snack":
-                sections["snack"]["items"].append(item_dict)
-                sections["snack"]["section_total_grams"] += item_total
+            if item.category in sections:
+                sections[item.category]["items"].append(item_dict)
+                sections[item.category]["section_total_grams"] += item_total
 
-        # Stringify Decimal totals in sections
-        sections["breakfast"]["section_total_grams"] = str(
-            sections["breakfast"]["section_total_grams"].quantize(Decimal("0.01"))
-        )
-        sections["snack"]["section_total_grams"] = str(
-            sections["snack"]["section_total_grams"].quantize(Decimal("0.01"))
-        )
-        for v in sections["lunch"].values():
-            v["section_total_grams"] = str(
-                v["section_total_grams"].quantize(Decimal("0.01"))
+        for section in sections.values():
+            section["section_total_grams"] = str(
+                section["section_total_grams"].quantize(Decimal("0.01"))
             )
 
         return {
@@ -218,19 +244,25 @@ class MealPlanService:
 
         from ..models import DailyMealPlan, DailyOrder, PortionType
 
-        MEAL_ORDER = ["breakfast", "lunch", "snack"]
+        MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
         VARIANT_ORDER = ["A", "B", "C", "V"]
-        ORDER_MEAL_TO_PLAN_MEAL = {
-            "breakfast": "breakfast",
-            "lunch": "lunch",
-            "snack": "snack",
-            "olovrant": "snack",
+        # An order's "lunch" selection covers both the soup and the main course
+        # (they're ordered together); other order meals map 1:1.
+        ORDER_MEAL_TO_PLAN_MEALS = {
+            "breakfast": ["breakfast_snack"],
+            "lunch": ["soup", "main_course"],
+            "snack": ["afternoon_snack"],
+            "olovrant": ["afternoon_snack"],
         }
         MEAL_LABELS = {
-            "breakfast": "Raňajky",
-            "lunch": "Obed",
-            "snack": "Olovrant",
+            "breakfast_snack": "Raňajky-desiata",
+            "soup": "Polievka",
+            "main_course": "Hlavný chod",
+            "afternoon_snack": "Olovrant",
         }
+        # Only main_course carries a client-facing menu variant (A/B/C); the
+        # others get a single uniform selection per day.
+        VARIANT_MEALS = {"main_course"}
 
         def _normalize_variant(value: object) -> str:
             variant = str(value or "").strip()
@@ -255,7 +287,15 @@ class MealPlanService:
             plan = None
             plan_id = None
 
-        def parse_components(name: str, weight_label: str) -> list:
+        def parse_components(name: str, components: list, weight_label: str) -> list:
+            gram_components = [
+                {"label": c.get("label", ""), "base_grams": str(c["grams"])}
+                for c in components
+                if c.get("grams") not in (None, "") and c.get("unit", "g") == "g"
+            ]
+            if gram_components:
+                return gram_components
+            # Fallback for templates without structured components (legacy data)
             ws = _re.findall(
                 r"(\d+(?:[.,]\d+)?)\s*g(?![a-z])", weight_label, _re.IGNORECASE
             )
@@ -285,13 +325,13 @@ class MealPlanService:
             )
             for item in items:
                 t = item.template
-                if item.category == "breakfast":
-                    key, label = "breakfast", "Raňajky"
-                elif item.category == "lunch":
-                    key = f"lunch_{item.menu_variant}"
-                    label = f"Obed Menu {item.menu_variant}"
+                if item.category in VARIANT_MEALS and item.menu_variant:
+                    key = f"{item.category}_{item.menu_variant}"
+                    label = f"{MEAL_LABELS[item.category]} Menu {item.menu_variant}"
                 else:
-                    key, label = "snack", "Olovrant"
+                    key, label = item.category, MEAL_LABELS.get(
+                        item.category, item.category
+                    )
                 col_groups.append(
                     {
                         "key": key,
@@ -299,7 +339,9 @@ class MealPlanService:
                         "meal": item.category,
                         "variant": item.menu_variant,
                         "template_name": t.name,
-                        "components": parse_components(t.name, t.weight_label),
+                        "components": parse_components(
+                            t.name, t.components, t.weight_label
+                        ),
                     }
                 )
 
@@ -355,7 +397,7 @@ class MealPlanService:
             meal_groups = [cg for cg in col_groups if cg["meal"] == meal]
             if not meal_groups:
                 return [[] for _ in col_groups]
-            if meal == "lunch":
+            if meal in VARIANT_MEALS:
                 for cg in meal_groups:
                     if _normalize_variant(cg["variant"]) == "A":
                         return _col_grams(meal, cg["variant"], coeff, count)
@@ -383,102 +425,112 @@ class MealPlanService:
             order_data = order.data if isinstance(order.data, dict) else {}
 
             for order_meal, meal_data in order_data.items():
-                meal = ORDER_MEAL_TO_PLAN_MEAL.get(order_meal)
-                if meal not in MEAL_ORDER or not isinstance(meal_data, dict):
+                meals = ORDER_MEAL_TO_PLAN_MEALS.get(order_meal, [])
+                # Only consider meals that actually have a selection for this day.
+                meals = [
+                    m
+                    for m in meals
+                    if m in MEAL_ORDER and any(cg["meal"] == m for cg in col_groups)
+                ]
+                if not meals or not isinstance(meal_data, dict):
                     continue
 
-                for portion_name, portion_data in meal_data.items():
-                    if not isinstance(portion_data, dict):
-                        continue
-
-                    coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
-                    raw_menu_counts = portion_data.get("menuCounts", {})
-                    menu_counts = (
-                        raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
-                    )
-                    raw_diets = portion_data.get("diets", {})
-                    diets = raw_diets if isinstance(raw_diets, dict) else {}
-
-                    total_diet_count = sum(
-                        _safe_nonneg_int(raw_count) for raw_count in diets.values()
-                    )
-
-                    if meal == "lunch":
-                        variant_counts = sorted(
-                            (
-                                (_normalize_variant(v), _safe_nonneg_int(cnt))
-                                for v, cnt in menu_counts.items()
-                            ),
-                            key=lambda kv: (
-                                VARIANT_ORDER.index(kv[0])
-                                if kv[0] in VARIANT_ORDER
-                                else 99
-                            ),
-                        )
-                    else:
-                        total = (
-                            sum(_safe_nonneg_int(c) for c in menu_counts.values())
-                            - total_diet_count
-                        )
-                        variant_counts = [("", total)]
-
-                    adjusted_variant_counts = []
-                    for variant, count in variant_counts:
-                        adjusted_count = count
-                        if meal == "lunch" and variant == "A":
-                            adjusted_count -= total_diet_count
-                        adjusted_variant_counts.append(
-                            (variant, max(adjusted_count, 0))
-                        )
-
-                    for variant, count in adjusted_variant_counts:
-                        if count <= 0:
+                for meal in meals:
+                    for portion_name, portion_data in meal_data.items():
+                        if not isinstance(portion_data, dict):
                             continue
-                        grams = _col_grams(meal, variant, coeff, count)
-                        _merge_group_totals(totals, grams)
-                        _merge_group_totals(client_standard_totals, grams)
 
-                        if meal == "lunch":
-                            label = (
-                                f"{portion_name} - {MEAL_LABELS[meal]} Menu {variant}"
+                        coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
+                        raw_menu_counts = portion_data.get("menuCounts", {})
+                        menu_counts = (
+                            raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
+                        )
+                        raw_diets = portion_data.get("diets", {})
+                        diets = raw_diets if isinstance(raw_diets, dict) else {}
+
+                        total_diet_count = sum(
+                            _safe_nonneg_int(raw_count) for raw_count in diets.values()
+                        )
+
+                        if meal in VARIANT_MEALS:
+                            variant_counts = sorted(
+                                (
+                                    (_normalize_variant(v), _safe_nonneg_int(cnt))
+                                    for v, cnt in menu_counts.items()
+                                ),
+                                key=lambda kv: (
+                                    VARIANT_ORDER.index(kv[0])
+                                    if kv[0] in VARIANT_ORDER
+                                    else 99
+                                ),
                             )
                         else:
-                            label = f"{portion_name} - {MEAL_LABELS[meal]}"
+                            total = (
+                                sum(_safe_nonneg_int(c) for c in menu_counts.values())
+                                - total_diet_count
+                            )
+                            variant_counts = [("", total)]
 
-                        sub_rows.append(
-                            {
-                                "type": "standard",
-                                "meal": meal,
-                                "variant": variant,
-                                "portion_name": portion_name,
-                                "label": label,
-                                "count": count,
-                                "col_grams": grams,
-                            }
-                        )
-                        client_total_count += count
+                        adjusted_variant_counts = []
+                        for variant, count in variant_counts:
+                            adjusted_count = count
+                            if meal in VARIANT_MEALS and variant == "A":
+                                adjusted_count -= total_diet_count
+                            adjusted_variant_counts.append(
+                                (variant, max(adjusted_count, 0))
+                            )
 
-                    for diet_name, diet_count_raw in sorted(diets.items()):
-                        diet_count = _safe_nonneg_int(diet_count_raw)
-                        if diet_count <= 0:
-                            continue
-                        diet_grams = _col_grams_diet(meal, coeff, diet_count)
-                        sub_rows.append(
-                            {
-                                "type": "diet",
-                                "meal": meal,
-                                "portion_name": portion_name,
-                                "diet_name": diet_name,
-                                "label": f"{portion_name} - {diet_name}",
-                                "count": diet_count,
-                                "col_grams": diet_grams,
-                            }
-                        )
-                        if diet_name not in diet_summary_totals:
-                            diet_summary_totals[diet_name] = _empty_group_totals()
-                            diet_summary_counts[diet_name] = 0
-                        _merge_group_totals(diet_summary_totals[diet_name], diet_grams)
-                        diet_summary_counts[diet_name] += diet_count
+                        for variant, count in adjusted_variant_counts:
+                            if count <= 0:
+                                continue
+                            grams = _col_grams(meal, variant, coeff, count)
+                            _merge_group_totals(totals, grams)
+                            _merge_group_totals(client_standard_totals, grams)
+
+                            if meal in VARIANT_MEALS and variant:
+                                label = (
+                                    f"{portion_name} - {MEAL_LABELS[meal]} "
+                                    f"Menu {variant}"
+                                )
+                            else:
+                                label = f"{portion_name} - {MEAL_LABELS[meal]}"
+
+                            sub_rows.append(
+                                {
+                                    "type": "standard",
+                                    "meal": meal,
+                                    "variant": variant,
+                                    "portion_name": portion_name,
+                                    "label": label,
+                                    "count": count,
+                                    "col_grams": grams,
+                                }
+                            )
+                            client_total_count += count
+
+                        for diet_name, diet_count_raw in sorted(diets.items()):
+                            diet_count = _safe_nonneg_int(diet_count_raw)
+                            if diet_count <= 0:
+                                continue
+                            diet_grams = _col_grams_diet(meal, coeff, diet_count)
+                            sub_rows.append(
+                                {
+                                    "type": "diet",
+                                    "meal": meal,
+                                    "portion_name": portion_name,
+                                    "diet_name": diet_name,
+                                    "label": f"{portion_name} - {diet_name}",
+                                    "count": diet_count,
+                                    "col_grams": diet_grams,
+                                }
+                            )
+                            if diet_name not in diet_summary_totals:
+                                diet_summary_totals[diet_name] = _empty_group_totals()
+                                diet_summary_counts[diet_name] = 0
+                            _merge_group_totals(
+                                diet_summary_totals[diet_name], diet_grams
+                            )
+                            diet_summary_counts[diet_name] += diet_count
 
             if sub_rows:
                 settings = getattr(order.user, "settings", None)
