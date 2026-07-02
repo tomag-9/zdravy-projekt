@@ -171,3 +171,92 @@ def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_cou
     standard_rows = [sr for sr in row["sub_rows"] if sr["type"] == "standard"]
     assert {sr["meal"] for sr in standard_rows} == {"soup", "main_course"}
     assert all(sr["count"] == 4 for sr in standard_rows)
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_shows_ml_soup_columns():
+    """
+    Polievka templates only have an 'ml' component. The dashboard's
+    col_groups must not silently drop it (it used to only accept 'g').
+    """
+    call_command("seed_meal_weight_catalog")
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
+    soup = MealTemplate.objects.get(name="Polievka 1")  # 200ml, no other components
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 6))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=soup, category="soup", menu_variant=""
+    )
+
+    user = User.objects.create_user(username="client3@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}},
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    soup_group = next(cg for cg in data["col_groups"] if cg["meal"] == "soup")
+    assert len(soup_group["components"]) == 1
+    assert soup_group["components"][0]["unit"] == "ml"
+    assert soup_group["components"][0]["base_grams"] == "200"
+
+    soup_row = next(sr for sr in data["rows"][0]["sub_rows"] if sr["meal"] == "soup")
+    # 200ml * coeff(1.0) * 4 people = 800
+    assert soup_row["col_grams"][data["col_groups"].index(soup_group)] == ["800.00"]
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_shows_unit_exception_as_its_own_column():
+    """
+    Selecting a template with a unit_exception (e.g. Hlavný chod 7 / vajce)
+    must surface a piece-count column in the dashboard, not silently vanish.
+    """
+    call_command("seed_meal_weight_catalog")
+    skolka = PortionType.objects.create(
+        name="Škôlka", coefficient="1.0000", sort_order=1
+    )
+    PortionType.objects.create(name="Dospelý (SŠ)", coefficient="1.5000", sort_order=2)
+    main_course = MealTemplate.objects.get(name="Hlavný chod 7")
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 7))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=main_course,
+        category="main_course",
+        menu_variant="",
+    )
+
+    user = User.objects.create_user(username="client4@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}},
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    main_group = next(cg for cg in data["col_groups"] if cg["meal"] == "main_course")
+    exception_components = [
+        c for c in main_group["components"] if c.get("is_exception")
+    ]
+    assert len(exception_components) == 1
+    assert exception_components[0]["label"] == "Gulička/fašírka"
+    assert exception_components[0]["unit"] == "ks"
+
+    main_row = next(
+        sr for sr in data["rows"][0]["sub_rows"] if sr["meal"] == "main_course"
+    )
+    exception_index = main_group["components"].index(exception_components[0])
+    group_index = data["col_groups"].index(main_group)
+    # Škôlka gulička count is 1 ks/person * 4 people = 4, NOT multiplied by coefficient
+    assert main_row["col_grams"][group_index][exception_index] == "4.00"
+
+    # Both dashboard exporters must not crash on a component with
+    # base_grams=None (the exception column has no gram value).
+    from api.exporters.gramage_dashboard_pdf_exporter import GramageDashboardPDFExporter
+    from api.exporters.gramage_dashboard_xlsx_exporter import (
+        GramageDashboardXLSXExporter,
+    )
+
+    assert GramageDashboardXLSXExporter(data).generate()
+    assert GramageDashboardPDFExporter(data).generate()

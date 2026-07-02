@@ -280,28 +280,48 @@ class MealPlanService:
             plan = None
             plan_id = None
 
-        def parse_components(name: str, components: list, weight_label: str) -> list:
-            gram_components = [
-                {"label": c.get("label", ""), "base_grams": str(c["grams"])}
+        def parse_components(
+            name: str, components: list, weight_label: str, unit_exception: dict | None
+        ) -> list:
+            numeric_components = [
+                {
+                    "label": c.get("label", ""),
+                    "base_grams": str(c["grams"]),
+                    "unit": c.get("unit", "g"),
+                }
                 for c in components
-                if c.get("grams") not in (None, "") and c.get("unit", "g") == "g"
+                if c.get("grams") not in (None, "")
+                and c.get("unit", "g") in ("g", "ml")
             ]
-            if gram_components:
-                return gram_components
-            # Fallback for templates without structured components (legacy data)
-            ws = _re.findall(
-                r"(\d+(?:[.,]\d+)?)\s*g(?![a-z])", weight_label, _re.IGNORECASE
-            )
-            weights = [Decimal(w.replace(",", ".")) for w in ws]
-            name_parts = [p.strip() for p in name.split(" + ")]
-            labels = (
-                name_parts
-                if len(name_parts) == len(weights)
-                else [f"Zložka {i + 1}" for i in range(len(weights))]
-            )
-            return [
-                {"label": lbl, "base_grams": str(w)} for lbl, w in zip(labels, weights)
-            ]
+            if not numeric_components:
+                # Fallback for templates without structured components (legacy data)
+                ws = _re.findall(
+                    r"(\d+(?:[.,]\d+)?)\s*g(?![a-z])", weight_label, _re.IGNORECASE
+                )
+                weights = [Decimal(w.replace(",", ".")) for w in ws]
+                name_parts = [p.strip() for p in name.split(" + ")]
+                labels = (
+                    name_parts
+                    if len(name_parts) == len(weights)
+                    else [f"Zložka {i + 1}" for i in range(len(weights))]
+                )
+                numeric_components = [
+                    {"label": lbl, "base_grams": str(w), "unit": "g"}
+                    for lbl, w in zip(labels, weights)
+                ]
+            if unit_exception:
+                numeric_components.append(
+                    {
+                        "label": unit_exception.get("component_label", ""),
+                        "base_grams": None,
+                        "unit": unit_exception.get("unit", "ks"),
+                        "is_exception": True,
+                        "counts_by_portion_type": unit_exception.get(
+                            "counts_by_portion_type", {}
+                        ),
+                    }
+                )
+            return numeric_components
 
         col_groups: list[dict] = []
         if plan:
@@ -333,7 +353,7 @@ class MealPlanService:
                         "variant": item.menu_variant,
                         "template_name": t.name,
                         "components": parse_components(
-                            t.name, t.components, t.weight_label
+                            t.name, t.components, t.weight_label, t.unit_exception
                         ),
                     }
                 )
@@ -371,7 +391,21 @@ class MealPlanService:
                 [str(v.quantize(Decimal("0.01"))) for v in group] for group in values
             ]
 
-        def _col_grams(meal: str, variant: str, coeff: Decimal, count: int) -> list:
+        def _component_value(
+            component: dict, coeff: Decimal, count: int, portion_name: str
+        ) -> Decimal:
+            if component.get("is_exception"):
+                per_person = Decimal(
+                    str(component["counts_by_portion_type"].get(portion_name, "0"))
+                )
+                return (per_person * count).quantize(Decimal("0.01"))
+            return (Decimal(component["base_grams"]) * coeff * count).quantize(
+                Decimal("0.01")
+            )
+
+        def _col_grams(
+            meal: str, variant: str, coeff: Decimal, count: int, portion_name: str
+        ) -> list:
             result = []
             normalized_variant = _normalize_variant(variant)
             for cg in col_groups:
@@ -381,11 +415,7 @@ class MealPlanService:
                 ):
                     result.append(
                         [
-                            str(
-                                (Decimal(c["base_grams"]) * coeff * count).quantize(
-                                    Decimal("0.01")
-                                )
-                            )
+                            str(_component_value(c, coeff, count, portion_name))
                             for c in cg["components"]
                         ]
                     )
@@ -393,7 +423,9 @@ class MealPlanService:
                     result.append([])
             return result
 
-        def _col_grams_diet(meal: str, coeff: Decimal, count: int) -> list:
+        def _col_grams_diet(
+            meal: str, coeff: Decimal, count: int, portion_name: str
+        ) -> list:
             """Map diet portions to the standard template column used for that meal."""
             meal_groups = [cg for cg in col_groups if cg["meal"] == meal]
             if not meal_groups:
@@ -401,9 +433,13 @@ class MealPlanService:
             if meal in variant_meals:
                 for cg in meal_groups:
                     if _normalize_variant(cg["variant"]) == "A":
-                        return _col_grams(meal, cg["variant"], coeff, count)
+                        return _col_grams(
+                            meal, cg["variant"], coeff, count, portion_name
+                        )
             if len(meal_groups) == 1:
-                return _col_grams(meal, meal_groups[0]["variant"], coeff, count)
+                return _col_grams(
+                    meal, meal_groups[0]["variant"], coeff, count, portion_name
+                )
             return [[] for _ in col_groups]
 
         # Running totals per col_group per component
@@ -492,7 +528,9 @@ class MealPlanService:
                         for variant, count in adjusted_variant_counts:
                             if count <= 0:
                                 continue
-                            grams = _col_grams(meal, variant, coeff, count)
+                            grams = _col_grams(
+                                meal, variant, coeff, count, portion_name
+                            )
                             _merge_group_totals(totals, grams)
                             _merge_group_totals(client_standard_totals, grams)
 
@@ -522,7 +560,9 @@ class MealPlanService:
                             diet_count = _safe_nonneg_int(diet_count_raw)
                             if diet_count <= 0:
                                 continue
-                            diet_grams = _col_grams_diet(meal, coeff, diet_count)
+                            diet_grams = _col_grams_diet(
+                                meal, coeff, diet_count, portion_name
+                            )
                             sub_rows.append(
                                 {
                                     "type": "diet",
