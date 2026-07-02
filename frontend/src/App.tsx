@@ -41,6 +41,7 @@ import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import SystemSettings from "./pages/admin/SystemSettings";
 import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
+import MealCatalogAdmin from "./pages/admin/MealCatalogAdmin";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
 import EdupageUpload from "./pages/admin/EdupageUpload";
@@ -185,6 +186,7 @@ export default function App() {
                 <Route path="roles/:id" element={<ErrorBoundary><AdminUserDetail /></ErrorBoundary>} />
                 <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />
                 <Route path="meal-plan" element={<ErrorBoundary><MealPlanCalendar /></ErrorBoundary>} />
+                <Route path="meal-catalog" element={<ErrorBoundary><MealCatalogAdmin /></ErrorBoundary>} />
                 <Route path="settings" element={<ErrorBoundary><SystemSettings /></ErrorBoundary>} />
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />

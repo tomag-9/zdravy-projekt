@@ -24,11 +24,18 @@ from ..utils import parse_date_param
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
-    """List portion types; non-staff see only active entries."""
+class PortionTypeViewSet(viewsets.ModelViewSet):
+    """
+    List portion types (age-group coefficients); non-staff see only active
+    entries and cannot write. Staff can adjust an existing coefficient.
+    """
 
     serializer_class = PortionTypeSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
     def get_queryset(self):
         qs = PortionType.objects.all()
@@ -37,11 +44,20 @@ class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
 
-class MealTemplateViewSet(viewsets.ReadOnlyModelViewSet):
-    """List meal templates (the weight catalog); filterable by category."""
+class MealTemplateViewSet(viewsets.ModelViewSet):
+    """
+    List meal templates (the fixed weight catalog); filterable by category.
+    Non-staff see only active entries and cannot write. Staff can add a new
+    catalog entry (e.g. a new "Hlavný chod 8") if the physical weight table
+    ever gains a row, without needing a deploy/management command.
+    """
 
     serializer_class = MealTemplateSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
     def get_queryset(self):
         qs = MealTemplate.objects.all()

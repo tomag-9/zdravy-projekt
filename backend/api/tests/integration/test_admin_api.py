@@ -228,6 +228,143 @@ class MealTemplateCatalogApiTest(APITestCase):
         categories = {item["category"] for item in payload["items"]}
         self.assertEqual(categories, {"soup", "main_course"})
 
+    def test_admin_can_add_a_new_catalog_template_with_structured_components(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "soup",
+                "name": "Polievka 5",
+                "components": [
+                    {"label": "Hlavná zložka", "grams": "180", "unit": "ml"},
+                    {"label": "Extra zložka 1", "grams": "20", "unit": "g"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["weight_label"], "180ml + 20g")
+        self.assertEqual(payload["base_weight_grams"], "200.00")
+        template = MealTemplate.objects.get(name="Polievka 5")
+        self.assertEqual(template.category, "soup")
+        self.assertTrue(template.is_active)
+
+    def test_admin_can_add_a_new_template_with_a_unit_exception(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "main_course",
+                "name": "Hlavný chod 8",
+                "components": [
+                    {"label": "Príloha", "grams": "150", "unit": "g"},
+                ],
+                "unit_exception": {
+                    "component_label": "Klobása",
+                    "unit": "ks",
+                    "counts_by_portion_type": {"Škôlka": "1", "Dospelý (SŠ)": "2"},
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        template = MealTemplate.objects.get(name="Hlavný chod 8")
+        self.assertEqual(template.unit_exception["component_label"], "Klobása")
+
+    def test_admin_can_edit_an_existing_template(self):
+        self.client.force_authenticate(user=self.admin)
+        template = MealTemplate.objects.get(name="Olovrant 1")
+
+        response = self.client.patch(
+            f"/api/admin/meal-templates/{template.id}/",
+            {"is_active": False},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        template.refresh_from_db()
+        self.assertFalse(template.is_active)
+
+    def test_creating_a_template_without_weight_data_is_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {"category": "soup", "name": "Polievka bez váhy"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_client_cannot_write_meal_templates(self):
+        self.client.force_authenticate(user=self.client_user)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "soup",
+                "name": "Polievka X",
+                "components": [
+                    {"label": "Hlavná zložka", "grams": "100", "unit": "ml"}
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class AdminPortionTypeApiTest(APITestCase):
+    def setUp(self):
+        from django.core.management import call_command
+
+        call_command("init_reference_data")
+        self.admin = User.objects.create_user(
+            username="pt-admin@example.com",
+            password="password",
+            email="pt-admin@example.com",
+            is_staff=True,
+        )
+        self.client_user = User.objects.create_user(
+            username="pt-client@example.com",
+            password="password",
+            email="pt-client@example.com",
+            is_staff=False,
+        )
+
+    def test_admin_can_update_a_portion_type_coefficient(self):
+        self.client.force_authenticate(user=self.admin)
+        skolka = PortionType.objects.get(name="Škôlka")
+
+        response = self.client.patch(
+            f"/api/admin/portion-types/{skolka.id}/",
+            {"coefficient": "1.1000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        skolka.refresh_from_db()
+        self.assertEqual(str(skolka.coefficient), "1.1000")
+
+    def test_client_cannot_update_a_portion_type_coefficient(self):
+        self.client.force_authenticate(user=self.client_user)
+        skolka = PortionType.objects.get(name="Škôlka")
+
+        response = self.client.patch(
+            f"/api/admin/portion-types/{skolka.id}/",
+            {"coefficient": "1.1000"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        skolka.refresh_from_db()
+        self.assertNotEqual(str(skolka.coefficient), "1.1000")
+
 
 class AdminDailyReportTest(APITestCase):
     def setUp(self):
@@ -608,6 +745,41 @@ class AdminMealPlanApiTest(APITestCase):
             plan.enrolled_counts.get(portion_type=self.kindergarten).count,
             12,
         )
+
+    def test_posting_the_same_date_twice_updates_the_existing_plan_instead_of_400ing(
+        self,
+    ):
+        # Admin day editor always POSTs the full day state, even when a plan
+        # for that date already exists (create_or_replace_plan is meant to
+        # upsert by date) — this must not be rejected by a uniqueness check.
+        first = self.client.post(
+            "/api/admin/meal-plans/",
+            {
+                "date": "2026-03-18",
+                "items_write": [
+                    {"template_id": self.breakfast_template.id, "menu_variant": ""},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+
+        second = self.client.post(
+            "/api/admin/meal-plans/",
+            {
+                "date": "2026-03-18",
+                "items_write": [
+                    {"template_id": self.lunch_template.id, "menu_variant": "A"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(DailyMealPlan.objects.filter(date="2026-03-18").count(), 1)
+        plan = DailyMealPlan.objects.get(date="2026-03-18")
+        self.assertEqual(plan.items.count(), 1)
+        self.assertEqual(plan.items.first().template_id, self.lunch_template.id)
 
     def test_gramage_report_returns_computed_totals(self):
         plan = self._create_plan()
