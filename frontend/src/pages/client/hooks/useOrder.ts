@@ -6,6 +6,17 @@ import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Jedálniček items are stored under 4 categories (breakfast_snack/soup/
+// main_course/afternoon_snack); the order form groups by 3 meal keys
+// (breakfast/lunch/olovrant), with soup+main_course both counting toward
+// "lunch" since they're ordered together.
+const JEDALNICEK_CATEGORY_TO_MEAL_KEY: Record<string, string> = {
+    breakfast_snack: 'breakfast',
+    soup: 'lunch',
+    main_course: 'lunch',
+    afternoon_snack: 'olovrant',
+};
+
 interface PortionType {
     id: number;
     name: string;
@@ -303,11 +314,24 @@ export const useOrder = () => {
                     setMealPlanAvailability(null);
                     return;
                 }
+                // A meal key is only restricted to specific menu variants when
+                // its published item(s) actually carry a menu_variant. A single
+                // uniform selection (no menu_variant — the normal case for the
+                // catalog-based admin editor) means the meal is available for
+                // every menu variant, so it must NOT be treated as "occupied".
                 const availability: Record<string, Set<string>> = {};
+                const unrestrictedMealKeys = new Set<string>();
                 for (const item of data.items) {
-                    const mealKey: string = item.category;
-                    if (!availability[mealKey]) availability[mealKey] = new Set();
-                    if (item.menu_variant) availability[mealKey].add(item.menu_variant);
+                    const mealKey = JEDALNICEK_CATEGORY_TO_MEAL_KEY[item.category] || item.category;
+                    if (item.menu_variant) {
+                        if (!availability[mealKey]) availability[mealKey] = new Set();
+                        availability[mealKey].add(item.menu_variant);
+                    } else {
+                        unrestrictedMealKeys.add(mealKey);
+                    }
+                }
+                for (const mealKey of unrestrictedMealKeys) {
+                    delete availability[mealKey];
                 }
                 setMealPlanAvailability(availability);
             } catch (e) {

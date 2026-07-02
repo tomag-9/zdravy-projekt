@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+from ..models import MealCategory
 from .pdf_exporter import PDFFontManager
 
 
@@ -143,24 +144,15 @@ class MealPlanPDFExporter:
             elements.append(t)
             elements.append(Spacer(1, 0.4 * cm))
 
-        make_section_table(
-            "Raňajky",
-            sections["breakfast"]["items"],
-            sections["breakfast"]["section_total_grams"],
-        )
-
-        for variant, variant_data in sorted(sections["lunch"].items()):
+        # Single source of truth for category labels: MealCategory.choices.
+        SECTION_LABELS = dict(MealCategory.choices)
+        for category, label in SECTION_LABELS.items():
+            section = sections.get(category, {})
             make_section_table(
-                f"Obed – Menu {variant}",
-                variant_data["items"],
-                variant_data["section_total_grams"],
+                label,
+                section.get("items", []),
+                section.get("section_total_grams", "0.00"),
             )
-
-        make_section_table(
-            "Olovrant",
-            sections["snack"]["items"],
-            sections["snack"]["section_total_grams"],
-        )
 
         # Grand total
         elements.append(Spacer(1, 0.3 * cm))

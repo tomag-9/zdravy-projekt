@@ -26,7 +26,7 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: sh -c "python manage.py migrate && python manage.py init_roles && python manage.py seed_dev_data && python manage.py runserver 0.0.0.0:8000"
+    command: sh -c "python manage.py migrate && python manage.py init_roles && python manage.py init_reference_data && python manage.py ensure_global_settings && python manage.py real_initial_seed_prevadzky && python manage.py sync_periodic_tasks --fix && python manage.py scrape_edupage_orders && python manage.py runserver 0.0.0.0:8000"
     volumes:
       - ../backend:/app
     ports:

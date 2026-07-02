@@ -14,6 +14,8 @@ from django.core.management.base import BaseCommand
 
 from api.models import ClientSettings, UserProfile
 
+EDUPAGE_VISIBLE_MEALS = ["breakfast", "lunch", "olovrant"]
+
 SCHOOLS = [
     # Full-access schools
     {
@@ -157,10 +159,13 @@ class Command(BaseCommand):
                 if updated:
                     profile.save()
 
-            ClientSettings.objects.get_or_create(
+            client_settings, settings_created = ClientSettings.objects.get_or_create(
                 user=user,
-                defaults={"visible_meals": ["lunch"]},
+                defaults={"visible_meals": EDUPAGE_VISIBLE_MEALS},
             )
+            if not settings_created and client_settings.visible_meals == ["lunch"]:
+                client_settings.visible_meals = EDUPAGE_VISIBLE_MEALS
+                client_settings.save(update_fields=["visible_meals"])
 
             if user_created or profile_created:
                 created_count += 1

@@ -5,7 +5,7 @@ import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from api.edupage_scraper import EdupageScraper
+from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
 
 
 def _make_html(
@@ -236,6 +236,62 @@ class TestParse(unittest.TestCase):
         self.assertIn("lunch", result.order_data)
         self.assertEqual(result.order_data["breakfast"]["menuCounts"]["A"], 20)
         self.assertEqual(result.order_data["lunch"]["menuCounts"]["A"], 50)
+
+    def test_parse_breakfast_lunch_and_olovrant(self):
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "1": {"A": {"typ_platitela": {"1": {"o": 7}}}},
+                    "2": {"A": {"typ_platitela": {"1": {"o": 11}}}},
+                    "3": {"A": {"typ_platitela": {"1": {"o": 5}}}},
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {"A": {"nazov": "Klasik", "skratka": "A"}}
+        nastavenia = [
+            {
+                "setting": "vydaj_normal",
+                "hodnota": json.dumps(
+                    {
+                        "1": {
+                            "1": {"vydaj_od": "08:00", "vydaj_do": "09:00"},
+                            "2": {"vydaj_od": "12:00", "vydaj_do": "14:00"},
+                            "3": {"vydaj_od": "15:30", "vydaj_do": "16:00"},
+                        }
+                    }
+                ),
+            }
+        ]
+        html = _make_html(prehlad, nazov_menu, nastavenia, self.DATE_STR)
+        result = self._scrape_html(html)
+
+        self.assertEqual(result.order_data["breakfast"]["menuCounts"]["A"], 7)
+        self.assertEqual(result.order_data["lunch"]["menuCounts"]["A"], 11)
+        self.assertEqual(result.order_data["olovrant"]["menuCounts"]["A"], 5)
+
+    def test_nest_order_data_by_category_wraps_flat_meals(self):
+        nested = nest_order_data_by_category(
+            {
+                "breakfast": {"menuCounts": {"A": 7}, "diets": {"Klasik": 7}},
+                "lunch": {"menuCounts": {"A": 11}, "diets": {}},
+            },
+            "Edupage school",
+        )
+
+        self.assertEqual(
+            nested,
+            {
+                "breakfast": {
+                    "Edupage school": {
+                        "menuCounts": {"A": 7},
+                        "diets": {"Klasik": 7},
+                    }
+                },
+                "lunch": {"Edupage school": {"menuCounts": {"A": 11}, "diets": {}}},
+            },
+        )
 
     def test_parse_empty_prehlad_for_date(self):
         prehlad = {"prehlad": {}, "mamUnknown": False, "unknownTypyIDS": []}

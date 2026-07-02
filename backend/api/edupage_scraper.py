@@ -276,3 +276,22 @@ class EdupageScraper:
             unmapped_letters=list(set(unmapped)),
             warnings=warnings,
         )
+
+
+def nest_order_data_by_category(
+    order_data: dict[str, Any], category_name: str
+) -> dict[str, Any]:
+    """Wrap flat Edupage meal data under the operation/category name."""
+    category = category_name.strip() or "EduPage"
+    nested: dict[str, Any] = {}
+
+    for meal_key, meal_data in (order_data or {}).items():
+        if not isinstance(meal_data, dict) or not meal_data:
+            continue
+
+        if "menuCounts" in meal_data or "diets" in meal_data:
+            nested[meal_key] = {category: dict(meal_data)}
+        else:
+            nested[meal_key] = meal_data
+
+    return nested

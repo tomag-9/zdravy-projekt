@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.contrib.auth.models import User
+from django.core import management
 from django.utils import timezone
 
 from api.models import DailyOrder, GlobalSettings, UserProfile
@@ -64,7 +65,9 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
     assert seen_dates == [tomorrow]
     order = DailyOrder.objects.get(user=edupage_user, date=tomorrow)
     assert order.data == {
-        "breakfast": {"menuCounts": {"A": 4}, "diets": {"NO MILK": 4}}
+        "breakfast": {
+            "Edupage school": {"menuCounts": {"A": 4}, "diets": {"NO MILK": 4}}
+        }
     }
 
 
@@ -82,7 +85,14 @@ def test_edupage_scrape_merges_requested_meals_without_replacing_existing_day(
     DailyOrder.objects.create(
         user=edupage_user,
         date=target_date,
-        data={"breakfast": {"menuCounts": {"A": 4}, "diets": {"NO MILK": 4}}},
+        data={
+            "breakfast": {
+                "Edupage school": {
+                    "menuCounts": {"A": 4},
+                    "diets": {"NO MILK": 4},
+                }
+            }
+        },
     )
 
     def fake_scrape(self, url, scrape_date):
@@ -109,6 +119,42 @@ def test_edupage_scrape_merges_requested_meals_without_replacing_existing_day(
 
     order = DailyOrder.objects.get(user=edupage_user, date=target_date)
     assert order.data == {
-        "breakfast": {"menuCounts": {"A": 4}, "diets": {"NO MILK": 4}},
-        "lunch": {"menuCounts": {"A": 10}, "diets": {"NO GLUTEN": 10}},
+        "breakfast": {
+            "Edupage school": {"menuCounts": {"A": 4}, "diets": {"NO MILK": 4}}
+        },
+        "lunch": {
+            "Edupage school": {"menuCounts": {"A": 10}, "diets": {"NO GLUTEN": 10}}
+        },
     }
+
+
+def test_scrape_edupage_orders_management_command(monkeypatch, capsys):
+    calls = []
+
+    def fake_run(date_str=None, meal_types=None):
+        calls.append({"date_str": date_str, "meal_types": meal_types})
+        return {
+            "scraped": 2,
+            "errors": 0,
+            "skipped": 1,
+            "dates": ["2026-06-30"],
+            "meal_types": meal_types,
+        }
+
+    monkeypatch.setattr(scrape_edupage_orders_task, "run", fake_run)
+
+    management.call_command(
+        "scrape_edupage_orders",
+        "--date",
+        "2026-06-30",
+        "--meal",
+        "breakfast",
+        "--meal",
+        "lunch",
+    )
+
+    assert calls == [{"date_str": "2026-06-30", "meal_types": ["breakfast", "lunch"]}]
+    assert (
+        "EduPage scrape complete: scraped=2 skipped=1 errors=0"
+        in capsys.readouterr().out
+    )
