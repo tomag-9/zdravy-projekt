@@ -14,6 +14,8 @@ Usage:
     python manage.py seed_meal_weight_catalog
 """
 
+from decimal import Decimal
+
 from django.core.management.base import BaseCommand
 
 from api.models import MealCategory, MealTemplate
@@ -67,11 +69,14 @@ def _weight_label(components) -> str:
 
 def _base_weight_grams(components) -> str:
     total = sum(
-        float(c["grams"])
-        for c in components
-        if c["unit"] in _NUMERIC_UNITS and c["grams"]
+        (
+            Decimal(c["grams"])
+            for c in components
+            if c["unit"] in _NUMERIC_UNITS and c["grams"]
+        ),
+        Decimal("0"),
     )
-    return f"{total:.2f}"
+    return str(total.quantize(Decimal("0.01")))
 
 
 CATALOG = [

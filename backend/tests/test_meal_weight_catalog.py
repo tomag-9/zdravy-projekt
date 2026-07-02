@@ -1,10 +1,12 @@
 import datetime
 
 import pytest
+from django.contrib.auth.models import User
 from django.core.management import call_command
 
 from api.models import (
     DailyMealPlan,
+    DailyOrder,
     EnrolledCount,
     MealPlanItem,
     MealTemplate,
@@ -89,3 +91,83 @@ def test_calculate_gramage_uses_fixed_count_for_unit_exception_not_coefficient()
     gram_breakdown = {b["portion_type"]: b for b in item["breakdown"]}
     assert gram_breakdown["Škôlka"]["total_grams"] == "1600.00"
     assert gram_breakdown["Dospelý (SŠ)"]["total_grams"] == "480.00"
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_pools_all_order_variants_for_variant_less_main_course():
+    """
+    The new admin day editor always saves main_course with menu_variant="".
+    Real client orders still pick between menu variants (A/B/...). The single
+    variant-less main_course selection must apply to ALL of those variants
+    instead of matching none of them (which would silently compute 0g).
+    """
+    call_command("seed_meal_weight_catalog")
+    skolka = PortionType.objects.create(
+        name="Škôlka", coefficient="1.0000", sort_order=1
+    )
+    main_course = MealTemplate.objects.get(name="Hlavný chod 4")  # 100g + 100g
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 4))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=main_course, category="main_course", menu_variant=""
+    )
+
+    user = User.objects.create_user(username="client@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 3, "B": 2}, "diets": {}}}},
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+    main_course_rows = [sr for sr in row["sub_rows"] if sr["meal"] == "main_course"]
+    # All 5 people (3 + 2, regardless of which menu variant they chose) are
+    # attributed to the single main_course column, with non-zero grams.
+    assert sum(sr["count"] for sr in main_course_rows) == 5
+    assert all(sr["col_grams"] != [] for sr in main_course_rows)
+    non_empty_grams = [g for sr in main_course_rows for g in sr["col_grams"] if g]
+    assert any(g != ["0.00", "0.00"] for g in non_empty_grams)
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_course():
+    """
+    A 'lunch' order fans out to both soup and main_course (two dishes prepared
+    from the same headcount). The reported person-count must not double just
+    because two dishes are prepared from it.
+    """
+    call_command("seed_meal_weight_catalog")
+    skolka = PortionType.objects.create(
+        name="Škôlka", coefficient="1.0000", sort_order=1
+    )
+    soup = MealTemplate.objects.get(name="Polievka 1")
+    main_course = MealTemplate.objects.get(name="Hlavný chod 1")
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 5))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=soup, category="soup", menu_variant=""
+    )
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=main_course, category="main_course", menu_variant=""
+    )
+
+    user = User.objects.create_user(username="client2@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 5}, "diets": {"Vegan": 1}}}},
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+
+    # 5 ordered, 1 of them is the Vegan diet portion (reported separately) →
+    # standard count is 4, diet count is 1; neither should double to 8/2 just
+    # because two dishes (soup + main_course) are prepared from this order.
+    assert row["standard_total_count"] == 4
+    assert row["diet_summary_rows"][0]["count"] == 1
+    # Two sub_rows (one per dish) still carry the correct per-dish count each.
+    standard_rows = [sr for sr in row["sub_rows"] if sr["type"] == "standard"]
+    assert {sr["meal"] for sr in standard_rows} == {"soup", "main_course"}
+    assert all(sr["count"] == 4 for sr in standard_rows)

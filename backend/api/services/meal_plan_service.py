@@ -254,15 +254,8 @@ class MealPlanService:
             "snack": ["afternoon_snack"],
             "olovrant": ["afternoon_snack"],
         }
-        MEAL_LABELS = {
-            "breakfast_snack": "Raňajky-desiata",
-            "soup": "Polievka",
-            "main_course": "Hlavný chod",
-            "afternoon_snack": "Olovrant",
-        }
-        # Only main_course carries a client-facing menu variant (A/B/C); the
-        # others get a single uniform selection per day.
-        VARIANT_MEALS = {"main_course"}
+        # Single source of truth for category labels: MealCategory.choices.
+        MEAL_LABELS = dict(MealCategory.choices)
 
         def _normalize_variant(value: object) -> str:
             variant = str(value or "").strip()
@@ -325,7 +318,7 @@ class MealPlanService:
             )
             for item in items:
                 t = item.template
-                if item.category in VARIANT_MEALS and item.menu_variant:
+                if item.menu_variant:
                     key = f"{item.category}_{item.menu_variant}"
                     label = f"{MEAL_LABELS[item.category]} Menu {item.menu_variant}"
                 else:
@@ -344,6 +337,14 @@ class MealPlanService:
                         ),
                     }
                 )
+
+        # A meal only splits order counts by menu variant (A/B/C) when its plan
+        # selection actually has variant-specific columns (e.g. legacy data with
+        # multiple main_course templates for the same day). The new catalog-based
+        # admin editor always saves a single, variant-less selection per category,
+        # so those meals pool all order variants into one column — same as soup,
+        # breakfast_snack, and afternoon_snack always have.
+        variant_meals = {cg["meal"] for cg in col_groups if cg["variant"]}
 
         # ── Portion types by name ────────────────────────────────────────────────
         pt_by_name = {
@@ -397,7 +398,7 @@ class MealPlanService:
             meal_groups = [cg for cg in col_groups if cg["meal"] == meal]
             if not meal_groups:
                 return [[] for _ in col_groups]
-            if meal in VARIANT_MEALS:
+            if meal in variant_meals:
                 for cg in meal_groups:
                     if _normalize_variant(cg["variant"]) == "A":
                         return _col_grams(meal, cg["variant"], coeff, count)
@@ -435,7 +436,15 @@ class MealPlanService:
                 if not meals or not isinstance(meal_data, dict):
                     continue
 
-                for meal in meals:
+                # An order's "lunch" selection can fan out to multiple plan
+                # meals (soup + main_course), both prepared from the same
+                # headcount. Gram totals must be computed once per meal (each
+                # is a different dish), but the client/diet headcount summary
+                # must only be counted once per order meal — otherwise a
+                # 2-dish lunch doubles the reported "people ordered" count.
+                for meal_index, meal in enumerate(meals):
+                    count_towards_summary = meal_index == 0
+                    is_variant_meal = meal in variant_meals
                     for portion_name, portion_data in meal_data.items():
                         if not isinstance(portion_data, dict):
                             continue
@@ -452,7 +461,7 @@ class MealPlanService:
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()
                         )
 
-                        if meal in VARIANT_MEALS:
+                        if is_variant_meal:
                             variant_counts = sorted(
                                 (
                                     (_normalize_variant(v), _safe_nonneg_int(cnt))
@@ -474,7 +483,7 @@ class MealPlanService:
                         adjusted_variant_counts = []
                         for variant, count in variant_counts:
                             adjusted_count = count
-                            if meal in VARIANT_MEALS and variant == "A":
+                            if is_variant_meal and variant == "A":
                                 adjusted_count -= total_diet_count
                             adjusted_variant_counts.append(
                                 (variant, max(adjusted_count, 0))
@@ -487,7 +496,7 @@ class MealPlanService:
                             _merge_group_totals(totals, grams)
                             _merge_group_totals(client_standard_totals, grams)
 
-                            if meal in VARIANT_MEALS and variant:
+                            if is_variant_meal and variant:
                                 label = (
                                     f"{portion_name} - {MEAL_LABELS[meal]} "
                                     f"Menu {variant}"
@@ -506,7 +515,8 @@ class MealPlanService:
                                     "col_grams": grams,
                                 }
                             )
-                            client_total_count += count
+                            if count_towards_summary:
+                                client_total_count += count
 
                         for diet_name, diet_count_raw in sorted(diets.items()):
                             diet_count = _safe_nonneg_int(diet_count_raw)
@@ -530,7 +540,8 @@ class MealPlanService:
                             _merge_group_totals(
                                 diet_summary_totals[diet_name], diet_grams
                             )
-                            diet_summary_counts[diet_name] += diet_count
+                            if count_towards_summary:
+                                diet_summary_counts[diet_name] += diet_count
 
             if sub_rows:
                 settings = getattr(order.user, "settings", None)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+from ..models import MealCategory
 from .pdf_exporter import PDFFontManager
 
 
@@ -143,12 +144,8 @@ class MealPlanPDFExporter:
             elements.append(t)
             elements.append(Spacer(1, 0.4 * cm))
 
-        SECTION_LABELS = {
-            "breakfast_snack": "Raňajky-desiata",
-            "soup": "Polievka",
-            "main_course": "Hlavný chod",
-            "afternoon_snack": "Olovrant",
-        }
+        # Single source of truth for category labels: MealCategory.choices.
+        SECTION_LABELS = dict(MealCategory.choices)
         for category, label in SECTION_LABELS.items():
             section = sections.get(category, {})
             make_section_table(

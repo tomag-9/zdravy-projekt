@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 from typing import List
 
+from ..models import MealCategory
+
 
 class MealPlanXLSXExporter:
     """
@@ -15,12 +17,8 @@ class MealPlanXLSXExporter:
     Multi-day → one sheet per day + a "Súhrn" summary sheet.
     """
 
-    SECTION_LABELS = {
-        "breakfast_snack": "Raňajky-desiata",
-        "soup": "Polievka",
-        "main_course": "Hlavný chod",
-        "afternoon_snack": "Olovrant",
-    }
+    # Single source of truth for category labels: MealCategory.choices.
+    SECTION_LABELS = dict(MealCategory.choices)
 
     def __init__(self, gramage_list: List[dict]):
         self.gramage_list = gramage_list
