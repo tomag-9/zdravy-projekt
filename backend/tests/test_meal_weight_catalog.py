@@ -49,6 +49,30 @@ def test_seed_meal_weight_catalog_sets_unit_exceptions_on_two_templates():
 
 
 @pytest.mark.django_db
+def test_seed_meal_weight_catalog_bakes_unit_exception_into_weight_label():
+    """
+    The piece-count exception must be visible in the composition text itself
+    (weight_label) — shown everywhere a template is listed (Katalóg jedál,
+    admin day-editor dropdown, client MenuPage) — not hidden behind a
+    separate admin-only tag.
+    """
+    call_command("seed_meal_weight_catalog")
+
+    egg_template = MealTemplate.objects.get(name="Raňajky-desiata 7")
+    assert egg_template.weight_label == "50g + 15g + Vajce (ks podľa vekovej skupiny)"
+
+    gulicka_template = MealTemplate.objects.get(name="Hlavný chod 7")
+    assert (
+        gulicka_template.weight_label
+        == "90g + 70g + Gulička/fašírka (ks podľa vekovej skupiny)"
+    )
+
+    # Templates without an exception are unaffected.
+    soup_1 = MealTemplate.objects.get(name="Polievka 1")
+    assert soup_1.weight_label == "200ml"
+
+
+@pytest.mark.django_db
 def test_seed_meal_weight_catalog_computes_base_weight_grams():
     call_command("seed_meal_weight_catalog")
 

@@ -275,6 +275,11 @@ class MealTemplateCatalogApiTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         template = MealTemplate.objects.get(name="Hlavný chod 8")
         self.assertEqual(template.unit_exception["component_label"], "Klobása")
+        # The piece-count exception must be baked into the composition text
+        # itself, not just stored as a separate field admins might miss.
+        self.assertEqual(
+            template.weight_label, "150g + Klobása (ks podľa vekovej skupiny)"
+        )
 
     def test_admin_can_edit_an_existing_template(self):
         self.client.force_authenticate(user=self.admin)

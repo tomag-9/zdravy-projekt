@@ -60,11 +60,14 @@ def _components(*parts):
     ]
 
 
-def _weight_label(components) -> str:
-    return " + ".join(
+def _weight_label(components, unit_exception=None) -> str:
+    label = " + ".join(
         c["grams"] if c["unit"] == "text" else f"{c['grams']}{c['unit']}"
         for c in components
     )
+    if unit_exception:
+        label += f" + {unit_exception['component_label']} (ks podľa vekovej skupiny)"
+    return label
 
 
 def _base_weight_grams(components) -> str:
@@ -251,7 +254,7 @@ class Command(BaseCommand):
                     "category": category,
                     "components": components,
                     "unit_exception": unit_exception,
-                    "weight_label": _weight_label(components),
+                    "weight_label": _weight_label(components, unit_exception),
                     "base_weight_grams": _base_weight_grams(components),
                     "menu_variant": "",
                     "is_active": True,

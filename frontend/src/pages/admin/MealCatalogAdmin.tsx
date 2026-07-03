@@ -314,14 +314,11 @@ const MealCatalogAdmin: React.FC = () => {
                 >
                   <div>
                     <span className="font-medium text-gray-800">{tpl.name}</span>
-                    <span className="text-sm text-gray-500 ml-2">
+                    <span
+                      className={`text-sm ml-2 ${tpl.unit_exception ? "text-amber-600" : "text-gray-500"}`}
+                    >
                       {tpl.weight_label}
                     </span>
-                    {tpl.unit_exception && (
-                      <span className="text-xs text-amber-600 ml-2">
-                        (výnimka: {tpl.unit_exception.component_label})
-                      </span>
-                    )}
                   </div>
                   <button
                     onClick={() => toggleTemplateActive(tpl)}

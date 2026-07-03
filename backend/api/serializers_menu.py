@@ -53,8 +53,10 @@ class PortionTypeSerializer(serializers.ModelSerializer):
 _COMPONENT_NUMERIC_UNITS = ("g", "ml")
 
 
-def _weight_label_from_components(components: list) -> str:
-    return " + ".join(
+def _weight_label_from_components(
+    components: list, unit_exception: dict | None = None
+) -> str:
+    label = " + ".join(
         (
             str(c["grams"])
             if c.get("unit") == "text"
@@ -63,6 +65,9 @@ def _weight_label_from_components(components: list) -> str:
         for c in components
         if c.get("grams") not in (None, "")
     )
+    if unit_exception:
+        label += f" + {unit_exception['component_label']} (ks podľa vekovej skupiny)"
+    return label
 
 
 def _base_weight_grams_from_components(components: list) -> Decimal:
@@ -115,10 +120,13 @@ class MealTemplateSerializer(serializers.ModelSerializer):
         components = attrs.get("components") or getattr(
             self.instance, "components", None
         )
+        unit_exception = attrs.get("unit_exception")
+        if "unit_exception" not in attrs:
+            unit_exception = getattr(self.instance, "unit_exception", None)
         weight_label = attrs.get("weight_label")
         if components:
             attrs["weight_label"] = weight_label or _weight_label_from_components(
-                components
+                components, unit_exception
             )
             attrs["base_weight_grams"] = _base_weight_grams_from_components(components)
         elif weight_label:
