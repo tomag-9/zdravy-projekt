@@ -389,9 +389,10 @@ def scrape_edupage_orders_task(
         from django.db import transaction
         from django.utils import timezone
 
-        from api.edupage_scraper import EdupageScraper
+        from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
         from api.models import DailyOrder, GlobalSettings, UserProfile
         from api.services import _next_workday
+        from api.utils import user_operation_name
 
         valid_meal_types = {"breakfast", "lunch", "olovrant"}
         if isinstance(meal_types, str):
@@ -456,8 +457,11 @@ def scrape_edupage_orders_task(
                     errors += 1
                     continue
 
+                nested_order_data = nest_order_data_by_category(
+                    result.order_data, user_operation_name(profile.user)
+                )
                 imported_data = _filter_order_data_by_meals(
-                    result.order_data, requested_meals
+                    nested_order_data, requested_meals
                 )
                 if not imported_data:
                     logger.info(

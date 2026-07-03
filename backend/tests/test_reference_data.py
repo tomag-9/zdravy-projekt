@@ -27,6 +27,7 @@ def test_init_reference_data_seeds_default_diets_idempotently():
     }
 
     assert expected.issubset(set(Diet.objects.values_list("name", flat=True)))
+    assert Diet.objects.filter(name="DIA").exists()
     assert Diet.objects.filter(name="NO MILK").count() == 1
     assert Diet.objects.get(name="NO MILK").description
 
@@ -59,6 +60,7 @@ def test_init_reference_data_enables_default_diets_for_empty_client_settings():
         "NO SOJA",
         "NO ZELER",
     }.issubset(enabled_diets)
+    assert "DIA" not in enabled_diets
 
 
 @pytest.mark.django_db

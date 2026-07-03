@@ -210,25 +210,35 @@ class PasswordResetToken(models.Model):
 
 
 class MealCategory(models.TextChoices):
-    BREAKFAST = "breakfast", "Raňajky"
-    LUNCH = "lunch", "Obed"
-    SNACK = "snack", "Olovrant"
+    BREAKFAST_SNACK = "breakfast_snack", "Raňajky-desiata"
+    SOUP = "soup", "Polievka"
+    MAIN_COURSE = "main_course", "Hlavný chod"
+    AFTERNOON_SNACK = "afternoon_snack", "Olovrant"
 
 
 class MealTemplate(models.Model):
     """
     Reusable meal template selected when building a daily plan.
-    E.g. "Mäso + Príloha + Šalát" with base_weight_grams=225 (200+25).
+    Comes from a fixed catalog of numbered types (e.g. "Hlavný chod 3"),
+    each with a weight breakdown per component.
     """
 
     category = models.CharField(
         max_length=20, choices=MealCategory.choices, db_index=True
     )
     name = models.CharField(max_length=200)
-    # Human-readable composition label, e.g. "200g + 25g"
+    # Human-readable composition label, e.g. "185g + šalát 25g + syr 10g"
     weight_label = models.CharField(max_length=100, blank=True)
-    # Base weight in grams used for calculations (Adult 100% portion)
+    # Base weight in grams used for calculations (Adult 100% portion).
+    # Sum of the gram components below.
     base_weight_grams = models.DecimalField(max_digits=8, decimal_places=2)
+    # Structured weight breakdown, e.g.
+    # [{"label": "Hlavná zložka", "grams": "110", "unit": "g"}, ...]
+    components = models.JSONField(default=list, blank=True)
+    # For the two catalog rows where a component is a fixed piece-count per
+    # portion type instead of grams × coefficient (vajce / gulička-fašírka):
+    # {"component_label": str, "unit": "ks", "counts_by_portion_type": {name: count}}
+    unit_exception = models.JSONField(null=True, blank=True)
     # Lunch can have variants A / B / C …
     menu_variant = models.CharField(
         max_length=10,
@@ -450,107 +460,6 @@ class PushNotificationAttempt(models.Model):
 # ──────────────────────────────────────────────────────────────────────────────
 # Edupage integration
 # ──────────────────────────────────────────────────────────────────────────────
-
-
-class JedalnicekUpload(models.Model):
-    """Weekly meal plan file uploaded by admin (format TBD, parsed later)."""
-
-    STATUS_PENDING = "pending"
-    STATUS_PROCESSED = "processed"
-    STATUS_ERROR = "error"
-
-    STATUS_CHOICES = [
-        (STATUS_PENDING, "Čaká na spracovanie"),
-        (STATUS_PROCESSED, "Spracovaný"),
-        (STATUS_ERROR, "Chyba"),
-    ]
-
-    week_start = models.DateField(
-        db_index=True, help_text="Monday of the week this plan covers"
-    )
-    filename = models.CharField(max_length=500)
-    file = models.FileField(upload_to="jedalnicek_uploads/%Y/%m/")
-    status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
-    )
-    error_message = models.TextField(blank=True)
-    uploaded_by = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="jedalnicek_uploads",
-    )
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-uploaded_at"]
-        indexes = [
-            models.Index(fields=["week_start", "status"]),
-        ]
-
-    def __str__(self) -> str:
-        return f"JedalnicekUpload({self.week_start}, {self.filename})"
-
-    @property
-    def week_end(self) -> "datetime.date":
-        return self.week_start + datetime.timedelta(days=6)
-
-
-class JedalnicekEntry(models.Model):
-    """
-    One meal+diet combination for a specific day, parsed from a JedalnicekUpload.
-
-    Indexed by (date, category, menu_variant, diet) so the client and admin
-    can query a day's full menu in a single DB round-trip.
-    """
-
-    upload = models.ForeignKey(
-        JedalnicekUpload,
-        on_delete=models.CASCADE,
-        related_name="entries",
-    )
-    date = models.DateField(db_index=True)
-    category = models.CharField(max_length=20, choices=MealCategory.choices)
-    menu_variant = models.CharField(
-        max_length=10,
-        blank=True,
-        help_text="Leave blank for breakfast/snack. E.g. 'A', 'B'.",
-    )
-    diet = models.ForeignKey(
-        "Diet",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="jedalnicek_entries",
-        help_text="Null means the entry applies to all diets / is the default.",
-    )
-    name = models.CharField(max_length=500, help_text="Name of the meal")
-    weight_grams = models.DecimalField(
-        max_digits=8,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        help_text="Gram weight for this diet (replaces base_weight × coefficient)",
-    )
-    unit = models.CharField(max_length=10, default="g")
-    portion_weights = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Per-portion quantities from XLSX, e.g. {'Škôlka': '120.00'}",
-    )
-
-    class Meta:
-        ordering = ["date", "category", "menu_variant", "diet__name"]
-        indexes = [
-            models.Index(fields=["date", "category", "menu_variant"]),
-            models.Index(fields=["date", "diet"]),
-        ]
-
-    def __str__(self) -> str:
-        diet_name = self.diet.name if self.diet else "všetky"
-        return (
-            f"{self.date} {self.category}{self.menu_variant} [{diet_name}]: {self.name}"
-        )
 
 
 class EdupageUpload(models.Model):

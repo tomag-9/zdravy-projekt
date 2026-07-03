@@ -3,8 +3,11 @@ from django.contrib.auth.models import User
 from django.core import management
 from django_celery_beat.models import PeriodicTask
 
-from api.management.commands.real_initial_seed_prevadzky import SCHOOLS
-from api.models import GlobalSettings, UserProfile
+from api.management.commands.real_initial_seed_prevadzky import (
+    EDUPAGE_VISIBLE_MEALS,
+    SCHOOLS,
+)
+from api.models import ClientSettings, Diet, GlobalSettings, UserProfile
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
 
 
@@ -38,7 +41,16 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         assert profile.billing_name == school["company_name"]
         assert profile.is_edupage is True
         assert profile.mealsguest_url == school["mealsguest_url"]
-        assert user.settings.visible_meals == ["lunch"]
+        assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
+
+    dia = Diet.objects.get(name="DIA")
+    krasnanko = User.objects.get(username="krasnanko@edupage.local")
+    assert krasnanko.settings.visible_diets.filter(pk=dia.pk).exists()
+    assert (
+        not ClientSettings.objects.exclude(user=krasnanko)
+        .filter(visible_diets=dia)
+        .exists()
+    )
 
 
 @pytest.mark.django_db
@@ -58,6 +70,23 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
     assert user.profile.billing_name == school["company_name"]
     assert user.profile.is_edupage is True
     assert user.profile.mealsguest_url == school["mealsguest_url"]
+
+
+@pytest.mark.django_db
+def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
+    settings.DEBUG = False
+    school = SCHOOLS[0]
+    user = User.objects.create_user(
+        username=f"{school['subdomain']}@edupage.local",
+        email=f"{school['subdomain']}@edupage.local",
+    )
+    UserProfile.objects.create(user=user)
+    ClientSettings.objects.create(user=user, visible_meals=["lunch"])
+
+    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
+
+    user.refresh_from_db()
+    assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
 
 
 @pytest.mark.django_db

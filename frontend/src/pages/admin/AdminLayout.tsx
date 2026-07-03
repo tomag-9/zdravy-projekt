@@ -22,6 +22,7 @@ interface NavSection {
 const TOP_ITEMS: NavItem[] = [
     { to: '/admin/dashboard', label: 'Prehľad', icon: '📊', activeColor: 'text-orange-700', activeBg: 'bg-orange-50' },
     { to: '/admin/meal-plan', label: 'Jedálniček', icon: '🗓️', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
+    { to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: '📖', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
 ];
 
 const SECTIONS: NavSection[] = [
@@ -38,10 +39,9 @@ const SECTIONS: NavSection[] = [
         id: 'import',
         label: 'Import',
         icon: '📥',
-        paths: ['/admin/edupage', '/admin/jedalnicek-import'],
+        paths: ['/admin/edupage'],
         items: [
             { to: '/admin/edupage', label: 'Objednávky (Edupage)', icon: '📤', activeColor: 'text-indigo-700', activeBg: 'bg-indigo-50' },
-            { to: '/admin/jedalnicek-import', label: 'Jedálničky (XLSX)', icon: '📄', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
         ],
     },
     {

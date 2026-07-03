@@ -38,37 +38,31 @@ from api.models import (
 
 MEAL_TEMPLATES = [
     {
-        "category": "breakfast",
+        "category": "breakfast_snack",
         "name": "Chlieb + maslo + kakao",
         "weight_label": "50g + 10g + 200g",
         "menu_variant": "",
     },
     {
-        "category": "lunch",
+        "category": "soup",
         "name": "Kurací vývar s rezancami",
         "weight_label": "250g + 50g",
-        "menu_variant": "A",
+        "menu_variant": "",
     },
     {
-        "category": "lunch",
+        "category": "main_course",
         "name": "Kuracie prsia + ryža + šalát",
         "weight_label": "120g + 80g + 50g",
         "menu_variant": "A",
     },
     {
-        "category": "lunch",
-        "name": "Zeleninová polievka + chlieb",
-        "weight_label": "250g + 50g",
-        "menu_variant": "B",
-    },
-    {
-        "category": "lunch",
+        "category": "main_course",
         "name": "Šošovicový prívarok + knedľa",
         "weight_label": "200g + 100g",
         "menu_variant": "V",
     },
     {
-        "category": "snack",
+        "category": "afternoon_snack",
         "name": "Jogurt + ovocie",
         "weight_label": "150g + 50g",
         "menu_variant": "",
@@ -447,11 +441,11 @@ class Command(BaseCommand):
 
         # Slot definitions: (category, menu_variant)
         slots = [
-            ("breakfast", ""),
-            ("lunch", "A"),
-            ("lunch", "B"),
-            ("lunch", "V"),
-            ("snack", ""),
+            ("breakfast_snack", ""),
+            ("soup", ""),
+            ("main_course", "A"),
+            ("main_course", "V"),
+            ("afternoon_snack", ""),
         ]
 
         plans_created = 0

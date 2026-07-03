@@ -100,42 +100,48 @@ class TestGramageDashboardExports:
             created_by=user,
         )
         breakfast = MealTemplate.objects.create(
-            category="breakfast",
+            category="breakfast_snack",
             name="Kaša",
             weight_label="100g",
             base_weight_grams=Decimal("100.00"),
         )
         lunch_a = MealTemplate.objects.create(
-            category="lunch",
+            category="main_course",
             name="Menu A",
             weight_label="200g",
             base_weight_grams=Decimal("200.00"),
             menu_variant="A",
         )
         lunch_b = MealTemplate.objects.create(
-            category="lunch",
+            category="main_course",
             name="Menu B",
             weight_label="250g",
             base_weight_grams=Decimal("250.00"),
             menu_variant="B",
         )
         snack = MealTemplate.objects.create(
-            category="snack",
+            category="afternoon_snack",
             name="Ovocie",
             weight_label="50g",
             base_weight_grams=Decimal("50.00"),
         )
         MealPlanItem.objects.create(
-            meal_plan=plan, template=breakfast, category="breakfast", menu_variant=""
+            meal_plan=plan,
+            template=breakfast,
+            category="breakfast_snack",
+            menu_variant="",
         )
         MealPlanItem.objects.create(
-            meal_plan=plan, template=lunch_a, category="lunch", menu_variant="A"
+            meal_plan=plan, template=lunch_a, category="main_course", menu_variant="A"
         )
         MealPlanItem.objects.create(
-            meal_plan=plan, template=lunch_b, category="lunch", menu_variant="B"
+            meal_plan=plan, template=lunch_b, category="main_course", menu_variant="B"
         )
         MealPlanItem.objects.create(
-            meal_plan=plan, template=snack, category="snack", menu_variant=""
+            meal_plan=plan,
+            template=snack,
+            category="afternoon_snack",
+            menu_variant="",
         )
         plan.enrolled_counts.create(portion_type=portion_type, count=1)
 
@@ -163,9 +169,9 @@ class TestGramageDashboardExports:
         assert row["standard_total_count"] == 11
         assert sorted(sr["count"] for sr in standard_rows) == [2, 3, 3, 3]
         assert {sr["label"]: sr["count"] for sr in standard_rows} == {
-            "Škôlka - Raňajky": 3,
-            "Škôlka - Obed Menu A": 3,
-            "Škôlka - Obed Menu B": 2,
+            "Škôlka - Raňajky-desiata": 3,
+            "Škôlka - Hlavný chod Menu A": 3,
+            "Škôlka - Hlavný chod Menu B": 2,
             "Škôlka - Olovrant": 3,
         }
         assert row["standard_col_grams"] == [

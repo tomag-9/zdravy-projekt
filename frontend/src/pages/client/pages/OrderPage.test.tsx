@@ -5,6 +5,7 @@ import {
   fireEvent,
   waitFor,
   within,
+  act,
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import OrderPage from "./OrderPage";
@@ -13,6 +14,7 @@ import { MemoryRouter } from "react-router-dom";
 import OrderService from "../services/OrderService";
 import { ReactNode } from "react";
 import { ToastProvider } from "../../../context/ToastContext";
+import { useAuth } from "../../../context/auth";
 
 const mockApiFetch = vi.fn();
 
@@ -271,6 +273,130 @@ describe("OrderPage Logic & Triggers", () => {
     expect(screen.getAllByText("Raňajky")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Obed")[0]).toBeInTheDocument();
     expect(screen.getAllByText("Olovrant")[0]).toBeInTheDocument();
+  });
+
+  it("blocks ordering a main_course menu variant the jedálniček didn't publish for that day", async () => {
+    // The meal-plan-availability fetch only runs when `user` is set; the
+    // default mock omits it, so give this test a real user.
+    (useAuth as Mock).mockReturnValue({
+      logout: vi.fn(),
+      apiFetch: mockApiFetch,
+      user: { id: 1, email: "client@example.com" },
+    });
+
+    // Only Menu A was published for main_course that day (legacy-style
+    // per-variant selection). The jedálniček category (main_course) must
+    // correctly map onto the order form's "lunch" meal so Menu B/C/V get
+    // marked as unavailable/occupied.
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            deadline_breakfast: "10:00",
+            deadline_breakfast_is_day_before: false,
+            deadline_lunch: "10:00",
+            deadline_lunch_is_day_before: false,
+            deadline_olovrant: "10:00",
+            deadline_olovrant_is_day_before: false,
+          }),
+        );
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({ id: 1, status: "draft", data: {} }),
+        );
+      }
+      if (url.includes("/meal-plans/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            exists: true,
+            items: [
+              { category: "main_course", menu_variant: "A", template_detail: {} },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    // mealPlanAvailability starts as null (= unoccupied by default), so wait
+    // for the request and flush the resulting setState/re-render before
+    // asserting, rather than asserting on the pre-fetch render.
+    await waitFor(() => {
+      expect(
+        mockApiFetch.mock.calls.some((call: unknown[]) =>
+          (call[0] as string).includes("/meal-plans/by-date/"),
+        ),
+      ).toBe(true);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.getAllByText("zasednutá").length).toBeGreaterThan(0);
+  });
+
+  it("does not mark any menu as occupied when the jedálniček uses variant-less catalog selections", async () => {
+    (useAuth as Mock).mockReturnValue({
+      logout: vi.fn(),
+      apiFetch: mockApiFetch,
+      user: { id: 1, email: "client@example.com" },
+    });
+
+    // The catalog-based admin editor always saves soup/main_course with
+    // menu_variant="" (a single uniform selection for the whole day). This
+    // must NOT be treated as "no menu variants available" (which would grey
+    // out every 'Menu A/B/...' option on the order form).
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            deadline_breakfast: "10:00",
+            deadline_breakfast_is_day_before: false,
+            deadline_lunch: "10:00",
+            deadline_lunch_is_day_before: false,
+            deadline_olovrant: "10:00",
+            deadline_olovrant_is_day_before: false,
+          }),
+        );
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({ id: 1, status: "draft", data: {} }),
+        );
+      }
+      if (url.includes("/meal-plans/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            exists: true,
+            items: [
+              { category: "breakfast_snack", menu_variant: "", template_detail: {} },
+              { category: "soup", menu_variant: "", template_detail: {} },
+              { category: "main_course", menu_variant: "", template_detail: {} },
+              { category: "afternoon_snack", menu_variant: "", template_detail: {} },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(
+        mockApiFetch.mock.calls.some((call: unknown[]) =>
+          (call[0] as string).includes("/meal-plans/by-date/"),
+        ),
+      ).toBe(true);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByText("zasednutá")).not.toBeInTheDocument();
   });
 
   it('displays "Termín uplynul" badge when deadline passed', () => {
