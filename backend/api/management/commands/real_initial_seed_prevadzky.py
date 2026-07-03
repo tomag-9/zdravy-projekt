@@ -12,9 +12,12 @@ Usage:
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 
-from api.models import ClientSettings, UserProfile
+from api.models import ClientSettings, Diet, UserProfile
 
 EDUPAGE_VISIBLE_MEALS = ["breakfast", "lunch", "olovrant"]
+OPERATION_SPECIFIC_VISIBLE_DIETS = {
+    "krasnanko": ["DIA"],
+}
 
 SCHOOLS = [
     # Full-access schools
@@ -166,6 +169,19 @@ class Command(BaseCommand):
             if not settings_created and client_settings.visible_meals == ["lunch"]:
                 client_settings.visible_meals = EDUPAGE_VISIBLE_MEALS
                 client_settings.save(update_fields=["visible_meals"])
+
+            extra_diet_names = OPERATION_SPECIFIC_VISIBLE_DIETS.get(
+                school["subdomain"], []
+            )
+            for diet_name in extra_diet_names:
+                diet, _ = Diet.objects.update_or_create(
+                    name=diet_name,
+                    defaults={
+                        "description": "Diabetická strava.",
+                        "is_active": True,
+                    },
+                )
+                client_settings.visible_diets.add(diet)
 
             if user_created or profile_created:
                 created_count += 1

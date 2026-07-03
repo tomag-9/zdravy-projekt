@@ -49,6 +49,7 @@ class MealPlanPDFExporter:
         enrolled = gramage["enrolled_summary"]
         sections = gramage["sections"]
         portion_names = [e["portion_type"] for e in enrolled]
+        unit_columns = self._unit_columns(sections)
 
         elements = []
 
@@ -87,6 +88,7 @@ class MealPlanPDFExporter:
         header = (
             ["Šablóna", "Základ (g)"]
             + [f"{name}" for name in portion_names]
+            + [self._unit_column_label(col) for col in unit_columns]
             + ["Celkom (g)"]
         )
 
@@ -106,18 +108,41 @@ class MealPlanPDFExporter:
                 counts_by_pt = {
                     b["portion_type"]: b["total_grams"] for b in item["breakdown"]
                 }
+                units_by_col = {
+                    (
+                        u.get("component_label", ""),
+                        u.get("unit", "ks"),
+                        u["portion_type"],
+                    ): u["total_units"]
+                    for u in item.get("unit_breakdown", [])
+                }
                 row = (
                     [item["template_name"], item["base_weight_grams"]]
                     + [counts_by_pt.get(n, "0.00") for n in portion_names]
+                    + [
+                        units_by_col.get(
+                            (col["component_label"], col["unit"], col["portion_type"]),
+                            "",
+                        )
+                        for col in unit_columns
+                    ]
                     + [item["item_total_grams"]]
                 )
                 table_data.append(row)
 
-            total_row = ["SPOLU", ""] + [""] * len(portion_names) + [section_total]
+            total_row = (
+                ["SPOLU", ""]
+                + [""] * len(portion_names)
+                + [""] * len(unit_columns)
+                + [section_total]
+            )
             table_data.append(total_row)
 
             col_widths = (
-                [5 * cm, 2.5 * cm] + [2.5 * cm] * len(portion_names) + [2.5 * cm]
+                [5 * cm, 2.5 * cm]
+                + [2.5 * cm] * len(portion_names)
+                + [2.5 * cm] * len(unit_columns)
+                + [2.5 * cm]
             )
 
             t = Table(table_data, colWidths=col_widths)
@@ -193,3 +218,32 @@ class MealPlanPDFExporter:
             fontSize=size,
             leading=size + 2,
         )
+
+    @staticmethod
+    def _unit_columns(sections: dict) -> list[dict]:
+        columns: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for section in sections.values():
+            for item in section.get("items", []):
+                for unit in item.get("unit_breakdown", []):
+                    key = (
+                        unit.get("component_label", ""),
+                        unit.get("unit", "ks"),
+                        unit["portion_type"],
+                    )
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    columns.append(
+                        {
+                            "component_label": key[0],
+                            "unit": key[1],
+                            "portion_type": key[2],
+                        }
+                    )
+        return columns
+
+    @staticmethod
+    def _unit_column_label(column: dict) -> str:
+        label = column["component_label"] or "Kusy"
+        return f"{column['portion_type']} - {label} ({column['unit']})"

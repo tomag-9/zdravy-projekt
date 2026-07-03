@@ -1,5 +1,7 @@
 import datetime
+import io
 
+import openpyxl
 import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -126,9 +128,7 @@ def test_gramage_dashboard_pools_all_order_variants_for_variant_less_main_course
     instead of matching none of them (which would silently compute 0g).
     """
     call_command("seed_meal_weight_catalog")
-    skolka = PortionType.objects.create(
-        name="Škôlka", coefficient="1.0000", sort_order=1
-    )
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
     main_course = MealTemplate.objects.get(name="Hlavný chod 4")  # 100g + 100g
 
     plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 4))
@@ -162,9 +162,7 @@ def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_cou
     because two dishes are prepared from it.
     """
     call_command("seed_meal_weight_catalog")
-    skolka = PortionType.objects.create(
-        name="Škôlka", coefficient="1.0000", sort_order=1
-    )
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
     soup = MealTemplate.objects.get(name="Polievka 1")
     main_course = MealTemplate.objects.get(name="Hlavný chod 1")
 
@@ -237,9 +235,7 @@ def test_gramage_dashboard_shows_unit_exception_as_its_own_column():
     must surface a piece-count column in the dashboard, not silently vanish.
     """
     call_command("seed_meal_weight_catalog")
-    skolka = PortionType.objects.create(
-        name="Škôlka", coefficient="1.0000", sort_order=1
-    )
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
     PortionType.objects.create(name="Dospelý (SŠ)", coefficient="1.5000", sort_order=2)
     main_course = MealTemplate.objects.get(name="Hlavný chod 7")
 
@@ -284,3 +280,147 @@ def test_gramage_dashboard_shows_unit_exception_as_its_own_column():
 
     assert GramageDashboardXLSXExporter(data).generate()
     assert GramageDashboardPDFExporter(data).generate()
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_keeps_fractional_egg_piece_counts():
+    call_command("seed_meal_weight_catalog")
+    PortionType.objects.create(name="Jasle", coefficient="0.5000", sort_order=1)
+    PortionType.objects.create(name="ZŠ 2.stupeň", coefficient="1.2500", sort_order=2)
+    breakfast = MealTemplate.objects.get(name="Raňajky-desiata 7")
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 8))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=breakfast,
+        category="breakfast_snack",
+        menu_variant="",
+    )
+
+    user = User.objects.create_user(username="client5@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={
+            "breakfast": {
+                "Jasle": {"menuCounts": {"A": 1}, "diets": {}},
+                "ZŠ 2.stupeň": {"menuCounts": {"A": 3}, "diets": {}},
+            }
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    breakfast_group = next(
+        cg for cg in data["col_groups"] if cg["meal"] == "breakfast_snack"
+    )
+    egg_component = next(
+        c for c in breakfast_group["components"] if c["label"] == "Vajce"
+    )
+    egg_index = breakfast_group["components"].index(egg_component)
+    group_index = data["col_groups"].index(breakfast_group)
+
+    rows_by_portion = {
+        sr["portion_name"]: sr
+        for sr in data["rows"][0]["sub_rows"]
+        if sr["meal"] == "breakfast_snack"
+    }
+    assert rows_by_portion["Jasle"]["col_grams"][group_index][egg_index] == "0.50"
+    assert rows_by_portion["ZŠ 2.stupeň"]["col_grams"][group_index][egg_index] == "3.00"
+    assert data["totals"][group_index][egg_index] == "3.50"
+
+
+@pytest.mark.django_db
+def test_gramage_dashboard_maps_operation_portion_names_for_piece_counts():
+    call_command("seed_meal_weight_catalog")
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
+    breakfast = MealTemplate.objects.get(name="Raňajky-desiata 7")
+    main_course = MealTemplate.objects.get(name="Hlavný chod 7")
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 10))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=breakfast,
+        category="breakfast_snack",
+        menu_variant="",
+    )
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=main_course,
+        category="main_course",
+        menu_variant="",
+    )
+
+    user = User.objects.create_user(username="fantasticka@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={
+            "breakfast": {"Fantastická Škôlka": {"menuCounts": {"A": 7}, "diets": {}}},
+            "lunch": {"Fantastická Škôlka": {"menuCounts": {"A": 14}, "diets": {}}},
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    breakfast_group = next(
+        cg for cg in data["col_groups"] if cg["meal"] == "breakfast_snack"
+    )
+    main_group = next(cg for cg in data["col_groups"] if cg["meal"] == "main_course")
+    breakfast_group_index = data["col_groups"].index(breakfast_group)
+    main_group_index = data["col_groups"].index(main_group)
+    egg_index = next(
+        index
+        for index, component in enumerate(breakfast_group["components"])
+        if component["label"] == "Vajce"
+    )
+    ball_index = next(
+        index
+        for index, component in enumerate(main_group["components"])
+        if component["label"] == "Gulička/fašírka"
+    )
+
+    rows_by_meal = {sr["meal"]: sr for sr in data["rows"][0]["sub_rows"]}
+    assert (
+        rows_by_meal["breakfast_snack"]["col_grams"][breakfast_group_index][egg_index]
+        == "3.50"
+    )
+    assert (
+        rows_by_meal["main_course"]["col_grams"][main_group_index][ball_index]
+        == "14.00"
+    )
+    assert data["totals"][breakfast_group_index][egg_index] == "3.50"
+    assert data["totals"][main_group_index][ball_index] == "14.00"
+
+
+@pytest.mark.django_db
+def test_meal_plan_xlsx_export_includes_unit_breakdown_columns():
+    from api.exporters.meal_plan_xlsx_exporter import MealPlanXLSXExporter
+
+    call_command("seed_meal_weight_catalog")
+    jasle = PortionType.objects.create(name="Jasle", coefficient="0.5000", sort_order=1)
+    zst = PortionType.objects.create(
+        name="ZŠ 2.stupeň", coefficient="1.2500", sort_order=2
+    )
+    breakfast = MealTemplate.objects.get(name="Raňajky-desiata 7")
+
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 5, 9))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=breakfast,
+        category="breakfast_snack",
+        menu_variant="",
+    )
+    EnrolledCount.objects.create(meal_plan=plan, portion_type=jasle, count=1)
+    EnrolledCount.objects.create(meal_plan=plan, portion_type=zst, count=3)
+
+    data = MealPlanService.calculate_gramage(plan)
+    workbook = openpyxl.load_workbook(
+        io.BytesIO(MealPlanXLSXExporter([data]).generate())
+    )
+    rows = list(workbook.active.iter_rows(values_only=True))
+    header = next(row for row in rows if row and row[0] == "Sekcia")
+    jasle_egg_col = header.index("Jasle - Vajce (ks)")
+    zst_egg_col = header.index("ZŠ 2.stupeň - Vajce (ks)")
+    item_row = next(row for row in rows if row and row[1] == "Raňajky-desiata 7")
+
+    assert item_row[jasle_egg_col] == "0.5"
+    assert item_row[zst_egg_col] == "3"

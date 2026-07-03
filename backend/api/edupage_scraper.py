@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -23,44 +24,114 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+ALLOWED_DIET_NAMES = {
+    "NO MILK",
+    "NO GLUTEN",
+    "NO MILK/NO GLUTEN",
+    "VEGGIE",
+    "HISTAMIN",
+    "NONONO",
+    "NO ORECH",
+    "NO PARADAJKA",
+    "NO FISH",
+    "NO EGG",
+    "NO ZEMIAK",
+    "NO SOJA",
+    "NO ZELER",
+    "DIA",
+}
+DEFAULT_PORTION_NAME = "Škôlka"
+PORTION_CODE_MAP = {
+    "0": "Škôlka",
+    "1": "ZŠ 1.stupeň",
+    "2": "ZŠ 2.stupeň",
+    "3": "Dospelý (SŠ)",
+    "4": "Dospelý (SŠ)",
+}
+
 # ------------------------------------------------------------------
 # Known mappings: Edupage abbreviation → our Diet.name
 # ------------------------------------------------------------------
 
 _SKRATKA_MAP: dict[str, str] = {
+    "BG": "NO GLUTEN",
+    "BH": "HISTAMIN",
+    "BM": "NO MILK",
+    "BMBG": "NO MILK/NO GLUTEN",
     "NM": "NO MILK",
+    "NOM": "NO MILK",
     "NG": "NO GLUTEN",
+    "NOG": "NO GLUTEN",
+    "NGNM": "NO MILK/NO GLUTEN",
     "NMNG": "NO MILK/NO GLUTEN",
+    "NMG": "NO MILK/NO GLUTEN",
     "NE": "NO EGG",
+    "NENO": "NO EGG",
     "NS": "NO SOJA",
     "HIS": "HISTAMIN",
     "HISTAMIN": "HISTAMIN",
+    "HIT": "HISTAMIN",
+    "H": "HISTAMIN",
     "NNN": "NONONO",
+    "NNNO": "NONONO",
     "NF": "NO FISH",
+    "NGNF": "NO GLUTEN",
+    "NMNE": "NO MILK",
+    "NMNO": "NO MILK",
+    "NMZ": "NO MILK",
+    "NMZD": "NO MILK",
     "V": "VEGGIE",
     "VEG": "VEGGIE",
+    "VE": "VEGGIE",
+    "PV": "VEGGIE",
+    "SV": "VEGGIE",
     "VEGETAR": "VEGGIE",
+    "DIA": "DIA",
 }
 
 # Keyword fragments in nazov → our Diet.name (checked after stripping spaces/slashes)
 _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "nomilk": "NO MILK",
+    "bezmliecne": "NO MILK",
+    "bezmlieka": "NO MILK",
     "nogluten": "NO GLUTEN",
+    "nog": "NO GLUTEN",
+    "bezglutenove": "NO GLUTEN",
+    "bezlep": "NO GLUTEN",
     "nomilknogluten": "NO MILK/NO GLUTEN",
     "noglutennomilk": "NO MILK/NO GLUTEN",
+    "nomilknog": "NO MILK/NO GLUTEN",
+    "nomno": "NO MILK/NO GLUTEN",
+    "nmg": "NO MILK/NO GLUTEN",
+    "nmn": "NO MILK/NO GLUTEN",
+    "bezmliecnebezglutenove": "NO MILK/NO GLUTEN",
     "noegg": "NO EGG",
+    "bezvajec": "NO EGG",
+    "bezvaj": "NO EGG",
     "nosoy": "NO SOJA",
     "nosoja": "NO SOJA",
+    "bezsoje": "NO SOJA",
     "histamin": "HISTAMIN",
+    "bezhistaminu": "HISTAMIN",
+    "hit": "HISTAMIN",
     "nonono": "NONONO",
+    "nnn": "NONONO",
     "nofish": "NO FISH",
+    "bezryb": "NO FISH",
     "vegetar": "VEGGIE",
     "veggie": "VEGGIE",
+    "vege": "VEGGIE",
     "nozeler": "NO ZELER",
     "noparadajka": "NO PARADAJKA",
     "noparadajky": "NO PARADAJKA",
+    "noparadaj": "NO PARADAJKA",
     "noorech": "NO ORECH",
+    "bezorech": "NO ORECH",
+    "orech": "NO ORECH",
+    "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
+    "dia": "DIA",
+    "diabet": "DIA",
 }
 
 # Meal category by service-hour range (vydaj_od hour)
@@ -69,6 +140,18 @@ _MEAL_BY_HOUR: list[tuple[int, str]] = [
     (15, "lunch"),  # vydaj_od 10:00–14:59
 ]
 _DEFAULT_MEAL = "olovrant"  # vydaj_od ≥ 15:00
+_MENU_NAME_RE = re.compile(r"^(?:menu\s*)?([ABC])$", re.IGNORECASE)
+_PREFIXED_MENU_NAME_RE = re.compile(r"(?:^|\s)(?:menu\s*)?([ABC])$", re.IGNORECASE)
+_CLASSIC_MENU_NAMES = {"klasik", "classic"}
+
+
+def _normalise_key(value: str) -> str:
+    ascii_value = unicodedata.normalize("NFKD", value).encode("ascii", "ignore")
+    return re.sub(r"[\s/\-+.,_()]+", "", ascii_value.decode("ascii")).lower()
+
+
+def _has_diet_signal(key: str) -> bool:
+    return any(fragment in key for fragment in _NAZOV_KEYWORD_MAP)
 
 
 # ------------------------------------------------------------------
@@ -168,6 +251,34 @@ class EdupageScraper:
                     jid_map[jid] = meal
         return jid_map
 
+    @staticmethod
+    def _build_payer_map(typy_platitelov: list[dict]) -> dict[str, dict[str, str]]:
+        """Return {typ_platitela_id: cleaned portion/diet metadata}."""
+        payer_map: dict[str, dict[str, str]] = {}
+        for row in typy_platitelov:
+            if not isinstance(row, dict):
+                continue
+            hodnota = row.get("hodnota", {})
+            if isinstance(hodnota, str):
+                try:
+                    hodnota = json.loads(hodnota)
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(hodnota, dict):
+                continue
+
+            for payer_id, payer_data in hodnota.items():
+                if not isinstance(payer_data, dict):
+                    continue
+                name = str(payer_data.get("nazov", "")).strip()
+                portion_code = str(payer_data.get("porcia", "")).strip()
+                payer_map[str(payer_id)] = {
+                    "name": name,
+                    "portion": PORTION_CODE_MAP.get(portion_code, DEFAULT_PORTION_NAME),
+                    "diet": EdupageScraper.resolve_payer_diet_name(name) or "",
+                }
+        return payer_map
+
     # ------ diet name auto-match ------
 
     @staticmethod
@@ -184,13 +295,82 @@ class EdupageScraper:
         if sk in _SKRATKA_MAP:
             return _SKRATKA_MAP[sk]
 
-        # Normalise: remove spaces, slashes, lowercase
-        key = re.sub(r"[\s/\-]+", "", nazov).lower()
-        for fragment, diet_name in _NAZOV_KEYWORD_MAP.items():
+        compact_sk = _normalise_key(skratka)
+        if any(fragment in compact_sk for fragment in ("nmng", "ngnm", "bmbg")):
+            return "NO MILK/NO GLUTEN"
+        if compact_sk.endswith("nmg") or compact_sk.endswith("ngm"):
+            return "NO MILK/NO GLUTEN"
+        if compact_sk.endswith("ngh"):
+            return "NO GLUTEN"
+        if compact_sk.endswith("nnn") or "nonono" in compact_sk:
+            return "NONONO"
+        if compact_sk.endswith("hit") or compact_sk.endswith("his"):
+            return "HISTAMIN"
+        if compact_sk.endswith("ng") or compact_sk.endswith("nog"):
+            return "NO GLUTEN"
+        if compact_sk.endswith("nm") or compact_sk.endswith("nom"):
+            return "NO MILK"
+        if compact_sk.endswith("nomo"):
+            return "NO MILK"
+        if compact_sk.endswith("ne") or compact_sk.startswith("ne"):
+            return "NO EGG"
+        if compact_sk.endswith("h") and re.search(r"(?:^|\s)H\s*$", nazov):
+            return "HISTAMIN"
+
+        key = _normalise_key(f"{skratka} {nazov}")
+
+        if sk.endswith("V") and re.search(r"(?:^|\s)V\s*$", nazov, re.IGNORECASE):
+            return "VEGGIE"
+
+        for fragment, diet_name in sorted(
+            _NAZOV_KEYWORD_MAP.items(), key=lambda item: len(item[0]), reverse=True
+        ):
             if fragment in key:
                 return diet_name
 
         return nazov.strip() or skratka.strip()
+
+    @staticmethod
+    def resolve_payer_diet_name(nazov: str) -> str | None:
+        """Map an Edupage payer group label to one of our Diet.name values."""
+        key = _normalise_key(nazov)
+
+        # SŠV is used by Edupage schools for the vegetarian secondary-school group.
+        if "ssv" in key:
+            return "VEGGIE"
+
+        for fragment, diet_name in sorted(
+            _NAZOV_KEYWORD_MAP.items(), key=lambda item: len(item[0]), reverse=True
+        ):
+            if fragment in key and diet_name in ALLOWED_DIET_NAMES:
+                return diet_name
+
+        return None
+
+    @staticmethod
+    def resolve_menu_variant(skratka: str, nazov: str) -> str | None:
+        """Return a menu variant for non-diet Edupage entries."""
+        sk = skratka.strip().upper()
+        nazov_clean = nazov.strip()
+        key = _normalise_key(nazov_clean)
+        combined_key = _normalise_key(f"{skratka} {nazov_clean}")
+
+        if _has_diet_signal(combined_key):
+            return None
+
+        if key in _CLASSIC_MENU_NAMES or "klasik" in key or "classic" in key:
+            return "A"
+
+        for value in (nazov_clean, sk):
+            match = _MENU_NAME_RE.match(value)
+            if match:
+                return match.group(1).upper()
+
+        match = _PREFIXED_MENU_NAME_RE.search(nazov_clean)
+        if match:
+            return match.group(1).upper()
+
+        return None
 
     # ------ aggregation ------
 
@@ -198,6 +378,7 @@ class EdupageScraper:
         prehlad_raw = self._extract_block(html, "prehlad")
         nazov_menu_raw = self._extract_block(html, "nazovMenu")
         nastavenia_raw = self._extract_block(html, "nastavenia")
+        typy_platitelov_raw = self._extract_block(html, "typy_platitelov")
 
         warnings: list[str] = []
         unmapped: list[str] = []
@@ -215,11 +396,13 @@ class EdupageScraper:
 
         nazov_menu: dict = nazov_menu_raw or {}
         nastavenia: list = nastavenia_raw or []
+        typy_platitelov: list = typy_platitelov_raw or []
 
         jid_map = self._build_jid_map(nastavenia)
+        payer_map = self._build_payer_map(typy_platitelov)
 
-        # Accumulate: {meal_key: {diet_name: count}}
-        counts: dict[str, dict[str, int]] = {}
+        # Accumulate already-clean data as meal -> our portion -> menu/diet counts.
+        counts_by_meal: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -234,41 +417,63 @@ class EdupageScraper:
                         f"nastavenia missing – defaulting jid={jid} → lunch"
                     )
 
-            meal_counts = counts.setdefault(meal_key, {})
-
             for letter, letter_data in jid_data.items():
                 if not isinstance(letter_data, dict):
                     continue
 
-                # Resolve diet name for this letter
                 nm_entry = nazov_menu.get(letter, {})
                 skratka = nm_entry.get("skratka", letter)
                 nazov = nm_entry.get("nazov", letter)
-                diet_name = self.resolve_diet_name(skratka, nazov)
 
-                if diet_name == letter and letter not in nazov_menu:
-                    unmapped.append(letter)
+                menu_variant = self.resolve_menu_variant(skratka, nazov)
+                diet_name = None
+                if menu_variant is None:
+                    diet_name = self.resolve_diet_name(skratka, nazov)
+                    if diet_name not in ALLOWED_DIET_NAMES:
+                        unmapped.append(f"{letter}:{diet_name}")
+                        continue
+                    if diet_name == letter and letter not in nazov_menu:
+                        unmapped.append(letter)
 
-                # Sum ordered portions across all typ_platitela
                 tp = letter_data.get("typ_platitela", {})
-                total = sum(
-                    v.get("o", 0) if isinstance(v, dict) else 0 for v in tp.values()
-                )
-                if total > 0:
-                    meal_counts[diet_name] = meal_counts.get(diet_name, 0) + total
+                if not isinstance(tp, dict):
+                    continue
 
-        # Build DailyOrder.data:
-        # menuCounts["A"] = total portions (so order_data.totals() works correctly)
-        # diets = breakdown by diet name
-        order_data: dict[str, Any] = {}
-        for meal_key, diet_counts in counts.items():
-            if not diet_counts:
-                continue
-            total = sum(diet_counts.values())
-            order_data[meal_key] = {
-                "menuCounts": {"A": total},
-                "diets": diet_counts,
-            }
+                for payer_id, payer_counts in tp.items():
+                    if not isinstance(payer_counts, dict):
+                        continue
+                    try:
+                        total = int(payer_counts.get("o", 0) or 0)
+                    except (TypeError, ValueError):
+                        total = 0
+                    if total <= 0:
+                        continue
+
+                    payer_info = payer_map.get(str(payer_id), {})
+                    portion_name = payer_info.get("portion") or DEFAULT_PORTION_NAME
+                    payer_diet = payer_info.get("diet") or None
+                    effective_diet = diet_name or payer_diet
+                    effective_menu = "A" if effective_diet else (menu_variant or "A")
+
+                    meal_counts = counts_by_meal.setdefault(meal_key, {})
+                    portion_counts = meal_counts.setdefault(
+                        portion_name, {"menuCounts": {}, "diets": {}}
+                    )
+                    menu_counts = portion_counts["menuCounts"]
+                    diet_counts = portion_counts["diets"]
+                    menu_counts[effective_menu] = (
+                        menu_counts.get(effective_menu, 0) + total
+                    )
+                    if effective_diet:
+                        diet_counts[effective_diet] = (
+                            diet_counts.get(effective_diet, 0) + total
+                        )
+
+        order_data: dict[str, Any] = {
+            meal_key: meal_counts
+            for meal_key, meal_counts in counts_by_meal.items()
+            if meal_counts
+        }
 
         return ScrapeResult(
             date=target_date,
@@ -292,6 +497,7 @@ def nest_order_data_by_category(
         if "menuCounts" in meal_data or "diets" in meal_data:
             nested[meal_key] = {category: dict(meal_data)}
         else:
+            # Already normalized by our internal categories/portion types.
             nested[meal_key] = meal_data
 
     return nested

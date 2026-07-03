@@ -17,7 +17,7 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from api.models import ClientSettings, Diet, PortionType
-from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
+from api.reference_data import ALL_DIETS, DEFAULT_DIET_NAMES
 
 PORTION_TYPES = [
     {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
@@ -48,7 +48,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
         diet_created_count = 0
-        for name, description in DEFAULT_DIETS:
+        for name, description in ALL_DIETS:
             _, created = Diet.objects.update_or_create(
                 name=name,
                 defaults={"description": description, "is_active": True},

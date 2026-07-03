@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import unicodedata
 from decimal import Decimal
 from typing import Any, List
 
@@ -16,6 +17,12 @@ from ..models import (
     MealTemplate,
 )
 from ..utils import user_operation_name
+
+
+def _normalize_portion_name(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").casefold())
+    ascii_value = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(ascii_value.replace(".", " ").replace("-", " ").split())
 
 
 class MealPlanService:
@@ -367,9 +374,26 @@ class MealPlanService:
         variant_meals = {cg["meal"] for cg in col_groups if cg["variant"]}
 
         # ── Portion types by name ────────────────────────────────────────────────
-        pt_by_name = {
-            pt.name: pt.coefficient for pt in PortionType.objects.filter(is_active=True)
+        active_portion_types = list(PortionType.objects.filter(is_active=True))
+        pt_by_name = {pt.name: pt.coefficient for pt in active_portion_types}
+        normalized_pt_lookup = {
+            _normalize_portion_name(pt.name): pt.name for pt in active_portion_types
         }
+        normalized_pt_names = sorted(
+            normalized_pt_lookup.keys(), key=lambda name: len(name), reverse=True
+        )
+
+        def _canonical_portion_name(portion_name: str) -> str:
+            normalized = _normalize_portion_name(portion_name)
+            exact = normalized_pt_lookup.get(normalized)
+            if exact:
+                return exact
+            for normalized_pt_name in normalized_pt_names:
+                if normalized_pt_name and normalized_pt_name in normalized:
+                    return normalized_pt_lookup[normalized_pt_name]
+            if "ms" in normalized.split() or "materska" in normalized:
+                return normalized_pt_lookup.get("skolka", portion_name)
+            return portion_name
 
         # ── Gramage helpers ───────────────────────────────────────────────────────
         def _empty_group_totals() -> list[list[Decimal]]:
@@ -395,8 +419,13 @@ class MealPlanService:
             component: dict, coeff: Decimal, count: int, portion_name: str
         ) -> Decimal:
             if component.get("is_exception"):
+                canonical_portion_name = _canonical_portion_name(portion_name)
                 per_person = Decimal(
-                    str(component["counts_by_portion_type"].get(portion_name, "0"))
+                    str(
+                        component["counts_by_portion_type"].get(
+                            canonical_portion_name, "0"
+                        )
+                    )
                 )
                 return (per_person * count).quantize(Decimal("0.01"))
             return (Decimal(component["base_grams"]) * coeff * count).quantize(
@@ -485,7 +514,9 @@ class MealPlanService:
                         if not isinstance(portion_data, dict):
                             continue
 
-                        coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
+                        coeff = pt_by_name.get(
+                            _canonical_portion_name(portion_name), Decimal("1.0000")
+                        )
                         raw_menu_counts = portion_data.get("menuCounts", {})
                         menu_counts = (
                             raw_menu_counts if isinstance(raw_menu_counts, dict) else {}

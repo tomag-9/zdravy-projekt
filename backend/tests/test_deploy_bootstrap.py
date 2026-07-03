@@ -7,7 +7,7 @@ from api.management.commands.real_initial_seed_prevadzky import (
     EDUPAGE_VISIBLE_MEALS,
     SCHOOLS,
 )
-from api.models import ClientSettings, GlobalSettings, UserProfile
+from api.models import ClientSettings, Diet, GlobalSettings, UserProfile
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
 
 
@@ -42,6 +42,15 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         assert profile.is_edupage is True
         assert profile.mealsguest_url == school["mealsguest_url"]
         assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
+
+    dia = Diet.objects.get(name="DIA")
+    krasnanko = User.objects.get(username="krasnanko@edupage.local")
+    assert krasnanko.settings.visible_diets.filter(pk=dia.pk).exists()
+    assert (
+        not ClientSettings.objects.exclude(user=krasnanko)
+        .filter(visible_diets=dia)
+        .exists()
+    )
 
 
 @pytest.mark.django_db

@@ -363,22 +363,35 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     tintCells?: boolean;
   }) => {
     const resolved = positiveClass ?? "text-gray-900 font-medium";
+    const formatValue = (rawValue: string | undefined, component: Component) => {
+      if (!rawValue) return null;
+      const value = parseFloat(rawValue);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      if (component.is_exception || component.unit === "ks") {
+        return value.toLocaleString("sk-SK", {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 0,
+        });
+      }
+      return Math.round(value).toString();
+    };
     return (
     <>
       {col_groups.map((cg, gi) => {
         const grams = col_grams[gi] || [];
         const tint = tintCells ? colGroupColors[gi].cellBg : "";
-        return cg.components.map((_, ci) => (
-          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
-            {grams[ci] ? (
-              <span className={parseFloat(grams[ci]) > 0 ? resolved : "text-gray-300"}>
-                {parseFloat(grams[ci]) > 0 ? Math.round(parseFloat(grams[ci])) : "—"}
-              </span>
-            ) : (
-              <span className="text-gray-200">—</span>
-            )}
-          </td>
-        ));
+        return cg.components.map((component, ci) => {
+          const formatted = formatValue(grams[ci], component);
+          return (
+            <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
+              {formatted ? (
+                <span className={resolved}>{formatted}</span>
+              ) : (
+                <span className="text-gray-200">—</span>
+              )}
+            </td>
+          );
+        });
       })}
     </>
     );
@@ -413,11 +426,23 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const TotalCells = () => (
     <>
       {col_groups.map((cg, gi) =>
-        cg.components.map((_, ci) => (
-          <td key={`${gi}-${ci}`} className="px-2 py-2 text-right tabular-nums text-sm font-bold text-white">
-            {totals[gi]?.[ci] ? Math.round(parseFloat(totals[gi][ci])) : 0}
-          </td>
-        ))
+        cg.components.map((component, ci) => {
+          const value = parseFloat(totals[gi]?.[ci] ?? "");
+          const formatted =
+            Number.isFinite(value) && value > 0
+              ? component.is_exception || component.unit === "ks"
+                ? value.toLocaleString("sk-SK", {
+                    maximumFractionDigits: 2,
+                    minimumFractionDigits: 0,
+                  })
+                : Math.round(value).toString()
+              : "0";
+          return (
+            <td key={`${gi}-${ci}`} className="px-2 py-2 text-right tabular-nums text-sm font-bold text-white">
+              {formatted}
+            </td>
+          );
+        })
       )}
     </>
   );
