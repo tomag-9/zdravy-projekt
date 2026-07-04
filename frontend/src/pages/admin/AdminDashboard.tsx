@@ -9,7 +9,9 @@ const API = import.meta.env.VITE_API_URL || "/api";
 
 interface Component {
   label: string;
-  base_grams: string;
+  base_grams: string | null;
+  unit?: string;
+  is_exception?: boolean;
 }
 
 interface ColGroup {
@@ -88,31 +90,43 @@ interface MealColors {
   cardDietText: string;
 }
 
-const BREAKFAST_COLORS: MealColors = {
+const BREAKFAST_SNACK_COLORS: MealColors = {
   header1: "bg-amber-700", header2: "bg-amber-600", cellBg: "bg-amber-100",
   rowBorder: "border-l-4 border-amber-400",
   cardHeader: "bg-amber-700", cardStdBg: "bg-amber-50", cardDietBg: "bg-amber-100/60",
   cardStdText: "text-amber-900", cardDietText: "text-amber-700",
 };
 
-const LUNCH_COLORS: Record<string, MealColors> = {
+const SOUP_COLORS: MealColors = {
+  header1: "bg-sky-700", header2: "bg-sky-600", cellBg: "bg-sky-100",
+  rowBorder: "border-l-4 border-sky-400",
+  cardHeader: "bg-sky-700", cardStdBg: "bg-sky-50", cardDietBg: "bg-sky-100/60",
+  cardStdText: "text-sky-900", cardDietText: "text-sky-700",
+};
+
+// main_course used to hold one column per client-facing menu variant
+// (A/B/C/V), each with its own template. The catalog-based admin editor
+// normally saves a single variant-less selection (falls back to the "A"
+// palette below), but legacy/manually-created multi-variant data still
+// gets distinct colors per variant.
+const MAIN_COURSE_COLORS: Record<string, MealColors> = {
   A: {
-    header1: "bg-sky-700", header2: "bg-sky-600", cellBg: "bg-sky-100",
-    rowBorder: "border-l-4 border-sky-400",
-    cardHeader: "bg-sky-700", cardStdBg: "bg-sky-50", cardDietBg: "bg-sky-100/60",
-    cardStdText: "text-sky-900", cardDietText: "text-sky-700",
-  },
-  B: {
     header1: "bg-indigo-700", header2: "bg-indigo-600", cellBg: "bg-indigo-100",
     rowBorder: "border-l-4 border-indigo-400",
     cardHeader: "bg-indigo-700", cardStdBg: "bg-indigo-50", cardDietBg: "bg-indigo-100/60",
     cardStdText: "text-indigo-900", cardDietText: "text-indigo-700",
   },
-  C: {
+  B: {
     header1: "bg-violet-700", header2: "bg-violet-600", cellBg: "bg-violet-100",
     rowBorder: "border-l-4 border-violet-400",
     cardHeader: "bg-violet-700", cardStdBg: "bg-violet-50", cardDietBg: "bg-violet-100/60",
     cardStdText: "text-violet-900", cardDietText: "text-violet-700",
+  },
+  C: {
+    header1: "bg-fuchsia-700", header2: "bg-fuchsia-600", cellBg: "bg-fuchsia-100",
+    rowBorder: "border-l-4 border-fuchsia-400",
+    cardHeader: "bg-fuchsia-700", cardStdBg: "bg-fuchsia-50", cardDietBg: "bg-fuchsia-100/60",
+    cardStdText: "text-fuchsia-900", cardDietText: "text-fuchsia-700",
   },
   V: {
     header1: "bg-purple-700", header2: "bg-purple-600", cellBg: "bg-purple-100",
@@ -122,7 +136,7 @@ const LUNCH_COLORS: Record<string, MealColors> = {
   },
 };
 
-const SNACK_COLORS: MealColors = {
+const AFTERNOON_SNACK_COLORS: MealColors = {
   header1: "bg-emerald-700", header2: "bg-emerald-600", cellBg: "bg-emerald-100",
   rowBorder: "border-l-4 border-emerald-400",
   cardHeader: "bg-emerald-700", cardStdBg: "bg-emerald-50", cardDietBg: "bg-emerald-100/60",
@@ -130,9 +144,10 @@ const SNACK_COLORS: MealColors = {
 };
 
 function getMealColors(meal: string, variant: string): MealColors {
-  if (meal === "breakfast") return BREAKFAST_COLORS;
-  if (meal === "lunch") return LUNCH_COLORS[variant] ?? LUNCH_COLORS.A;
-  return SNACK_COLORS;
+  if (meal === "breakfast_snack") return BREAKFAST_SNACK_COLORS;
+  if (meal === "soup") return SOUP_COLORS;
+  if (meal === "main_course") return MAIN_COURSE_COLORS[variant] ?? MAIN_COURSE_COLORS.A;
+  return AFTERNOON_SNACK_COLORS;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -348,22 +363,35 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     tintCells?: boolean;
   }) => {
     const resolved = positiveClass ?? "text-gray-900 font-medium";
+    const formatValue = (rawValue: string | undefined, component: Component) => {
+      if (!rawValue) return null;
+      const value = parseFloat(rawValue);
+      if (!Number.isFinite(value) || value <= 0) return null;
+      if (component.is_exception || component.unit === "ks") {
+        return value.toLocaleString("sk-SK", {
+          maximumFractionDigits: 2,
+          minimumFractionDigits: 0,
+        });
+      }
+      return Math.round(value).toString();
+    };
     return (
     <>
       {col_groups.map((cg, gi) => {
         const grams = col_grams[gi] || [];
         const tint = tintCells ? colGroupColors[gi].cellBg : "";
-        return cg.components.map((_, ci) => (
-          <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
-            {grams[ci] ? (
-              <span className={parseFloat(grams[ci]) > 0 ? resolved : "text-gray-300"}>
-                {parseFloat(grams[ci]) > 0 ? Math.round(parseFloat(grams[ci])) : "—"}
-              </span>
-            ) : (
-              <span className="text-gray-200">—</span>
-            )}
-          </td>
-        ));
+        return cg.components.map((component, ci) => {
+          const formatted = formatValue(grams[ci], component);
+          return (
+            <td key={`${gi}-${ci}`} className={`px-2 py-1.5 text-right tabular-nums text-xs ${tint} ${extraCellClass}`}>
+              {formatted ? (
+                <span className={resolved}>{formatted}</span>
+              ) : (
+                <span className="text-gray-200">—</span>
+              )}
+            </td>
+          );
+        });
       })}
     </>
     );
@@ -398,11 +426,23 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const TotalCells = () => (
     <>
       {col_groups.map((cg, gi) =>
-        cg.components.map((_, ci) => (
-          <td key={`${gi}-${ci}`} className="px-2 py-2 text-right tabular-nums text-sm font-bold text-white">
-            {totals[gi]?.[ci] ? Math.round(parseFloat(totals[gi][ci])) : 0}
-          </td>
-        ))
+        cg.components.map((component, ci) => {
+          const value = parseFloat(totals[gi]?.[ci] ?? "");
+          const formatted =
+            Number.isFinite(value) && value > 0
+              ? component.is_exception || component.unit === "ks"
+                ? value.toLocaleString("sk-SK", {
+                    maximumFractionDigits: 2,
+                    minimumFractionDigits: 0,
+                  })
+                : Math.round(value).toString()
+              : "0";
+          return (
+            <td key={`${gi}-${ci}`} className="px-2 py-2 text-right tabular-nums text-sm font-bold text-white">
+              {formatted}
+            </td>
+          );
+        })
       )}
     </>
   );
@@ -442,7 +482,11 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                     className={`px-2 py-1.5 text-center font-medium ${colGroupColors[gi].header2} ${ci === 0 ? "border-l border-white/20" : ""}`}
                   >
                     {comp.label}
-                    <span className="block text-[10px] opacity-60">{comp.base_grams}g</span>
+                    <span className="block text-[10px] opacity-60">
+                      {comp.is_exception
+                        ? `podľa vekovej skupiny (${comp.unit ?? "ks"})`
+                        : `${comp.base_grams}${comp.unit ?? "g"}`}
+                    </span>
                   </th>
                 ))
               )}

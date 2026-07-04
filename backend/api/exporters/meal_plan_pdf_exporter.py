@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 
+from ..models import MealCategory
 from .pdf_exporter import PDFFontManager
 
 
@@ -48,6 +49,7 @@ class MealPlanPDFExporter:
         enrolled = gramage["enrolled_summary"]
         sections = gramage["sections"]
         portion_names = [e["portion_type"] for e in enrolled]
+        unit_columns = self._unit_columns(sections)
 
         elements = []
 
@@ -86,6 +88,7 @@ class MealPlanPDFExporter:
         header = (
             ["Šablóna", "Základ (g)"]
             + [f"{name}" for name in portion_names]
+            + [self._unit_column_label(col) for col in unit_columns]
             + ["Celkom (g)"]
         )
 
@@ -105,18 +108,41 @@ class MealPlanPDFExporter:
                 counts_by_pt = {
                     b["portion_type"]: b["total_grams"] for b in item["breakdown"]
                 }
+                units_by_col = {
+                    (
+                        u.get("component_label", ""),
+                        u.get("unit", "ks"),
+                        u["portion_type"],
+                    ): u["total_units"]
+                    for u in item.get("unit_breakdown", [])
+                }
                 row = (
                     [item["template_name"], item["base_weight_grams"]]
                     + [counts_by_pt.get(n, "0.00") for n in portion_names]
+                    + [
+                        units_by_col.get(
+                            (col["component_label"], col["unit"], col["portion_type"]),
+                            "",
+                        )
+                        for col in unit_columns
+                    ]
                     + [item["item_total_grams"]]
                 )
                 table_data.append(row)
 
-            total_row = ["SPOLU", ""] + [""] * len(portion_names) + [section_total]
+            total_row = (
+                ["SPOLU", ""]
+                + [""] * len(portion_names)
+                + [""] * len(unit_columns)
+                + [section_total]
+            )
             table_data.append(total_row)
 
             col_widths = (
-                [5 * cm, 2.5 * cm] + [2.5 * cm] * len(portion_names) + [2.5 * cm]
+                [5 * cm, 2.5 * cm]
+                + [2.5 * cm] * len(portion_names)
+                + [2.5 * cm] * len(unit_columns)
+                + [2.5 * cm]
             )
 
             t = Table(table_data, colWidths=col_widths)
@@ -143,24 +169,15 @@ class MealPlanPDFExporter:
             elements.append(t)
             elements.append(Spacer(1, 0.4 * cm))
 
-        make_section_table(
-            "Raňajky",
-            sections["breakfast"]["items"],
-            sections["breakfast"]["section_total_grams"],
-        )
-
-        for variant, variant_data in sorted(sections["lunch"].items()):
+        # Single source of truth for category labels: MealCategory.choices.
+        SECTION_LABELS = dict(MealCategory.choices)
+        for category, label in SECTION_LABELS.items():
+            section = sections.get(category, {})
             make_section_table(
-                f"Obed – Menu {variant}",
-                variant_data["items"],
-                variant_data["section_total_grams"],
+                label,
+                section.get("items", []),
+                section.get("section_total_grams", "0.00"),
             )
-
-        make_section_table(
-            "Olovrant",
-            sections["snack"]["items"],
-            sections["snack"]["section_total_grams"],
-        )
 
         # Grand total
         elements.append(Spacer(1, 0.3 * cm))
@@ -201,3 +218,32 @@ class MealPlanPDFExporter:
             fontSize=size,
             leading=size + 2,
         )
+
+    @staticmethod
+    def _unit_columns(sections: dict) -> list[dict]:
+        columns: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for section in sections.values():
+            for item in section.get("items", []):
+                for unit in item.get("unit_breakdown", []):
+                    key = (
+                        unit.get("component_label", ""),
+                        unit.get("unit", "ks"),
+                        unit["portion_type"],
+                    )
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    columns.append(
+                        {
+                            "component_label": key[0],
+                            "unit": key[1],
+                            "portion_type": key[2],
+                        }
+                    )
+        return columns
+
+    @staticmethod
+    def _unit_column_label(column: dict) -> str:
+        label = column["component_label"] or "Kusy"
+        return f"{column['portion_type']} - {label} ({column['unit']})"

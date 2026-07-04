@@ -3,6 +3,7 @@ Idempotent reference data seeding — safe to run on every deploy in any environ
 
 Seeds system-level lookup data that must exist before the app is usable:
   - PortionType rows (Jasle, Škôlka, ZŠ 1.stupeň, ZŠ 2.stupeň, Dospelý (SŠ))
+  - MealTemplate catalog rows (seed_meal_weight_catalog)
 
 Uses update_or_create so it is safe to run repeatedly (no duplicates)
 while keeping coefficients and sort order in sync.
@@ -12,10 +13,11 @@ Usage:
 """
 
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from api.models import ClientSettings, Diet, PortionType
-from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
+from api.reference_data import ALL_DIETS, DEFAULT_DIET_NAMES
 
 PORTION_TYPES = [
     {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
@@ -30,6 +32,8 @@ class Command(BaseCommand):
     help = "Seed idempotent reference data (portion types). Safe for all environments."
 
     def handle(self, *args, **options):
+        call_command("seed_meal_weight_catalog", verbosity=options.get("verbosity", 1))
+
         created_count = 0
         for pt_data in PORTION_TYPES:
             _, created = PortionType.objects.update_or_create(
@@ -44,7 +48,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
         diet_created_count = 0
-        for name, description in DEFAULT_DIETS:
+        for name, description in ALL_DIETS:
             _, created = Diet.objects.update_or_create(
                 name=name,
                 defaults={"description": description, "is_active": True},

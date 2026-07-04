@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 from typing import List
 
+from ..models import MealCategory
+
 
 class MealPlanXLSXExporter:
     """
@@ -15,10 +17,8 @@ class MealPlanXLSXExporter:
     Multi-day → one sheet per day + a "Súhrn" summary sheet.
     """
 
-    SECTION_LABELS = {
-        "breakfast": "Raňajky",
-        "snack": "Olovrant",
-    }
+    # Single source of truth for category labels: MealCategory.choices.
+    SECTION_LABELS = dict(MealCategory.choices)
 
     def __init__(self, gramage_list: List[dict]):
         self.gramage_list = gramage_list
@@ -83,6 +83,7 @@ class MealPlanXLSXExporter:
         date_str = gramage["date"]
         enrolled = gramage["enrolled_summary"]
         sections = gramage["sections"]
+        unit_columns = self._unit_columns(sections)
 
         # Title
         ws.append([f"Jedálniček — {date_str}"])
@@ -104,7 +105,10 @@ class MealPlanXLSXExporter:
         # Column headers for meal items
         portion_names = [e["portion_type"] for e in enrolled]
         header_row = (
-            ["Sekcia", "Šablóna", "Základ (g)"] + portion_names + ["Celkom (g)"]
+            ["Sekcia", "Šablóna", "Základ (g)"]
+            + portion_names
+            + [self._unit_column_label(col) for col in unit_columns]
+            + ["Celkom (g)"]
         )
         ws.append(header_row)
         for cell in ws[ws.max_row]:
@@ -129,8 +133,23 @@ class MealPlanXLSXExporter:
                 counts_by_pt = {
                     b["portion_type"]: b["total_grams"] for b in item["breakdown"]
                 }
+                units_by_col = {
+                    (
+                        u.get("component_label", ""),
+                        u.get("unit", "ks"),
+                        u["portion_type"],
+                    ): u["total_units"]
+                    for u in item.get("unit_breakdown", [])
+                }
                 portion_cols = [
                     counts_by_pt.get(name, "0.00") for name in portion_names
+                ]
+                unit_cols = [
+                    units_by_col.get(
+                        (col["component_label"], col["unit"], col["portion_type"]),
+                        "",
+                    )
+                    for col in unit_columns
                 ]
                 row = (
                     [
@@ -139,47 +158,37 @@ class MealPlanXLSXExporter:
                         item["base_weight_grams"],
                     ]
                     + portion_cols
+                    + unit_cols
                     + [item["item_total_grams"]]
                 )
                 ws.append(row)
 
             # Section total row
             total_row = (
-                ["", "SPOLU sekcia", ""] + [""] * len(portion_names) + [section_total]
+                ["", "SPOLU sekcia", ""]
+                + [""] * len(portion_names)
+                + [""] * len(unit_columns)
+                + [section_total]
             )
             ws.append(total_row)
             for cell in ws[ws.max_row]:
                 cell.font = total_font
             grand_total += float(section_total)
 
-        # Breakfast
-        write_section(
-            "Raňajky",
-            sections["breakfast"]["items"],
-            sections["breakfast"]["section_total_grams"],
-        )
-
-        # Lunch variants
-        for variant, variant_data in sorted(sections["lunch"].items()):
+        for category, label in self.SECTION_LABELS.items():
+            section = sections.get(category, {})
             write_section(
-                f"Obed – Menu {variant}",
-                variant_data["items"],
-                variant_data["section_total_grams"],
+                label,
+                section.get("items", []),
+                section.get("section_total_grams", "0.00"),
             )
-
-        # Snack
-        write_section(
-            "Olovrant",
-            sections["snack"]["items"],
-            sections["snack"]["section_total_grams"],
-        )
 
         # Grand total
         ws.append([])
         gt_row = (
-            ["CELKOM (g)", ""]
+            ["CELKOM (g)", "", ""]
             + [""] * len(portion_names)
-            + [""]
+            + [""] * len(unit_columns)
             + [gramage["grand_total_grams"]]
         )
         ws.append(gt_row)
@@ -192,6 +201,35 @@ class MealPlanXLSXExporter:
             ws.column_dimensions[col_cells[0].column_letter].width = min(
                 max_len + 4, 40
             )
+
+    @staticmethod
+    def _unit_columns(sections: dict) -> list[dict]:
+        columns: list[dict] = []
+        seen: set[tuple[str, str, str]] = set()
+        for section in sections.values():
+            for item in section.get("items", []):
+                for unit in item.get("unit_breakdown", []):
+                    key = (
+                        unit.get("component_label", ""),
+                        unit.get("unit", "ks"),
+                        unit["portion_type"],
+                    )
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    columns.append(
+                        {
+                            "component_label": key[0],
+                            "unit": key[1],
+                            "portion_type": key[2],
+                        }
+                    )
+        return columns
+
+    @staticmethod
+    def _unit_column_label(column: dict) -> str:
+        label = column["component_label"] or "Kusy"
+        return f"{column['portion_type']} - {label} ({column['unit']})"
 
     def _write_summary_sheet(
         self, ws, title_font, header_font, header_fill, total_font, center

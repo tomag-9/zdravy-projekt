@@ -7,24 +7,35 @@ from urllib.parse import quote
 from django.db.models import Prefetch
 from django.http import HttpResponse
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, serializers, status, viewsets
+from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..models import DailyMealPlan, JedalnicekEntry, MealPlanItem, PortionType
+from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
-from ..serializers_menu import DailyMealPlanSerializer, PortionTypeSerializer
+from ..serializers_menu import (
+    DailyMealPlanSerializer,
+    MealTemplateSerializer,
+    PortionTypeSerializer,
+)
 from ..services.meal_plan_service import MealPlanService
 from ..utils import parse_date_param
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
-    """List portion types; non-staff see only active entries."""
+class PortionTypeViewSet(viewsets.ModelViewSet):
+    """
+    List portion types (age-group coefficients); non-staff see only active
+    entries and cannot write. Staff can adjust an existing coefficient.
+    """
 
     serializer_class = PortionTypeSerializer
-    permission_classes = [permissions.IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
 
     def get_queryset(self):
         qs = PortionType.objects.all()
@@ -33,31 +44,29 @@ class PortionTypeViewSet(viewsets.ReadOnlyModelViewSet):
         return qs
 
 
-class JedalnicekEntrySerializer(serializers.ModelSerializer):
-    diet_name = serializers.CharField(
-        source="diet.name", read_only=True, allow_null=True
-    )
-    category_display = serializers.CharField(
-        source="get_category_display", read_only=True
-    )
+class MealTemplateViewSet(viewsets.ModelViewSet):
+    """
+    List meal templates (the fixed weight catalog); filterable by category.
+    Non-staff see only active entries and cannot write. Staff can add a new
+    catalog entry (e.g. a new "Hlavný chod 8") if the physical weight table
+    ever gains a row, without needing a deploy/management command.
+    """
 
-    class Meta:
-        model = JedalnicekEntry
-        fields = [
-            "id",
-            "upload",
-            "date",
-            "category",
-            "category_display",
-            "menu_variant",
-            "diet",
-            "diet_name",
-            "name",
-            "weight_grams",
-            "unit",
-            "portion_weights",
-        ]
-        read_only_fields = ["id", "upload"]
+    serializer_class = MealTemplateSerializer
+
+    def get_permissions(self):
+        if self.action in ["list", "retrieve"]:
+            return [permissions.IsAuthenticated()]
+        return [permissions.IsAdminUser()]
+
+    def get_queryset(self):
+        qs = MealTemplate.objects.all()
+        if not self.request.user.is_staff:
+            qs = qs.filter(is_active=True)
+        category = self.request.query_params.get("category")
+        if category:
+            qs = qs.filter(category=category)
+        return qs
 
 
 @extend_schema_view(
@@ -110,40 +119,11 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             return super().list(request, *args, **kwargs)
 
         queryset = self.filter_queryset(self.get_queryset())
-        plan_dates = {plan.date for plan in queryset}
         payload = list(
             DailyMealPlanSerializer(
                 queryset, many=True, context={"request": request}
             ).data
         )
-
-        import_qs = JedalnicekEntry.objects.all()
-        from_date = request.query_params.get("from")
-        to_date = request.query_params.get("to")
-        if from_date:
-            import_qs = import_qs.filter(date__gte=parse_date_param(from_date, "from"))
-        if to_date:
-            import_qs = import_qs.filter(date__lte=parse_date_param(to_date, "to"))
-
-        import_dates = sorted(
-            set(import_qs.values_list("date", flat=True)) - plan_dates,
-            reverse=True,
-        )
-        payload.extend(
-            {
-                "id": None,
-                "date": import_date.isoformat(),
-                "notes": "",
-                "items": [],
-                "enrolled_counts": [],
-                "created_by": None,
-                "created_at": None,
-                "updated_at": None,
-                "has_import": True,
-            }
-            for import_date in import_dates
-        )
-
         return Response(payload)
 
     @action(detail=False, methods=["get"], url_path="by-date")
@@ -157,45 +137,24 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             )
         date = parse_date_param(date_str)
 
-        import_entry_list = list(
-            JedalnicekEntry.objects.filter(date=date)
-            .select_related("diet")
-            .order_by("category", "menu_variant", "diet__name")
-        )
-        import_data = JedalnicekEntrySerializer(import_entry_list, many=True).data
-
-        has_import = bool(import_entry_list)
-
         try:
             plan = self.get_queryset().get(date=date)
         except DailyMealPlan.DoesNotExist:
-            payload = {
-                "exists": False,
-                "date": str(date),
-                "notes": "",
-                "items": [],
-            }
-            if has_import:
-                payload.update(
-                    {
-                        "import_entries": import_data,
-                        "has_import": True,
-                    }
-                )
-            return Response(payload)
-
-        payload = {
-            "exists": True,
-            **DailyMealPlanSerializer(plan, context={"request": request}).data,
-        }
-        if has_import:
-            payload.update(
+            return Response(
                 {
-                    "import_entries": import_data,
-                    "has_import": True,
+                    "exists": False,
+                    "date": str(date),
+                    "notes": "",
+                    "items": [],
                 }
             )
-        return Response(payload)
+
+        return Response(
+            {
+                "exists": True,
+                **DailyMealPlanSerializer(plan, context={"request": request}).data,
+            }
+        )
 
     @action(detail=True, methods=["get"], url_path="gramage-report")
     def gramage_report(self, request, pk=None):

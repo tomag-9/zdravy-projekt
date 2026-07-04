@@ -50,10 +50,46 @@ class PortionTypeSerializer(serializers.ModelSerializer):
         return int(obj.coefficient * 100)
 
 
+_COMPONENT_NUMERIC_UNITS = ("g", "ml")
+
+
+def _weight_label_from_components(
+    components: list, unit_exception: dict | None = None
+) -> str:
+    label = " + ".join(
+        (
+            str(c["grams"])
+            if c.get("unit") == "text"
+            else f"{c['grams']}{c.get('unit', 'g')}"
+        )
+        for c in components
+        if c.get("grams") not in (None, "")
+    )
+    if unit_exception:
+        label += f" + {unit_exception['component_label']} (ks podľa vekovej skupiny)"
+    return label
+
+
+def _base_weight_grams_from_components(components: list) -> Decimal:
+    total = sum(
+        (
+            Decimal(str(c["grams"]))
+            for c in components
+            if c.get("unit", "g") in _COMPONENT_NUMERIC_UNITS
+            and c.get("grams") not in (None, "")
+        ),
+        Decimal("0"),
+    )
+    return total.quantize(Decimal("0.01"))
+
+
 class MealTemplateSerializer(serializers.ModelSerializer):
     # base_weight_grams is auto-computed — read-only from the API consumer's perspective  # noqa: E501
     base_weight_grams = serializers.DecimalField(
         max_digits=8, decimal_places=2, read_only=True
+    )
+    weight_label = serializers.CharField(
+        max_length=100, required=False, allow_blank=True
     )
 
     diet_name = serializers.SerializerMethodField()
@@ -66,6 +102,8 @@ class MealTemplateSerializer(serializers.ModelSerializer):
             "name",
             "weight_label",
             "base_weight_grams",
+            "components",
+            "unit_exception",
             "menu_variant",
             "diet",
             "diet_name",
@@ -75,25 +113,34 @@ class MealTemplateSerializer(serializers.ModelSerializer):
     def get_diet_name(self, obj) -> str | None:
         return obj.diet.name if obj.diet_id else None
 
-    def validate_weight_label(self, value: str) -> str:
-        try:
-            parse_composition_grams(value)
-        except ValueError as exc:
-            raise serializers.ValidationError(INVALID_WEIGHT_LABEL_MESSAGE) from exc
-        return value
-
-    def _set_base_weight(self, validated_data: dict) -> dict:
-        if "weight_label" in validated_data:
-            validated_data["base_weight_grams"] = parse_composition_grams(
-                validated_data["weight_label"]
+    def validate(self, attrs: dict) -> dict:
+        # A weight description is required from either the structured
+        # `components` list (preferred — supports g/ml/text units) or a
+        # manually-typed `weight_label` string (legacy, "g" values only).
+        components = attrs.get("components") or getattr(
+            self.instance, "components", None
+        )
+        unit_exception = attrs.get("unit_exception")
+        if "unit_exception" not in attrs:
+            unit_exception = getattr(self.instance, "unit_exception", None)
+        weight_label = attrs.get("weight_label")
+        if components:
+            attrs["weight_label"] = weight_label or _weight_label_from_components(
+                components, unit_exception
             )
-        return validated_data
-
-    def create(self, validated_data):
-        return super().create(self._set_base_weight(validated_data))
-
-    def update(self, instance, validated_data):
-        return super().update(instance, self._set_base_weight(validated_data))
+            attrs["base_weight_grams"] = _base_weight_grams_from_components(components)
+        elif weight_label:
+            try:
+                attrs["base_weight_grams"] = parse_composition_grams(weight_label)
+            except ValueError as exc:
+                raise serializers.ValidationError(
+                    {"weight_label": INVALID_WEIGHT_LABEL_MESSAGE}
+                ) from exc
+        elif self.instance is None:
+            raise serializers.ValidationError(
+                {"components": "Zadajte aspoň jednu zložku alebo gramáž."}
+            )
+        return attrs
 
 
 class MealPlanItemWriteSerializer(serializers.Serializer):
@@ -130,6 +177,11 @@ class EnrolledCountSerializer(serializers.ModelSerializer):
 class DailyMealPlanSerializer(serializers.ModelSerializer):
     items = MealPlanItemSerializer(many=True, read_only=True)
     enrolled_counts = EnrolledCountSerializer(many=True, read_only=True)
+    # Explicitly declared (without the auto-generated UniqueValidator DRF would
+    # otherwise attach because DailyMealPlan.date has unique=True): create()
+    # below is an idempotent upsert by date (get_or_create), so POSTing the
+    # same date twice to update an existing day's plan must not 400.
+    date = serializers.DateField()
     # Write-only fields for nested creation
     items_write = MealPlanItemWriteSerializer(
         many=True, write_only=True, required=False

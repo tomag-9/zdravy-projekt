@@ -17,3 +17,9 @@ DEFAULT_DIETS = [
 ]
 
 DEFAULT_DIET_NAMES = [name for name, _description in DEFAULT_DIETS]
+
+OPERATION_SPECIFIC_DIETS = [
+    ("DIA", "Diabetická strava."),
+]
+
+ALL_DIETS = DEFAULT_DIETS + OPERATION_SPECIFIC_DIETS
