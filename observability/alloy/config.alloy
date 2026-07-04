@@ -6,10 +6,10 @@ discovery.docker "containers" {
 discovery.relabel "docker_logs" {
 	targets = discovery.docker.containers.targets
 
-	# Only ship logs for containers that opt in via the `logging.job` compose
-	# label (backend, celery, celery-beat, frontend). Without this, Alloy tails
-	# every container on the host, including Dokploy's own infra (e.g. Traefik),
-	# which adds noise and can trip Loki's retention window with old backlog.
+	// Only ship logs for containers that opt in via the `logging.job` compose
+	// label (backend, celery, celery-beat, frontend). Without this, Alloy tails
+	// every container on the host, including Dokploy's own infra (e.g. Traefik),
+	// which adds noise and can trip Loki's retention window with old backlog.
 	rule {
 		source_labels = ["__meta_docker_container_label_logging_job"]
 		regex         = ".+"
