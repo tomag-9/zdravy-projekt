@@ -16,6 +16,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from api.management.commands.init_roles import DEMO_ADMIN_EMAIL, DEMO_OPERATION_EMAIL
 
 from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
+from ..metrics import login_attempts_total
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +159,12 @@ class EmailTokenObtainPairView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except Exception:
+            login_attempts_total.labels(result="failure").inc()
+            raise
+        login_attempts_total.labels(result="success").inc()
 
         refresh_str: str = serializer.validated_data["refresh"]
         access_str: str = serializer.validated_data["access"]

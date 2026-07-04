@@ -371,6 +371,11 @@ Configure the stack from [env/observability.example](env/observability.example).
 Alloy tails Docker logs through the Docker socket and scrapes Django metrics from
 `ALLOY_METRICS_TARGET` over the Dokploy network.
 
+See [observability/README.md](observability/README.md) for the full production
+setup checklist, the importable Grafana dashboard
+(`observability/grafana/dashboards/backend-overview.json`), and the
+recommended alert rules.
+
 ## 🐛 Troubleshooting
 
 ### Database connection issues
