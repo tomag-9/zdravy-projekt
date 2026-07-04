@@ -62,8 +62,14 @@ services:
       - prometheus.io/path=/metrics/
       - prometheus.io/port=8000
     networks:
-      - app
-      - dokploy-network
+      app:
+      dokploy-network:
+        # Stable, hyphen-only DNS alias for Alloy to scrape /metrics/ over.
+        # Django's Host-header validation rejects the Swarm-assigned service
+        # name (it contains underscores, which fail RFC 1034/1035 validation),
+        # so Alloy must target this alias instead of the raw service name.
+        aliases:
+          - zdravy-staging-backend
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 30s

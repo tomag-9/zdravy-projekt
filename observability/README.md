@@ -28,9 +28,17 @@ Custom business metric: `auth_login_attempts_total{result="success"|"failure"}`
    - `GRAFANA_LOKI_URL`, `GRAFANA_LOKI_USER`, `GRAFANA_LOKI_API_KEY`
    - `GRAFANA_PROM_URL`, `GRAFANA_PROM_USER`, `GRAFANA_PROM_API_KEY`
    - `ALLOY_ENVIRONMENT` (`production` / `staging`)
-   - `ALLOY_METRICS_TARGET` — the backend's address on `dokploy-network`
-     (e.g. `zdravy-prod-backend:8000`; check the actual Dokploy service DNS
-     name, it's not always just `backend`)
+   - `ALLOY_METRICS_TARGET` — **use the network alias defined on the backend
+     service**, not the raw Swarm service name:
+     `zdravy-prod-backend:8000` for `prod.yml`,
+     `zdravy-staging-backend:8000` for `staging.yml`. Don't use the Swarm
+     task/service name Dokploy generates (e.g.
+     `zdravy-projekt-appstack-<id>_backend`) — it contains underscores, and
+     Django's Host-header validation rejects any Host value that fails
+     RFC 1034/1035 (`400 DisallowedHost`, silently swallowed as scrape
+     failures with no metrics in Grafana). The alias is defined explicitly in
+     `compose/prod.yml`/`compose/staging.yml` and allow-listed in
+     `ALLOWED_HOSTS` in the matching settings file for exactly this reason.
    - `DOKPLOY_NETWORK` if it differs from `dokploy-network`
 3. **Deploy the Alloy stack** (once per host, not per app stack):
    ```bash
