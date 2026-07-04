@@ -23,6 +23,8 @@ if "django_prometheus.middleware.PrometheusAfterMiddleware" not in MIDDLEWARE:
 ALLOWED_HOSTS = [
     os.environ.get("PROD_HOST", "example.com"),
     os.environ.get("PROD_HOST_WWW", "www.example.com"),
+    # Docker network alias Alloy scrapes /metrics/ over (compose/prod.yml).
+    "zdravy-prod-backend",
 ]
 ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]
 

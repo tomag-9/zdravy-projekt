@@ -10,5 +10,8 @@ GRAFANA_PROM_API_KEY=grafana-prom-api-key
 
 # Alloy metadata / scrape targets
 ALLOY_ENVIRONMENT=production
-ALLOY_METRICS_TARGET=backend:8000
+# Use the network alias defined on the backend service (compose/prod.yml or
+# compose/staging.yml), not the raw Swarm service name — the Swarm name
+# contains underscores, which Django's Host-header validation rejects.
+ALLOY_METRICS_TARGET=zdravy-prod-backend:8000
 DOKPLOY_NETWORK=dokploy-network

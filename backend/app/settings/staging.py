@@ -25,6 +25,8 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "192.168.0.14",
     os.environ.get("STAGING_HOST", ""),
+    # Docker network alias Alloy scrapes /metrics/ over (compose/staging.yml).
+    "zdravy-staging-backend",
 ]
 ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]  # Remove empty strings
 
