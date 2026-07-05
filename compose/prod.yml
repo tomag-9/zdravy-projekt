@@ -42,7 +42,7 @@ services:
       retries: 3
       start_period: 20s
     deploy:
-      replicas: ${BACKEND_REPLICAS:-2}
+      replicas: ${BACKEND_REPLICAS:-1}
       update_config:
         parallelism: 1
         delay: 10s
