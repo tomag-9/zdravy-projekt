@@ -28,17 +28,23 @@ Custom business metric: `auth_login_attempts_total{result="success"|"failure"}`
    - `GRAFANA_LOKI_URL`, `GRAFANA_LOKI_USER`, `GRAFANA_LOKI_API_KEY`
    - `GRAFANA_PROM_URL`, `GRAFANA_PROM_USER`, `GRAFANA_PROM_API_KEY`
    - `ALLOY_ENVIRONMENT` (`production` / `staging`)
-   - `ALLOY_METRICS_TARGET` — **use the network alias defined on the backend
-     service**, not the raw Swarm service name:
-     `zdravy-prod-backend:8000` for `prod.yml`,
-     `zdravy-staging-backend:8000` for `staging.yml`. Don't use the Swarm
-     task/service name Dokploy generates (e.g.
+   - `ALLOY_METRICS_TARGET` — use **`backend:8000`**. Don't use the
+     Swarm-generated task/service name Dokploy shows in `docker ps` (e.g.
      `zdravy-projekt-appstack-<id>_backend`) — it contains underscores, and
      Django's Host-header validation rejects any Host value that fails
      RFC 1034/1035 (`400 DisallowedHost`, silently swallowed as scrape
-     failures with no metrics in Grafana). The alias is defined explicitly in
-     `compose/prod.yml`/`compose/staging.yml` and allow-listed in
-     `ALLOWED_HOSTS` in the matching settings file for exactly this reason.
+     failures with no metrics in Grafana).
+     `backend` is the alias Compose implicitly assigns from the service name
+     in `compose/prod.yml`/`compose/staging.yml` (no config needed — it's
+     automatic), and it's allow-listed in `ALLOWED_HOSTS` in both settings
+     files for exactly this reason. A custom, more descriptive alias
+     (`zdravy-prod-backend`) was tried first but abandoned: this service is
+     attached to 3 networks (`app`, `dokploy-network`, plus the implicit
+     compose default) and Swarm's embedded DNS did not reliably register a
+     custom `TaskTemplate` alias for it — only the implicit service-name
+     alias (`backend`) resolved. Verified by exec-ing into a throwaway
+     container on `dokploy-network` and running `getent hosts backend` vs.
+     `getent hosts zdravy-prod-backend`.
    - `DOKPLOY_NETWORK` if it differs from `dokploy-network`
 3. **Deploy the Alloy stack** (once per host, not per app stack):
    ```bash
