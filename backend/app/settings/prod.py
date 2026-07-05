@@ -41,6 +41,11 @@ CORS_ALLOW_CREDENTIALS = True
 
 # Security settings
 SECURE_SSL_REDIRECT = True
+# Alloy scrapes /metrics/ over plain HTTP on the internal Docker network (no
+# TLS listener there, and it can't send X-Forwarded-Proto like the LB does),
+# so exempt only this path from the HTTPS redirect. Everything else still
+# enforces SECURE_SSL_REDIRECT.
+SECURE_REDIRECT_EXEMPT = [r"^metrics/?$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_BROWSER_XSS_FILTER = True
