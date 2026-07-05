@@ -89,7 +89,8 @@
           "text": "All",
           "value": "$__all"
         },
-        "label": "Environment"
+        "label": "Environment",
+        "allValue": ".*"
       }
     ]
   },
