@@ -10,8 +10,11 @@ GRAFANA_PROM_API_KEY=grafana-prom-api-key
 
 # Alloy metadata / scrape targets
 ALLOY_ENVIRONMENT=production
-# Use the network alias defined on the backend service (compose/prod.yml or
-# compose/staging.yml), not the raw Swarm service name — the Swarm name
-# contains underscores, which Django's Host-header validation rejects.
-ALLOY_METRICS_TARGET=zdravy-prod-backend:8000
+# Use "backend" (Compose's implicit alias, i.e. the service name in
+# compose/prod.yml / compose/staging.yml), not the raw Swarm-generated task
+# name — that one contains underscores, which Django's Host-header
+# validation rejects. A custom network alias was tried and abandoned:
+# Swarm's embedded DNS didn't reliably resolve it for this multi-network
+# service. "backend" is allow-listed in ALLOWED_HOSTS for exactly this.
+ALLOY_METRICS_TARGET=backend:8000
 DOKPLOY_NETWORK=dokploy-network

@@ -23,8 +23,13 @@ if "django_prometheus.middleware.PrometheusAfterMiddleware" not in MIDDLEWARE:
 ALLOWED_HOSTS = [
     os.environ.get("PROD_HOST", "example.com"),
     os.environ.get("PROD_HOST_WWW", "www.example.com"),
-    # Docker network alias Alloy scrapes /metrics/ over (compose/prod.yml).
-    "zdravy-prod-backend",
+    # Compose-implicit network alias (the service name) Alloy scrapes /metrics/
+    # over. A custom alias (e.g. "zdravy-prod-backend") was tried first, but
+    # Swarm's embedded DNS didn't reliably register custom TaskTemplate
+    # aliases for this service (it's attached to 3 networks, one external) —
+    # "backend" is the alias Compose assigns automatically and it always
+    # resolves, so use that instead.
+    "backend",
 ]
 ALLOWED_HOSTS = [h for h in ALLOWED_HOSTS if h]
 
