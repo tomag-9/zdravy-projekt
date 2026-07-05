@@ -76,6 +76,30 @@ interface GramageDashboard {
   count_summary: CountSection[];
 }
 
+type OrderMealKey = "breakfast" | "lunch" | "olovrant";
+
+interface OrderMealSummary {
+  menus: Record<string, number>;
+  diets: Record<string, number>;
+  total: number;
+}
+
+interface OrderReportRow {
+  user_id: number;
+  name: string;
+  email: string;
+  breakfast: OrderMealSummary;
+  lunch: OrderMealSummary;
+  olovrant: OrderMealSummary;
+  total: number;
+}
+
+interface OrderReport {
+  date: string;
+  rows: OrderReportRow[];
+  totals: Record<OrderMealKey, OrderMealSummary> & { grand: number };
+}
+
 // ── Meal color palette ────────────────────────────────────────────────────────
 
 interface MealColors {
@@ -191,6 +215,7 @@ const AdminDashboard: React.FC = () => {
   const actualToday = useMemo(() => toDateString(new Date()), []);
   const [date, setDate] = useState(maxDate);
   const [data, setData] = useState<GramageDashboard | null>(null);
+  const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -198,9 +223,18 @@ const AdminDashboard: React.FC = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setData(null);
+    setOrderReport(null);
     try {
       const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}`);
-      if (res.ok) setData(await res.json());
+      if (res.ok) {
+        const gramage: GramageDashboard = await res.json();
+        setData(gramage);
+
+        if (!gramage.meal_plan_id) {
+          const reportRes = await apiFetch(`${API}/admin/summary/daily-report/?date=${date}`);
+          if (reportRes.ok) setOrderReport(await reportRes.json());
+        }
+      }
     } catch (e) { logger.error(e); }
     finally { setLoading(false); }
   }, [apiFetch, date]);
@@ -227,6 +261,7 @@ const AdminDashboard: React.FC = () => {
 
   const isAtMax = date >= maxDate;
   const hasData = data && (data.rows.length > 0 || data.col_groups.length > 0);
+  const hasOrderCounts = Boolean(orderReport?.rows.some((row) => row.total > 0));
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500 pb-12">
@@ -294,7 +329,7 @@ const AdminDashboard: React.FC = () => {
       {/* Content */}
       {loading && <div className="text-center py-16 text-gray-400 text-sm">Načítavam dáta...</div>}
 
-      {!loading && data && !hasData && (
+      {!loading && data && !hasData && !hasOrderCounts && (
         <div className="text-center py-16 text-gray-400 text-sm italic">
           Pre tento deň nie sú žiadne dáta.
           {!data.meal_plan_id && (
@@ -304,6 +339,104 @@ const AdminDashboard: React.FC = () => {
       )}
 
       {!loading && data && hasData && <GramageTable data={data} />}
+      {!loading && data && !hasData && hasOrderCounts && orderReport && (
+        <OrderCountsTable report={orderReport} />
+      )}
+    </div>
+  );
+};
+
+// ── OrderCountsTable ─────────────────────────────────────────────────────────
+
+const MEAL_LABELS: Record<OrderMealKey, string> = {
+  breakfast: "Raňajky",
+  lunch: "Obed",
+  olovrant: "Olovrant",
+};
+
+const MEAL_KEYS: OrderMealKey[] = ["breakfast", "lunch", "olovrant"];
+
+function formatCounts(counts: Record<string, number>): string {
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${label}: ${count}`)
+    .join(", ");
+}
+
+const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
+  const rows = report.rows.filter((row) => row.total > 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="px-4 py-3 border-b border-amber-100 bg-amber-50">
+        <div className="text-sm font-semibold text-amber-900">
+          Počty objednávok bez gramáže
+        </div>
+        <div className="text-xs text-amber-700 mt-0.5">
+          Jedálniček pre tento deň nie je naplánovaný, preto sa zobrazujú iba objednané počty.
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-700 text-white">
+              <th className="px-4 py-3 text-left font-semibold min-w-[220px]">Prevádzka</th>
+              {MEAL_KEYS.map((meal) => (
+                <th key={meal} className="px-4 py-3 text-left font-semibold min-w-[180px]">
+                  {MEAL_LABELS[meal]}
+                </th>
+              ))}
+              <th className="px-4 py-3 text-center font-semibold min-w-[90px]">Spolu</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.user_id} className="border-b border-gray-100 hover:bg-gray-50">
+                <td className="px-4 py-3 font-semibold text-slate-800">
+                  {row.name}
+                  <div className="text-xs font-normal text-slate-400">{row.email}</div>
+                </td>
+                {MEAL_KEYS.map((meal) => {
+                  const mealData = row[meal];
+                  const menuText = formatCounts(mealData.menus);
+                  const dietText = formatCounts(mealData.diets);
+                  return (
+                    <td key={meal} className="px-4 py-3 align-top">
+                      {mealData.total > 0 ? (
+                        <div className="space-y-1">
+                          <div className="font-semibold tabular-nums text-slate-900">
+                            {mealData.total}
+                          </div>
+                          {menuText && <div className="text-xs text-slate-500">{menuText}</div>}
+                          {dietText && <div className="text-xs text-amber-700">{dietText}</div>}
+                        </div>
+                      ) : (
+                        <span className="text-gray-300">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-3 text-center font-bold tabular-nums text-slate-900">
+                  {row.total}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="bg-slate-100 border-t-2 border-slate-200">
+              <td className="px-4 py-3 font-bold text-slate-800">Spolu</td>
+              {MEAL_KEYS.map((meal) => (
+                <td key={meal} className="px-4 py-3 font-bold tabular-nums text-slate-800">
+                  {report.totals[meal].total > 0 ? report.totals[meal].total : "—"}
+                </td>
+              ))}
+              <td className="px-4 py-3 text-center font-bold tabular-nums text-slate-900">
+                {report.totals.grand}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   );
 };
