@@ -1,4 +1,4 @@
-import React from "react";
+import { forwardRef } from "react";
 import { useOnboarding } from "../../../../context/OnboardingContext";
 import { TOUR_STEPS } from "./tourSteps";
 
@@ -8,68 +8,61 @@ interface Props {
   arrowPlacement: "top" | "bottom" | "left" | "right";
 }
 
-const TourTooltip: React.FC<Props> = ({ top, left, arrowPlacement }) => {
-  const { currentStep, totalSteps, nextStep, prevStep, completeTour, skipTour } =
-    useOnboarding();
-  const step = TOUR_STEPS[currentStep];
-  const isLast = currentStep === totalSteps - 1;
-  const isFirst = currentStep === 0;
+// The arrow sits on the edge of the tooltip facing the highlighted element,
+// i.e. the opposite edge from where the tooltip was placed relative to it.
+const arrowEdgeForPlacement: Record<string, string> = {
+  top: "zp-tour-arrow--bottom",
+  bottom: "zp-tour-arrow--top",
+  left: "zp-tour-arrow--right",
+  right: "zp-tour-arrow--left",
+};
 
-  const arrowClass: Record<string, string> = {
-    top: "top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 border-t-0 border-l-0",
-    bottom:
-      "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 border-b-0 border-r-0",
-    left: "left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 border-l-0 border-b-0",
-    right:
-      "right-0 top-1/2 -translate-y-1/2 translate-x-1/2 border-r-0 border-t-0",
-  };
+const TourTooltip = forwardRef<HTMLDivElement, Props>(
+  ({ top, left, arrowPlacement }, ref) => {
+    const { currentStep, totalSteps, nextStep, prevStep, completeTour, skipTour } =
+      useOnboarding();
+    const step = TOUR_STEPS[currentStep];
+    const isLast = currentStep === totalSteps - 1;
+    const isFirst = currentStep === 0;
 
-  return (
-    <div
-      className="fixed z-50 w-72 bg-white rounded-2xl shadow-2xl border border-indigo-100 p-4"
-      style={{ top, left }}
-    >
-      {/* Arrow */}
+    return (
       <div
-        className={`absolute w-3 h-3 bg-white border border-indigo-100 rotate-45 ${arrowClass[arrowPlacement]}`}
-      />
+        ref={ref}
+        className="zp-tour-tooltip"
+        style={{ top, left }}
+      >
+        <div className={`zp-tour-arrow ${arrowEdgeForPlacement[arrowPlacement]}`} />
 
-      {/* Step counter */}
-      <p className="text-xs text-slate-400 text-right mb-1">
-        Krok {currentStep + 1} z {totalSteps}
-      </p>
+        <p className="zp-tour-step-counter">
+          Krok {currentStep + 1} z {totalSteps}
+        </p>
 
-      {/* Content */}
-      <p className="text-base font-bold text-slate-900 mb-1">{step.title}</p>
-      <p className="text-sm text-slate-600 mb-4">{step.body}</p>
+        <p className="zp-tour-title">{step.title}</p>
+        <p className="zp-tour-body">{step.body}</p>
 
-      {/* Actions */}
-      <div className="flex items-center justify-between gap-2">
-        <button
-          onClick={() => skipTour()}
-          className="text-sm text-slate-400 hover:text-slate-600 transition-colors"
-        >
-          Preskočiť
-        </button>
-        <div className="flex gap-2">
-          {!isFirst && (
-            <button
-              onClick={prevStep}
-              className="px-3 py-1.5 text-sm text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors"
-            >
-              Späť
-            </button>
-          )}
-          <button
-            onClick={isLast ? () => completeTour() : nextStep}
-            className="px-4 py-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors"
-          >
-            {isLast ? "Dokončiť" : "Ďalej"}
+        <div className="zp-tour-actions">
+          <button onClick={() => skipTour()} className="zp-tour-skip">
+            Preskočiť
           </button>
+          <div className="zp-tour-nav">
+            {!isFirst && (
+              <button onClick={prevStep} className="zp-btn zp-btn--ghost zp-btn--sm">
+                Späť
+              </button>
+            )}
+            <button
+              onClick={isLast ? () => completeTour() : nextStep}
+              className="zp-btn zp-btn--primary zp-btn--sm"
+            >
+              {isLast ? "Dokončiť" : "Ďalej"}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  },
+);
+
+TourTooltip.displayName = "TourTooltip";
 
 export default TourTooltip;
