@@ -897,6 +897,77 @@ class AdminMealPlanApiTest(APITestCase):
             "Bez cibule v pondelok",
         )
 
+    def test_gramage_dashboard_diet_count_exceeding_first_variant_is_not_double_counted(
+        self,
+    ):
+        """Regression test: when a portion's diet count is larger than the
+        first (lowest-VARIANT_ORDER) menu variant's own count, the excess
+        must carry over and be subtracted from the next variant too -
+        otherwise those diet students are never removed from the raw
+        variant total and get counted twice (once in the variant column,
+        once in the diet sub-row)."""
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-18",
+            notes="Two lunch variants",
+            created_by=self.admin,
+        )
+        variant_b_template = MealTemplate.objects.create(
+            category="main_course",
+            name="Zeleninové rizoto",
+            weight_label="200g",
+            base_weight_grams="200.00",
+            menu_variant="B",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=variant_b_template,
+            category="main_course",
+            menu_variant="B",
+        )
+        EnrolledCount.objects.create(
+            meal_plan=plan, portion_type=self.kindergarten, count=22
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-18",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 2, "B": 20},
+                        "diets": {"Bezlepková": 8},
+                    }
+                },
+            },
+        )
+
+        dashboard = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-18"
+        )
+        self.assertEqual(dashboard.status_code, status.HTTP_200_OK)
+        row = dashboard.json()["rows"][0]
+        standard_rows = {
+            r["variant"]: r["count"] for r in row["sub_rows"] if r["type"] == "standard"
+        }
+        diet_rows = [r for r in row["sub_rows"] if r["type"] == "diet"]
+
+        # 8 diet students exceed variant A's raw count of 2, so the
+        # remaining 6 must be subtracted from variant B, not left in it.
+        self.assertEqual(standard_rows.get("A", 0), 0)
+        self.assertEqual(standard_rows["B"], 14)
+        self.assertEqual(diet_rows[0]["count"], 8)
+        # Total headcount (2 + 20) must be preserved: 0 + 14 + 8 == 22.
+        self.assertEqual(
+            standard_rows.get("A", 0) + standard_rows["B"] + diet_rows[0]["count"], 22
+        )
+
     def test_gramage_dashboard_exports_return_files(self):
         self._create_plan()
         DailyOrder.objects.create(

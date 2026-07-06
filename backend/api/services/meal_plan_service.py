@@ -547,11 +547,30 @@ class MealPlanService:
                             )
                             variant_counts = [("", total)]
 
+                        # Diet counts are a subset breakdown of an already-counted
+                        # variant, not an addition - they must be subtracted from
+                        # the variant(s) or students get counted twice (once in
+                        # the base variant total, once in the diet sub-row). The
+                        # "base" variant isn't tagged in the raw diets data, so
+                        # walk variants in order and subtract the diet count from
+                        # each until it's exhausted - this used to be hardcoded to
+                        # subtract fully from "A" only, which either silently
+                        # stopped subtracting (double-counting diet students)
+                        # whenever a school's klasik column was labeled B/C, or
+                        # (if only subtracted from the first nonzero variant)
+                        # under-subtracted whenever that variant's own count was
+                        # smaller than the diet count, leaving the remainder
+                        # double-counted in the next variant.
                         adjusted_variant_counts = []
+                        remaining_diet_count = (
+                            total_diet_count if is_variant_meal else 0
+                        )
                         for variant, count in variant_counts:
                             adjusted_count = count
-                            if is_variant_meal and variant == "A":
-                                adjusted_count -= total_diet_count
+                            if remaining_diet_count > 0:
+                                subtract = min(remaining_diet_count, adjusted_count)
+                                adjusted_count -= subtract
+                                remaining_diet_count -= subtract
                             adjusted_variant_counts.append(
                                 (variant, max(adjusted_count, 0))
                             )

@@ -464,14 +464,39 @@ def scrape_edupage_orders_task(
                     nested_order_data, requested_meals
                 )
                 if not imported_data:
+                    if result.warnings or result.unmapped_letters:
+                        # Real scrape failure (prehlad block missing/malformed,
+                        # or a diet/menu letter we couldn't map) - don't
+                        # fabricate a zero-order record for it.
+                        logger.info(
+                            "scrape_edupage_orders_task: empty result for %s on %s "
+                            "meals=%s (warnings=%s, unmapped=%s)",
+                            profile.company_name,
+                            target_date,
+                            requested_meals,
+                            result.warnings,
+                            result.unmapped_letters,
+                        )
+                        skipped += 1
+                        continue
+
+                    # Structurally successful scrape with genuinely zero counts:
+                    # still record an explicit DailyOrder row so this date isn't
+                    # indistinguishable from "never scraped" (blocks auto-orders
+                    # and disappears from admin reports otherwise). get_or_create
+                    # is idempotent on repeat runs for the same day.
+                    DailyOrder.objects.get_or_create(
+                        user=profile.user,
+                        date=target_date,
+                        defaults={"data": {}},
+                    )
                     logger.info(
-                        "scrape_edupage_orders_task: empty result for %s on %s meals=%s (warnings=%s)",
+                        "scrape_edupage_orders_task: recorded explicit zero for %s on %s meals=%s",
                         profile.company_name,
                         target_date,
                         requested_meals,
-                        result.warnings,
                     )
-                    skipped += 1
+                    scraped += 1
                     continue
 
                 with transaction.atomic():

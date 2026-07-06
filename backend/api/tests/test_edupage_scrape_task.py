@@ -72,6 +72,96 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_records_explicit_zero_when_structurally_empty(
+    edupage_user, monkeypatch
+):
+    """A structurally successful scrape (no warnings) with zero counts must
+    still create a DailyOrder row, so the day isn't indistinguishable from
+    "never scraped" (which would block auto-orders and admin reporting)."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date):
+        return SimpleNamespace(order_data={}, warnings=[], unmapped_letters=[])
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    order = DailyOrder.objects.get(user=edupage_user, date=target_date)
+    assert order.data == {}
+    assert result["scraped"] == 1
+    assert result["skipped"] == 0
+
+    # Idempotent: running again for the same day must not error or duplicate.
+    result2 = scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+    assert DailyOrder.objects.filter(user=edupage_user, date=target_date).count() == 1
+    assert result2["scraped"] == 1
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_skips_without_recording_on_real_scrape_failure(
+    edupage_user, monkeypatch
+):
+    """A scrape failure (prehlad block missing/malformed) must NOT create a
+    fabricated zero-order row - that would hide a real scraping problem."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date):
+        return SimpleNamespace(
+            order_data={},
+            warnings=["prehlad block not found in HTML"],
+            unmapped_letters=[],
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    assert not DailyOrder.objects.filter(user=edupage_user, date=target_date).exists()
+    assert result["scraped"] == 0
+    assert result["skipped"] == 1
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_skips_without_recording_on_unmapped_letters(
+    edupage_user, monkeypatch
+):
+    """Unmapped diet/menu letters are a real data-mapping failure, not a
+    genuine zero - even though _parse reports them via unmapped_letters
+    rather than warnings, they must not be recorded as a confirmed zero."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date):
+        return SimpleNamespace(order_data={}, warnings=[], unmapped_letters=["Z:Z"])
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    assert not DailyOrder.objects.filter(user=edupage_user, date=target_date).exists()
+    assert result["scraped"] == 0
+    assert result["skipped"] == 1
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_merges_requested_meals_without_replacing_existing_day(
     edupage_user, monkeypatch
 ):
