@@ -53,6 +53,13 @@ export const TOUR_STEPS: TourStep[] = [
     page: "/order",
   },
   {
+    targetId: "tour-fullday-card",
+    title: "Celodenná objednávka",
+    body: "Ak chcete naraz objednať všetky jedlá (raňajky, obed aj olovrant), zapnite túto kartu a nastavte porcie len raz. Kým je zapnutá, jednotlivé jedlá nižšie sú uzamknuté – vypnutím ju znova odomknete.",
+    placement: "bottom",
+    page: "/order",
+  },
+  {
     targetId: "tour-meal-card",
     title: "Prepínač jedla",
     body: "Každé jedlo (raňajky, obed, olovrant) môžete zapnúť alebo vypnúť prepínačom. Ak je zapnuté, zobrazí sa zadávanie porcií.",
@@ -61,8 +68,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     targetId: "tour-category-row",
-    title: "Počet porcií",
-    body: "Pre každú vekovú skupinu (napr. Škôlka, ZŠ 1. stupeň) nastavte počet porcií pomocou tlačidiel + a –. Menu A/B sú varianty obeda.",
+    title: "Počet porcií a diéty",
+    body: "Pre každú vekovú skupinu (napr. Škôlka, ZŠ 1. stupeň) nastavte počet porcií pomocou tlačidiel + a –. Menu A/B sú varianty obeda. Ak dieťa potrebuje diétu, kliknite na tlačidlo „Diéty“ pri Menu A a vyberte konkrétnu diétu a počet porcií (diéty sa dajú priradiť len v rámci porcií Menu A).",
     placement: "right",
     page: "/order",
   },

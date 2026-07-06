@@ -646,7 +646,6 @@ export const useOrder = () => {
         ? visibleDietDetails.map(d => d.name)
         : [];
 
-    // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
     const getAvailableDiets = (categoryName: string) => {
         const diets = OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
         if (!diets.includes(SPECIAL_DIET_NAME)) {

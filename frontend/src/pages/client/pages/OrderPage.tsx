@@ -13,6 +13,7 @@ import OrderService, { CategoryData, DailyOrder } from "../services/OrderService
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
+import { TOUR_STEPS } from "../components/onboarding/tourSteps";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
 
@@ -143,7 +144,7 @@ const OrderPage = () => {
   }, [fullDayOrder, isFullDayDeadlineOpen, toggleFullDay]);
 
   useEffect(() => {
-    if (!isTourActive || currentStep !== 7) return;
+    if (!isTourActive || TOUR_STEPS[currentStep]?.targetId !== "tour-category-row") return;
     const firstMeal = visibleMealsList[0];
     if (!firstMeal) return;
     const key = firstMeal.key as "breakfast" | "lunch" | "olovrant";
@@ -347,6 +348,7 @@ const OrderPage = () => {
       <MealCard
         title="Celodenná objednávka"
         icon={CalendarDays}
+        tourId="tour-fullday-card"
         isActive={fullDayOrder && isFullDayDeadlineOpen}
         onToggle={() => isFullDayDeadlineOpen && toggleFullDay()}
         statusMessage={
