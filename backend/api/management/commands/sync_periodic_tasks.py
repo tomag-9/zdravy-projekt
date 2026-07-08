@@ -334,9 +334,19 @@ class Command(BaseCommand):
     def _verify_edupage_scrape_tasks(self):
         from django_celery_beat.models import PeriodicTask
 
+        from api.models import GlobalSettings
         from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
 
         self.stdout.write("\n--- Edupage Scrape Tasks ---")
+        gs = GlobalSettings.objects.filter(pk=1).first()
+        if gs and not getattr(gs, "edupage_auto_scrape_enabled", True):
+            self.stdout.write(
+                self.style.WARNING(
+                    "⚠ Automatic Edupage scraping is disabled in GlobalSettings."
+                )
+            )
+            return
+
         tasks = list(
             PeriodicTask.objects.filter(name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX)
         )

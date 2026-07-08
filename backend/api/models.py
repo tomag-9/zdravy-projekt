@@ -98,6 +98,10 @@ class GlobalSettings(models.Model):
             "When enabled, olovrant deadline applies to the day" " before the meal date"
         ),
     )
+    edupage_auto_scrape_enabled = models.BooleanField(
+        default=True,
+        help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
+    )
     report_email_recipients = models.JSONField(
         default=list,
         blank=True,

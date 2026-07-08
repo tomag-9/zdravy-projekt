@@ -103,6 +103,23 @@ def test_deploy_bootstrap_creates_edupage_scrape_tasks(settings):
 
 
 @pytest.mark.django_db
+def test_disabled_edupage_auto_scrape_removes_periodic_tasks(settings):
+    settings.DEBUG = False
+
+    gs = GlobalSettings.objects.create(pk=1, edupage_auto_scrape_enabled=True)
+    assert PeriodicTask.objects.filter(
+        name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+    ).exists()
+
+    gs.edupage_auto_scrape_enabled = False
+    gs.save(update_fields=["edupage_auto_scrape_enabled"])
+
+    assert not PeriodicTask.objects.filter(
+        name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_deploy_bootstrap_does_not_create_demo_logins_in_production(
     settings, monkeypatch
 ):

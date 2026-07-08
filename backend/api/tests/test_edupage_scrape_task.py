@@ -72,6 +72,31 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_task_skips_automatic_run_when_disabled(
+    edupage_user, monkeypatch
+):
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+        edupage_auto_scrape_enabled=False,
+    )
+
+    def fail_scrape(self, url, target_date):
+        raise AssertionError("Automatic EduPage scrape should not run")
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fail_scrape)
+
+    result = scrape_edupage_orders_task.run(meal_types=["breakfast"])
+
+    assert result["disabled"] is True
+    assert result["scraped"] == 0
+    assert result["dates"] == []
+    assert not DailyOrder.objects.filter(user=edupage_user).exists()
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_records_explicit_zero_when_structurally_empty(
     edupage_user, monkeypatch
 ):

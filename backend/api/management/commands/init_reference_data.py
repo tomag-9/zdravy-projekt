@@ -20,11 +20,11 @@ from api.models import ClientSettings, Diet, PortionType
 from api.reference_data import ALL_DIETS, DEFAULT_DIET_NAMES
 
 PORTION_TYPES = [
-    {"name": "Jasle", "coefficient": "0.7000", "sort_order": 1},
+    {"name": "Jasle", "coefficient": "0.7500", "sort_order": 1},
     {"name": "Škôlka", "coefficient": "1.0000", "sort_order": 2},
-    {"name": "ZŠ 1.stupeň", "coefficient": "1.1500", "sort_order": 3},
-    {"name": "ZŠ 2.stupeň", "coefficient": "1.3000", "sort_order": 4},
-    {"name": "Dospelý (SŠ)", "coefficient": "1.5000", "sort_order": 5},
+    {"name": "ZŠ 1.stupeň", "coefficient": "1.2500", "sort_order": 3},
+    {"name": "ZŠ 2.stupeň", "coefficient": "1.5000", "sort_order": 4},
+    {"name": "Dospelý (SŠ)", "coefficient": "2.0000", "sort_order": 5},
 ]
 
 

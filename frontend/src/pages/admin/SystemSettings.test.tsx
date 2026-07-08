@@ -24,9 +24,17 @@ vi.mock('../../context/ToastContext', () => ({
 describe('SystemSettings - Report Recipients Auto-Save', () => {
     const mockSettings = {
         deadline_breakfast: '10:00',
+        deadline_breakfast_is_day_before: false,
         deadline_lunch: '10:00',
+        deadline_lunch_is_day_before: false,
         deadline_olovrant: '10:00',
+        deadline_olovrant_is_day_before: false,
+        edupage_auto_scrape_enabled: true,
         report_email_recipients: ['existing@example.com'],
+        client_contact_name: '',
+        client_contact_role: '',
+        client_contact_email: '',
+        client_contact_phone: '',
     };
 
     beforeEach(() => {
@@ -128,5 +136,28 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
 
         // Verify error message
         expect(mockError).toHaveBeenCalledWith('Táto adresa je už v zozname');
+    });
+
+    it('saves disabled EduPage automatic scraping', async () => {
+        const user = userEvent.setup();
+
+        render(<SystemSettings />);
+
+        await waitFor(() => {
+            expect(screen.getByText('EduPage automatika')).toBeInTheDocument();
+        });
+
+        await user.click(screen.getByLabelText('Automatické čítanie EduPage'));
+        await user.click(screen.getByText('Uložiť EduPage'));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenLastCalledWith(
+                expect.stringContaining('/admin/global-settings/'),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: expect.stringContaining('"edupage_auto_scrape_enabled":false'),
+                }),
+            );
+        });
     });
 });

@@ -411,21 +411,33 @@ def scrape_edupage_orders_task(
             target_date = datetime.date.fromisoformat(date_str)
             date_to_meals = {target_date: meal_types}
         else:
+            try:
+                gs = GlobalSettings.objects.get(pk=1)
+            except GlobalSettings.DoesNotExist:
+                logger.error(
+                    "scrape_edupage_orders_task: GlobalSettings(pk=1) missing, no retry"
+                )
+                return {
+                    "error": "missing_global_settings",
+                    "meal_types": meal_types,
+                }
+            if not getattr(gs, "edupage_auto_scrape_enabled", True):
+                logger.info(
+                    "scrape_edupage_orders_task: automatic EduPage scrape is disabled"
+                )
+                return {
+                    "scraped": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "dates": [],
+                    "meal_types": meal_types,
+                    "disabled": True,
+                }
+
             today = timezone.localdate()
             if meal_types is None:
                 date_to_meals = {today: None}
             else:
-                try:
-                    gs = GlobalSettings.objects.get(pk=1)
-                except GlobalSettings.DoesNotExist:
-                    logger.error(
-                        "scrape_edupage_orders_task: GlobalSettings(pk=1) missing, no retry"
-                    )
-                    return {
-                        "error": "missing_global_settings",
-                        "meal_types": meal_types,
-                    }
-
                 date_to_meals = {}
                 for meal_type in meal_types:
                     is_day_before = getattr(
