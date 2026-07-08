@@ -352,5 +352,119 @@
     "diets": {
       "NO MILK": 2
     }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Edulienka",
+    "meal": "__gram_corrections__",
+    "replaceGramCorrections": true,
+    "gramCorrections": [
+      {
+        "meal": "soup",
+        "component_index": 0,
+        "grams": "-2200.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 0,
+        "grams": "-2200.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 1,
+        "grams": "-110.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "afternoon_snack",
+        "component_index": 0,
+        "grams": "-50.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "afternoon_snack",
+        "component_index": 1,
+        "grams": "-3.75",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      }
+    ]
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Edulienka",
+    "meal": "__gram_corrections__",
+    "replaceGramCorrections": true,
+    "gramCorrections": [
+      {
+        "meal": "soup",
+        "component_index": 0,
+        "grams": "-2100.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 0,
+        "grams": "-945.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 1,
+        "grams": "-1155.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 2,
+        "grams": "-261.65",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "afternoon_snack",
+        "component_index": 0,
+        "grams": "50.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "afternoon_snack",
+        "component_index": 1,
+        "grams": "25.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      }
+    ]
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Edulienka",
+    "meal": "__gram_corrections__",
+    "replaceGramCorrections": true,
+    "gramCorrections": [
+      {
+        "meal": "soup",
+        "component_index": 0,
+        "grams": "-3050.00",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 0,
+        "grams": "-1372.50",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 1,
+        "grams": "-1677.50",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      },
+      {
+        "meal": "main_course",
+        "component_index": 2,
+        "grams": "-380.45",
+        "label": "MŠ Edulienka real XLSX korekcia"
+      }
+    ]
   }
 ]
