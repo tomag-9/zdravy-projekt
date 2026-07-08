@@ -345,10 +345,9 @@ describe("OrderPage Logic & Triggers", () => {
       user: { id: 1, email: "client@example.com" },
     });
 
-    // The catalog-based admin editor always saves soup/main_course with
-    // menu_variant="" (a single uniform selection for the whole day). This
-    // must NOT be treated as "no menu variants available" (which would grey
-    // out every 'Menu A/B/...' option on the order form).
+    // A variant-less plan item is a single uniform selection for the whole day.
+    // This must NOT be treated as "no menu variants available" (which would
+    // grey out every 'Menu A/B/...' option on the order form).
     mockApiFetch.mockImplementation((url: string) => {
       if (url.includes("/admin/global-settings/")) {
         return Promise.resolve(

@@ -1046,6 +1046,59 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(standard_rows["C"]["col_grams"][2], ["600.00"])
         self.assertEqual(standard_rows["V"]["col_grams"][3], ["1000.00"])
 
+    def test_gramage_dashboard_pools_variants_for_unvarianted_main_course(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-22",
+            notes="Uniform lunch template",
+            created_by=self.admin,
+        )
+        uniform_template = MealTemplate.objects.create(
+            category="main_course",
+            name="Uniform main",
+            weight_label="200g",
+            base_weight_grams="200.00",
+            menu_variant="",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=uniform_template,
+            category="main_course",
+            menu_variant="",
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-22",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 1, "B": 2, "C": 3, "V": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-22"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [(cg["variant"], cg["diet_name"]) for cg in payload["col_groups"]],
+            [("", None)],
+        )
+        row = payload["rows"][0]
+        standard_rows = [r for r in row["sub_rows"] if r["type"] == "standard"]
+        diet_rows = [r for r in row["sub_rows"] if r["type"] == "diet"]
+
+        self.assertEqual(standard_rows[0]["variant"], "")
+        self.assertEqual(standard_rows[0]["count"], 8)
+        self.assertEqual(standard_rows[0]["col_grams"][0], ["800.00"])
+        self.assertEqual(diet_rows[0]["count"], 2)
+        self.assertEqual(diet_rows[0]["col_grams"][0], ["200.00"])
+
     def test_gramage_dashboard_diet_uses_default_variant_without_diet_template(self):
         plan = DailyMealPlan.objects.create(
             date="2026-03-20",
