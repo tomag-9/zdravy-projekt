@@ -212,7 +212,13 @@ const DayEditorPanel: React.FC<{
             </div>
 
             <div className="border border-gray-100 rounded-xl p-3 space-y-3">
-              <div className="text-sm font-semibold text-gray-700">Obed</div>
+              <div>
+                <div className="text-sm font-semibold text-gray-700">Obed</div>
+                <p className="mt-1 text-xs text-gray-500">
+                  Menu B/C/V vyberte len pri vlastnej gramáži. Diéty bez vlastnej
+                  šablóny preberú gramáž Menu A.
+                </p>
+              </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
                   {CATEGORY_LABELS.soup}
