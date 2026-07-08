@@ -1,0 +1,356 @@
+[
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Prameň",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 25
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Prameň",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 23
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Prameň",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 23
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "Škôlka MS",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 27
+    },
+    "diets": {
+      "NO MILK": 2
+    },
+    "replaceGramCorrections": true,
+    "gramCorrections": [
+      {
+        "meal": "main_course",
+        "component_index": 2,
+        "grams": "75.60",
+        "label": "Škôlka MS real šalát"
+      }
+    ]
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "Škôlka MS",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 30
+    },
+    "diets": {
+      "NO MILK": 2
+    },
+    "replaceGramCorrections": true,
+    "gramCorrections": [
+      {
+        "meal": "main_course",
+        "component_index": 2,
+        "grams": "69.30",
+        "label": "Škôlka MS real šalát"
+      }
+    ]
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 26
+    },
+    "diets": {
+      "DIA": 1,
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 2
+    },
+    "diets": {
+      "NO MILK": 1
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 19
+    },
+    "diets": {
+      "DIA": 1
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 2
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 27
+    },
+    "diets": {
+      "DIA": 1,
+      "NO MILK": 4
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 1
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 17
+    },
+    "diets": {
+      "DIA": 1
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 2
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 27
+    },
+    "diets": {
+      "DIA": 1,
+      "NO MILK": 4
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Krásnanko",
+    "meal": "lunch",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 1
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 17
+    },
+    "diets": {
+      "DIA": 1
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Krásnanko",
+    "meal": "olovrant",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 2
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "breakfast",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 23
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 23
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 23
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "breakfast",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "breakfast",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "lunch",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "lunch",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 0
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Filipáneriho",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 20
+    },
+    "diets": {
+      "NO MILK": 2
+    }
+  }
+]
