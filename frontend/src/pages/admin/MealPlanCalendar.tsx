@@ -17,6 +17,7 @@ interface MealTemplateOption {
   category: MealCategory;
   name: string;
   weight_label: string;
+  menu_variant?: string;
 }
 
 interface MealPlanItem {
@@ -38,6 +39,20 @@ const CATEGORY_LABELS: Record<MealCategory, string> = {
   soup: "Polievka",
   main_course: "Hlavný chod",
   afternoon_snack: "Olovrant",
+};
+
+const MAIN_COURSE_VARIANTS = ["A", "B", "C", "V"] as const;
+type MainCourseVariant = (typeof MAIN_COURSE_VARIANTS)[number];
+type SelectionKey = Exclude<MealCategory, "main_course"> | `main_course_${MainCourseVariant}`;
+
+const EMPTY_SELECTION: Record<SelectionKey, number | ""> = {
+  breakfast_snack: "",
+  soup: "",
+  main_course_A: "",
+  main_course_B: "",
+  main_course_C: "",
+  main_course_V: "",
+  afternoon_snack: "",
 };
 
 function daysInMonth(year: number, month: number): number {
@@ -70,12 +85,8 @@ const DayEditorPanel: React.FC<{
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Record<MealCategory, number | "">>({
-    breakfast_snack: "",
-    soup: "",
-    main_course: "",
-    afternoon_snack: "",
-  });
+  const [selected, setSelected] =
+    useState<Record<SelectionKey, number | "">>(EMPTY_SELECTION);
 
   useEffect(() => {
     let cancelled = false;
@@ -87,15 +98,15 @@ const DayEditorPanel: React.FC<{
         if (res.ok) {
           const data: DayPlanResponse = await res.json();
           if (!cancelled) {
-            const next: Record<MealCategory, number | ""> = {
-              breakfast_snack: "",
-              soup: "",
-              main_course: "",
-              afternoon_snack: "",
-            };
+            const next: Record<SelectionKey, number | ""> = { ...EMPTY_SELECTION };
             for (const item of data.items || []) {
-              if (item.category in next) {
-                next[item.category] = item.template;
+              if (item.category === "main_course") {
+                const variant = (item.menu_variant || "A").toUpperCase();
+                if (MAIN_COURSE_VARIANTS.includes(variant as MainCourseVariant)) {
+                  next[`main_course_${variant as MainCourseVariant}`] = item.template;
+                }
+              } else if (item.category in next) {
+                next[item.category as SelectionKey] = item.template;
               }
             }
             setSelected(next);
@@ -128,9 +139,17 @@ const DayEditorPanel: React.FC<{
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    const items_write = (Object.keys(selected) as MealCategory[])
-      .filter((cat) => selected[cat] !== "")
-      .map((cat) => ({ template_id: selected[cat], menu_variant: "" }));
+    const items_write = [
+      ...(["breakfast_snack", "soup", "afternoon_snack"] as const)
+        .filter((cat) => selected[cat] !== "")
+        .map((cat) => ({ template_id: selected[cat], menu_variant: "" })),
+      ...MAIN_COURSE_VARIANTS
+        .filter((variant) => selected[`main_course_${variant}`] !== "")
+        .map((variant) => ({
+          template_id: selected[`main_course_${variant}`],
+          menu_variant: variant,
+        })),
+    ];
     try {
       const res = await apiFetch(`${API}/admin/meal-plans/`, {
         method: "POST",
@@ -151,14 +170,14 @@ const DayEditorPanel: React.FC<{
     }
   };
 
-  const renderSelect = (category: MealCategory) => (
+  const renderSelect = (selectionKey: SelectionKey, category: MealCategory) => (
     <select
       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
-      value={selected[category]}
+      value={selected[selectionKey]}
       onChange={(e) =>
         setSelected((s) => ({
           ...s,
-          [category]: e.target.value ? Number(e.target.value) : "",
+          [selectionKey]: e.target.value ? Number(e.target.value) : "",
         }))
       }
     >
@@ -189,7 +208,7 @@ const DayEditorPanel: React.FC<{
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 {CATEGORY_LABELS.breakfast_snack}
               </label>
-              {renderSelect("breakfast_snack")}
+              {renderSelect("breakfast_snack", "breakfast_snack")}
             </div>
 
             <div className="border border-gray-100 rounded-xl p-3 space-y-3">
@@ -198,21 +217,23 @@ const DayEditorPanel: React.FC<{
                 <label className="block text-xs text-gray-500 mb-1">
                   {CATEGORY_LABELS.soup}
                 </label>
-                {renderSelect("soup")}
+                {renderSelect("soup", "soup")}
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1">
-                  {CATEGORY_LABELS.main_course}
-                </label>
-                {renderSelect("main_course")}
-              </div>
+              {MAIN_COURSE_VARIANTS.map((variant) => (
+                <div key={variant}>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    {CATEGORY_LABELS.main_course} Menu {variant}
+                  </label>
+                  {renderSelect(`main_course_${variant}`, "main_course")}
+                </div>
+              ))}
             </div>
 
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 {CATEGORY_LABELS.afternoon_snack}
               </label>
-              {renderSelect("afternoon_snack")}
+              {renderSelect("afternoon_snack", "afternoon_snack")}
             </div>
           </div>
         )}

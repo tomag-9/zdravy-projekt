@@ -968,6 +968,83 @@ class AdminMealPlanApiTest(APITestCase):
             standard_rows.get("A", 0) + standard_rows["B"] + diet_rows[0]["count"], 22
         )
 
+    def test_gramage_dashboard_splits_main_course_menu_variants(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-19",
+            notes="Four lunch variants",
+            created_by=self.admin,
+        )
+        templates_by_variant = {
+            "A": self.lunch_template,
+            "B": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu B",
+                weight_label="300g",
+                base_weight_grams="300.00",
+                menu_variant="B",
+            ),
+            "C": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu C",
+                weight_label="400g",
+                base_weight_grams="400.00",
+                menu_variant="C",
+            ),
+            "V": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu V",
+                weight_label="500g",
+                base_weight_grams="500.00",
+                menu_variant="V",
+            ),
+        }
+        for variant, template in templates_by_variant.items():
+            MealPlanItem.objects.create(
+                meal_plan=plan,
+                template=template,
+                category="main_course",
+                menu_variant=variant,
+            )
+        EnrolledCount.objects.create(
+            meal_plan=plan, portion_type=self.kindergarten, count=10
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-19",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 1, "B": 2, "C": 3, "V": 4},
+                        "diets": {},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-19"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [cg["variant"] for cg in payload["col_groups"]],
+            ["A", "B", "C", "V"],
+        )
+        row = payload["rows"][0]
+        standard_rows = {
+            r["variant"]: r for r in row["sub_rows"] if r["type"] == "standard"
+        }
+        self.assertEqual(
+            {variant: data["count"] for variant, data in standard_rows.items()},
+            {"A": 1, "B": 2, "C": 3, "V": 4},
+        )
+        self.assertEqual(standard_rows["A"]["col_grams"][0], ["60.00", "40.00"])
+        self.assertEqual(standard_rows["B"]["col_grams"][1], ["300.00"])
+        self.assertEqual(standard_rows["C"]["col_grams"][2], ["600.00"])
+        self.assertEqual(standard_rows["V"]["col_grams"][3], ["1000.00"])
+
     def test_gramage_dashboard_exports_return_files(self):
         self._create_plan()
         DailyOrder.objects.create(
