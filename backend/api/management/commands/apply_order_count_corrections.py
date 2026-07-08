@@ -29,6 +29,32 @@ def _safe_counts(value: Any, field_name: str) -> dict[str, int]:
     return result
 
 
+def _safe_gram_corrections(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise CommandError("gramCorrections must be a list")
+    corrections: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise CommandError("Each gram correction must be an object")
+        if "meal" not in item or "component_index" not in item or "grams" not in item:
+            raise CommandError(
+                "Each gram correction requires meal, component_index, and grams"
+            )
+        corrections.append(
+            {
+                "meal": str(item["meal"]),
+                "variant": str(item.get("variant", "")),
+                "diet_name": item.get("diet_name"),
+                "component_index": int(item["component_index"]),
+                "grams": str(item["grams"]),
+                "label": str(item.get("label", "Gramážna korekcia")),
+            }
+        )
+    return corrections
+
+
 def _load_corrections(path: str) -> list[dict[str, Any]]:
     with Path(path).open(encoding="utf-8") as handle:
         data = json.load(handle)
@@ -68,13 +94,16 @@ def apply_correction(correction: dict[str, Any], *, dry_run: bool = False) -> st
     target_date = date.fromisoformat(str(correction["date"]))
     meal = str(correction["meal"])
     portion = str(correction.get("portion") or correction.get("portion_type") or "")
-    if not portion:
-        raise CommandError("Correction requires portion or portion_type.")
 
     menu_counts = _safe_counts(correction.get("menuCounts", {}), "menuCounts")
     diets = _safe_counts(correction.get("diets", {}), "diets")
-    if not menu_counts and not diets:
-        raise CommandError("Correction must include menuCounts or diets.")
+    gram_corrections = _safe_gram_corrections(correction.get("gramCorrections"))
+    if not menu_counts and not diets and not gram_corrections:
+        raise CommandError(
+            "Correction must include menuCounts, diets, or gramCorrections."
+        )
+    if (menu_counts or diets) and not portion:
+        raise CommandError("Correction requires portion or portion_type.")
 
     user = _find_user(correction)
     category = correction.get("category")
@@ -86,43 +115,53 @@ def apply_correction(correction: dict[str, Any], *, dry_run: bool = False) -> st
     else:
         order, _ = DailyOrder.objects.get_or_create(user=user, date=target_date)
         data = order.data if isinstance(order.data, dict) else {}
-    meal_data = data.setdefault(meal, {})
-    if not isinstance(meal_data, dict):
-        raise CommandError(f"Existing order meal {meal!r} is not an object.")
+    if menu_counts or diets:
+        meal_data = data.setdefault(meal, {})
+        if not isinstance(meal_data, dict):
+            raise CommandError(f"Existing order meal {meal!r} is not an object.")
 
-    if category:
-        category_key = str(category)
-        category_data = meal_data.setdefault(category_key, {})
-        if not isinstance(category_data, dict):
-            raise CommandError(
-                f"Existing order category {category_key!r} is not an object."
-            )
-        portion_container = category_data
-    else:
-        portion_container = meal_data
+        if category:
+            category_key = str(category)
+            category_data = meal_data.setdefault(category_key, {})
+            if not isinstance(category_data, dict):
+                raise CommandError(
+                    f"Existing order category {category_key!r} is not an object."
+                )
+            portion_container = category_data
+        else:
+            portion_container = meal_data
 
-    portion_data = portion_container.setdefault(
-        portion,
-        {
-            "menuCounts": {},
-            "diets": {},
-        },
-    )
-    if not isinstance(portion_data, dict):
-        raise CommandError(f"Existing order portion {portion!r} is not an object.")
+        portion_data = portion_container.setdefault(
+            portion,
+            {
+                "menuCounts": {},
+                "diets": {},
+            },
+        )
+        if not isinstance(portion_data, dict):
+            raise CommandError(f"Existing order portion {portion!r} is not an object.")
 
-    if replace:
-        portion_data["menuCounts"] = menu_counts
-        portion_data["diets"] = diets
-    else:
-        existing_menu_counts = portion_data.setdefault("menuCounts", {})
-        existing_diets = portion_data.setdefault("diets", {})
-        if not isinstance(existing_menu_counts, dict) or not isinstance(
-            existing_diets, dict
-        ):
-            raise CommandError("Existing menuCounts/diets must be objects.")
-        _merge_counts(existing_menu_counts, menu_counts)
-        _merge_counts(existing_diets, diets)
+        if replace:
+            portion_data["menuCounts"] = menu_counts
+            portion_data["diets"] = diets
+        else:
+            existing_menu_counts = portion_data.setdefault("menuCounts", {})
+            existing_diets = portion_data.setdefault("diets", {})
+            if not isinstance(existing_menu_counts, dict) or not isinstance(
+                existing_diets, dict
+            ):
+                raise CommandError("Existing menuCounts/diets must be objects.")
+            _merge_counts(existing_menu_counts, menu_counts)
+            _merge_counts(existing_diets, diets)
+
+    if gram_corrections:
+        existing_gram_corrections = data.setdefault("__gram_corrections__", [])
+        if not isinstance(existing_gram_corrections, list):
+            raise CommandError("Existing __gram_corrections__ must be a list.")
+        if correction.get("replaceGramCorrections"):
+            data["__gram_corrections__"] = gram_corrections
+        else:
+            existing_gram_corrections.extend(gram_corrections)
 
     if not dry_run:
         order.data = data

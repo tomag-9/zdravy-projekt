@@ -521,6 +521,27 @@ class MealPlanService:
                     result.append([])
             return result
 
+        def _col_gram_adjustment(correction: dict) -> list:
+            result = _empty_group_totals()
+            meal = correction.get("meal")
+            variant = _normalize_variant(correction.get("variant", ""))
+            diet_name = correction.get("diet_name")
+            component_index = int(correction.get("component_index", 0))
+            grams = Decimal(str(correction.get("grams", "0")))
+            for group_index, cg in enumerate(col_groups):
+                if (
+                    cg["meal"] == meal
+                    and _normalize_variant(cg["variant"]) == variant
+                    and cg.get("diet_name") == diet_name
+                    and 0 <= component_index < len(cg["components"])
+                ):
+                    result[group_index][component_index] += grams
+                    break
+            return [
+                [str(value.quantize(Decimal("0.01"))) for value in group]
+                for group in result
+            ]
+
         # Running totals per col_group per component
         totals = _empty_group_totals()
 
@@ -541,6 +562,8 @@ class MealPlanService:
             order_data = order.data if isinstance(order.data, dict) else {}
 
             for order_meal, meal_data in order_data.items():
+                if order_meal == "__gram_corrections__":
+                    continue
                 meals = ORDER_MEAL_TO_PLAN_MEALS.get(order_meal, [])
                 # Only consider meals that actually have a selection for this day.
                 meals = [
@@ -682,6 +705,24 @@ class MealPlanService:
                             )
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += diet_count
+
+            for correction in order_data.get("__gram_corrections__", []):
+                if not isinstance(correction, dict):
+                    continue
+                grams = _col_gram_adjustment(correction)
+                _merge_group_totals(totals, grams)
+                _merge_group_totals(client_standard_totals, grams)
+                sub_rows.append(
+                    {
+                        "type": "standard",
+                        "meal": correction.get("meal", ""),
+                        "variant": correction.get("variant", ""),
+                        "portion_name": "Gramážna korekcia",
+                        "label": correction.get("label", "Gramážna korekcia"),
+                        "count": 0,
+                        "col_grams": grams,
+                    }
+                )
 
             if sub_rows:
                 settings = getattr(order.user, "settings", None)
