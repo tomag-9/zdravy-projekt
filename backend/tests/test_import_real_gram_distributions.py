@@ -104,3 +104,34 @@ def test_import_real_gram_distributions_keeps_piece_exception_idempotent(tmp_pat
             "Dospelý (SŠ)": "2",
         },
     }
+
+
+def test_import_real_gram_distributions_covers_week_28_snack_split(tmp_path):
+    path = tmp_path / "7.7.2026_tabulka.xlsx"
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "7.7.2026",
+            "Polievka",
+            "Mäso",
+            "Príloha",
+            "Šalát",
+            "Nátierka",
+            "Zelenina",
+        ]
+    )
+    sheet.append(["KLASIK", 200, 90, 110, 25, 50, 25])
+    workbook.save(path)
+
+    call_command("import_real_gram_distributions", str(path), stdout=StringIO())
+
+    snack = MealPlanItem.objects.get(
+        meal_plan__date="2026-07-07",
+        category=MealCategory.AFTERNOON_SNACK,
+    ).template
+    assert snack.components == [
+        {"label": "Nátierka", "grams": "50", "unit": "g"},
+        {"label": "Zelenina", "grams": "25", "unit": "g"},
+    ]
+    assert snack.unit_exception is None
