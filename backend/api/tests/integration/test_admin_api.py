@@ -11,6 +11,7 @@ from api.models import (
     ClientSettings,
     DailyMealPlan,
     DailyOrder,
+    Diet,
     EnrolledCount,
     MealPlanItem,
     MealTemplate,
@@ -1044,6 +1045,118 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(standard_rows["B"]["col_grams"][1], ["300.00"])
         self.assertEqual(standard_rows["C"]["col_grams"][2], ["600.00"])
         self.assertEqual(standard_rows["V"]["col_grams"][3], ["1000.00"])
+
+    def test_gramage_dashboard_diet_uses_default_variant_without_diet_template(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-20",
+            notes="Diet fallback",
+            created_by=self.admin,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-20",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-20"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(len(payload["col_groups"]), 1)
+        diet_row = payload["rows"][0]["diet_summary_rows"][0]
+
+        self.assertEqual(diet_row["name"], "NO MILK")
+        self.assertEqual(diet_row["count"], 2)
+        # Diets inherit the A/default 120g + 80g split with Škôlka coefficient 0.5.
+        self.assertEqual(diet_row["col_grams"][0], ["120.00", "80.00"])
+
+    def test_gramage_dashboard_prefers_explicit_diet_template(self):
+        no_milk = Diet.objects.create(name="NO MILK", is_active=True)
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-21",
+            notes="Diet override",
+            created_by=self.admin,
+        )
+        diet_template = MealTemplate.objects.create(
+            category="main_course",
+            name="No milk menu",
+            weight_label="50g + 50g",
+            base_weight_grams="100.00",
+            menu_variant="A",
+            diet=no_milk,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=diet_template,
+            category="main_course",
+            menu_variant="A",
+            diet=no_milk,
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-21",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-21"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [(cg["variant"], cg["diet_name"]) for cg in payload["col_groups"]],
+            [("A", None), ("A", "NO MILK")],
+        )
+        diet_row = payload["rows"][0]["diet_summary_rows"][0]
+
+        self.assertEqual(diet_row["name"], "NO MILK")
+        self.assertEqual(diet_row["col_grams"][0], ["0.00", "0.00"])
+        self.assertEqual(diet_row["col_grams"][1], ["50.00", "50.00"])
+        self.assertEqual(
+            [
+                (section["variant"], section["diet_name"], section["diets"])
+                for section in payload["count_summary"]
+            ],
+            [
+                ("A", None, []),
+                (
+                    "A",
+                    "NO MILK",
+                    [{"label": "Škôlka - NO MILK", "count": 2}],
+                ),
+            ],
+        )
 
     def test_gramage_dashboard_exports_return_files(self):
         self._create_plan()

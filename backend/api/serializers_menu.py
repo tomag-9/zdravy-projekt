@@ -155,10 +155,22 @@ class MealPlanItemWriteSerializer(serializers.Serializer):
 
 class MealPlanItemSerializer(serializers.ModelSerializer):
     template_detail = MealTemplateSerializer(source="template", read_only=True)
+    diet_name = serializers.SerializerMethodField()
 
     class Meta:
         model = MealPlanItem
-        fields = ["id", "template", "template_detail", "category", "menu_variant"]
+        fields = [
+            "id",
+            "template",
+            "template_detail",
+            "category",
+            "menu_variant",
+            "diet",
+            "diet_name",
+        ]
+
+    def get_diet_name(self, obj) -> str | None:
+        return obj.diet.name if obj.diet_id else None
 
 
 class EnrolledCountWriteSerializer(serializers.Serializer):

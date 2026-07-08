@@ -19,6 +19,7 @@ interface ColGroup {
   label: string;
   meal: string;
   variant: string;
+  diet_name?: string | null;
   template_name: string;
   components: Component[];
 }
@@ -62,6 +63,7 @@ interface CountDietRow {
 interface CountSection {
   meal: string;
   variant: string;
+  diet_name?: string | null;
   label: string;
   standard: CountStandardRow[];
   diets: CountDietRow[];
@@ -467,7 +469,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const perMenuSummary = useMemo(() => {
     const countMap = new Map<string, number>();
     for (const section of data.count_summary) {
-      const key = `${section.meal}_${section.variant}`;
+      const key = `${section.meal}_${section.variant}_${section.diet_name ?? ""}`;
       countMap.set(
         key,
         section.standard.reduce((s, r) => s + r.count, 0) +
@@ -478,7 +480,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       label: cg.label,
       meal: cg.meal,
       variant: cg.variant,
-      count: countMap.get(`${cg.meal}_${cg.variant}`) ?? 0,
+      count: countMap.get(`${cg.meal}_${cg.variant}_${cg.diet_name ?? ""}`) ?? 0,
       // gram values only for this col_group's index; empty for all others
       col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
     }));

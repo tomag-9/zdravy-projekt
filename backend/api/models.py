@@ -331,12 +331,27 @@ class MealPlanItem(models.Model):
     # Denormalised for query convenience
     category = models.CharField(max_length=20, choices=MealCategory.choices)
     menu_variant = models.CharField(max_length=10, blank=True)
+    diet = models.ForeignKey(
+        "Diet",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="meal_plan_items",
+        help_text="Optional diet-specific meal plan item. Null means standard/default.",
+    )
 
     class Meta:
-        unique_together = ["meal_plan", "category", "menu_variant"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meal_plan", "category", "menu_variant", "diet"],
+                name="uniq_meal_plan_item_slot_diet",
+                nulls_distinct=False,
+            )
+        ]
 
     def __str__(self) -> str:
-        return f"{self.meal_plan.date} {self.category} {self.menu_variant}"
+        diet = f" {self.diet.name}" if self.diet_id else ""
+        return f"{self.meal_plan.date} {self.category} {self.menu_variant}{diet}"
 
 
 class EnrolledCount(models.Model):
