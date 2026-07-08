@@ -466,5 +466,50 @@
         "label": "MŠ Edulienka real XLSX korekcia"
       }
     ]
+  },
+  {
+    "date": "2026-07-06",
+    "company_name": "MŠ Rozmanitá",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 27
+    },
+    "diets": {
+      "NO MILK": 1,
+      "NONONO": 1,
+      "VEGGIE": 3
+    }
+  },
+  {
+    "date": "2026-07-07",
+    "company_name": "MŠ Rozmanitá",
+    "meal": "olovrant",
+    "portion": "Škôlka",
+    "replace": true,
+    "menuCounts": {
+      "A": 31
+    },
+    "diets": {
+      "NO MILK": 1,
+      "NONONO": 1,
+      "VEGGIE": 3
+    }
+  },
+  {
+    "date": "2026-07-08",
+    "company_name": "MŠ Rozmanitá",
+    "meal": "lunch",
+    "portion": "Dospelý (SŠ)",
+    "replace": true,
+    "menuCounts": {
+      "A": 4,
+      "B": 1
+    },
+    "diets": {
+      "NO MILK": 1,
+      "VEGGIE": 2
+    }
   }
 ]
