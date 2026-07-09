@@ -316,8 +316,7 @@ export const useOrder = () => {
                 }
                 // A meal key is only restricted to specific menu variants when
                 // its published item(s) actually carry a menu_variant. A single
-                // uniform selection (no menu_variant — the normal case for the
-                // catalog-based admin editor) means the meal is available for
+                // uniform selection (no menu_variant) means the meal is available for
                 // every menu variant, so it must NOT be treated as "occupied".
                 const availability: Record<string, Set<string>> = {};
                 const unrestrictedMealKeys = new Set<string>();

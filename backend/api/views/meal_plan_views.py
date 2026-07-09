@@ -94,7 +94,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         return [permissions.IsAdminUser()]
 
     def get_queryset(self):
-        item_queryset = MealPlanItem.objects.select_related("template__diet")
+        item_queryset = MealPlanItem.objects.select_related("template__diet", "diet")
         if not self.request.user.is_staff:
             item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(

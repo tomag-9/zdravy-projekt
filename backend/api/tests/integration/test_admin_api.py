@@ -11,6 +11,7 @@ from api.models import (
     ClientSettings,
     DailyMealPlan,
     DailyOrder,
+    Diet,
     EnrolledCount,
     MealPlanItem,
     MealTemplate,
@@ -895,6 +896,319 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(
             dashboard_payload["rows"][0]["admin_order_note"],
             "Bez cibule v pondelok",
+        )
+
+    def test_gramage_dashboard_diet_count_exceeding_first_variant_is_not_double_counted(
+        self,
+    ):
+        """Regression test: when a portion's diet count is larger than the
+        first (lowest-VARIANT_ORDER) menu variant's own count, the excess
+        must carry over and be subtracted from the next variant too -
+        otherwise those diet students are never removed from the raw
+        variant total and get counted twice (once in the variant column,
+        once in the diet sub-row)."""
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-18",
+            notes="Two lunch variants",
+            created_by=self.admin,
+        )
+        variant_b_template = MealTemplate.objects.create(
+            category="main_course",
+            name="Zeleninové rizoto",
+            weight_label="200g",
+            base_weight_grams="200.00",
+            menu_variant="B",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=variant_b_template,
+            category="main_course",
+            menu_variant="B",
+        )
+        EnrolledCount.objects.create(
+            meal_plan=plan, portion_type=self.kindergarten, count=22
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-18",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 2, "B": 20},
+                        "diets": {"Bezlepková": 8},
+                    }
+                },
+            },
+        )
+
+        dashboard = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-18"
+        )
+        self.assertEqual(dashboard.status_code, status.HTTP_200_OK)
+        row = dashboard.json()["rows"][0]
+        standard_rows = {
+            r["variant"]: r["count"] for r in row["sub_rows"] if r["type"] == "standard"
+        }
+        diet_rows = [r for r in row["sub_rows"] if r["type"] == "diet"]
+
+        # 8 diet students exceed variant A's raw count of 2, so the
+        # remaining 6 must be subtracted from variant B, not left in it.
+        self.assertEqual(standard_rows.get("A", 0), 0)
+        self.assertEqual(standard_rows["B"], 14)
+        self.assertEqual(diet_rows[0]["count"], 8)
+        # Total headcount (2 + 20) must be preserved: 0 + 14 + 8 == 22.
+        self.assertEqual(
+            standard_rows.get("A", 0) + standard_rows["B"] + diet_rows[0]["count"], 22
+        )
+
+    def test_gramage_dashboard_splits_main_course_menu_variants(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-19",
+            notes="Four lunch variants",
+            created_by=self.admin,
+        )
+        templates_by_variant = {
+            "A": self.lunch_template,
+            "B": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu B",
+                weight_label="300g",
+                base_weight_grams="300.00",
+                menu_variant="B",
+            ),
+            "C": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu C",
+                weight_label="400g",
+                base_weight_grams="400.00",
+                menu_variant="C",
+            ),
+            "V": MealTemplate.objects.create(
+                category="main_course",
+                name="Menu V",
+                weight_label="500g",
+                base_weight_grams="500.00",
+                menu_variant="V",
+            ),
+        }
+        for variant, template in templates_by_variant.items():
+            MealPlanItem.objects.create(
+                meal_plan=plan,
+                template=template,
+                category="main_course",
+                menu_variant=variant,
+            )
+        EnrolledCount.objects.create(
+            meal_plan=plan, portion_type=self.kindergarten, count=10
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-19",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 1, "B": 2, "C": 3, "V": 4},
+                        "diets": {},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-19"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [cg["variant"] for cg in payload["col_groups"]],
+            ["A", "B", "C", "V"],
+        )
+        row = payload["rows"][0]
+        standard_rows = {
+            r["variant"]: r for r in row["sub_rows"] if r["type"] == "standard"
+        }
+        self.assertEqual(
+            {variant: data["count"] for variant, data in standard_rows.items()},
+            {"A": 1, "B": 2, "C": 3, "V": 4},
+        )
+        self.assertEqual(standard_rows["A"]["col_grams"][0], ["60.00", "40.00"])
+        self.assertEqual(standard_rows["B"]["col_grams"][1], ["300.00"])
+        self.assertEqual(standard_rows["C"]["col_grams"][2], ["600.00"])
+        self.assertEqual(standard_rows["V"]["col_grams"][3], ["1000.00"])
+
+    def test_gramage_dashboard_pools_variants_for_unvarianted_main_course(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-22",
+            notes="Uniform lunch template",
+            created_by=self.admin,
+        )
+        uniform_template = MealTemplate.objects.create(
+            category="main_course",
+            name="Uniform main",
+            weight_label="200g",
+            base_weight_grams="200.00",
+            menu_variant="",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=uniform_template,
+            category="main_course",
+            menu_variant="",
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-22",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 1, "B": 2, "C": 3, "V": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-22"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [(cg["variant"], cg["diet_name"]) for cg in payload["col_groups"]],
+            [("", None)],
+        )
+        row = payload["rows"][0]
+        standard_rows = [r for r in row["sub_rows"] if r["type"] == "standard"]
+        diet_rows = [r for r in row["sub_rows"] if r["type"] == "diet"]
+
+        self.assertEqual(standard_rows[0]["variant"], "")
+        self.assertEqual(standard_rows[0]["count"], 8)
+        self.assertEqual(standard_rows[0]["col_grams"][0], ["800.00"])
+        self.assertEqual(diet_rows[0]["count"], 2)
+        self.assertEqual(diet_rows[0]["col_grams"][0], ["200.00"])
+
+    def test_gramage_dashboard_diet_uses_default_variant_without_diet_template(self):
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-20",
+            notes="Diet fallback",
+            created_by=self.admin,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-20",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-20"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(len(payload["col_groups"]), 1)
+        diet_row = payload["rows"][0]["diet_summary_rows"][0]
+
+        self.assertEqual(diet_row["name"], "NO MILK")
+        self.assertEqual(diet_row["count"], 2)
+        # Diets inherit the A/default 120g + 80g split with Škôlka coefficient 0.5.
+        self.assertEqual(diet_row["col_grams"][0], ["120.00", "80.00"])
+
+    def test_gramage_dashboard_prefers_explicit_diet_template(self):
+        no_milk = Diet.objects.create(name="NO MILK", is_active=True)
+        plan = DailyMealPlan.objects.create(
+            date="2026-03-21",
+            notes="Diet override",
+            created_by=self.admin,
+        )
+        diet_template = MealTemplate.objects.create(
+            category="main_course",
+            name="No milk menu",
+            weight_label="50g + 50g",
+            base_weight_grams="100.00",
+            menu_variant="A",
+            diet=no_milk,
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=diet_template,
+            category="main_course",
+            menu_variant="A",
+            diet=no_milk,
+        )
+
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-21",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {
+                        "menuCounts": {"A": 4},
+                        "diets": {"NO MILK": 2},
+                    }
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-21"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [(cg["variant"], cg["diet_name"]) for cg in payload["col_groups"]],
+            [("A", None), ("A", "NO MILK")],
+        )
+        diet_row = payload["rows"][0]["diet_summary_rows"][0]
+
+        self.assertEqual(diet_row["name"], "NO MILK")
+        self.assertEqual(diet_row["col_grams"][0], ["0.00", "0.00"])
+        self.assertEqual(diet_row["col_grams"][1], ["50.00", "50.00"])
+        self.assertEqual(
+            [
+                (section["variant"], section["diet_name"], section["diets"])
+                for section in payload["count_summary"]
+            ],
+            [
+                ("A", None, []),
+                (
+                    "A",
+                    "NO MILK",
+                    [{"label": "Škôlka - NO MILK", "count": 2}],
+                ),
+            ],
         )
 
     def test_gramage_dashboard_exports_return_files(self):

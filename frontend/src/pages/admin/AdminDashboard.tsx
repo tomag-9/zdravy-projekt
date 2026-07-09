@@ -19,6 +19,7 @@ interface ColGroup {
   label: string;
   meal: string;
   variant: string;
+  diet_name?: string | null;
   template_name: string;
   components: Component[];
 }
@@ -62,6 +63,7 @@ interface CountDietRow {
 interface CountSection {
   meal: string;
   variant: string;
+  diet_name?: string | null;
   label: string;
   standard: CountStandardRow[];
   diets: CountDietRow[];
@@ -79,8 +81,14 @@ interface GramageDashboard {
 type OrderMealKey = "breakfast" | "lunch" | "olovrant";
 
 interface OrderMealSummary {
-  menus: Record<string, number>;
-  diets: Record<string, number>;
+  menus?: Record<string, number>;
+  diets?: Record<string, number>;
+  categories?: Array<{
+    name: string;
+    menus: Record<string, number>;
+    diets: Record<string, number>;
+    total: number;
+  }>;
   total: number;
 }
 
@@ -363,6 +371,35 @@ function formatCounts(counts: Record<string, number>): string {
     .join(", ");
 }
 
+function mergeCounts(
+  target: Record<string, number>,
+  source: Record<string, number> | undefined,
+) {
+  for (const [label, count] of Object.entries(source ?? {})) {
+    if (count > 0) target[label] = (target[label] ?? 0) + count;
+  }
+}
+
+function mealMenus(meal: OrderMealSummary): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (meal.categories?.length) {
+    for (const category of meal.categories) mergeCounts(result, category.menus);
+    return result;
+  }
+  mergeCounts(result, meal.menus);
+  return result;
+}
+
+function mealDiets(meal: OrderMealSummary): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (meal.categories?.length) {
+    for (const category of meal.categories) mergeCounts(result, category.diets);
+    return result;
+  }
+  mergeCounts(result, meal.diets);
+  return result;
+}
+
 const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
   const rows = report.rows.filter((row) => row.total > 0);
 
@@ -398,8 +435,8 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
                 </td>
                 {MEAL_KEYS.map((meal) => {
                   const mealData = row[meal];
-                  const menuText = formatCounts(mealData.menus);
-                  const dietText = formatCounts(mealData.diets);
+                  const menuText = formatCounts(mealMenus(mealData));
+                  const dietText = formatCounts(mealDiets(mealData));
                   return (
                     <td key={meal} className="px-4 py-3 align-top">
                       {mealData.total > 0 ? (
@@ -467,7 +504,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const perMenuSummary = useMemo(() => {
     const countMap = new Map<string, number>();
     for (const section of data.count_summary) {
-      const key = `${section.meal}_${section.variant}`;
+      const key = `${section.meal}_${section.variant}_${section.diet_name ?? ""}`;
       countMap.set(
         key,
         section.standard.reduce((s, r) => s + r.count, 0) +
@@ -478,7 +515,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       label: cg.label,
       meal: cg.meal,
       variant: cg.variant,
-      count: countMap.get(`${cg.meal}_${cg.variant}`) ?? 0,
+      count: countMap.get(`${cg.meal}_${cg.variant}_${cg.diet_name ?? ""}`) ?? 0,
       // gram values only for this col_group's index; empty for all others
       col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
     }));
