@@ -86,7 +86,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
         ports:
-          - 5432:5432
+          - 5432/tcp
 
     steps:
       - name: Checkout code
@@ -112,7 +112,7 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_HOST: localhost
-          POSTGRES_PORT: 5432
+          POSTGRES_PORT: ${{ job.services.postgres.ports[5432] }}
         run: |
           pytest --cov=api --cov=app --cov-config=.coveragerc --cov-report=xml --cov-report=term-missing --cov-fail-under=60
 
@@ -184,4 +184,3 @@ jobs:
           tags: zdravy-projekt-frontend:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
-

@@ -81,6 +81,11 @@ certbot/
 *.log
 logs/
 
+# Load test outputs and local secrets
+load-tests/out/
+load-tests/*.env
+load-tests/*.json
+
 #tmp
 tmp/
 
