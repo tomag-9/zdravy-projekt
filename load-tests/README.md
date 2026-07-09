@@ -1,91 +1,106 @@
 # Load Tests
 
-Production load tests must use throwaway users and a future non-holiday order
-date. The default scenario submits 150 client orders over 5 minutes: 30 arrivals
-per minute against `/api/orders/`.
+These tests exercise the real authenticated order flow:
 
-## 1. Seed throwaway users
+1. login through `/api/token/`
+2. optionally read `/api/orders/planned/`
+3. submit to `/api/orders/`
+4. clean up throwaway users and their orders
 
-Generate one password and keep it for both the seed command and the k6 run:
+The default scenario submits exactly 150 client orders over 5 minutes
+(`30/min`). CI uses the same path with a tiny smoke profile.
+
+## Safety Rules
+
+- Use only throwaway users created by `seed_load_test_users`.
+- Use a future weekday `ORDER_DATE`; avoid holidays and dates whose ordering
+  deadline has already passed.
+- Run full production tests outside peak usage.
+- Watch Grafana while any staging or production run is active.
+- Always run cleanup after a manual staging/production test.
+
+Abort a run if 5xx rises above 1%, p95 stays above 3 seconds, DB connection
+errors appear, or backend health checks start flapping.
+
+## Local Dev / CI Smoke
+
+The wrapper starts the dev Docker stack, seeds users, runs dockerized k6, and
+cleans up automatically:
+
+```bash
+scripts/run-order-load-test.sh
+```
+
+For the same profile used by CI:
+
+```bash
+USER_COUNT=3 MAX_SUBMITS=3 RATE=6 DURATION=30s PRE_ALLOCATED_VUS=2 MAX_VUS=6 \
+USER_EMAIL_DOMAIN=ci.loadtest.local \
+scripts/run-order-load-test.sh
+```
+
+CI runs this smoke profile on PRs to `main`/`develop`, pushes to `main`, and
+manual workflow dispatch.
+
+## Staging
+
+Staging is the preferred place for repeated load-test tuning. The documented
+staging host is `zp.tomag.xyz`; override it if Dokploy uses a different
+`STAGING_HOST`.
+
+Generate one password and keep it for both seed and k6:
 
 ```bash
 export LOAD_TEST_PASSWORD="$(openssl rand -base64 24)"
+export STAGING_HOST="zp.tomag.xyz"
+export LOAD_TEST_DOMAIN="staging-loadtest.zdravyprojekt.local"
+export ORDER_DATE="2026-07-16"
 ```
 
-Then run inside the production backend container, or through Dokploy's backend
-shell, passing that same value as `LOAD_TEST_PASSWORD`:
+Run this inside the staging backend container or Dokploy backend shell:
 
 ```bash
 python manage.py seed_load_test_users \
   --allow-production \
   --confirm-production LOAD_TEST_PROD \
   --count 150 \
-  --email-domain loadtest.zdravyprojekt.local \
+  --email-domain "$LOAD_TEST_DOMAIN" \
   --password "$LOAD_TEST_PASSWORD"
 ```
 
-The command creates users:
-
-```text
-zp-loadtest-001@loadtest.zdravyprojekt.local
-...
-zp-loadtest-150@loadtest.zdravyprojekt.local
-```
-
-Use a future weekday for `ORDER_DATE`; avoid holidays and days whose ordering
-deadline has already passed.
-
-## 2. Run the 150-submit scenario
-
-Run from your machine where `k6` is installed:
+Run the full 150-submit scenario from your machine:
 
 ```bash
-BASE_URL="https://YOUR_PROD_HOST" \
+BASE_URL="https://${STAGING_HOST}" \
 PASSWORD="$LOAD_TEST_PASSWORD" \
-USER_EMAIL_DOMAIN="loadtest.zdravyprojekt.local" \
-ORDER_DATE="2026-07-16" \
+USER_EMAIL_DOMAIN="$LOAD_TEST_DOMAIN" \
+USER_COUNT=150 \
+MAX_SUBMITS=150 \
+RATE=30 \
+DURATION=5m \
+PRE_ALLOCATED_VUS=30 \
+MAX_VUS=150 \
+ORDER_DATE="$ORDER_DATE" \
 k6 run load-tests/k6/order-submit-150-in-5m.js
 ```
 
-Useful overrides:
+For a smaller staging smoke:
 
 ```bash
-USER_COUNT=150
-MAX_SUBMITS=150
-USER_START_INDEX=1
-USER_EMAIL_PREFIX="zp-loadtest-"
-INCLUDE_PLANNED_READ=true
+BASE_URL="https://${STAGING_HOST}" \
+PASSWORD="$LOAD_TEST_PASSWORD" \
+USER_EMAIL_DOMAIN="$LOAD_TEST_DOMAIN" \
+USER_COUNT=10 \
+MAX_SUBMITS=10 \
+RATE=10 \
+DURATION=1m \
+PRE_ALLOCATED_VUS=5 \
+MAX_VUS=20 \
+ORDER_DATE="$ORDER_DATE" \
+k6 run load-tests/k6/order-submit-150-in-5m.js
 ```
 
-The same scenario can be run against the local Docker dev stack without a local
-k6 install:
-
-```bash
-scripts/run-order-load-test.sh
-```
-
-For a tiny CI-style smoke run:
-
-```bash
-USER_COUNT=3 MAX_SUBMITS=3 RATE=6 DURATION=30s PRE_ALLOCATED_VUS=2 MAX_VUS=6 \
-scripts/run-order-load-test.sh
-```
-
-Watch Grafana while it runs:
-
-- request rate and p95/p99 latency
-- 4xx/5xx rate
-- slowest endpoints
-- DB query rate and DB p95 latency
-- cache gets/hits/misses
-- container logs in Loki for deadline, auth, Redis, or DB errors
-
-Abort the run if 5xx rises above 1%, p95 stays above 3 seconds, DB connection
-errors appear, or backend health checks start flapping.
-
-## 3. Cleanup
-
-After the run, delete the throwaway users. Their orders are removed by cascade:
+Cleanup from the staging backend shell:
 
 ```bash
 python manage.py seed_load_test_users \
@@ -94,14 +109,87 @@ python manage.py seed_load_test_users \
   --allow-production \
   --confirm-production LOAD_TEST_PROD \
   --count 150 \
-  --email-domain loadtest.zdravyprojekt.local
+  --email-domain "$LOAD_TEST_DOMAIN"
 ```
+
+## Production
+
+Production uses the same commands as staging, but should be run rarely and only
+with active monitoring. Set `PROD_HOST` to the real public production host from
+Dokploy, not the placeholder in `env/prod.example`.
+
+```bash
+export LOAD_TEST_PASSWORD="$(openssl rand -base64 24)"
+export PROD_HOST="YOUR_PROD_HOST"
+export LOAD_TEST_DOMAIN="prod-loadtest.zdravyprojekt.local"
+export ORDER_DATE="2026-07-16"
+```
+
+Seed from the production backend container or Dokploy backend shell:
+
+```bash
+python manage.py seed_load_test_users \
+  --allow-production \
+  --confirm-production LOAD_TEST_PROD \
+  --count 150 \
+  --email-domain "$LOAD_TEST_DOMAIN" \
+  --password "$LOAD_TEST_PASSWORD"
+```
+
+Run the full production scenario from your machine:
+
+```bash
+BASE_URL="https://${PROD_HOST}" \
+PASSWORD="$LOAD_TEST_PASSWORD" \
+USER_EMAIL_DOMAIN="$LOAD_TEST_DOMAIN" \
+USER_COUNT=150 \
+MAX_SUBMITS=150 \
+RATE=30 \
+DURATION=5m \
+PRE_ALLOCATED_VUS=30 \
+MAX_VUS=150 \
+ORDER_DATE="$ORDER_DATE" \
+k6 run load-tests/k6/order-submit-150-in-5m.js
+```
+
+Cleanup from the production backend shell:
+
+```bash
+python manage.py seed_load_test_users \
+  --cleanup \
+  --confirm-cleanup DELETE_LOAD_TEST_USERS \
+  --allow-production \
+  --confirm-production LOAD_TEST_PROD \
+  --count 150 \
+  --email-domain "$LOAD_TEST_DOMAIN"
+```
+
+## What To Watch
+
+In Grafana, watch:
+
+- request rate and p95/p99 latency
+- 4xx/5xx rate
+- slowest endpoints
+- DB query rate and DB p95 latency
+- cache gets/hits/misses
+- container logs in Loki for deadline, auth, Redis, or DB errors
+
+Expected request count for the default full run:
+
+- `150` login requests
+- `150` planned-order reads, unless `INCLUDE_PLANNED_READ=false`
+- `150` order submit requests
+- `450` HTTP requests total with planned reads enabled
 
 ## Notes
 
 - The k6 script logs in each throwaway user and submits one order for
   `ORDER_DATE`.
+- `MAX_SUBMITS` caps actual order submissions, so the default full run submits
+  exactly `150` orders even if k6 schedules a boundary iteration.
 - Re-running against the same users and date exercises order upsert/update
-  behavior, not fresh inserts. Cleanup first if you want another fresh-insert run.
+  behavior, not fresh inserts. Cleanup first if you want another fresh-insert
+  run.
 - The app currently has targeted auth/email rate limits, not a global API rate
   limiter. This scenario is intentionally controlled and authenticated.
