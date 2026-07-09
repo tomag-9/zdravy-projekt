@@ -10,6 +10,7 @@ interface GlobalSettings {
     deadline_lunch_is_day_before: boolean;
     deadline_olovrant: string;
     deadline_olovrant_is_day_before: boolean;
+    edupage_auto_scrape_enabled: boolean;
     report_email_recipients: string[];
     client_contact_name: string;
     client_contact_role: string;
@@ -27,6 +28,7 @@ const SystemSettings: React.FC = () => {
         deadline_lunch_is_day_before: false,
         deadline_olovrant: '10:00',
         deadline_olovrant_is_day_before: false,
+        edupage_auto_scrape_enabled: true,
         report_email_recipients: [],
         client_contact_name: '',
         client_contact_role: '',
@@ -234,6 +236,39 @@ const SystemSettings: React.FC = () => {
                         </button>
                     </div>
                 </form>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">
+                <h2 className="text-xl font-bold text-gray-900 mb-2">EduPage automatika</h2>
+                <div className="flex items-start justify-between gap-6">
+                    <div>
+                        <p className="text-sm text-gray-500">
+                            Automatické čítanie objednávok z EduPage pred uzávierkami.
+                        </p>
+                        <p className="text-xs text-gray-400 mt-2">
+                            Manuálne načítanie zostane dostupné.
+                        </p>
+                    </div>
+                    <label className="relative inline-flex cursor-pointer items-center">
+                        <input
+                            type="checkbox"
+                            checked={settings.edupage_auto_scrape_enabled}
+                            onChange={(e) => setSettings({ ...settings, edupage_auto_scrape_enabled: e.target.checked })}
+                            className="peer sr-only"
+                            aria-label="Automatické čítanie EduPage"
+                        />
+                        <span className="h-7 w-12 rounded-full bg-gray-200 transition-colors after:absolute after:left-1 after:top-1 after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-blue-600 peer-checked:after:translate-x-5" />
+                    </label>
+                </div>
+                <div className="pt-6 flex justify-end">
+                    <button
+                        type="button"
+                        onClick={saveSettings}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-xl transition-colors shadow-sm hover:shadow-md"
+                    >
+                        Uložiť EduPage
+                    </button>
+                </div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 mt-8">

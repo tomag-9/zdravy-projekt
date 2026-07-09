@@ -46,18 +46,29 @@ const ORDER_REPORT = {
       name: "Skolka Krasnanko",
       email: "krasnanko@edupage.local",
       breakfast: {
-        menus: { A: 12 },
-        diets: { Bezlepkova: 2 },
+        categories: [
+          {
+            name: "Škôlka",
+            menus: { A: 12 },
+            diets: { Bezlepkova: 2 },
+            total: 12,
+          },
+        ],
         total: 14,
       },
       lunch: {
-        menus: { A: 20, B: 5 },
-        diets: {},
+        categories: [
+          {
+            name: "Škôlka",
+            menus: { A: 20, B: 5 },
+            diets: {},
+            total: 25,
+          },
+        ],
         total: 25,
       },
       olovrant: {
-        menus: {},
-        diets: {},
+        categories: [],
         total: 0,
       },
       total: 39,
@@ -69,6 +80,28 @@ const ORDER_REPORT = {
     olovrant: { menus: {}, diets: {}, total: 0 },
     grand: 39,
   },
+};
+
+const ORDER_REPORT_WITH_BOTH_SHAPES = {
+  ...ORDER_REPORT,
+  rows: [
+    {
+      ...ORDER_REPORT.rows[0],
+      breakfast: {
+        menus: { A: 99 },
+        diets: { StaryTvar: 99 },
+        categories: [
+          {
+            name: "Škôlka",
+            menus: { A: 12 },
+            diets: { Bezlepkova: 2 },
+            total: 12,
+          },
+        ],
+        total: 14,
+      },
+    },
+  ],
 };
 
 const GRAMAGE_WITH_PLAN = {
@@ -125,5 +158,19 @@ describe("AdminDashboard", () => {
     expect(mockApiFetch).not.toHaveBeenCalledWith(
       expect.stringContaining("/admin/summary/daily-report/"),
     );
+  });
+
+  it("prefers category counts over top-level fallback counts", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(makeMockResponse(EMPTY_GRAMAGE))
+      .mockResolvedValueOnce(makeMockResponse(ORDER_REPORT_WITH_BOTH_SHAPES));
+
+    render(<AdminDashboard />);
+
+    expect(await screen.findByText("Počty objednávok bez gramáže")).toBeInTheDocument();
+    expect(screen.getByText("A: 12")).toBeInTheDocument();
+    expect(screen.getByText("Bezlepkova: 2")).toBeInTheDocument();
+    expect(screen.queryByText("A: 99")).not.toBeInTheDocument();
+    expect(screen.queryByText("StaryTvar: 99")).not.toBeInTheDocument();
   });
 });

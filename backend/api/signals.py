@@ -337,6 +337,16 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
         return
 
     try:
+        if not getattr(settings_instance, "edupage_auto_scrape_enabled", True):
+            deleted_count, _ = PeriodicTask.objects.filter(
+                name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+            ).delete()
+            logger.info(
+                "Edupage auto scrape disabled; deleted %d periodic task(s)",
+                deleted_count,
+            )
+            return
+
         all_meal_types = ["breakfast", "lunch", "olovrant"]
 
         # Group meal types by deadline time and target-day rule.

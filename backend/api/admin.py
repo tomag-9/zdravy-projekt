@@ -225,7 +225,12 @@ class ClientSettingsAdmin(admin.ModelAdmin):
 class GlobalSettingsAdmin(admin.ModelAdmin):
     """Admin for GlobalSettings model."""
 
-    list_display = ("deadline_breakfast", "deadline_lunch", "deadline_olovrant")
+    list_display = (
+        "deadline_breakfast",
+        "deadline_lunch",
+        "deadline_olovrant",
+        "edupage_auto_scrape_enabled",
+    )
 
     def has_add_permission(self, request):
         """Only allow one GlobalSettings instance."""

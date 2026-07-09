@@ -58,6 +58,7 @@ class MealPlanService:
                         template=template,
                         category=template.category,
                         menu_variant=item.get("menu_variant", template.menu_variant),
+                        diet=template.diet,
                     )
 
             if enrolled_data is not None:
@@ -279,9 +280,9 @@ class MealPlanService:
 
         # ── Meal plan & column definitions ──────────────────────────────────────
         try:
-            plan = DailyMealPlan.objects.prefetch_related("items__template").get(
-                date=date_str
-            )
+            plan = DailyMealPlan.objects.prefetch_related(
+                "items__template", "items__diet"
+            ).get(date=date_str)
             plan_id = plan.id
         except DailyMealPlan.DoesNotExist:
             plan = None
@@ -341,6 +342,8 @@ class MealPlanService:
                         if i.menu_variant in VARIANT_ORDER
                         else 99
                     ),
+                    1 if i.diet_id else 0,
+                    i.diet_id or 0,
                 ),
             )
             for item in items:
@@ -352,12 +355,18 @@ class MealPlanService:
                     key, label = item.category, MEAL_LABELS.get(
                         item.category, item.category
                     )
+                diet_name = item.diet.name if item.diet_id else None
+                if diet_name:
+                    key = f"{key}_diet_{item.diet_id}"
+                    label = f"{label} - {diet_name}"
                 col_groups.append(
                     {
                         "key": key,
                         "label": label,
                         "meal": item.category,
                         "variant": item.menu_variant,
+                        "diet_id": item.diet_id,
+                        "diet_name": diet_name,
                         "template_name": t.name,
                         "components": parse_components(
                             t.name, t.components, t.weight_label, t.unit_exception
@@ -441,6 +450,7 @@ class MealPlanService:
                 if (
                     cg["meal"] == meal
                     and _normalize_variant(cg["variant"]) == normalized_variant
+                    and not cg.get("diet_name")
                 ):
                     result.append(
                         [
@@ -453,23 +463,84 @@ class MealPlanService:
             return result
 
         def _col_grams_diet(
-            meal: str, coeff: Decimal, count: int, portion_name: str
+            meal: str,
+            diet_name: str,
+            coeff: Decimal,
+            count: int,
+            portion_name: str,
         ) -> list:
-            """Map diet portions to the standard template column used for that meal."""
+            """Map diet portions to an explicit diet template, or fall back to A/default."""
             meal_groups = [cg for cg in col_groups if cg["meal"] == meal]
             if not meal_groups:
                 return [[] for _ in col_groups]
+            explicit_diet_groups = [
+                cg for cg in meal_groups if cg.get("diet_name") == diet_name
+            ]
+            if explicit_diet_groups:
+                if meal in variant_meals:
+                    for cg in explicit_diet_groups:
+                        if _normalize_variant(cg["variant"]) == "A":
+                            return _col_grams_for_group(cg, coeff, count, portion_name)
+                for cg in explicit_diet_groups:
+                    if not cg["variant"]:
+                        return _col_grams_for_group(cg, coeff, count, portion_name)
+                return _col_grams_for_group(
+                    explicit_diet_groups[0], coeff, count, portion_name
+                )
+
+            standard_meal_groups = [cg for cg in meal_groups if not cg.get("diet_name")]
             if meal in variant_meals:
-                for cg in meal_groups:
+                for cg in standard_meal_groups:
                     if _normalize_variant(cg["variant"]) == "A":
                         return _col_grams(
                             meal, cg["variant"], coeff, count, portion_name
                         )
-            if len(meal_groups) == 1:
+            if len(standard_meal_groups) == 1:
                 return _col_grams(
-                    meal, meal_groups[0]["variant"], coeff, count, portion_name
+                    meal,
+                    standard_meal_groups[0]["variant"],
+                    coeff,
+                    count,
+                    portion_name,
                 )
             return [[] for _ in col_groups]
+
+        def _col_grams_for_group(
+            target_group: dict, coeff: Decimal, count: int, portion_name: str
+        ) -> list:
+            result = []
+            for cg in col_groups:
+                if cg is target_group:
+                    result.append(
+                        [
+                            str(_component_value(c, coeff, count, portion_name))
+                            for c in cg["components"]
+                        ]
+                    )
+                else:
+                    result.append([])
+            return result
+
+        def _col_gram_adjustment(correction: dict) -> list:
+            result = _empty_group_totals()
+            meal = correction.get("meal")
+            variant = _normalize_variant(correction.get("variant", ""))
+            diet_name = correction.get("diet_name")
+            component_index = int(correction.get("component_index", 0))
+            grams = Decimal(str(correction.get("grams", "0")))
+            for group_index, cg in enumerate(col_groups):
+                if (
+                    cg["meal"] == meal
+                    and _normalize_variant(cg["variant"]) == variant
+                    and cg.get("diet_name") == diet_name
+                    and 0 <= component_index < len(cg["components"])
+                ):
+                    result[group_index][component_index] += grams
+                    break
+            return [
+                [str(value.quantize(Decimal("0.01"))) for value in group]
+                for group in result
+            ]
 
         # Running totals per col_group per component
         totals = _empty_group_totals()
@@ -491,6 +562,8 @@ class MealPlanService:
             order_data = order.data if isinstance(order.data, dict) else {}
 
             for order_meal, meal_data in order_data.items():
+                if order_meal == "__gram_corrections__":
+                    continue
                 meals = ORDER_MEAL_TO_PLAN_MEALS.get(order_meal, [])
                 # Only consider meals that actually have a selection for this day.
                 meals = [
@@ -547,11 +620,30 @@ class MealPlanService:
                             )
                             variant_counts = [("", total)]
 
+                        # Diet counts are a subset breakdown of an already-counted
+                        # variant, not an addition - they must be subtracted from
+                        # the variant(s) or students get counted twice (once in
+                        # the base variant total, once in the diet sub-row). The
+                        # "base" variant isn't tagged in the raw diets data, so
+                        # walk variants in order and subtract the diet count from
+                        # each until it's exhausted - this used to be hardcoded to
+                        # subtract fully from "A" only, which either silently
+                        # stopped subtracting (double-counting diet students)
+                        # whenever a school's klasik column was labeled B/C, or
+                        # (if only subtracted from the first nonzero variant)
+                        # under-subtracted whenever that variant's own count was
+                        # smaller than the diet count, leaving the remainder
+                        # double-counted in the next variant.
                         adjusted_variant_counts = []
+                        remaining_diet_count = (
+                            total_diet_count if is_variant_meal else 0
+                        )
                         for variant, count in variant_counts:
                             adjusted_count = count
-                            if is_variant_meal and variant == "A":
-                                adjusted_count -= total_diet_count
+                            if remaining_diet_count > 0:
+                                subtract = min(remaining_diet_count, adjusted_count)
+                                adjusted_count -= subtract
+                                remaining_diet_count -= subtract
                             adjusted_variant_counts.append(
                                 (variant, max(adjusted_count, 0))
                             )
@@ -592,7 +684,7 @@ class MealPlanService:
                             if diet_count <= 0:
                                 continue
                             diet_grams = _col_grams_diet(
-                                meal, coeff, diet_count, portion_name
+                                meal, diet_name, coeff, diet_count, portion_name
                             )
                             sub_rows.append(
                                 {
@@ -613,6 +705,24 @@ class MealPlanService:
                             )
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += diet_count
+
+            for correction in order_data.get("__gram_corrections__", []):
+                if not isinstance(correction, dict):
+                    continue
+                grams = _col_gram_adjustment(correction)
+                _merge_group_totals(totals, grams)
+                _merge_group_totals(client_standard_totals, grams)
+                sub_rows.append(
+                    {
+                        "type": "standard",
+                        "meal": correction.get("meal", ""),
+                        "variant": correction.get("variant", ""),
+                        "portion_name": "Gramážna korekcia",
+                        "label": correction.get("label", "Gramážna korekcia"),
+                        "count": 0,
+                        "col_grams": grams,
+                    }
+                )
 
             if sub_rows:
                 settings = getattr(order.user, "settings", None)
@@ -674,24 +784,52 @@ class MealPlanService:
                     _diet_agg[_m][_k] = _diet_agg[_m].get(_k, 0) + _sr["count"]
 
         count_summary: list[dict] = []
-        _added_meals: set = set()
+        _added_default_diet_meals: set = set()
         _added_mvs: set = set()
+        _explicit_diets_by_meal: dict[str, set[str]] = {}
         for _cg in col_groups:
-            _mv = (_cg["meal"], _cg["variant"])
-            if _mv in _added_mvs:
+            if _cg.get("diet_name"):
+                _explicit_diets_by_meal.setdefault(_cg["meal"], set()).add(
+                    _cg["diet_name"]
+                )
+        for _cg in col_groups:
+            _summary_key = (_cg["meal"], _cg["variant"], _cg.get("diet_name"))
+            if _summary_key in _added_mvs:
                 continue
-            _added_mvs.add(_mv)
-            _std_entries = sorted(_std_agg.get(_mv, {}).items(), key=lambda x: -x[1])
+            _added_mvs.add(_summary_key)
+            _std_entries = []
+            if not _cg.get("diet_name"):
+                _std_key = (_cg["meal"], _cg["variant"])
+                _std_entries = sorted(
+                    _std_agg.get(_std_key, {}).items(), key=lambda x: -x[1]
+                )
             _diets_entries: list = []
-            if _cg["meal"] not in _added_meals:
-                _added_meals.add(_cg["meal"])
+            explicit_diet_name = _cg.get("diet_name")
+            if explicit_diet_name:
                 _diets_entries = sorted(
-                    _diet_agg.get(_cg["meal"], {}).items(), key=lambda x: -x[1]
+                    [
+                        (key, count)
+                        for key, count in _diet_agg.get(_cg["meal"], {}).items()
+                        if key[1] == explicit_diet_name
+                    ],
+                    key=lambda x: -x[1],
+                )
+            elif _cg["meal"] not in _added_default_diet_meals:
+                _added_default_diet_meals.add(_cg["meal"])
+                explicit_diets = _explicit_diets_by_meal.get(_cg["meal"], set())
+                _diets_entries = sorted(
+                    [
+                        (key, count)
+                        for key, count in _diet_agg.get(_cg["meal"], {}).items()
+                        if key[1] not in explicit_diets
+                    ],
+                    key=lambda x: -x[1],
                 )
             count_summary.append(
                 {
                     "meal": _cg["meal"],
                     "variant": _cg["variant"],
+                    "diet_name": explicit_diet_name,
                     "label": _cg["label"],
                     "standard": [{"name": n, "count": c} for n, c in _std_entries],
                     "diets": [

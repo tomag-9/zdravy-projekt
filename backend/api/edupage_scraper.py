@@ -221,11 +221,65 @@ class EdupageScraper:
     # ------ jid → meal_key ------
 
     @staticmethod
-    def _build_jid_map(nastavenia: list[dict]) -> dict[str, str]:
-        """Return {jid_str: meal_key} using vydaj_od times from nastavenia."""
+    def _parse_iso_date(value: str) -> date | None:
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_hm(value: str) -> tuple[int, int]:
+        """Parse an "H:MM"/"HH:MM" time string into a (hour, minute) tuple."""
+        hour_str, _, minute_str = value.partition(":")
+        try:
+            return int(hour_str), int(minute_str or 0)
+        except ValueError:
+            return 12, 0
+
+    @staticmethod
+    def _row_valid_for_date(row: dict, target_date: date) -> bool:
+        """Return True unless `target_date` falls outside the row's plati_od/plati_do."""
+        plati_od = row.get("plati_od")
+        if plati_od:
+            parsed = EdupageScraper._parse_iso_date(plati_od)
+            if parsed and target_date < parsed:
+                return False
+        plati_do = row.get("plati_do")
+        if plati_do:
+            parsed = EdupageScraper._parse_iso_date(plati_do)
+            if parsed and target_date > parsed:
+                return False
+        return True
+
+    @staticmethod
+    def _build_jid_map(nastavenia: list[dict], target_date: date) -> dict[str, str]:
+        """Return {jid_str: meal_key} using vydaj_od times from nastavenia.
+
+        A school's olovrant (afternoon snack) window can start as early as
+        14:30, which falls on the same side of the fixed hour thresholds as a
+        lunch window ending at 14:00 (both have vydaj_od hour 14) — so two
+        genuinely different service windows would resolve to the same
+        meal_key and their headcounts would be summed together, silently
+        doubling that meal's reported count. When more than one window in the
+        same day resolves to the same meal, keep the earliest (chronologically)
+        and shift later collisions to the next later meal slot that isn't
+        already taken that day, so each real window keeps its own bucket.
+
+        A `vydaj_normal` row is only valid while `target_date` falls within
+        its own `plati_od`/`plati_do` range — a school that changed its
+        serving schedule mid-year can have several such rows, and applying a
+        row that isn't valid for the scraped date would silently attach the
+        wrong (stale or not-yet-active) times to that day.
+        """
         jid_map: dict[str, str] = {}
+        # Single source of truth for meal ordering, shared with the hour
+        # thresholds below - avoids a second, independently-maintained list.
+        meal_sequence = [label for _, label in _MEAL_BY_HOUR] + [_DEFAULT_MEAL]
+
         for row in nastavenia:
             if row.get("setting") != "vydaj_normal":
+                continue
+            if not EdupageScraper._row_valid_for_date(row, target_date):
                 continue
             try:
                 hodnota = (
@@ -238,25 +292,57 @@ class EdupageScraper:
             for day_data in hodnota.values():
                 if not isinstance(day_data, dict):
                     continue
-                for jid, times in day_data.items():
-                    if jid in jid_map:
-                        continue
-                    vydaj_od = times.get("vydaj_od", "12:00")
-                    hour = int(vydaj_od.split(":")[0])
+
+                unseen = [
+                    (jid, times.get("vydaj_od", "12:00"))
+                    for jid, times in day_data.items()
+                    if jid not in jid_map
+                ]
+                if not unseen:
+                    continue
+                # Chronological within the day - parsed as (hour, minute) so
+                # unpadded times (e.g. "9:30") still sort before "14:00"
+                # instead of a lexicographic string compare misordering them.
+                unseen.sort(key=lambda pair: EdupageScraper._parse_hm(pair[1]))
+
+                used_meals: set[str] = set()
+                for jid, vydaj_od in unseen:
+                    hour = EdupageScraper._parse_hm(vydaj_od)[0]
                     meal = _DEFAULT_MEAL
                     for threshold, label in _MEAL_BY_HOUR:
                         if hour < threshold:
                             meal = label
                             break
+
+                    if meal in used_meals:
+                        start = meal_sequence.index(meal)
+                        for candidate in meal_sequence[start + 1 :]:
+                            if candidate not in used_meals:
+                                meal = candidate
+                                break
+
+                    used_meals.add(meal)
                     jid_map[jid] = meal
         return jid_map
 
     @staticmethod
-    def _build_payer_map(typy_platitelov: list[dict]) -> dict[str, dict[str, str]]:
-        """Return {typ_platitela_id: cleaned portion/diet metadata}."""
+    def _build_payer_map(
+        typy_platitelov: list[dict], target_date: date
+    ) -> dict[str, dict[str, str]]:
+        """Return {typ_platitela_id: cleaned portion/diet metadata}.
+
+        Like `vydaj_normal`, a `typy_platitelov` row is only valid while
+        `target_date` falls within its own `plati_od`/`plati_do` range - a
+        school can redefine payer groups (e.g. reassign a payer_id to a
+        different diet/portion) mid-year, leaving older rows in the data.
+        Applying a row that isn't valid for the scraped date would silently
+        misclassify counts under a stale or not-yet-active payer mapping.
+        """
         payer_map: dict[str, dict[str, str]] = {}
         for row in typy_platitelov:
             if not isinstance(row, dict):
+                continue
+            if not EdupageScraper._row_valid_for_date(row, target_date):
                 continue
             hodnota = row.get("hodnota", {})
             if isinstance(hodnota, str):
@@ -398,8 +484,8 @@ class EdupageScraper:
         nastavenia: list = nastavenia_raw or []
         typy_platitelov: list = typy_platitelov_raw or []
 
-        jid_map = self._build_jid_map(nastavenia)
-        payer_map = self._build_payer_map(typy_platitelov)
+        jid_map = self._build_jid_map(nastavenia, target_date)
+        payer_map = self._build_payer_map(typy_platitelov, target_date)
 
         # Accumulate already-clean data as meal -> our portion -> menu/diet counts.
         counts_by_meal: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
