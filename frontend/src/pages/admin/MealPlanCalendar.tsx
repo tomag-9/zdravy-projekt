@@ -75,7 +75,7 @@ const MONTH_NAMES = [
 ];
 const DOW = ["Po", "Ut", "St", "Št", "Pi", "So", "Ne"];
 
-const DayEditorPanel: React.FC<{
+export const DayEditorPanel: React.FC<{
   date: string;
   templates: MealTemplateOption[];
   onClose: () => void;
@@ -101,8 +101,12 @@ const DayEditorPanel: React.FC<{
             const next: Record<SelectionKey, number | ""> = { ...EMPTY_SELECTION };
             for (const item of data.items || []) {
               if (item.category === "main_course") {
-                const variant = (item.menu_variant || "A").toUpperCase();
-                if (MAIN_COURSE_VARIANTS.includes(variant as MainCourseVariant)) {
+                const variant = (item.menu_variant || "").toUpperCase();
+                if (!variant) {
+                  for (const targetVariant of MAIN_COURSE_VARIANTS) {
+                    next[`main_course_${targetVariant}`] = item.template;
+                  }
+                } else if (MAIN_COURSE_VARIANTS.includes(variant as MainCourseVariant)) {
                   next[`main_course_${variant as MainCourseVariant}`] = item.template;
                 }
               } else if (item.category in next) {
@@ -170,16 +174,32 @@ const DayEditorPanel: React.FC<{
     }
   };
 
-  const renderSelect = (selectionKey: SelectionKey, category: MealCategory) => (
+  const renderSelect = (
+    selectionKey: SelectionKey,
+    category: MealCategory,
+    label: string,
+  ) => (
     <select
+      aria-label={label}
       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
       value={selected[selectionKey]}
-      onChange={(e) =>
-        setSelected((s) => ({
-          ...s,
-          [selectionKey]: e.target.value ? Number(e.target.value) : "",
-        }))
-      }
+      onChange={(e) => {
+        const nextValue = e.target.value ? Number(e.target.value) : "";
+        setSelected((current) => {
+          const next = { ...current, [selectionKey]: nextValue };
+          if (
+            selectionKey === "main_course_A" &&
+            current.main_course_A === "" &&
+            nextValue !== ""
+          ) {
+            for (const variant of MAIN_COURSE_VARIANTS) {
+              const key: SelectionKey = `main_course_${variant}`;
+              if (next[key] === "") next[key] = nextValue;
+            }
+          }
+          return next;
+        });
+      }}
     >
       <option value="">— nevybraté —</option>
       {templatesByCategory[category].map((t) => (
@@ -208,29 +228,37 @@ const DayEditorPanel: React.FC<{
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 {CATEGORY_LABELS.breakfast_snack}
               </label>
-              {renderSelect("breakfast_snack", "breakfast_snack")}
+              {renderSelect(
+                "breakfast_snack",
+                "breakfast_snack",
+                CATEGORY_LABELS.breakfast_snack,
+              )}
             </div>
 
             <div className="border border-gray-100 rounded-xl p-3 space-y-3">
               <div>
                 <div className="text-sm font-semibold text-gray-700">Obed</div>
                 <p className="mt-1 text-xs text-gray-500">
-                  Menu B/C/V vyberte len pri vlastnej gramáži. Diéty bez vlastnej
-                  šablóny preberú gramáž Menu A.
+                  Menu A/B/C/V sú samostatné gramáže. Prvý výber Menu A sa
+                  skopíruje do prázdnych variantov; ďalšie zmeny sú nezávislé.
                 </p>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 mb-1">
                   {CATEGORY_LABELS.soup}
                 </label>
-                {renderSelect("soup", "soup")}
+                {renderSelect("soup", "soup", CATEGORY_LABELS.soup)}
               </div>
               {MAIN_COURSE_VARIANTS.map((variant) => (
                 <div key={variant}>
                   <label className="block text-xs text-gray-500 mb-1">
                     {CATEGORY_LABELS.main_course} Menu {variant}
                   </label>
-                  {renderSelect(`main_course_${variant}`, "main_course")}
+                  {renderSelect(
+                    `main_course_${variant}`,
+                    "main_course",
+                    `${CATEGORY_LABELS.main_course} Menu ${variant}`,
+                  )}
                 </div>
               ))}
             </div>
@@ -239,7 +267,11 @@ const DayEditorPanel: React.FC<{
               <label className="block text-sm font-semibold text-gray-700 mb-1">
                 {CATEGORY_LABELS.afternoon_snack}
               </label>
-              {renderSelect("afternoon_snack", "afternoon_snack")}
+              {renderSelect(
+                "afternoon_snack",
+                "afternoon_snack",
+                CATEGORY_LABELS.afternoon_snack,
+              )}
             </div>
           </div>
         )}
