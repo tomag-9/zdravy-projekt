@@ -81,8 +81,14 @@ interface GramageDashboard {
 type OrderMealKey = "breakfast" | "lunch" | "olovrant";
 
 interface OrderMealSummary {
-  menus: Record<string, number>;
-  diets: Record<string, number>;
+  menus?: Record<string, number>;
+  diets?: Record<string, number>;
+  categories?: Array<{
+    name: string;
+    menus: Record<string, number>;
+    diets: Record<string, number>;
+    total: number;
+  }>;
   total: number;
 }
 
@@ -365,6 +371,35 @@ function formatCounts(counts: Record<string, number>): string {
     .join(", ");
 }
 
+function mergeCounts(
+  target: Record<string, number>,
+  source: Record<string, number> | undefined,
+) {
+  for (const [label, count] of Object.entries(source ?? {})) {
+    if (count > 0) target[label] = (target[label] ?? 0) + count;
+  }
+}
+
+function mealMenus(meal: OrderMealSummary): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (meal.categories?.length) {
+    for (const category of meal.categories) mergeCounts(result, category.menus);
+    return result;
+  }
+  mergeCounts(result, meal.menus);
+  return result;
+}
+
+function mealDiets(meal: OrderMealSummary): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (meal.categories?.length) {
+    for (const category of meal.categories) mergeCounts(result, category.diets);
+    return result;
+  }
+  mergeCounts(result, meal.diets);
+  return result;
+}
+
 const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
   const rows = report.rows.filter((row) => row.total > 0);
 
@@ -400,8 +435,8 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
                 </td>
                 {MEAL_KEYS.map((meal) => {
                   const mealData = row[meal];
-                  const menuText = formatCounts(mealData.menus);
-                  const dietText = formatCounts(mealData.diets);
+                  const menuText = formatCounts(mealMenus(mealData));
+                  const dietText = formatCounts(mealDiets(mealData));
                   return (
                     <td key={meal} className="px-4 py-3 align-top">
                       {mealData.total > 0 ? (
