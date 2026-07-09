@@ -1,0 +1,32 @@
+name: Load Test Smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  order-submit-smoke:
+    name: Order Submit Load Smoke
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run Docker dev k6 smoke test
+        env:
+          USER_COUNT: "3"
+          MAX_SUBMITS: "3"
+          RATE: "6"
+          DURATION: "30s"
+          PRE_ALLOCATED_VUS: "2"
+          MAX_VUS: "6"
+          USER_EMAIL_DOMAIN: "ci.loadtest.local"
+          PASSWORD: "LoadTestPassword123!"
+        run: scripts/run-order-load-test.sh
