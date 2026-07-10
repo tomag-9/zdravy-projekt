@@ -575,7 +575,14 @@ def scrape_edupage_orders_task(
                         order.data = _apply_scrape(
                             order.data, imported_data, requested_meals
                         )
-                        order.save(update_fields=["data", "updated_at"])
+                        # Upozornenia posledného scrapu — prepíšeme (aj prázdnym),
+                        # nech admin prehľad nezobrazuje výkričník z minulého behu,
+                        # ktorý sa už medzitým vyriešil.
+                        order.scrape_flags = {
+                            "attention": list(result.attention),
+                            "config_notes": list(result.config_notes),
+                        }
+                        order.save(update_fields=["data", "scrape_flags", "updated_at"])
                     scraped += 1
 
         summary = {

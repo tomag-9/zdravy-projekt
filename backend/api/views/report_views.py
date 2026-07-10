@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..exporters import PDFReportExporter, XLSXReportExporter
-from ..models import DailyOrder
+from ..models import DailyOrder, Prevadzka
 from ..services import ReportService
 from ..utils import order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @extend_schema_view(
     daily_stats=extend_schema(tags=["admin"]),
     daily_report=extend_schema(tags=["admin"]),
+    prevadzka_overview=extend_schema(tags=["admin"]),
     daily_report_xlsx=extend_schema(tags=["admin"]),
     daily_report_pdf=extend_schema(tags=["admin"]),
 )
@@ -131,6 +132,89 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         return Response(
             {"date": target_date.isoformat(), "rows": rows, "totals": totals}
+        )
+
+    @action(detail=False, methods=["get"], url_path="prevadzka-overview")
+    def prevadzka_overview(self, request):
+        """Prehľad dodania podkladov za deň, rozdelený na EduPage a in-app prevádzky.
+
+        Pre každú aktívnu prevádzku vráti, či za daný deň existuje objednávka
+        (`delivered`), počty raňajok/obedov/olovrantov a prípadné upozornenia
+        zo scrapu (`flags`), z ktorých frontend vyrobí ✅ / ❌ / ⚠️.
+        """
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "invalid date format, expected YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        prevadzky = (
+            Prevadzka.objects.filter(is_active=True)
+            .select_related("celok")
+            .prefetch_related("celok__profily")
+            .order_by("celok__nazov", "sort_order", "nazov")
+        )
+
+        orders_by_prevadzka = {
+            order.prevadzka_id: order
+            for order in DailyOrder.objects.filter(
+                date=target_date, prevadzka__isnull=False
+            )
+        }
+
+        edupage_rows = []
+        app_rows = []
+        for prevadzka in prevadzky:
+            # Celok je EduPage, ak aspoň jedno jeho prihlásenie nahráva cez EduPage.
+            is_edupage = any(
+                profil.is_edupage for profil in prevadzka.celok.profily.all()
+            )
+            order = orders_by_prevadzka.get(prevadzka.id)
+            data = {}
+            flags = {"attention": [], "config_notes": []}
+            if order is not None:
+                data = order.data if isinstance(order.data, dict) else {}
+                if isinstance(order.scrape_flags, dict):
+                    flags = {
+                        "attention": order.scrape_flags.get("attention", []) or [],
+                        "config_notes": order.scrape_flags.get("config_notes", [])
+                        or [],
+                    }
+
+            bf = build_user_meal_row(data, "breakfast")
+            lu = build_user_meal_row(data, "lunch")
+            ol = build_user_meal_row(data, "olovrant")
+            counts = {
+                "breakfast": bf["total"],
+                "lunch": lu["total"],
+                "olovrant": ol["total"],
+                "total": bf["total"] + lu["total"] + ol["total"],
+            }
+
+            row = {
+                "prevadzka_id": prevadzka.id,
+                "nazov": prevadzka.nazov,
+                "celok": prevadzka.celok.nazov,
+                "delivered": order is not None,
+                "counts": counts,
+                "flags": flags,
+                "has_warning": bool(flags["attention"] or flags["config_notes"]),
+            }
+            (edupage_rows if is_edupage else app_rows).append(row)
+
+        return Response(
+            {
+                "date": target_date.isoformat(),
+                "edupage": edupage_rows,
+                "app": app_rows,
+            }
         )
 
     @action(detail=False, methods=["get"], url_path="daily-report-xlsx")

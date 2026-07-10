@@ -83,6 +83,47 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
+    """Upozornenia scrapu sa uložia do DailyOrder.scrape_flags a pri čistom
+    behu sa vyčistia, nech admin prehľad nezobrazuje starý výkričník."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def flagged_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 5}}},
+            warnings=[],
+            attention=["A:KZ?"],
+            config_notes=["olovrant chýba"],
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", flagged_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    order = DailyOrder.objects.get(user=edupage_user, date=target_date)
+    assert order.scrape_flags == {
+        "attention": ["A:KZ?"],
+        "config_notes": ["olovrant chýba"],
+    }
+
+    def clean_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 5}}}, warnings=[]
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", clean_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    order.refresh_from_db()
+    assert order.scrape_flags == {"attention": [], "config_notes": []}
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_task_skips_automatic_run_when_disabled(
     edupage_user, monkeypatch
 ):

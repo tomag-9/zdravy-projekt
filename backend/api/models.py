@@ -21,6 +21,15 @@ class DailyOrder(models.Model):
     )
     date = models.DateField(db_index=True)
     data = models.JSONField(default=dict)
+    scrape_flags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
+            "{'attention': [...], 'config_notes': [...]}. Prázdne pri ručných "
+            "objednávkach a pri scrape bez upozornení."
+        ),
+    )
     is_auto = models.BooleanField(
         default=False, help_text="True if this order was auto-generated after deadline"
     )
