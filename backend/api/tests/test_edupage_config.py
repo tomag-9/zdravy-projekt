@@ -306,3 +306,18 @@ class TestParseSplit(unittest.TestCase):
         res = self._parse([("1", 5)], None)
         self.assertEqual(res.order_data_by_prevadzka, {})
         self.assertEqual(res.order_data["lunch"]["ZŠ 1.stupeň"]["menuCounts"]["A"], 5)
+
+
+class TestMatchPrevadzkaPrefixOnly(unittest.TestCase):
+    """Regresia #4: match je prefix, nie substring."""
+
+    def test_substring_in_middle_does_not_match(self):
+        # "Les" sa vyskytuje v strede, nie ako prefix → nesmie matchnúť.
+        self.assertIsNone(
+            match_prevadzka({"Les": "Školička Les"}, "Bez Lesných plodov", "")
+        )
+
+    def test_prefix_matches(self):
+        self.assertEqual(
+            match_prevadzka({"Les": "Školička Les"}, "Les učiteľ", ""), "Školička Les"
+        )

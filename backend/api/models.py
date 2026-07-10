@@ -48,8 +48,11 @@ class DailyOrder(models.Model):
         """Doplní prevádzku, ak ju volajúci neuviedol a je jednoznačná.
 
         Pri celku s jednou prevádzkou nemá zmysel nútiť každého volajúceho, aby ju
-        vypisoval. Pri viacerých ju nedopĺňame — tam musí prevádzku určiť volajúci,
-        inak by sme objednávku ticho pripísali nesprávnemu miestu.
+        vypisoval. Pri viacerých je to však nejednoznačné — radšej vyhodíme chybu,
+        než by sme uložili objednávku bez prevádzky (tichý `None`), ktorá by sa
+        nezobrazila v žiadnom per-prevádzka reporte a obišla by aj unique constraint
+        (Postgres pripúšťa viac NULL). Celok bez prevádzky (napr. účet bez profilu)
+        necháme prejsť ako legacy.
         """
         if self.prevadzka_id is None and self.user_id is not None:
             profile = UserProfile.objects.filter(user_id=self.user_id).first()
@@ -57,6 +60,11 @@ class DailyOrder(models.Model):
                 prve_dve = list(profile.dostupne_prevadzky()[:2])
                 if len(prve_dve) == 1:
                     self.prevadzka = prve_dve[0]
+                elif len(prve_dve) > 1:
+                    raise ValueError(
+                        "DailyOrder bez prevádzky pre login s viacerými prevádzkami "
+                        f"(user_id={self.user_id}). Prevádzku musí určiť volajúci."
+                    )
         return super().save(*args, **kwargs)
 
     @property

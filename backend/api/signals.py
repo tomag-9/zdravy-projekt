@@ -553,15 +553,25 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
         from api.models import Celok, Prevadzka, UserProfile
 
         nazov = (instance.company_name or "").strip() or instance.user.email
-        celok, _ = Celok.objects.get_or_create(
-            nazov=nazov,
-            defaults={
-                "billing_name": instance.billing_name,
-                "ico": instance.ico,
-                "dic": instance.dic,
-            },
+
+        # Každý auto-vytvorený profil dostane VLASTNÝ celok. Zdieľať jeden celok
+        # medzi viacerými loginmi je legitímne, ale to sa konfiguruje ručne — tu
+        # nesmieme dva rovnako pomenované (ale nesúvisiace) profily ticho zlúčiť,
+        # inak by ich prevádzky a objednávky kolidovali. `Celok.nazov` je unique,
+        # tak pri zhode odlíšime názov emailom, resp. pk.
+        celok_nazov = nazov
+        if Celok.objects.filter(nazov=celok_nazov).exists():
+            celok_nazov = f"{nazov} ({instance.user.email})"
+        if Celok.objects.filter(nazov=celok_nazov).exists():
+            celok_nazov = f"{nazov} (#{instance.pk})"
+
+        celok = Celok.objects.create(
+            nazov=celok_nazov,
+            billing_name=instance.billing_name,
+            ico=instance.ico,
+            dic=instance.dic,
         )
-        Prevadzka.objects.get_or_create(celok=celok, nazov=nazov)
+        Prevadzka.objects.create(celok=celok, nazov=nazov)
         # update() namiesto save(), aby sa signál nezavolal rekurzívne.
         UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
         instance.celok = celok

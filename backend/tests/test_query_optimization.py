@@ -86,10 +86,14 @@ class TestDailyOrderViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # DailyOrderSerializer only accesses id/date/status/data/is_auto/updated_at (no user relations)
+        # DailyOrderSerializer only accesses id/date/status/data/is_auto/updated_at
+        # (no per-row related objects). The constant count is now 3: pagination
+        # COUNT, the order fetch, and one access-control lookup (dostupne_prevadzky
+        # does an .exists() to distinguish "empty M2M = whole celok" from a subset).
+        # The bound guards against a *per-row* N+1, which this is not.
         assert (
-            query_count <= 2
-        ), f"Expected <= 2 queries, got {query_count}. Possible N+1 issue."
+            query_count <= 3
+        ), f"Expected <= 3 queries, got {query_count}. Possible N+1 issue."
 
 
 @pytest.mark.django_db

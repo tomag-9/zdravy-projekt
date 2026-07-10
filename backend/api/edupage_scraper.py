@@ -161,8 +161,10 @@ def match_prevadzka(
 ) -> str | None:
     """Priraď EduPage riadok prevádzke podľa `edupage_match` prefixu.
 
-    Prevádzka je zakódovaná buď v payer labeli (`J1 1.st. klasik`, `B - Les`), alebo
-    v názve menu (`Palisády nM`). Skúšame oboje. Dlhšie prefixy majú prednosť, aby
+    Prevádzka je zakódovaná ako PREFIX payer labelu (`J1 1.st. klasik`, `B - Les`)
+    alebo názvu menu (`Palisády nM`). Skúšame oboje. Match je `startswith`, nie
+    substring — inak by krátky `edupage_match` (napr. `Les`) chytil aj nesúvisiaci
+    label, kde sa ten reťazec vyskytne v strede. Dlhšie prefixy majú prednosť, aby
     `J1` neprebilo špecifickejší match.
     """
     payer_key = _normalise_key(payer_name)
@@ -171,7 +173,7 @@ def match_prevadzka(
         prefix_key = _normalise_key(prefix)
         if not prefix_key:
             continue
-        if prefix_key in payer_key or prefix_key in menu_key:
+        if payer_key.startswith(prefix_key) or menu_key.startswith(prefix_key):
             return matches[prefix]
     return None
 

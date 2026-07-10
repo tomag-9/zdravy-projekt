@@ -171,3 +171,38 @@ class TestDailyOrderByDatePrevadzka:
 
         assert response.status_code == 200
         assert response.json()["data"]["lunch"]["Škôlka"]["menuCounts"]["A"] == 2
+
+
+@pytest.mark.django_db
+class TestProfileSignalAndSaveGuards:
+    """Regresie #1 (signál) a #3 (save)."""
+
+    def test_same_company_name_profiles_get_separate_celoky(self):
+        """Dva profily s rovnakým company_name sa NEsmú zlúčiť do jedného celku."""
+        u1 = User.objects.create_user(username="a@e.com", email="a@e.com")
+        u2 = User.objects.create_user(username="b@e.com", email="b@e.com")
+        p1 = UserProfile.objects.create(user=u1, company_name="Rovnaký názov")
+        p2 = UserProfile.objects.create(user=u2, company_name="Rovnaký názov")
+        assert p1.celok_id is not None
+        assert p2.celok_id is not None
+        assert p1.celok_id != p2.celok_id
+
+    def test_daily_order_without_prevadzka_raises_for_multi(self, celok, jolly):
+        """Objednávka bez prevádzky pre multi-prevádzka login = chyba, nie tichý None."""
+        from datetime import date
+
+        from api.models import DailyOrder
+
+        user, profile = _profile("multi@example.com", celok)  # 3 prevádzky (jolly)
+        with pytest.raises(ValueError):
+            DailyOrder.objects.create(user=user, date=date(2026, 7, 10), data={})
+
+    def test_daily_order_autofills_single_prevadzka(self, celok):
+        from datetime import date
+
+        from api.models import DailyOrder, Prevadzka
+
+        p = Prevadzka.objects.create(celok=celok, nazov="Jediná")
+        user, _ = _profile("single@example.com", celok)
+        order = DailyOrder.objects.create(user=user, date=date(2026, 7, 10), data={})
+        assert order.prevadzka_id == p.id
