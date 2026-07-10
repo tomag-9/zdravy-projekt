@@ -6,7 +6,7 @@ from typing import List
 from ..models import DailyOrder
 from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
 from ..order_data import OrderData, safe_count
-from ..utils import build_user_meal_row, merge_meal_totals, user_operation_name
+from ..utils import build_user_meal_row, merge_meal_totals, order_row_label
 
 
 class ReportService:
@@ -32,7 +32,10 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "user__settings")
+            .select_related(
+                "user", "user__profile", "user__settings", "prevadzka__celok"
+            )
+            .prefetch_related("prevadzka__celok__prevadzky")
             .order_by("user__email")
         )
 
@@ -62,7 +65,7 @@ class ReportService:
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": user_operation_name(user),
+                    "name": order_row_label(order),
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,
@@ -92,7 +95,10 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "user__settings")
+            .select_related(
+                "user", "user__profile", "user__settings", "prevadzka__celok"
+            )
+            .prefetch_related("prevadzka__celok__prevadzky")
             .order_by("user__email")
         )
 
@@ -102,6 +108,9 @@ class ReportService:
             rows_data.append(
                 {
                     "user": order.user,
+                    # Prevádzka, nie login: celok s viacerými prevádzkami musí byť
+                    # v exporte rozpadnutý na samostatné riadky.
+                    "name": order_row_label(order),
                     "data": data,
                     "visible_meals": (
                         getattr(

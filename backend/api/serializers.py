@@ -10,8 +10,13 @@ from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
 from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
-from .models import DailyOrder, Holiday
+from .models import DailyOrder, Holiday, Prevadzka
 from .order_data import OrderData, safe_count
+from .services.prevadzka_service import (
+    PrevadzkaNedostupna,
+    PrevadzkaNejednoznacna,
+    vyber_prevadzku,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +34,19 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     status = serializers.ChoiceField(
         choices=("draft", "submitted"), required=False, default="submitted"
     )
+    prevadzka = serializers.PrimaryKeyRelatedField(
+        queryset=Prevadzka.objects.all(), required=False, allow_null=True
+    )
 
     class Meta:
         model = DailyOrder
-        fields = ["id", "date", "status", "data", "is_auto", "updated_at"]
+        fields = ["id", "date", "status", "data", "is_auto", "updated_at", "prevadzka"]
         read_only_fields = ["id", "is_auto", "updated_at"]
+        # DRF by z UniqueConstraint(prevadzka, date) odvodil UniqueTogetherValidator,
+        # ktorý spraví `prevadzka` povinným poľom — lenže pri jedno-prevádzkovom
+        # celku ho klient neposiela a dopĺňame ho my. Unikátnosť aj tak vynucuje
+        # DB constraint + IntegrityError retry v `create()`.
+        validators: list = []
 
     MEAL_FIELD_CONFIG = {
         "breakfast": ("deadline_breakfast", "deadline_breakfast_is_day_before"),
@@ -219,11 +232,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
+        prevadzka = self._resolve_prevadzka(user, validated_data)
+
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
         if input_status == "draft":
             existing_order = DailyOrder.objects.filter(
-                user=user, date=validated_data["date"]
+                prevadzka=prevadzka, date=validated_data["date"]
             ).first()
             if not is_staff:
                 self._validate_deadlines(
@@ -232,15 +247,21 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     input_status,
                     existing_order.data if existing_order else None,
                 )
-            DailyOrder.objects.filter(user=user, date=validated_data["date"]).delete()
+            DailyOrder.objects.filter(
+                prevadzka=prevadzka, date=validated_data["date"]
+            ).delete()
             # Return an unsaved instance for the response
             return DailyOrder(
-                user=user, date=validated_data["date"], status="draft", data={}
+                user=user,
+                prevadzka=prevadzka,
+                date=validated_data["date"],
+                status="draft",
+                data={},
             )
 
         new_data = validated_data.get("data", {})
         existing_order = (
-            DailyOrder.objects.filter(user=user, date=validated_data["date"])
+            DailyOrder.objects.filter(prevadzka=prevadzka, date=validated_data["date"])
             .only("data")
             .first()
         )
@@ -253,7 +274,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         # Use select_for_update inside an atomic block to prevent race conditions
-        # when multiple concurrent requests submit an order for the same (user, date).
+        # when concurrent requests submit an order for the same (prevadzka, date).
         # The SELECT ... FOR UPDATE acquires a row lock so only one writer proceeds
         # at a time; the outer transaction.atomic() ensures the lock is held for the
         # full read-modify-write cycle.
@@ -261,14 +282,14 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             try:
                 t0 = time.monotonic()
                 order = DailyOrder.objects.select_for_update(nowait=False).get(
-                    user=user, date=validated_data["date"]
+                    prevadzka=prevadzka, date=validated_data["date"]
                 )
                 wait_ms = (time.monotonic() - t0) * 1000
                 if wait_ms > 100:
                     logger.warning(
-                        "select_for_update lock wait %.1f ms for user=%s date=%s",
+                        "select_for_update lock wait %.1f ms for prevadzka=%s date=%s",
                         wait_ms,
-                        user.pk,
+                        prevadzka.pk,
                         validated_data["date"],
                     )
                 order.data = new_data
@@ -281,18 +302,30 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     with transaction.atomic():
                         order = DailyOrder.objects.create(
                             user=user,
+                            prevadzka=prevadzka,
                             date=validated_data["date"],
                             data=new_data,
                         )
                 except IntegrityError:
                     # Another request won the INSERT race; retry with a lock.
                     order = DailyOrder.objects.select_for_update(nowait=False).get(
-                        user=user, date=validated_data["date"]
+                        prevadzka=prevadzka, date=validated_data["date"]
                     )
                     order.data = new_data
                     order.save(update_fields=["data", "updated_at"])
 
         return order
+
+    @staticmethod
+    def _resolve_prevadzka(user, validated_data: Dict[str, Any]) -> Prevadzka:
+        """Za ktorú prevádzku sa objednáva. Pri viacerých ju musí klient poslať."""
+        explicit = validated_data.pop("prevadzka", None)
+        try:
+            return vyber_prevadzku(user, explicit.pk if explicit else None)
+        except PrevadzkaNejednoznacna as exc:
+            raise serializers.ValidationError({"prevadzka": str(exc)}) from exc
+        except PrevadzkaNedostupna as exc:
+            raise serializers.ValidationError({"prevadzka": str(exc)}) from exc
 
     def update(
         self, instance: DailyOrder, validated_data: Dict[str, Any]
@@ -374,3 +407,12 @@ class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
         fields = ["id", "date", "reason"]
+
+
+class PrevadzkaSerializer(serializers.ModelSerializer):
+    celok = serializers.CharField(source="celok.nazov", read_only=True)
+
+    class Meta:
+        model = Prevadzka
+        fields = ["id", "nazov", "adresa", "celok"]
+        read_only_fields = fields

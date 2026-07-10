@@ -51,11 +51,11 @@ class GramageDashboardPDFExporter:
             hdr0.extend([""] * (len(cg["components"]) - 1))
             for comp in cg["components"]:
                 if comp.get("is_exception"):
-                    subtitle = f'podľa vekovej skupiny ({comp.get("unit", "ks")})'
+                    subtitle = f"podľa vekovej skupiny ({comp.get('unit', 'ks')})"
                 else:
                     base_g = int(float(comp["base_grams"]))
-                    subtitle = f'{base_g}{comp.get("unit", "g")}'
-                hdr1.append(para(f'{comp["label"]} ({subtitle})', bold=True))
+                    subtitle = f"{base_g}{comp.get('unit', 'g')}"
+                hdr1.append(para(f"{comp['label']} ({subtitle})", bold=True))
 
         table_data = [hdr0, hdr1]
 

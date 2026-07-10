@@ -225,8 +225,7 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         raise self.retry(exc=exc)
     except Exception:
         logger.exception(
-            "send_push_deadline_reminder_task failed with non-transient error, "
-            "no retry"
+            "send_push_deadline_reminder_task failed with non-transient error, no retry"
         )
         raise
 
@@ -366,11 +365,25 @@ def _filter_order_data_by_meals(order_data, meal_types):
     }
 
 
-def _merge_order_data(existing_data, imported_data):
-    merged = dict(existing_data or {})
-    for meal_type, meal_data in imported_data.items():
-        merged[meal_type] = meal_data
-    return merged
+_ALL_MEALS = ("breakfast", "lunch", "olovrant")
+
+
+def _apply_scrape(existing_data, imported_data, requested_meals):
+    """Vlož výsledok scrapu s UPDATE sémantikou (nie ADD).
+
+    Scrape je autoritatívny pre vyžiadané jedlá: každé z nich sa prepíše tým, čo
+    EduPage vrátil, a ak dnes kleslo na nulu, VYMAŽE sa. Bez toho by po zrušení
+    objednávky ostala v prehľade stará hodnota. Nevyžiadané jedlá ostávajú netknuté.
+    """
+    result = dict(existing_data or {})
+    meals = _ALL_MEALS if requested_meals is None else requested_meals
+    for meal_type in meals:
+        scraped = imported_data.get(meal_type)
+        if scraped:
+            result[meal_type] = scraped
+        else:
+            result.pop(meal_type, None)
+    return result
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
@@ -392,7 +405,6 @@ def scrape_edupage_orders_task(
         from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
         from api.models import DailyOrder, GlobalSettings, UserProfile
         from api.services import _next_workday
-        from api.utils import user_operation_name
 
         valid_meal_types = {"breakfast", "lunch", "olovrant"}
         if isinstance(meal_types, str):
@@ -458,9 +470,43 @@ def scrape_edupage_orders_task(
         scraped = errors = skipped = 0
 
         for profile in profiles:
+            prevadzky = (
+                list(profile.celok.prevadzky.filter(is_active=True))
+                if profile.celok_id
+                else []
+            )
+            if not prevadzky:
+                logger.warning(
+                    "scrape_edupage_orders_task: %s nemá žiadnu prevádzku — preskakujem",
+                    profile.company_name,
+                )
+                skipped += 1
+                continue
+
+            # Viac prevádzok → EduPage riadky rozdelíme podľa `edupage_match`.
+            # Jedna prevádzka → split nerobíme a všetko ide do nej.
+            by_nazov = {p.nazov: p for p in prevadzky}
+            matches = {
+                p.edupage_match: p.nazov for p in prevadzky if p.edupage_match.strip()
+            }
+            if len(prevadzky) > 1 and len(matches) < len(prevadzky):
+                logger.error(
+                    "scrape_edupage_orders_task: %s má %d prevádzok, ale len %d má "
+                    "edupage_match — preskakujem, aby sa objem nezapísal nesprávne",
+                    profile.company_name,
+                    len(prevadzky),
+                    len(matches),
+                )
+                skipped += 1
+                continue
+
             for target_date, requested_meals in date_to_meals.items():
                 try:
-                    result = scraper.scrape(profile.mealsguest_url, target_date)
+                    result = scraper.scrape(
+                        profile.mealsguest_url,
+                        target_date,
+                        prevadzka_matches=matches if len(prevadzky) > 1 else None,
+                    )
                 except Exception:
                     logger.exception(
                         "scrape_edupage_orders_task: failed for %s",
@@ -469,57 +515,68 @@ def scrape_edupage_orders_task(
                     errors += 1
                     continue
 
-                nested_order_data = nest_order_data_by_category(
-                    result.order_data, user_operation_name(profile.user)
-                )
-                imported_data = _filter_order_data_by_meals(
-                    nested_order_data, requested_meals
-                )
-                if not imported_data:
-                    if result.warnings or result.unmapped_letters:
-                        # Real scrape failure (prehlad block missing/malformed,
-                        # or a diet/menu letter we couldn't map) - don't
-                        # fabricate a zero-order record for it.
+                if result.config_notes:
+                    logger.warning(
+                        "scrape_edupage_orders_task: config drift for %s on %s: %s",
+                        profile.company_name,
+                        target_date,
+                        result.config_notes,
+                    )
+                if result.attention:
+                    logger.info(
+                        "scrape_edupage_orders_task: manual check for %s on %s: %s",
+                        profile.company_name,
+                        target_date,
+                        result.attention,
+                    )
+
+                # Jedna prevádzka → celý objem jej; viac → podľa edupage_match.
+                if len(prevadzky) > 1:
+                    data_by_nazov = result.order_data_by_prevadzka
+                else:
+                    data_by_nazov = {prevadzky[0].nazov: result.order_data}
+
+                for nazov, prevadzka in by_nazov.items():
+                    nested_order_data = nest_order_data_by_category(
+                        data_by_nazov.get(nazov, {}), nazov
+                    )
+                    imported_data = _filter_order_data_by_meals(
+                        nested_order_data, requested_meals
+                    )
+
+                    # Skutočné zlyhanie scrapu (chýbajúci/pokazený prehlad blok,
+                    # nezmapované písmeno, riadok bez prevádzky) - neprepisujeme
+                    # existujúce dáta prázdnom, mohli by sme zmazať platné počty.
+                    if not imported_data and (
+                        result.warnings or result.unmapped_letters
+                    ):
                         logger.info(
-                            "scrape_edupage_orders_task: empty result for %s on %s "
+                            "scrape_edupage_orders_task: empty result for %s/%s on %s "
                             "meals=%s (warnings=%s, unmapped=%s)",
                             profile.company_name,
+                            nazov,
                             target_date,
-                            requested_meals,
                             result.warnings,
                             result.unmapped_letters,
                         )
                         skipped += 1
                         continue
 
-                    # Structurally successful scrape with genuinely zero counts:
-                    # still record an explicit DailyOrder row so this date isn't
-                    # indistinguishable from "never scraped" (blocks auto-orders
-                    # and disappears from admin reports otherwise). get_or_create
-                    # is idempotent on repeat runs for the same day.
-                    DailyOrder.objects.get_or_create(
-                        user=profile.user,
-                        date=target_date,
-                        defaults={"data": {}},
-                    )
-                    logger.info(
-                        "scrape_edupage_orders_task: recorded explicit zero for %s on %s meals=%s",
-                        profile.company_name,
-                        target_date,
-                        requested_meals,
-                    )
+                    # Úspešný scrape (aj s nulovými počtami) je autoritatívny:
+                    # prepíše vyžiadané jedlá a vyčistí tie, čo dnes klesli na nulu.
+                    # Explicitný záznam (aj prázdny) odlíši "0 objednávok" od
+                    # "nikdy nescrapované".
+                    with transaction.atomic():
+                        order, _ = DailyOrder.objects.select_for_update().get_or_create(
+                            prevadzka=prevadzka,
+                            date=target_date,
+                            defaults={"user": profile.user, "data": {}},
+                        )
+                        order.data = _apply_scrape(
+                            order.data, imported_data, requested_meals
+                        )
+                        order.save(update_fields=["data", "updated_at"])
                     scraped += 1
-                    continue
-
-                with transaction.atomic():
-                    order, _ = DailyOrder.objects.select_for_update().get_or_create(
-                        user=profile.user,
-                        date=target_date,
-                        defaults={"data": {}},
-                    )
-                    order.data = _merge_order_data(order.data, imported_data)
-                    order.save(update_fields=["data", "updated_at"])
-                scraped += 1
 
         summary = {
             "scraped": scraped,

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from ..exporters import PDFReportExporter, XLSXReportExporter
 from ..models import DailyOrder
 from ..services import ReportService
-from ..utils import user_operation_name
+from ..utils import order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
 
 logger = logging.getLogger(__name__)
@@ -85,8 +85,11 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "user__settings")
-            .order_by("user__email")
+            .select_related(
+                "user", "user__profile", "user__settings", "prevadzka__celok"
+            )
+            .prefetch_related("prevadzka__celok__prevadzky")
+            .order_by("user__email", "prevadzka__sort_order", "prevadzka__nazov")
         )
 
         totals = {
@@ -112,7 +115,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": user_operation_name(user),
+                    "name": order_row_label(order),
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,

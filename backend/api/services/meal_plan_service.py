@@ -16,7 +16,8 @@ from ..models import (
     MealPlanItem,
     MealTemplate,
 )
-from ..utils import user_operation_name
+from ..order_data import OrderData
+from ..utils import order_row_label
 
 
 def _normalize_portion_name(value: object) -> str:
@@ -352,8 +353,9 @@ class MealPlanService:
                     key = f"{item.category}_{item.menu_variant}"
                     label = f"{MEAL_LABELS[item.category]} Menu {item.menu_variant}"
                 else:
-                    key, label = item.category, MEAL_LABELS.get(
-                        item.category, item.category
+                    key, label = (
+                        item.category,
+                        MEAL_LABELS.get(item.category, item.category),
                     )
                 diet_name = item.diet.name if item.diet_id else None
                 if diet_name:
@@ -548,12 +550,15 @@ class MealPlanService:
         rows = []
         orders = (
             DailyOrder.objects.filter(date=date_str)
-            .select_related("user", "user__profile", "user__settings")
-            .order_by("user__email")
+            .select_related(
+                "user", "user__profile", "user__settings", "prevadzka__celok"
+            )
+            .prefetch_related("prevadzka__celok__prevadzky")
+            .order_by("user__email", "prevadzka__sort_order", "prevadzka__nazov")
         )
 
         for order in orders:
-            client_label = user_operation_name(order.user)
+            client_label = order_row_label(order)
             sub_rows: list[dict] = []
             client_total_count = 0
             client_standard_totals = _empty_group_totals()
@@ -583,19 +588,18 @@ class MealPlanService:
                 for meal_index, meal in enumerate(meals):
                     count_towards_summary = meal_index == 0
                     is_variant_meal = meal in variant_meals
-                    for portion_name, portion_data in meal_data.items():
-                        if not isinstance(portion_data, dict):
-                            continue
-
+                    # Cez OrderData, nie priamym `meal_data.items()`: vo v2 tvare je
+                    # prvá úroveň prevádzka, nie porcia, a priame čítanie by
+                    # `menuCounts` nenašlo a ticho vyrobilo nulovú gramáž.
+                    for category in OrderData({order_meal: meal_data}).iter_categories(
+                        order_meal
+                    ):
+                        portion_name = category.name
                         coeff = pt_by_name.get(
                             _canonical_portion_name(portion_name), Decimal("1.0000")
                         )
-                        raw_menu_counts = portion_data.get("menuCounts", {})
-                        menu_counts = (
-                            raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
-                        )
-                        raw_diets = portion_data.get("diets", {})
-                        diets = raw_diets if isinstance(raw_diets, dict) else {}
+                        menu_counts = category.menu_counts
+                        diets = category.diets
 
                         total_diet_count = sum(
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()

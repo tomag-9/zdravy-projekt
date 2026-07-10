@@ -59,7 +59,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – " "skipping auto-order schedule sync."
+            "django_celery_beat not installed – skipping auto-order schedule sync."
         )
         return
 
@@ -120,7 +120,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – " "skipping daily report schedule sync."
+            "django_celery_beat not installed – skipping daily report schedule sync."
         )
         return
 
@@ -537,3 +537,34 @@ def on_diet_changed(sender, instance, **kwargs):
     except Exception as exc:
         logger.exception("Error clearing Diet list cache: %s", exc)
         _capture_signal_failure(exc, "diet_changed")
+
+
+@receiver(post_save, sender="api.UserProfile")
+def on_user_profile_saved(sender, instance, created, **kwargs):
+    """Každý profil musí mať celok a aspoň jednu prevádzku.
+
+    Objednávky sa vedú per prevádzka, takže profil bez prevádzky by nemal kam
+    objednávať. Default: celok aj prevádzka sa volajú ako profil. Viac-prevádzkové
+    celky sa dokonfigurujú zvlášť.
+    """
+    if not created or instance.celok_id is not None:
+        return
+    try:
+        from api.models import Celok, Prevadzka, UserProfile
+
+        nazov = (instance.company_name or "").strip() or instance.user.email
+        celok, _ = Celok.objects.get_or_create(
+            nazov=nazov,
+            defaults={
+                "billing_name": instance.billing_name,
+                "ico": instance.ico,
+                "dic": instance.dic,
+            },
+        )
+        Prevadzka.objects.get_or_create(celok=celok, nazov=nazov)
+        # update() namiesto save(), aby sa signál nezavolal rekurzívne.
+        UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
+        instance.celok = celok
+    except Exception as exc:
+        logger.exception("Error creating default Celok/Prevadzka: %s", exc)
+        _capture_signal_failure(exc, "user_profile_saved")

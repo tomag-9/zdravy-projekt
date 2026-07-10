@@ -23,6 +23,26 @@ def user_operation_name(user) -> str:
     return company_name or user.email
 
 
+def order_row_label(order) -> str:
+    """Názov riadku objednávky v reportoch a exportoch.
+
+    Celok s viacerými prevádzkami musí byť vo výstupe rozpadnutý — inak by dve
+    prevádzky toho istého celku vyzerali ako dva identické riadky. Celok s jedinou
+    prevádzkou ostáva pomenovaný ako doteraz.
+    """
+    prevadzka = getattr(order, "prevadzka", None)
+    if prevadzka is None:
+        return user_operation_name(order.user)
+
+    celok = prevadzka.celok
+    # Iterujeme cez .all(), nie .filter().count(): pri prefetchnutom
+    # `prevadzka__celok__prevadzky` to nespustí dotaz na každý riadok reportu.
+    aktivne = sum(1 for p in celok.prevadzky.all() if p.is_active)
+    if aktivne > 1:
+        return f"{celok.nazov} – {prevadzka.nazov}"
+    return user_operation_name(order.user)
+
+
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:
     """
     Return {categories: [...], total: int} for a meal.

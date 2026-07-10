@@ -22,6 +22,8 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import requests
 
+from api.edupage import PrevadzkaConfig, apply_config, config_pre_url
+
 logger = logging.getLogger(__name__)
 
 ALLOWED_DIET_NAMES = {
@@ -154,6 +156,26 @@ def _has_diet_signal(key: str) -> bool:
     return any(fragment in key for fragment in _NAZOV_KEYWORD_MAP)
 
 
+def match_prevadzka(
+    matches: dict[str, str], payer_name: str, menu_nazov: str
+) -> str | None:
+    """Priraď EduPage riadok prevádzke podľa `edupage_match` prefixu.
+
+    Prevádzka je zakódovaná buď v payer labeli (`J1 1.st. klasik`, `B - Les`), alebo
+    v názve menu (`Palisády nM`). Skúšame oboje. Dlhšie prefixy majú prednosť, aby
+    `J1` neprebilo špecifickejší match.
+    """
+    payer_key = _normalise_key(payer_name)
+    menu_key = _normalise_key(menu_nazov)
+    for prefix in sorted(matches, key=len, reverse=True):
+        prefix_key = _normalise_key(prefix)
+        if not prefix_key:
+            continue
+        if prefix_key in payer_key or prefix_key in menu_key:
+            return matches[prefix]
+    return None
+
+
 # ------------------------------------------------------------------
 # Public result type
 # ------------------------------------------------------------------
@@ -164,9 +186,21 @@ class ScrapeResult:
     """Parsed order counts ready to be stored as DailyOrder.data."""
 
     date: date
-    order_data: dict[str, Any]  # DailyOrder.data format
+    order_data: dict[str, Any]  # DailyOrder.data format (všetky prevádzky spolu)
+    # {názov prevádzky: order_data} pri celkoch rozdelených na viac prevádzok.
+    # Prázdne, ak sa split nerobil.
+    order_data_by_prevadzka: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # EduPage riadky, ktoré nesadli na žiadnu prevádzku. Neprázdne = neúplný scrape.
+    unmatched_prevadzka: list[str] = field(default_factory=list)
     unmapped_letters: list[str] = field(default_factory=list)
+    # Scrape zlyhal štrukturálne — volajúci z toho robí "neimportuj nič".
     warnings: list[str] = field(default_factory=list)
+    # Scrape prebehol, ale per-prevádzka config nesedí s realitou (škola zmenila
+    # nastavenia). Diagnostika pre nás, NIE signál zlyhania — nesmie sa miešať
+    # do `warnings`, inak by config drift zablokoval import platných objednávok.
+    config_notes: list[str] = field(default_factory=list)
+    # Písmená označené per-prevádzka hookom ako „skontroluj ručne" (napr. Krásňanko ZD).
+    attention: list[str] = field(default_factory=list)
 
 
 # ------------------------------------------------------------------
@@ -177,10 +211,21 @@ class ScrapeResult:
 class EdupageScraper:
     TIMEOUT = 15
 
-    def scrape(self, mealsguest_url: str, target_date: date) -> ScrapeResult:
+    def scrape(
+        self,
+        mealsguest_url: str,
+        target_date: date,
+        prevadzka_matches: dict[str, str] | None = None,
+    ) -> ScrapeResult:
         url = self._inject_date(mealsguest_url, target_date)
         html = self._fetch(url)
-        return self._parse(html, target_date)
+        config = config_pre_url(mealsguest_url)
+        result = self._parse(
+            html, target_date, config=config, prevadzka_matches=prevadzka_matches
+        )
+        if config is not None:
+            result = apply_config(result, config)
+        return result
 
     # ------ HTTP ------
 
@@ -460,7 +505,13 @@ class EdupageScraper:
 
     # ------ aggregation ------
 
-    def _parse(self, html: str, target_date: date) -> ScrapeResult:
+    def _parse(
+        self,
+        html: str,
+        target_date: date,
+        config: PrevadzkaConfig | None = None,
+        prevadzka_matches: dict[str, str] | None = None,
+    ) -> ScrapeResult:
         prehlad_raw = self._extract_block(html, "prehlad")
         nazov_menu_raw = self._extract_block(html, "nazovMenu")
         nastavenia_raw = self._extract_block(html, "nastavenia")
@@ -468,6 +519,8 @@ class EdupageScraper:
 
         warnings: list[str] = []
         unmapped: list[str] = []
+        attention: list[str] = []
+        letter_hook = config.letter_hook if config is not None else None
 
         if not prehlad_raw:
             warnings.append("prehlad block not found in HTML")
@@ -487,8 +540,10 @@ class EdupageScraper:
         jid_map = self._build_jid_map(nastavenia, target_date)
         payer_map = self._build_payer_map(typy_platitelov, target_date)
 
-        # Accumulate already-clean data as meal -> our portion -> menu/diet counts.
-        counts_by_meal: dict[str, dict[str, dict[str, dict[str, int]]]] = {}
+        # prevádzka ("" = nerozdelené) -> meal -> porcia -> menu/diet counts
+        counts: dict[str, dict[str, dict[str, dict[str, dict[str, int]]]]] = {}
+        matches = prevadzka_matches or {}
+        unmatched: list[str] = []
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -511,15 +566,24 @@ class EdupageScraper:
                 skratka = nm_entry.get("skratka", letter)
                 nazov = nm_entry.get("nazov", letter)
 
-                menu_variant = self.resolve_menu_variant(skratka, nazov)
-                diet_name = None
-                if menu_variant is None:
-                    diet_name = self.resolve_diet_name(skratka, nazov)
-                    if diet_name not in ALLOWED_DIET_NAMES:
-                        unmapped.append(f"{letter}:{diet_name}")
-                        continue
-                    if diet_name == letter and letter not in nazov_menu:
-                        unmapped.append(letter)
+                rule = letter_hook(letter, skratka, nazov) if letter_hook else None
+                portion_override = rule.portion if rule else None
+
+                if rule is not None and (rule.menu or rule.diet):
+                    menu_variant = rule.menu
+                    diet_name = rule.diet
+                    if rule.flag:
+                        attention.append(f"{letter}:{skratka}{rule.flag}")
+                else:
+                    menu_variant = self.resolve_menu_variant(skratka, nazov)
+                    diet_name = None
+                    if menu_variant is None:
+                        diet_name = self.resolve_diet_name(skratka, nazov)
+                        if diet_name not in ALLOWED_DIET_NAMES:
+                            unmapped.append(f"{letter}:{diet_name}")
+                            continue
+                        if diet_name == letter and letter not in nazov_menu:
+                            unmapped.append(letter)
 
                 tp = letter_data.get("typ_platitela", {})
                 if not isinstance(tp, dict):
@@ -536,11 +600,29 @@ class EdupageScraper:
                         continue
 
                     payer_info = payer_map.get(str(payer_id), {})
-                    portion_name = payer_info.get("portion") or DEFAULT_PORTION_NAME
+                    portion_name = (
+                        portion_override
+                        or payer_info.get("portion")
+                        or DEFAULT_PORTION_NAME
+                    )
                     payer_diet = payer_info.get("diet") or None
                     effective_diet = diet_name or payer_diet
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
 
+                    if matches:
+                        bucket = match_prevadzka(
+                            matches, payer_info.get("name", ""), nazov
+                        )
+                        if bucket is None:
+                            # Radšej nahlás neúplný scrape, než ticho zahodiť porcie.
+                            unmatched.append(
+                                f"{letter}:{skratka}/{payer_info.get('name', payer_id)}"
+                            )
+                            continue
+                    else:
+                        bucket = ""
+
+                    counts_by_meal = counts.setdefault(bucket, {})
                     meal_counts = counts_by_meal.setdefault(meal_key, {})
                     portion_counts = meal_counts.setdefault(
                         portion_name, {"menuCounts": {}, "diets": {}}
@@ -555,18 +637,53 @@ class EdupageScraper:
                             diet_counts.get(effective_diet, 0) + total
                         )
 
-        order_data: dict[str, Any] = {
-            meal_key: meal_counts
-            for meal_key, meal_counts in counts_by_meal.items()
-            if meal_counts
+        def _clean(counts_by_meal: dict) -> dict[str, Any]:
+            return {
+                meal_key: meal_counts
+                for meal_key, meal_counts in counts_by_meal.items()
+                if meal_counts
+            }
+
+        by_prevadzka = {
+            bucket: cleaned
+            for bucket, counts_by_meal in counts.items()
+            if bucket and (cleaned := _clean(counts_by_meal))
         }
+
+        if matches:
+            # Zlúčený pohľad pre volajúcich, ktorí split neriešia (napr. preview).
+            order_data = _merge_meal_counts(by_prevadzka.values())
+        else:
+            order_data = _clean(counts.get("", {}))
+
+        if unmatched:
+            warnings.append(
+                f"EduPage riadky bez prevádzky (nezapočítané): {sorted(set(unmatched))}"
+            )
 
         return ScrapeResult(
             date=target_date,
             order_data=order_data,
+            order_data_by_prevadzka=by_prevadzka,
+            unmatched_prevadzka=sorted(set(unmatched)),
             unmapped_letters=list(set(unmapped)),
             warnings=warnings,
+            attention=sorted(set(attention)),
         )
+
+
+def _merge_meal_counts(order_datas) -> dict[str, Any]:
+    """Sčítaj viac order_data (jedna na prevádzku) do jedného zlúčeného pohľadu."""
+    merged: dict[str, Any] = {}
+    for order_data in order_datas:
+        for meal_key, portions in order_data.items():
+            meal = merged.setdefault(meal_key, {})
+            for portion, details in portions.items():
+                target = meal.setdefault(portion, {"menuCounts": {}, "diets": {}})
+                for group in ("menuCounts", "diets"):
+                    for key, count in details.get(group, {}).items():
+                        target[group][key] = target[group].get(key, 0) + count
+    return merged
 
 
 def nest_order_data_by_category(
