@@ -24,9 +24,25 @@ ORDER_DATA = {
 }
 
 
+def _client_user(**kwargs):
+    """User + UserProfile (a tým celok + default prevádzka cez signál).
+
+    Objednávky sa vedú per prevádzka, takže klient bez profilu nemá kam objednávať.
+    V produkcii profil vzniká pri založení klienta.
+    """
+    from api.models import UserProfile
+
+    user = User.objects.create_user(**kwargs)
+    if not kwargs.get("is_staff"):
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
+    return user
+
+
 @pytest.fixture
 def client_user(db):
-    return User.objects.create_user(
+    return _client_user(
         username="client_for_admin@example.com",
         email="client_for_admin@example.com",
         password="pass123",
@@ -66,7 +82,7 @@ class TestAdminOrderCreate:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_admin_cannot_create_order_for_another_staff_user(self, admin_client, db):
-        other_staff = User.objects.create_user(
+        other_staff = _client_user(
             username="staff2@example.com",
             email="staff2@example.com",
             password="pass",
@@ -138,7 +154,7 @@ class TestAdminOrderUpdate:
 
     @pytest.fixture
     def client_user(self, db):
-        return User.objects.create_user(
+        return _client_user(
             username="patch_client@example.com",
             email="patch_client@example.com",
             password="pass",
@@ -226,13 +242,13 @@ class TestAdminOrderQueryset:
 
     @pytest.fixture
     def client_a(self, db):
-        return User.objects.create_user(
+        return _client_user(
             username="qs_a@example.com", email="qs_a@example.com", password="p"
         )
 
     @pytest.fixture
     def client_b(self, db):
-        return User.objects.create_user(
+        return _client_user(
             username="qs_b@example.com", email="qs_b@example.com", password="p"
         )
 

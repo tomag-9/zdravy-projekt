@@ -28,10 +28,20 @@ def api_client():
 
 @pytest.fixture
 def user(db):
-    """Create a test user."""
-    return User.objects.create_user(
+    """Create a test user with a profile.
+
+    Objednávky sa vedú per prevádzka; klient bez profilu nemá kam objednávať.
+    Profil cez post_save signál založí celok + default prevádzku (ako v produkcii).
+    """
+    from api.models import UserProfile
+
+    user = User.objects.create_user(
         username="client@example.com", password="client123", email="client@example.com"
     )
+    UserProfile.objects.get_or_create(
+        user=user, defaults={"company_name": "Client Test"}
+    )
+    return user
 
 
 @pytest.fixture

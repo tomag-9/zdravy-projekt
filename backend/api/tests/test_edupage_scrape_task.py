@@ -1,13 +1,24 @@
 import datetime
-from types import SimpleNamespace
 
 import pytest
 from django.contrib.auth.models import User
 from django.core import management
 from django.utils import timezone
 
+from api.edupage_scraper import ScrapeResult
 from api.models import DailyOrder, GlobalSettings, UserProfile
 from api.tasks import scrape_edupage_orders_task
+
+
+def _scrape_result(order_data=None, **kwargs) -> ScrapeResult:
+    """Reálny ScrapeResult, nie SimpleNamespace.
+
+    Nové polia tak dostanú defaulty automaticky a testy nepadnú vždy, keď scraper
+    pridá atribút.
+    """
+    return ScrapeResult(
+        date=datetime.date(2026, 1, 1), order_data=order_data or {}, **kwargs
+    )
 
 
 @pytest.fixture
@@ -39,9 +50,9 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
     today = datetime.date(2026, 6, 29)  # Monday
     seen_dates = []
 
-    def fake_scrape(self, url, target_date):
+    def fake_scrape(self, url, target_date, prevadzka_matches=None):
         seen_dates.append(target_date)
-        return SimpleNamespace(
+        return _scrape_result(
             order_data={
                 "breakfast": {
                     "menuCounts": {"A": 4},
@@ -111,8 +122,8 @@ def test_edupage_scrape_records_explicit_zero_when_structurally_empty(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date):
-        return SimpleNamespace(order_data={}, warnings=[], unmapped_letters=[])
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(order_data={}, warnings=[], unmapped_letters=[])
 
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
@@ -143,8 +154,8 @@ def test_edupage_scrape_skips_without_recording_on_real_scrape_failure(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date):
-        return SimpleNamespace(
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(
             order_data={},
             warnings=["prehlad block not found in HTML"],
             unmapped_letters=[],
@@ -174,8 +185,8 @@ def test_edupage_scrape_skips_without_recording_on_unmapped_letters(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date):
-        return SimpleNamespace(order_data={}, warnings=[], unmapped_letters=["Z:Z"])
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(order_data={}, warnings=[], unmapped_letters=["Z:Z"])
 
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
@@ -210,9 +221,9 @@ def test_edupage_scrape_merges_requested_meals_without_replacing_existing_day(
         },
     )
 
-    def fake_scrape(self, url, scrape_date):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
         assert scrape_date == target_date
-        return SimpleNamespace(
+        return _scrape_result(
             order_data={
                 "lunch": {
                     "menuCounts": {"A": 10},
@@ -273,3 +284,52 @@ def test_scrape_edupage_orders_management_command(monkeypatch, capsys):
         "EduPage scrape complete: scraped=2 skipped=1 errors=0"
         in capsys.readouterr().out
     )
+
+
+class TestApplyScrapeIdempotency:
+    """Scrape v rámci dňa musí byť UPDATE, nie ADD."""
+
+    def test_rescrape_replaces_not_adds(self):
+        from api.tasks import _apply_scrape
+
+        existing = {"lunch": {"Škôlka": {"menuCounts": {"A": 21}}}}
+        # rovnaký scrape 2x nesmie zdvojiť
+        out = _apply_scrape(
+            existing, {"lunch": {"Škôlka": {"menuCounts": {"A": 21}}}}, ["lunch"]
+        )
+        out = _apply_scrape(
+            out, {"lunch": {"Škôlka": {"menuCounts": {"A": 21}}}}, ["lunch"]
+        )
+        assert out["lunch"]["Škôlka"]["menuCounts"]["A"] == 21
+
+    def test_meal_dropped_to_zero_is_cleared(self):
+        from api.tasks import _apply_scrape
+
+        existing = {
+            "lunch": {"Škôlka": {"menuCounts": {"A": 21}}},
+            "olovrant": {"Škôlka": {"menuCounts": {"A": 5}}},
+        }
+        # olovrant dnes 0 → musí zmiznúť, nie ostať na 5
+        out = _apply_scrape(
+            existing,
+            {"lunch": {"Škôlka": {"menuCounts": {"A": 20}}}},
+            ["lunch", "olovrant"],
+        )
+        assert out["lunch"]["Škôlka"]["menuCounts"]["A"] == 20
+        assert "olovrant" not in out
+
+    def test_unrequested_meal_untouched(self):
+        from api.tasks import _apply_scrape
+
+        existing = {"olovrant": {"Škôlka": {"menuCounts": {"A": 5}}}}
+        out = _apply_scrape(
+            existing, {"lunch": {"Škôlka": {"menuCounts": {"A": 3}}}}, ["lunch"]
+        )
+        assert out["olovrant"]["Škôlka"]["menuCounts"]["A"] == 5
+
+    def test_none_requested_means_all_meals(self):
+        from api.tasks import _apply_scrape
+
+        existing = {"breakfast": {"Škôlka": {"menuCounts": {"A": 9}}}}
+        out = _apply_scrape(existing, {}, None)
+        assert out == {}

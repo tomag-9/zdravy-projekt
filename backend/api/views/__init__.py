@@ -38,7 +38,12 @@ from .meal_plan_views import (
 )
 
 # Order views
-from .order_views import AdminAutoOrderViewSet, DailyOrderViewSet, PlannedOrdersViewSet
+from .order_views import (
+    AdminAutoOrderViewSet,
+    DailyOrderViewSet,
+    PlannedOrdersViewSet,
+    PrevadzkaViewSet,
+)
 
 # Push notification views
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
@@ -64,6 +69,7 @@ __all__ = [
     # Orders
     "DailyOrderViewSet",
     "PlannedOrdersViewSet",
+    "PrevadzkaViewSet",
     "AdminAutoOrderViewSet",
     # Admin
     "AdminLogViewSet",

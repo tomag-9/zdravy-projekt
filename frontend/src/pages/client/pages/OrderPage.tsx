@@ -52,6 +52,11 @@ const OrderPage = () => {
     copyOlovrantFromCurrentLunch,
     holidays,
     mealPlanAvailability,
+    prevadzky,
+    needsChoice,
+    chosenPrevadzka,
+    setChosenPrevadzka,
+    activePrevadzka,
   } = useApp();
 
   const getOccupiedMenus = (mealKey: string): Set<string> => {
@@ -206,7 +211,7 @@ const OrderPage = () => {
       return;
     }
     try {
-      await submitOrder(selectedDate);
+      await submitOrder(selectedDate, activePrevadzka?.id);
       const total = getTotalPortions();
       const dietCount = getTotalDiets();
       navigate(`/success?date=${selectedDate}&total=${total}&dietCount=${dietCount}`);
@@ -579,6 +584,46 @@ const OrderPage = () => {
 
         {modals}
         <TourOverlay />
+      </div>
+    );
+  }
+
+  // Počas načítavania nič neblokujeme: celok s jednou prevádzkou (drvivá väčšina)
+  // by inak videl prázdnu obrazovku. Chooser sa zobrazí, až keď vieme, že treba.
+  if (needsChoice && !chosenPrevadzka) {
+    return (
+      <div className="zp-app">
+        <div className="zp-orderpage">
+          <div className="zp-orderbar">
+            <button className="zp-iconbtn" aria-label="Späť" onClick={() => navigate("/")}>
+              <ArrowLeft size={20} />
+            </button>
+            <h1 className="zp-orderbar__title">Vyberte prevádzku</h1>
+          </div>
+
+          <div className="zp-card" style={{ margin: "1rem", padding: "1rem" }}>
+            <p style={{ marginBottom: "1rem", opacity: 0.8 }}>
+              Za ktorú prevádzku nahlasujete objednávku?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {prevadzky.map((p) => (
+                <button
+                  key={p.id}
+                  className="zp-btn zp-btn--secondary"
+                  style={{ justifyContent: "flex-start", textAlign: "left" }}
+                  onClick={() => setChosenPrevadzka(p)}
+                >
+                  <span style={{ fontWeight: 600 }}>{p.nazov}</span>
+                  {p.adresa && (
+                    <span style={{ marginLeft: "0.5rem", opacity: 0.7, fontSize: "0.875rem" }}>
+                      {p.adresa}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

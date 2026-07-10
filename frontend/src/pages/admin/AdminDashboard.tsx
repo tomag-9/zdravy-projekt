@@ -238,7 +238,10 @@ const AdminDashboard: React.FC = () => {
         const gramage: GramageDashboard = await res.json();
         setData(gramage);
 
-        if (!gramage.meal_plan_id) {
+        // Gramáž potrebuje vyplnené menu (col_groups). Keď menu ešte nie je zadané
+        // — či už chýba plán úplne, alebo existuje prázdny — dotiahni aspoň počty
+        // objednávok, nech admin vidí porcie namiesto prázdna.
+        if (!gramage.meal_plan_id || gramage.col_groups.length === 0) {
           const reportRes = await apiFetch(`${API}/admin/summary/daily-report/?date=${date}`);
           if (reportRes.ok) setOrderReport(await reportRes.json());
         }

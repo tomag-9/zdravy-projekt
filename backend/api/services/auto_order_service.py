@@ -99,35 +99,38 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
     )
     client_ids = [c.id for c in clients]
 
-    # Preload: which clients already have an order for target_date? (1 query)
-    existing_order_user_ids = set(
-        DailyOrder.objects.filter(user_id__in=client_ids, date=target_date).values_list(
-            "user_id", flat=True
-        )
+    # Auto-objednávky sa vedú per prevádzka, nie per login: celok s tromi
+    # prevádzkami musí dostať tri objednávky, nie jednu.
+    existing_order_prevadzka_ids = set(
+        DailyOrder.objects.filter(
+            user_id__in=client_ids, date=target_date, prevadzka__isnull=False
+        ).values_list("prevadzka_id", flat=True)
     )
 
-    # Preload: best (latest non-empty) template per client (1 query, no N+1)
-    templates_by_user: Dict[int, DailyOrder] = {}
+    # Preload: best (latest non-empty) template per prevádzka (1 query, no N+1)
+    templates_by_prevadzka: Dict[int, DailyOrder] = {}
     for order in DailyOrder.objects.filter(
         user_id__in=client_ids,
         date__lt=target_date,
-    ).order_by("user_id", "-date"):
-        if order.user_id in templates_by_user:
+        prevadzka__isnull=False,
+    ).order_by("prevadzka_id", "-date"):
+        if order.prevadzka_id in templates_by_prevadzka:
             continue
         if not _is_order_empty(order.data or {}):
-            templates_by_user[order.user_id] = order
+            templates_by_prevadzka[order.prevadzka_id] = order
 
+    clients_by_id = {c.id: c for c in clients}
     created = []
     skipped = 0
 
-    for client in clients:
+    for prevadzka_id, template in templates_by_prevadzka.items():
         # Already has an order for this date (manual or previous auto)?
-        if client.id in existing_order_user_ids:
+        if prevadzka_id in existing_order_prevadzka_ids:
             skipped += 1
             continue
 
-        template = templates_by_user.get(client.id)
-        if template is None:
+        client = clients_by_id.get(template.user_id)
+        if client is None:
             skipped += 1
             continue
 
@@ -145,14 +148,15 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
 
         # Use get_or_create inside an atomic block to be idempotent when the
         # auto-order task is triggered concurrently (e.g. duplicate Celery tasks).
-        # Rely on a unique constraint for (user, date) plus IntegrityError handling
-        # to ensure that at most one auto-order row is ultimately created.
+        # Rely on the unique constraint for (prevadzka, date) plus IntegrityError
+        # handling to ensure that at most one auto-order row is ultimately created.
         try:
             with transaction.atomic():
                 _, auto_created = DailyOrder.objects.get_or_create(
-                    user=client,
+                    prevadzka_id=prevadzka_id,
                     date=target_date,
                     defaults={
+                        "user": client,
                         "is_auto": True,
                         "data": auto_data,
                     },

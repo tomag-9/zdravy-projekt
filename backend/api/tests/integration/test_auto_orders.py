@@ -51,6 +51,22 @@ SUNDAY = datetime.date(2025, 1, 12)
 NEXT_MONDAY = datetime.date(2025, 1, 13)
 
 
+def _client_user(**kwargs):
+    """User + UserProfile (a tým celok + default prevádzka cez signál).
+
+    Objednávky sa vedú per prevádzka, takže klient bez profilu nemá kam objednávať.
+    V produkcii profil vzniká pri založení klienta.
+    """
+    from api.models import UserProfile
+
+    user = User.objects.create_user(**kwargs)
+    if not kwargs.get("is_staff"):
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
+    return user
+
+
 @pytest.mark.django_db
 class TestNextWorkday:
     """Test _next_workday() pure function."""
@@ -305,12 +321,12 @@ class TestApplyAutoOrders:
 
     def test_multiple_clients_independent(self):
         """Each client is processed independently."""
-        user1 = User.objects.create_user(
+        user1 = _client_user(
             username="user1@example.com",
             email="user1@example.com",
             password="pass123",
         )
-        user2 = User.objects.create_user(
+        user2 = _client_user(
             username="user2@example.com",
             email="user2@example.com",
             password="pass123",
@@ -351,7 +367,7 @@ class TestAdminTriggerAutoOrders:
 
     def test_admin_can_trigger_auto_orders(self, admin_client, admin_user):
         """Admin can POST to trigger auto-orders."""
-        user = User.objects.create_user(
+        user = _client_user(
             username="client@example.com",
             email="client@example.com",
             password="pass123",
@@ -505,7 +521,7 @@ class TestAutoOrderEdgeCases:
         """Service handles many clients efficiently."""
         # Create 10 clients with history
         clients = [
-            User.objects.create_user(
+            _client_user(
                 username=f"client{i}@example.com",
                 email=f"client{i}@example.com",
                 password="pass123",
@@ -574,6 +590,6 @@ class TestAutoOrderTimezone:
         created_order = DailyOrder.objects.filter(
             user=user, date=TUESDAY, is_auto=True
         ).first()
-        assert created_order is not None, (
-            "Expected auto-order on TUESDAY but none was created. " f"Result: {result}"
-        )
+        assert (
+            created_order is not None
+        ), f"Expected auto-order on TUESDAY but none was created. Result: {result}"

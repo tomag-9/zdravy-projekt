@@ -41,6 +41,22 @@ ORDER_DATA = {
 # ---------------------------------------------------------------------------
 
 
+def _client_user(**kwargs):
+    """User + UserProfile (a tým celok + default prevádzka cez signál).
+
+    Objednávky sa vedú per prevádzka, takže klient bez profilu nemá kam objednávať.
+    V produkcii profil vzniká pri založení klienta.
+    """
+    from api.models import UserProfile
+
+    user = User.objects.create_user(**kwargs)
+    if not kwargs.get("is_staff"):
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
+    return user
+
+
 def _make_serializer(data: dict, user: User) -> DailyOrderSerializer:
     """Build a DailyOrderSerializer with a mock request context for ``user``."""
     request = Mock()
@@ -270,7 +286,7 @@ class TestAutoOrderServiceConcurrency:
         # Create clients with a historical order so auto-order logic triggers
         clients = []
         for i in range(3):
-            u = User.objects.create_user(
+            u = _client_user(
                 username=f"auto_user_{i}@example.com",
                 email=f"auto_user_{i}@example.com",
                 password="pass",

@@ -270,7 +270,7 @@ class XLSXReportExporter:
             user = row_info["user"]
             data = row_info["data"]
             visible_meals = row_info.get("visible_meals") or self.meal_keys
-            display_name = user_operation_name(user)
+            display_name = row_info.get("name") or user_operation_name(user)
             row_vals = [display_name]
             row_grand = 0
 

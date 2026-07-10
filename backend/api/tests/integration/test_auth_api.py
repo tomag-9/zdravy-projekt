@@ -213,9 +213,7 @@ class TestTokenRefreshFlow:
         response = api_client.post(
             reverse("token_refresh"),
             format="json",
-            HTTP_COOKIE=(
-                f"{COOKIE_NAME}=aaa.bbb.ccc; " f"{COOKIE_NAME}={valid_refresh}"
-            ),
+            HTTP_COOKIE=(f"{COOKIE_NAME}=aaa.bbb.ccc; {COOKIE_NAME}={valid_refresh}"),
         )
 
         assert response.status_code == status.HTTP_200_OK

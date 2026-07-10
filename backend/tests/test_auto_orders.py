@@ -55,14 +55,29 @@ NEXT_MONDAY = datetime.date(2025, 1, 13)
 # ---------------------------------------------------------------------------
 
 
+def _user_with_profile(*args, **kwargs):
+    """User + UserProfile (→ celok + default prevádzka cez signál).
+
+    Objednávky sa vedú per prevádzka; klient bez profilu nemá kam objednávať.
+    """
+    from api.models import UserProfile
+
+    user = User.objects.create_user(*args, **kwargs)
+    if not kwargs.get("is_staff"):
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
+    return user
+
+
 @pytest.fixture
 def client_user(db):
-    return User.objects.create_user(username="c@e.com", password="pw", email="c@e.com")
+    return _user_with_profile(username="c@e.com", password="pw", email="c@e.com")
 
 
 @pytest.fixture
 def admin_user(db):
-    return User.objects.create_user(
+    return _user_with_profile(
         username="a@e.com", password="pw", email="a@e.com", is_staff=True
     )
 
@@ -320,10 +335,10 @@ class TestApplyAutoOrders:
 
     def test_multiple_clients_independent(self, db):
         """Each client is processed independently."""
-        u1 = User.objects.create_user(
+        u1 = _user_with_profile(
             username="u1@test.com", password="pw", email="u1@test.com"
         )
-        u2 = User.objects.create_user(
+        u2 = _user_with_profile(
             username="u2@test.com", password="pw", email="u2@test.com"
         )
 
@@ -464,7 +479,7 @@ class TestAdminTriggerAutoOrders:
 
     def test_creates_auto_orders(self, admin_client, db):
         """Trigger endpoint actually creates auto orders for eligible clients."""
-        client_user = User.objects.create_user(
+        client_user = _user_with_profile(
             username="c1@test.com", password="pw", email="c1@test.com"
         )
         DailyOrder.objects.create(

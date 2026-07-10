@@ -11,7 +11,6 @@ from rest_framework.response import Response
 
 from ..edupage_scraper import EdupageScraper, nest_order_data_by_category
 from ..models import DailyOrder, EdupageUpload, UserProfile
-from ..utils import user_operation_name
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +161,9 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
         results = []
         scraper = EdupageScraper()
 
-        for profile in qs.select_related("user"):
+        for profile in qs.select_related("user", "celok").prefetch_related(
+            "celok__prevadzky"
+        ):
             if not profile.mealsguest_url:
                 results.append(
                     {
@@ -174,8 +175,43 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 continue
 
+            prevadzky = (
+                list(profile.celok.prevadzky.filter(is_active=True))
+                if profile.celok_id
+                else []
+            )
+            if not prevadzky:
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "skipped",
+                        "reason": "no active prevadzka",
+                    }
+                )
+                continue
+
+            by_nazov = {p.nazov: p for p in prevadzky}
+            matches = {
+                p.edupage_match: p.nazov for p in prevadzky if p.edupage_match.strip()
+            }
+            if len(prevadzky) > 1 and len(matches) < len(prevadzky):
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "skipped",
+                        "reason": "multi-prevadzka operation is missing edupage_match",
+                    }
+                )
+                continue
+
             try:
-                result = scraper.scrape(profile.mealsguest_url, target_date)
+                result = scraper.scrape(
+                    profile.mealsguest_url,
+                    target_date,
+                    prevadzka_matches=matches if len(prevadzky) > 1 else None,
+                )
             except Exception:
                 logger.exception("Scrape failed for operation %s", profile.pk)
                 results.append(
@@ -199,25 +235,53 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 continue
 
-            order_data = nest_order_data_by_category(
-                result.order_data, user_operation_name(profile.user)
+            if result.warnings or result.unmapped_letters:
+                results.append(
+                    {
+                        "operation_id": profile.pk,
+                        "name": str(profile),
+                        "status": "skipped",
+                        "warnings": result.warnings,
+                        "unmapped_letters": result.unmapped_letters,
+                    }
+                )
+                continue
+
+            data_by_nazov = (
+                result.order_data_by_prevadzka
+                if len(prevadzky) > 1
+                else {prevadzky[0].nazov: result.order_data}
             )
 
+            written = []
             with transaction.atomic():
-                order, created = DailyOrder.objects.update_or_create(
-                    user=profile.user,
-                    date=target_date,
-                    defaults={"data": order_data},
-                )
+                for nazov, prevadzka in by_nazov.items():
+                    order_data = nest_order_data_by_category(
+                        data_by_nazov.get(nazov, {}), nazov
+                    )
+                    order, created = DailyOrder.objects.update_or_create(
+                        prevadzka=prevadzka,
+                        date=target_date,
+                        defaults={"user": profile.user, "data": order_data},
+                    )
+                    written.append(
+                        {
+                            "prevadzka": nazov,
+                            "status": "created" if created else "updated",
+                            "order_id": order.pk,
+                        }
+                    )
 
             results.append(
                 {
                     "operation_id": profile.pk,
                     "name": str(profile),
-                    "status": "created" if created else "updated",
-                    "order_id": order.pk,
+                    "status": "updated",
+                    "orders": written,
                     "warnings": result.warnings,
                     "unmapped_letters": result.unmapped_letters,
+                    "config_notes": result.config_notes,
+                    "attention": result.attention,
                 }
             )
 

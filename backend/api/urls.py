@@ -23,6 +23,7 @@ from .views import (
     PasswordResetRequestView,
     PlannedOrdersViewSet,
     PortionTypeViewSet,
+    PrevadzkaViewSet,
     PushSubscribeView,
     ReportTaskViewSet,
     SafeTokenRefreshView,
@@ -35,6 +36,7 @@ router = DefaultRouter()
 # generic `orders/<pk>` pattern matching "planned" as a PK.
 router.register(r"orders/planned", PlannedOrdersViewSet, basename="planned-orders")
 router.register(r"orders", DailyOrderViewSet, basename="dailyorder")
+router.register(r"prevadzky", PrevadzkaViewSet, basename="prevadzka")
 router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")

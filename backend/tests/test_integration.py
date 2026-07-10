@@ -7,15 +7,31 @@ from rest_framework import status
 FUTURE_ORDER_DATE = date(2099, 1, 5)
 
 
+def _user_with_profile(*args, **kwargs):
+    """User + UserProfile (→ celok + default prevádzka cez signál).
+
+    Objednávky sa vedú per prevádzka; klient bez profilu nemá kam objednávať.
+    """
+    from django.contrib.auth.models import User
+
+    from api.models import UserProfile
+
+    user = User.objects.create_user(*args, **kwargs)
+    if not kwargs.get("is_staff"):
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
+    return user
+
+
 @pytest.mark.django_db
 class TestFullFlow:
     """Smoke test for the critical user journey"""
 
     def test_login_and_profile_access_flow(self, api_client):
         """Integration: user can log in and access /api/user/profile/."""
-        from django.contrib.auth.models import User
 
-        User.objects.create_user(
+        _user_with_profile(
             username="profile.client@example.com",
             email="profile.client@example.com",
             password="client123",
@@ -49,11 +65,8 @@ class TestFullFlow:
         # 1. Obtain Token (Login)
         auth_url = reverse("token_obtain_pair")
         # Use fixture user creds 'testuser'/'testpassword' but create them first
-        from django.contrib.auth.models import User
 
-        User.objects.create_user(
-            "client@example.com", "client@example.com", "client123"
-        )
+        _user_with_profile("client@example.com", "client@example.com", "client123")
 
         auth_resp = api_client.post(
             auth_url, {"email": "client@example.com", "password": "client123"}

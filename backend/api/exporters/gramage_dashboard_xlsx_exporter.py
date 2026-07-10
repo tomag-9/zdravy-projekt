@@ -94,14 +94,14 @@ class GramageDashboardXLSXExporter:
         for i, cg in enumerate(col_groups):
             for j, comp in enumerate(cg["components"]):
                 if comp.get("is_exception"):
-                    subtitle = f'podľa vekovej skupiny ({comp.get("unit", "ks")})'
+                    subtitle = f"podľa vekovej skupiny ({comp.get('unit', 'ks')})"
                 else:
                     base_g = int(float(comp["base_grams"]))
-                    subtitle = f'{base_g}{comp.get("unit", "g")}'
+                    subtitle = f"{base_g}{comp.get('unit', 'g')}"
                 ws.cell(
                     row=HDR_ROW + 1,
                     column=col_start[i] + j,
-                    value=f'{comp["label"]} ({subtitle})',
+                    value=f"{comp['label']} ({subtitle})",
                 )
 
         # Style both header rows

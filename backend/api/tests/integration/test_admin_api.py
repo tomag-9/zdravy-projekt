@@ -1046,6 +1046,55 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(standard_rows["C"]["col_grams"][2], ["600.00"])
         self.assertEqual(standard_rows["V"]["col_grams"][3], ["1000.00"])
 
+    def _gramage_rows_for_order_data(self, date_str, order_data):
+        plan = DailyMealPlan.objects.create(
+            date=date_str, notes="v1/v2 parity", created_by=self.admin
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=self.lunch_template,
+            category="main_course",
+            menu_variant="A",
+        )
+        EnrolledCount.objects.create(
+            meal_plan=plan, portion_type=self.kindergarten, count=10
+        )
+        DailyOrder.objects.create(
+            user=self.client_user, date=date_str, status="submitted", data=order_data
+        )
+        response = self.client.get(
+            f"/api/admin/meal-plans/gramage-dashboard/?date={date_str}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["rows"]
+
+    def test_gramage_dashboard_reads_prevadzka_nested_order_data(self):
+        """v2 tvar {meal: {prevádzka: {porcia: ...}}} musí dať tú istú gramáž ako v1.
+
+        Regresia: gramáž pôvodne iterovala prvú úroveň ako porciu. Vo v2 je tam
+        prevádzka, `menuCounts` sa nenašlo a gramáž ticho vyšla nulová.
+        """
+        leaf = {"menuCounts": {"A": 4}, "diets": {}}
+
+        v1_rows = self._gramage_rows_for_order_data(
+            "2026-03-23", {"lunch": {"Škôlka": leaf}}
+        )
+        v2_rows = self._gramage_rows_for_order_data(
+            "2026-03-24", {"lunch": {"Pramienok": {"Škôlka": leaf}}}
+        )
+
+        def _standard(rows):
+            return [
+                (r["portion_name"], r["count"], r["col_grams"])
+                for row in rows
+                for r in row["sub_rows"]
+                if r["type"] == "standard"
+            ]
+
+        self.assertEqual(_standard(v2_rows), _standard(v1_rows))
+        self.assertTrue(_standard(v2_rows), "v2 nesmie vrátiť prázdnu gramáž")
+        self.assertEqual(_standard(v2_rows)[0][1], 4)
+
     def test_gramage_dashboard_pools_variants_for_unvarianted_main_course(self):
         plan = DailyMealPlan.objects.create(
             date="2026-03-22",
