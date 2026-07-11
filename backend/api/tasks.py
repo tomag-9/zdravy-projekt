@@ -537,6 +537,15 @@ def scrape_edupage_orders_task(
                     data_by_nazov = {prevadzky[0].nazov: result.order_data}
 
                 for nazov, prevadzka in by_nazov.items():
+                    # Pri rozdelenom celku priraď každej prevádzke len tie flagy,
+                    # ktorých porcie do nej reálne padli; config_notes sú celok-wide.
+                    if len(prevadzky) > 1:
+                        attention_for_prevadzka = result.attention_by_prevadzka.get(
+                            nazov, []
+                        )
+                    else:
+                        attention_for_prevadzka = result.attention
+
                     nested_order_data = nest_order_data_by_category(
                         data_by_nazov.get(nazov, {}), nazov
                     )
@@ -579,7 +588,7 @@ def scrape_edupage_orders_task(
                         # nech admin prehľad nezobrazuje výkričník z minulého behu,
                         # ktorý sa už medzitým vyriešil.
                         order.scrape_flags = {
-                            "attention": list(result.attention),
+                            "attention": list(attention_for_prevadzka),
                             "config_notes": list(result.config_notes),
                         }
                         order.save(update_fields=["data", "scrape_flags", "updated_at"])

@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from ..exporters import PDFReportExporter, XLSXReportExporter
 from ..models import DailyOrder, Prevadzka
 from ..services import ReportService
-from ..utils import order_row_label
+from ..utils import meal_counts, order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
 
 logger = logging.getLogger(__name__)
@@ -188,15 +188,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
                         or [],
                     }
 
-            bf = build_user_meal_row(data, "breakfast")
-            lu = build_user_meal_row(data, "lunch")
-            ol = build_user_meal_row(data, "olovrant")
-            counts = {
-                "breakfast": bf["total"],
-                "lunch": lu["total"],
-                "olovrant": ol["total"],
-                "total": bf["total"] + lu["total"] + ol["total"],
-            }
+            counts = meal_counts(data)
 
             row = {
                 "prevadzka_id": prevadzka.id,

@@ -124,6 +124,57 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
+    """Pri rozdelenom celku dostane každá prevádzka len svoje flagy;
+    config_notes sú zdieľané (celok-wide)."""
+    from api.models import Celok, Prevadzka
+
+    celok = Celok.objects.create(nazov="Jolly")
+    p1 = Prevadzka.objects.create(celok=celok, nazov="Jolly 1", edupage_match="J1")
+    p2 = Prevadzka.objects.create(celok=celok, nazov="Jolly 2", edupage_match="J2")
+    user = User.objects.create_user(username="jolly@x.sk", email="jolly@x.sk")
+    UserProfile.objects.create(
+        user=user,
+        company_name="Jolly",
+        is_edupage=True,
+        celok=celok,
+        mealsguest_url="https://jolly.edupage.org/menu/mealsGuest?id=T",
+    )
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 8}}},
+            order_data_by_prevadzka={
+                "Jolly 1": {"lunch": {"menuCounts": {"A": 5}}},
+                "Jolly 2": {"lunch": {"menuCounts": {"A": 3}}},
+            },
+            attention=["A:ZD?"],
+            attention_by_prevadzka={"Jolly 1": ["A:ZD?"]},
+            config_notes=["olovrant chýba"],
+            warnings=[],
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    o1 = DailyOrder.objects.get(prevadzka=p1, date=target_date)
+    o2 = DailyOrder.objects.get(prevadzka=p2, date=target_date)
+    assert o1.scrape_flags == {
+        "attention": ["A:ZD?"],
+        "config_notes": ["olovrant chýba"],
+    }
+    # Jolly 2 nemá flag, ale zdieľané config_notes áno.
+    assert o2.scrape_flags == {"attention": [], "config_notes": ["olovrant chýba"]}
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_task_skips_automatic_run_when_disabled(
     edupage_user, monkeypatch
 ):
