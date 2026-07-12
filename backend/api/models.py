@@ -260,6 +260,10 @@ class Celok(models.Model):
     prevádzok.
     """
 
+    class ZdrojObjednavok(models.TextChoices):
+        APP = "app", "Aplikácia"
+        EDUPAGE = "edupage", "EduPage"
+
     nazov = models.CharField(max_length=255, unique=True)
     billing_name = models.CharField(max_length=255, blank=True)
     adresa = models.CharField(
@@ -267,6 +271,16 @@ class Celok(models.Model):
     )
     ico = models.CharField(max_length=20, blank=True)
     dic = models.CharField(max_length=20, blank=True)
+    zdroj_objednavok = models.CharField(
+        max_length=16,
+        choices=ZdrojObjednavok.choices,
+        default=ZdrojObjednavok.APP,
+        db_index=True,
+        help_text=(
+            "Odkiaľ chodia objednávky celku: 'edupage' (scraper) alebo 'app' "
+            "(klient v appke). Určuje zaradenie v admin prehľade dodania podkladov."
+        ),
+    )
 
     class Meta:
         ordering = ["nazov"]

@@ -58,6 +58,30 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize(
+    "fmt,ctype",
+    [
+        ("xlsx", "spreadsheetml"),
+        ("pdf", "application/pdf"),
+    ],
+)
+def test_overview_export(admin_client, fmt, ctype):
+    _c, prev, user = _celok_with_prevadzka("EduŠkola", is_edupage=True)
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prev,
+        date=DATE,
+        data={"lunch": {"EduŠkola": {"menuCounts": {"A": 3}}}},
+    )
+    res = admin_client.get(
+        f"/api/admin/summary/prevadzka-overview-{fmt}/", {"date": DATE.isoformat()}
+    )
+    assert res.status_code == 200
+    assert ctype in res["Content-Type"]
+    assert res["Content-Disposition"].endswith(f'.{fmt}"')
+
+
+@pytest.mark.django_db
 def test_overview_requires_date(admin_client):
     assert admin_client.get(URL).status_code == 400
 

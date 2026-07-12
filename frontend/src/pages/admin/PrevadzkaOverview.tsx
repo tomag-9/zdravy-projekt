@@ -152,6 +152,38 @@ const PrevadzkaOverview: React.FC = () => {
   const [date, setDate] = useState(() => toDateString(new Date()));
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [xlsxLoading, setXlsxLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
+  const handleExport = useCallback(
+    async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
+      setFmt(true);
+      try {
+        const res = await apiFetch(
+          `${API}/admin/summary/prevadzka-overview-${fmt}/?date=${date}`,
+        );
+        if (!res.ok) {
+          toastError("Chyba pri generovaní súboru.");
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `dodanie_podkladov_${date}.${fmt}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        logger.error(e);
+        toastError("Chyba pri generovaní súboru.");
+      } finally {
+        setFmt(false);
+      }
+    },
+    [apiFetch, date, toastError],
+  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -183,12 +215,28 @@ const PrevadzkaOverview: React.FC = () => {
             Prehľad, ktoré prevádzky za daný deň dodali objednávky.
           </p>
         </div>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
-        />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleExport("pdf", setPdfLoading)}
+            disabled={pdfLoading || loading || !data}
+            className="px-3 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold shadow hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {pdfLoading ? "…" : "PDF"}
+          </button>
+          <button
+            onClick={() => handleExport("xlsx", setXlsxLoading)}
+            disabled={xlsxLoading || loading || !data}
+            className="px-3 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold shadow hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            {xlsxLoading ? "…" : "XLSX"}
+          </button>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-200"
+          />
+        </div>
       </div>
 
       {loading ? (
