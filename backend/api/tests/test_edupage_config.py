@@ -166,16 +166,18 @@ class TestKrasnankoLetterHook(unittest.TestCase):
         self.assertEqual(rule.portion, "Dospelý (SŠ)")
         self.assertEqual(rule.diet, "NO MILK")
 
-    def test_kzd_child_portion_with_attention_flag(self):
+    def test_kzd_is_plain_klasik_child_portion_no_flag(self):
+        # KZD = Klasik detská porcia, berieme ju tak; žiadny attention flag (user 7/13).
         rule = self._rule("KZD")
         self.assertEqual(rule.portion, "Škôlka")
-        self.assertEqual(rule.flag, "!")
+        self.assertEqual(rule.menu, "A")
+        self.assertIsNone(rule.flag)
 
-    def test_nmzd_child_portion_diet_and_flag(self):
+    def test_nmzd_child_portion_diet_no_flag(self):
         rule = self._rule("NMZD")
         self.assertEqual(rule.portion, "Škôlka")
         self.assertEqual(rule.diet, "NO MILK")
-        self.assertEqual(rule.flag, "!")
+        self.assertIsNone(rule.flag)
 
     def test_dia(self):
         self.assertEqual(self._rule("DIA").diet, "DIA")
@@ -219,16 +221,21 @@ class TestLetterHookInParse(unittest.TestCase):
         self.assertEqual(lunch["Dospelý (SŠ)"]["menuCounts"]["A"], 4)
 
     def test_flag_surfaces_in_attention(self):
-        nazov_menu = {"G": {"skratka": "KZD", "nazov": "Klasik detská Z"}}
+        # `LetterRule.flag` je všeobecný mechanizmus; testujeme ho syntetickým hookom
+        # (žiadne reálne Krásňanko pravidlo dnes flag nenesie).
+        def flag_hook(letter, skratka, nazov):
+            return LetterRule(portion="Škôlka", menu="A", flag="!")
+
+        nazov_menu = {"G": {"skratka": "XY", "nazov": "Čokoľvek"}}
         prehlad = {
             "prehlad": {
                 TARGET.isoformat(): {"2": {"G": {"typ_platitela": {"18": {"o": 3}}}}}
             }
         }
         html = _make_html(prehlad, nazov_menu, self.NASTAVENIA, self.TYPY)
-        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=krasnanko_letter_hook)
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=flag_hook)
         res = EdupageScraper()._parse(html, TARGET, config=cfg)
-        self.assertEqual(res.attention, ["G:KZD!"])
+        self.assertEqual(res.attention, ["G:XY!"])
         self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 3)
 
 
