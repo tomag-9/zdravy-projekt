@@ -526,6 +526,7 @@ class EdupageScraper:
         unmapped: list[str] = []
         attention: list[str] = []
         letter_hook = config.letter_hook if config is not None else None
+        payer_hook = config.payer_hook if config is not None else None
 
         if not prehlad_raw:
             warnings.append("prehlad block not found in HTML")
@@ -609,19 +610,29 @@ class EdupageScraper:
                         continue
 
                     payer_info = payer_map.get(str(payer_id), {})
+                    payer_name = payer_info.get("name", "")
+                    payer_rule = payer_hook(payer_name) if payer_hook else None
+                    match_name = (
+                        payer_rule.match_name
+                        if payer_rule and payer_rule.match_name is not None
+                        else payer_name
+                    )
                     portion_name = (
                         portion_override
+                        or (payer_rule.portion if payer_rule else None)
                         or payer_info.get("portion")
                         or DEFAULT_PORTION_NAME
                     )
-                    payer_diet = payer_info.get("diet") or None
+                    payer_diet = (
+                        (payer_rule.diet if payer_rule else None)
+                        or payer_info.get("diet")
+                        or None
+                    )
                     effective_diet = diet_name or payer_diet
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
 
                     if matches:
-                        bucket = match_prevadzka(
-                            matches, payer_info.get("name", ""), nazov
-                        )
+                        bucket = match_prevadzka(matches, match_name, nazov)
                         if bucket is None:
                             # Radšej nahlás neúplný scrape, než ticho zahodiť porcie.
                             unmatched.append(

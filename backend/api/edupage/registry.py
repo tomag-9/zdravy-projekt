@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 
 from .base import OlovrantMode, PrevadzkaConfig
 from .overrides.krasnanko import krasnanko_letter_hook
+from .overrides.skolickams import skolickams_payer_hook
 
 _C = OlovrantMode.EDUPAGE
 
@@ -88,7 +89,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="skolickams",
         ucty=("Školička Lúka", "Školička Les", "Školička 1.st.", "Školička 2.st."),
         olovrant_mode=_C,
-        poznamka="Split Lúka/Les/učiteľ. Význam `sd` v labeloch zatiaľ neznámy.",
+        poznamka=(
+            "Prefix B/BM = dodávateľ (Bruško/BruškoMilk), NIE výdajňa — strip pred "
+            "matchom, BM→NO MILK, počty sčítavame. Lúka/Les detská porcia (default). "
+            "Potvrdené Stanom 7/13/2026."
+        ),
+        payer_hook=skolickams_payer_hook,
     ),
     PrevadzkaConfig(
         subdomena="msdobrehopastiera",

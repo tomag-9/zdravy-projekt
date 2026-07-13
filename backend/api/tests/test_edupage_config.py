@@ -13,6 +13,7 @@ from api.edupage import (
     subdomena_z_url,
 )
 from api.edupage.overrides.krasnanko import krasnanko_letter_hook
+from api.edupage.overrides.skolickams import skolickams_payer_hook
 from api.edupage_scraper import EdupageScraper, ScrapeResult, match_prevadzka
 
 TARGET = date(2026, 6, 17)
@@ -73,6 +74,10 @@ class TestConfigPreUrl(unittest.TestCase):
     def test_krasnanko_has_letter_hook(self):
         cfg = config_pre_url("https://krasnanko.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg.letter_hook)
+
+    def test_skolickams_has_payer_hook(self):
+        cfg = config_pre_url("https://skolickams.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.payer_hook)
 
     def test_fantasticka_ms_and_zs_are_separate(self):
         ms = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
@@ -225,6 +230,95 @@ class TestLetterHookInParse(unittest.TestCase):
         res = EdupageScraper()._parse(html, TARGET, config=cfg)
         self.assertEqual(res.attention, ["G:KZD!"])
         self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 3)
+
+
+class TestSkolickamsPayerHook(unittest.TestCase):
+    """Prefix B/BM = dodávateľ (Bruško/BruškoMilk), nie výdajňa — strip + BM→NO MILK."""
+
+    def test_b_prefix_stripped_no_diet(self):
+        rule = skolickams_payer_hook("B - Les")
+        self.assertEqual(rule.match_name, "Les")
+        self.assertIsNone(rule.diet)
+
+    def test_bm_prefix_is_no_milk(self):
+        rule = skolickams_payer_hook("BM - Lúka sd")
+        self.assertEqual(rule.match_name, "Lúka sd")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_en_dash_and_spacing_tolerated(self):
+        rule = skolickams_payer_hook("B–Les")
+        self.assertEqual(rule.match_name, "Les")
+
+    def test_case_insensitive_supplier_token(self):
+        rule = skolickams_payer_hook("bm - Les")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_host_is_routed_to_luka(self):
+        rule = skolickams_payer_hook("Hosť")
+        self.assertEqual(rule.match_name, "Lúka")
+        self.assertIsNone(rule.diet)
+
+    def test_label_without_supplier_prefix_falls_through(self):
+        self.assertIsNone(skolickams_payer_hook("učiteľ Lúka"))
+
+    def test_bare_b_word_not_treated_as_prefix(self):
+        # bez oddeľovača "-" to nie je dodávateľský prefix
+        self.assertIsNone(skolickams_payer_hook("Bratislava"))
+
+
+class TestPayerHookInParse(unittest.TestCase):
+    """payer_hook strip prefixu umožní match na čistý `Les`/`Lúka` a odvodí NO MILK."""
+
+    NASTAVENIA = [
+        {
+            "nazov": "vydaj_normal",
+            "hodnota": json.dumps({"2": {"vydaj_od": "11:00", "vydaj_do": "13:00"}}),
+        }
+    ]
+    TYPY = [
+        {
+            "hodnota": json.dumps(
+                {
+                    "1": {"nazov": "B - Les", "porcia": "0"},
+                    "2": {"nazov": "BM - Lúka sd", "porcia": "0"},
+                }
+            )
+        }
+    ]
+    NAZOV_MENU = {"A": {"skratka": "A", "nazov": "klasik A"}}
+
+    def _parse(self, matches, config):
+        prehlad = {
+            "prehlad": {
+                TARGET.isoformat(): {
+                    "2": {"A": {"typ_platitela": {"1": {"o": 6}, "2": {"o": 4}}}}
+                }
+            }
+        }
+        html = _make_html(prehlad, self.NAZOV_MENU, self.NASTAVENIA, self.TYPY)
+        return EdupageScraper()._parse(
+            html, TARGET, config=config, prevadzka_matches=matches
+        )
+
+    def test_supplier_prefix_stripped_lets_clean_match_win(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, payer_hook=skolickams_payer_hook)
+        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, cfg)
+        by = res.order_data_by_prevadzka
+        self.assertEqual(by["Les"]["lunch"]["Škôlka"]["menuCounts"]["A"], 6)
+        self.assertEqual(by["Lúka"]["lunch"]["Škôlka"]["menuCounts"]["A"], 4)
+
+    def test_bm_becomes_no_milk_diet(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, payer_hook=skolickams_payer_hook)
+        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, cfg)
+        luka = res.order_data_by_prevadzka["Lúka"]["lunch"]["Škôlka"]
+        self.assertEqual(luka["diets"]["NO MILK"], 4)
+        les = res.order_data_by_prevadzka["Les"]["lunch"]["Škôlka"]
+        self.assertNotIn("NO MILK", les["diets"])
+
+    def test_without_hook_supplier_prefix_breaks_clean_match(self):
+        # bez hooku `B - Les` prefixovo nesadne na čisté `Les` → unmatched
+        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, config=None)
+        self.assertTrue(res.unmatched_prevadzka)
 
 
 class TestMatchPrevadzka(unittest.TestCase):
