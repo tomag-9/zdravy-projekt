@@ -1,0 +1,11 @@
+/* =============================================================
+ * Zdravý Projekt — Design System entry stylesheet
+ * -------------------------------------------------------------
+ * Single import surface for consumers. Linking this one file
+ * pulls in the design tokens, typography and the client-app
+ * component layer. Font @font-face src paths resolve relative
+ * to colors_and_type.css (→ ui_kits/client_app/fonts/…).
+ * ============================================================= */
+
+@import url("ui_kits/client_app/colors_and_type.css");
+@import url("ui_kits/client_app/client.css");
