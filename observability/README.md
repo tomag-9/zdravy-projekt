@@ -9,11 +9,39 @@ Alloy stack itself is run.
 | Signal   | Path                                                            | Backend               |
 |----------|------------------------------------------------------------------|------------------------|
 | Errors   | `sentry_sdk` in `backend/app/settings/{prod,staging}.py`         | Sentry (`SENTRY_DSN`)  |
-| Metrics  | `/metrics/` (django_prometheus) → Alloy `prometheus.scrape` → `prometheus.remote_write` | Grafana Cloud Prometheus/Mimir |
+| Metrics  | Django `/metrics/` + Alloy cAdvisor exporter → `prometheus.remote_write` | Grafana Cloud Prometheus/Mimir |
 | Logs     | Docker container stdout → Alloy `loki.source.docker`             | Grafana Cloud Loki     |
 
 Custom business metric: `auth_login_attempts_total{result="success"|"failure"}`
 (`backend/api/metrics.py`, incremented in `EmailTokenObtainPairView.post`).
+
+## Django metrics under Gunicorn
+
+Production and staging run Django behind Gunicorn with multiple sync workers.
+The backend image starts through `backend/start-backend.sh`, which:
+
+1. runs `python manage.py deploy_bootstrap` without Prometheus multiprocess mode,
+2. prepares a fresh `PROMETHEUS_MULTIPROC_DIR`,
+3. exports that variable only for Gunicorn and its workers.
+
+`backend/gunicorn.conf.py` also calls
+`prometheus_client.multiprocess.mark_process_dead(...)` when a worker exits, so
+live-gauge files do not accumulate for dead workers.
+
+This makes Django HTTP/DB/cache counters and histograms aggregate across all
+Gunicorn workers instead of whichever worker happened to serve `/metrics/`.
+Do not build alerts from Django `process_*` metrics such as
+`process_cpu_seconds_total` in this setup: the Prometheus Python client does
+not expose process collectors through multiprocess aggregation. Use the
+cAdvisor container metrics from Alloy for real CPU/memory/restart/OOM alerting.
+
+The Alloy container runs with cAdvisor enabled through
+`prometheus.exporter.cadvisor`. Docker deployments need the host mounts in
+`compose/observability.yml` plus `privileged: true`; without those, cAdvisor may
+only see the Alloy container itself. The relabel config keeps only containers
+whose Docker name contains `zdravy-projekt` before remote-writing to Grafana
+Cloud, which limits cardinality/cost while still covering backend, celery,
+frontend, Postgres, Redis, and the observability container.
 
 ## One-time production setup
 
@@ -91,6 +119,10 @@ rows:
 - **Exceptions & Infra Health** — unhandled exceptions by type/view (last
   1h), and whether the `django`/`alloy` scrape targets are up (catches "Alloy
   can't reach the backend" before you notice missing dashboards).
+- **Traffic Diagnostics** — HTTP/HTTPS split and view-vs-middleware latency,
+  using Django metrics that are safe under Gunicorn multiprocess aggregation.
+- **Container Runtime** — backend CPU/memory from cAdvisor, backend OOM events,
+  and backend uptime based on `container_start_time_seconds`.
 
 ## Alerts to create in Grafana Cloud (Alerting → Alert rules)
 
@@ -102,12 +134,14 @@ same Prometheus data source as the dashboard. Suggested starting set:
 
 | Alert                     | Expression                                                                                                   | For   | Severity |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------|-------|----------|
-| High 5xx error rate       | `100 * sum(rate(django_http_responses_total_by_status{status=~"5.."}[5m])) / sum(rate(django_http_responses_total_by_status[5m])) > 5` | 5m    | critical |
+| High 5xx error rate       | `100 * sum(rate(django_http_responses_total_by_status_view_method_total{status=~"5..",view!~"health_check|prometheus-django-metrics"}[5m])) / sum(rate(django_http_responses_total_by_status_view_method_total{view!~"health_check|prometheus-django-metrics"}[5m])) > 5` | 5m    | critical |
 | Elevated 5xx error rate   | same expression `> 1`                                                                                          | 10m   | warning  |
-| High p95 latency          | `histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket[5m]))) > 3` | 5m    | warning  |
+| High p95 latency          | `histogram_quantile(0.95, sum by (le) (rate(django_http_requests_latency_seconds_by_view_method_bucket{view!~"health_check|prometheus-django-metrics"}[5m]))) > 3` | 5m    | warning  |
 | Backend scrape down       | `up{job="django"} == 0`                                                                                        | 2m    | critical |
 | Alloy itself down         | `up{job="alloy"} == 0`                                                                                         | 5m    | warning  |
 | DB connection errors      | `increase(django_db_new_connection_errors_total[5m]) > 0`                                                       | 1m    | critical |
+| Backend OOM killed        | `sum(increase(container_oom_events_total{job="cadvisor",name=~".*backend.*"}[5m])) > 0`                         | 0m    | critical |
+| Backend recently restarted| `time() - max(container_start_time_seconds{job="cadvisor",name=~".*backend.*",image!=""}) < 600`                | 0m    | warning  |
 | Possible brute-force login| `sum(increase(auth_login_attempts_total{result="failure"}[10m])) > 30`                                          | 0m    | warning  |
 | Login failure rate spike  | `100 * sum(increase(auth_login_attempts_total{result="failure"}[15m])) / sum(increase(auth_login_attempts_total[15m])) > 50` | 5m    | warning  |
 | Cache hit rate collapse   | `100 * sum(rate(django_cache_hits_total[10m])) / sum(rate(django_cache_get_total[10m])) < 50`                   | 10m   | warning  |
@@ -118,13 +152,18 @@ alerting (Settings → Alerts on the Sentry project) for error-spike/new-issue
 notifications — worth turning on there too since Prometheus alerts above
 only see HTTP-level symptoms, not exception details.
 
+Avoid alerts on `process_cpu_seconds_total`, `process_resident_memory_bytes`,
+or other Django `process_*` series while Gunicorn multiprocess mode is enabled;
+they are not reliable app-level signals in this topology. The restart alert
+will also fire after intentional deploys because a fresh container start is the
+same signal as an unexpected replacement; mute it during planned releases.
+
 ## Known gaps / optional next steps
 
-- **Host/container resource metrics** (CPU, memory, disk per container) are
-  not collected — `compose/observability.yml` only scrapes the Django
-  `/metrics/` endpoint, no `cadvisor`/`node_exporter`. Add them to that
-  compose file and a `prometheus.scrape` block in `config.alloy` if you want
-  infra-level dashboards/alerts (e.g. "container getting OOM-killed").
+- **Host-level node metrics** (disk pressure, host CPU, host OOM killer totals)
+  are still not collected. cAdvisor covers Docker/container CPU, memory,
+  restarts, and `container_oom_events_total`; add `node_exporter` later if you
+  want host-level alerts such as filesystem pressure or kernel-wide OOM kills.
 - **Celery** has no Prometheus metrics wired (no `django_prometheus` Celery
   signal hooks, no `celery-exporter`). Worker health today is only visible
   via Sentry (task exceptions) and container logs in Loki.

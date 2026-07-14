@@ -26,7 +26,7 @@ RUN pip install --upgrade pip && \
 COPY . /app/
 
 # Make scripts executable
-RUN chmod +x /app/manage.py /app/wait-for-redis.sh
+RUN chmod +x /app/manage.py /app/wait-for-redis.sh /app/start-backend.sh
 
 # Create a dedicated non-root user for runtime processes.
 RUN groupadd --system appuser && useradd --system --gid appuser --create-home appuser
@@ -44,7 +44,7 @@ USER appuser
 EXPOSE 8000
 
 # Run deployment bootstrap and start server.
-CMD ["sh", "-c", "python manage.py deploy_bootstrap && gunicorn -c gunicorn.conf.py app.wsgi:application"]
+CMD ["/app/start-backend.sh"]
 
 # Healthcheck for the main app
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=20s \
