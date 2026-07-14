@@ -1,5 +1,5 @@
 {
-  "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report.",
+  "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Value may be a single string, or a LIST of real labels meaning 'sum these real rows for this one app facility' (used when the app scrapes a celok as one bucket but the real sheet bills its sub-units on separate rows, e.g. Rozmanitá = Škôlka + Škola). Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report.",
 
   "Fantastická Škôlka": "fantasticka",
   "Jolly Homeschool – Jolly 1": "Jolly 1",
@@ -11,7 +11,7 @@
   "MŠ Filipáneriho": "filipa neriho",
   "MŠ Krásnanko": "krasnanko",
   "MŠ Libellus": "libellus",
-  "MŠ Rozmanitá": "rozmanita skolka",
+  "MŠ Rozmanitá": ["rozmanita skolka", "rozmanita skola"],
   "MŠ Prameň": "pramienok",
   "MŠ Zdravé Bruško": "deutsche schule",
   "ZŠ Ivanka pri Dunaji": "ivanka",

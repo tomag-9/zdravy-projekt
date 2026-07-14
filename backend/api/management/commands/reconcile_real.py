@@ -42,17 +42,88 @@ def _decimal(value: object) -> Decimal:
         return Decimal("0")
 
 
-def _load_alias_map(path: str | None) -> dict[str, str]:
-    """Return normalized-app-label → normalized-real-label overrides."""
+def _count_or_none(value: object) -> Decimal | None:
+    """Parse a `Počet pokrmov` cell → Decimal, or None if it isn't a number.
+
+    The workbook sometimes stores a count as TEXT (e.g. `'1'`), so an
+    ``isinstance(int, float)`` guard silently drops those rows and undercounts a
+    facility's diet lines. Accept numeric strings too; return None only for real
+    non-numbers (blank cells, section headers).
+    """
+    if isinstance(value, bool):  # bool is an int subclass — never a count
+        return None
+    if isinstance(value, (int, float)):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        text = value.strip().replace(",", ".")
+        if text:
+            try:
+                return Decimal(text)
+            except Exception:
+                return None
+    return None
+
+
+def _load_alias_map(path: str | None) -> dict[str, list[str]]:
+    """Return normalized-app-label → list of normalized-real-label(s).
+
+    A value may be a single real label (``"deutsche schule"``) or a list
+    (``["rozmanita skolka", "rozmanita skola"]``) meaning "sum these real rows for
+    this one app facility" — used when the app scrapes a celok as one bucket but the
+    real workbook bills its sub-units on separate rows. Single strings become
+    1-element lists so the resolution code has a uniform shape. Keys starting with
+    ``_`` (e.g. ``_comment``) are skipped.
+    """
     if not path:
         return {}
     with Path(path).open(encoding="utf-8") as handle:
         raw = json.load(handle)
     if not isinstance(raw, dict):
         raise CommandError(
-            "Alias map must be a JSON object of app label -> real label."
+            "Alias map must be a JSON object of app label -> real label(s)."
         )
-    return {_normalize(app): _normalize(real) for app, real in raw.items()}
+    result: dict[str, list[str]] = {}
+    for app, real in raw.items():
+        if app.startswith("_"):
+            continue
+        if isinstance(real, str):
+            reals = [real]
+        elif isinstance(real, list):
+            reals = [str(r) for r in real]
+        else:
+            raise CommandError(
+                f"Alias for {app!r} must be a string or list of strings."
+            )
+        result[_normalize(app)] = [_normalize(r) for r in reals]
+    return result
+
+
+def _rekey_by_alias(
+    real_by_label: dict[str, Any],
+    alias_map: dict[str, list[str]],
+    combine,
+) -> dict[str, Any]:
+    """Re-key real-side data from raw workbook labels onto app-normalized keys.
+
+    For each aliased app facility, pull the referenced real rows out of the map and
+    fold them together with ``combine`` under the app-normalized key. Non-aliased
+    labels are left untouched (they match app labels by identity). This keeps the
+    raw aliased rows from lingering as spurious ``real_only`` entries.
+    """
+    resolved = dict(real_by_label)
+    for app_key, real_labels in alias_map.items():
+        pieces = [resolved.pop(label) for label in real_labels if label in resolved]
+        if pieces:
+            resolved[app_key] = combine(pieces)
+    return resolved
+
+
+def _combine_count_buckets(pieces: list[dict]) -> dict:
+    merged: dict[str, Decimal] = {}
+    for bucket in pieces:
+        for meal_type, value in bucket.items():
+            merged[meal_type] = merged.get(meal_type, Decimal("0")) + value
+    return merged
 
 
 def _resolve_workbook(date_str: str) -> Path:
@@ -108,9 +179,10 @@ def _real_counts_by_facility(wb) -> dict[str, dict[str, Decimal]]:
             meal_type = _section_meal_type(_normalize(druh))
         if facility is None or meal_type is None:
             continue
-        if isinstance(count, (int, float)):
+        parsed = _count_or_none(count)
+        if parsed is not None:
             bucket = counts[facility]
-            bucket[meal_type] = bucket.get(meal_type, Decimal("0")) + _decimal(count)
+            bucket[meal_type] = bucket.get(meal_type, Decimal("0")) + parsed
     # Drop facilities/meal-types that are entirely zero (not billed that day).
     return {
         fac: {mt: v for mt, v in buckets.items() if v > 0}
@@ -227,9 +299,11 @@ class Command(BaseCommand):
         gram_tol = _decimal(options["gram_tolerance"])
         alias_map = _load_alias_map(options.get("alias_map"))
 
+        # Alias resolution happens on the real side (rows are re-keyed onto the
+        # app-normalized label, summing multi-row aliases), so the app key is just
+        # its normalized label.
         def _key(client: object) -> str:
-            normalized = _normalize(client)
-            return alias_map.get(normalized, normalized)
+            return _normalize(client)
 
         dashboard = MealPlanService.gramage_dashboard(date_str)
         app_rows = dashboard.get("rows", [])
@@ -242,7 +316,9 @@ class Command(BaseCommand):
         wb = load_workbook(workbook_path, data_only=True)
 
         # ── Tier 1: counts (per meal type) ────────────────────────────────────
-        real_counts = _real_counts_by_facility(wb)
+        real_counts = _rekey_by_alias(
+            _real_counts_by_facility(wb), alias_map, _combine_count_buckets
+        )
         app_counts = {
             _key(r.get("client", "")): (r, _app_counts_by_meal_type(r))
             for r in app_rows
@@ -283,7 +359,11 @@ class Command(BaseCommand):
         gram_findings = []
         if width:
             har_sheet = wb["Hárok1"] if "Hárok1" in wb.sheetnames else wb.active
-            real_gram_rows = _real_rows_by_label(har_sheet)
+            real_gram_rows = _rekey_by_alias(
+                _real_rows_by_label(har_sheet),
+                alias_map,
+                lambda pieces: [row for rows in pieces for row in rows],
+            )
             for row in app_rows:
                 client = str(row.get("client", ""))
                 key = _key(client)
