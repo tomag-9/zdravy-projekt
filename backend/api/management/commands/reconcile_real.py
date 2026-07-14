@@ -221,6 +221,15 @@ def _component_labels(col_groups: list[dict]) -> list[str]:
     return labels
 
 
+def _component_names(col_groups: list[dict]) -> list[str]:
+    """Bare component (dish) names, parallel to `_component_labels`.
+
+    These are the actual dish names (`Zemiakový prívarok`, `Vajce`, …) and match the
+    Hárok1 header cells, which is how we align columns by NAME instead of position.
+    """
+    return [c["label"] for g in col_groups for c in g["components"]]
+
+
 def _empty_totals(col_groups: list[dict]) -> list[list[Decimal]]:
     return [[Decimal("0")] * len(g["components"]) for g in col_groups]
 
@@ -252,13 +261,97 @@ def _real_rows_by_label(sheet) -> dict[str, list[int]]:
     return rows
 
 
-def _real_gram_values(sheet, row_numbers: list[int], width: int) -> list[Decimal]:
-    values = [Decimal("0")] * width
-    for row_number in row_numbers:
-        for offset in range(width):
-            values[offset] += _decimal(
-                sheet.cell(row=row_number, column=offset + 2).value
-            )
+def _real_header_columns(sheet) -> dict[str, int]:
+    """{normalized dish name → column index} from the Hárok1 header row (row 1).
+
+    The header lists the day's actual dishes per column (they differ every day and
+    are NOT in the same order as the app's components, plus there can be a blank
+    spacer column). Mapping by name — not by position — is what makes Tier-2 align.
+    """
+    columns: dict[str, int] = {}
+    for col in range(2, sheet.max_column + 1):
+        name = _normalize(sheet.cell(row=1, column=col).value)
+        if name:
+            columns.setdefault(name, col)
+    return columns
+
+
+def _is_gram_row(sheet, row: int) -> bool:
+    """A data row carrying grams: a text label in col A and a number in col B."""
+    a = sheet.cell(row=row, column=1).value
+    b = sheet.cell(row=row, column=2).value
+    return isinstance(a, str) and a.strip() != "" and isinstance(b, (int, float))
+
+
+def _is_address_row(sheet, row: int) -> bool:
+    """Address line: non-numeric text label with an empty grams column.
+
+    Distinct from a count line (`12` or the TEXT '1'), whose col-A value parses as a
+    number — the ``_count_or_none`` guard keeps those from looking like addresses.
+    """
+    a = sheet.cell(row=row, column=1).value
+    b = sheet.cell(row=row, column=2).value
+    return (
+        isinstance(a, str)
+        and a.strip() != ""
+        and b in (None, "")
+        and _count_or_none(a) is None
+    )
+
+
+def _starts_new_facility(sheet, row: int) -> bool:
+    """A facility header is any row immediately followed by an address line.
+
+    This holds even when the header itself has empty grams (e.g. `Rozmanita Škola`),
+    which a gram-row test would miss — that miss let one facility's block bleed into
+    the next.
+    """
+    return _is_address_row(sheet, row + 1)
+
+
+def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
+    """Expand each facility header row to its full block (klasik + diet sub-rows).
+
+    In Hárok1 a facility is a block: the header row (KLASIK grams), an address line,
+    then alternating diet gram-rows / count-lines, until the next facility header.
+    The app aggregates klasik + diets, so Tier-2 must sum the whole block.
+    """
+    max_row = sheet.max_row
+    result: list[int] = []
+    for header in header_rows:
+        result.append(header)
+        row = header + 1
+        while row <= max_row:
+            if _starts_new_facility(sheet, row):
+                break
+            if _is_gram_row(sheet, row):
+                result.append(row)
+            row += 1
+    return result
+
+
+def _real_gram_values_by_name(
+    sheet,
+    row_numbers: list[int],
+    component_names: list[str],
+    header_columns: dict[str, int],
+) -> list[Decimal | None]:
+    """Real grams per app component, matched to the Hárok1 column by dish name.
+
+    Returns ``None`` for a component whose dish isn't in this day's header (e.g. a
+    diet-only facility whose menu differs from the standard) so the caller can skip
+    it rather than report a bogus diff against 0.
+    """
+    values: list[Decimal | None] = []
+    for name in component_names:
+        col = header_columns.get(_normalize(name))
+        if col is None:
+            values.append(None)
+            continue
+        total = Decimal("0")
+        for row_number in row_numbers:
+            total += _decimal(sheet.cell(row=row_number, column=col).value)
+        values.append(total)
     return values
 
 
@@ -359,6 +452,8 @@ class Command(BaseCommand):
         gram_findings = []
         if width:
             har_sheet = wb["Hárok1"] if "Hárok1" in wb.sheetnames else wb.active
+            header_columns = _real_header_columns(har_sheet)
+            component_names = _component_names(col_groups)
             real_gram_rows = _rekey_by_alias(
                 _real_rows_by_label(har_sheet),
                 alias_map,
@@ -374,8 +469,14 @@ class Command(BaseCommand):
                         {"facility": client, "status": "MISSING_REAL_ROW"}
                     )
                     continue
-                real_values = _real_gram_values(har_sheet, row_numbers, width)
+                block_rows = _expand_block_rows(har_sheet, row_numbers)
+                real_values = _real_gram_values_by_name(
+                    har_sheet, block_rows, component_names, header_columns
+                )
                 for label, real_v, app_v in zip(labels, real_values, app_values):
+                    # Dish not in this day's header → can't compare, don't fake a diff.
+                    if real_v is None:
+                        continue
                     diff = app_v - real_v
                     if abs(diff) <= gram_tol:
                         continue

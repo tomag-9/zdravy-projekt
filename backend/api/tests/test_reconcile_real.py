@@ -6,10 +6,15 @@ from decimal import Decimal
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from openpyxl import Workbook
+
 from api.management.commands.reconcile_real import (
     _combine_count_buckets,
     _count_or_none,
+    _expand_block_rows,
     _load_alias_map,
+    _real_gram_values_by_name,
+    _real_header_columns,
     _rekey_by_alias,
 )
 
@@ -122,6 +127,75 @@ class TestRekeyByAlias(unittest.TestCase):
             real, alias, lambda pieces: [r for rows in pieces for r in rows]
         )
         self.assertEqual(out["ms rozmanita"], [10, 20, 21])
+
+
+def _fake_harok1():
+    """A miniature Hárok1: header dishes + two facilities, one split with an
+    empty-gram sub-header, plus a diet whose count is stored as TEXT."""
+    wb = Workbook()
+    ws = wb.active
+    # row 1: header dishes (col A = date, B+ = dish names; note blank spacer col D)
+    ws.append(["2026-07-13", "Polievka", "Hlavná", None, "Vajce", "Pečivo", "Nátierka"])
+    # Facility 1: Les (klasik + one diet whose count is TEXT '1')
+    ws.append(["Školička les", 2400, 2220, 0, 6, 12, 300])  # row 2 header
+    ws.append(["Adresa 1", None, None, None, None, None, None])  # row 3 address
+    ws.append([12, None, None, None, None, None, None])  # row 4 count
+    ws.append(["No milk", 200, 185, 0, 0.5, None, None])  # row 5 diet
+    ws.append(["1", None, None, None, None, None, None])  # row 6 TEXT count
+    # Facility 2: split — header with EMPTY grams, then a diet
+    ws.append(["Rozmanita Škola", None, None, None, None, None, None])  # row 7 header
+    ws.append(["Adresa 2", None, None, None, None, None, None])  # row 8 address
+    ws.append(["dospelá", 400, 370, 0, 1, None, None])  # row 9 diet
+    ws.append([1, None, None, None, None, None, None])  # row 10 count
+    return ws
+
+
+class TestHarok1BlockParsing(unittest.TestCase):
+    def setUp(self):
+        self.ws = _fake_harok1()
+
+    def test_header_columns_by_name_skips_blank(self):
+        cols = _real_header_columns(self.ws)
+        self.assertEqual(cols["polievka"], 2)
+        self.assertEqual(cols["vajce"], 5)  # blank spacer col 4 skipped
+        self.assertEqual(cols["natierka"], 7)
+
+    def test_block_includes_text_count_diet(self):
+        # Les block must include the No-milk diet even though its count is TEXT '1'
+        rows = _expand_block_rows(self.ws, [2])
+        self.assertEqual(rows, [2, 5])
+
+    def test_block_stops_at_next_facility(self):
+        # must NOT bleed into Rozmanita Škola (row 7)
+        rows = _expand_block_rows(self.ws, [2])
+        self.assertNotIn(9, rows)
+
+    def test_empty_gram_header_block_sums_diets(self):
+        # Rozmanita Škola header has empty grams but its diet row must be summed
+        rows = _expand_block_rows(self.ws, [7])
+        self.assertEqual(rows, [7, 9])
+
+    def test_gram_values_by_name_sum_block(self):
+        cols = _real_header_columns(self.ws)
+        names = ["Polievka", "Hlavná", "Vajce", "Nátierka", "Pečivo"]
+        rows = _expand_block_rows(self.ws, [2])  # klasik + No milk
+        vals = _real_gram_values_by_name(self.ws, rows, names, cols)
+        # Polievka 2400+200, Hlavná 2220+185, Vajce 6+0.5, Nátierka 300+0, Pečivo 12+0
+        self.assertEqual(
+            vals,
+            [
+                Decimal("2600"),
+                Decimal("2405"),
+                Decimal("6.5"),
+                Decimal("300"),
+                Decimal("12"),
+            ],
+        )
+
+    def test_gram_values_none_for_missing_dish(self):
+        cols = _real_header_columns(self.ws)
+        vals = _real_gram_values_by_name(self.ws, [2], ["Neexistuje"], cols)
+        self.assertEqual(vals, [None])
 
 
 if __name__ == "__main__":

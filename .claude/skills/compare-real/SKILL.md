@@ -69,8 +69,13 @@ and a one-line summary on **stderr**. It runs two tiers:
    often reads `real=0` because many providers bill olovrant separately ("olovrant
    samostatne"), not in this sheet — call that out as a billing-scope note, not an app bug.
 2. **Tier 2 — gramage.** App per-component grams vs the `Hárok1` grams, per facility.
-   Only mismatches (and `MISSING_REAL_ROW`) are listed. Component-order can differ between
-   the app col_groups and the workbook columns, so treat single-component swaps skeptically.
+   Only mismatches (and `MISSING_REAL_ROW`) are listed. Columns are matched **by dish
+   name** (Hárok1 header row 1) — the workbook's column order differs from the app and
+   has a blank spacer, so positional reads are wrong. Each facility's grams are the sum
+   of its whole **block** (KLASIK header row + diet sub-rows, until the next facility,
+   detected by the address line beneath a header). Residual Tier-2 diffs after this are
+   count-driven (they track a Tier-1 count gap) or olovrant billed separately (real=0),
+   not column/aggregation bugs.
 
 Flags: `--alias-map <path>` (facility name dictionary, below), `--workbook <path>`
 (override auto-resolve), `--count-tolerance N` (default 0), `--gram-tolerance N`
