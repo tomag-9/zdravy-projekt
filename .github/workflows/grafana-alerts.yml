@@ -42,11 +42,14 @@ jobs:
       - name: Check Terraform formatting
         run: docker run --rm -v "$PWD/${TF_DIR}:/work" -w /work "$TF_IMAGE" fmt -check -recursive
 
-      - name: Initialize Terraform
-        run: docker run --rm -v "$PWD/${TF_DIR}:/work" -w /work "$TF_IMAGE" init -backend=false
-
       - name: Validate Terraform
-        run: docker run --rm -v "$PWD/${TF_DIR}:/work" -w /work "$TF_IMAGE" validate
+        run: |
+          docker run --rm \
+            -v "$PWD/${TF_DIR}:/work" \
+            -w /work \
+            -e TF_DATA_DIR=/tmp/terraform-data \
+            --entrypoint sh \
+            "$TF_IMAGE" -c "terraform init -backend=false -lockfile=readonly && terraform validate"
 
       - name: Plan Grafana alert changes
         if: ${{ env.TF_VAR_grafana_url != '' && env.TF_VAR_grafana_auth != '' && env.TF_VAR_prometheus_datasource_uid != '' }}
@@ -60,7 +63,9 @@ jobs:
             -e TF_VAR_grafana_auth \
             -e TF_VAR_prometheus_datasource_uid \
             -e TF_VAR_environment \
-            "$TF_IMAGE" plan -no-color
+            -e TF_DATA_DIR=/tmp/terraform-data \
+            --entrypoint sh \
+            "$TF_IMAGE" -c "terraform init -backend=false -lockfile=readonly && terraform plan -no-color"
 
       - name: Explain skipped plan
         if: ${{ env.TF_VAR_grafana_url == '' || env.TF_VAR_grafana_auth == '' || env.TF_VAR_prometheus_datasource_uid == '' }}
