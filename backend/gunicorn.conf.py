@@ -73,3 +73,16 @@ ca_certs = None
 do_handshake_on_connect = False
 suppress_ragged_eof = True
 ciphers = None
+
+
+def child_exit(server, worker):
+    """Clean live-gauge files when a Prometheus multiprocess worker exits."""
+    if not (
+        os.environ.get("PROMETHEUS_MULTIPROC_DIR")
+        or os.environ.get("prometheus_multiproc_dir")
+    ):
+        return
+
+    from prometheus_client import multiprocess
+
+    multiprocess.mark_process_dead(worker.pid)

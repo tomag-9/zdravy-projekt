@@ -2,9 +2,16 @@ services:
   alloy:
     image: grafana/alloy:v1.6.1
     command: run --disable-reporting --storage.path=/var/lib/alloy /etc/alloy/config.alloy
+    privileged: true
     volumes:
       - ../observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+      - /dev/kmsg:/dev/kmsg:ro
       - alloy_data:/var/lib/alloy
     environment:
       GRAFANA_LOKI_URL: ${GRAFANA_LOKI_URL:?Set GRAFANA_LOKI_URL}
