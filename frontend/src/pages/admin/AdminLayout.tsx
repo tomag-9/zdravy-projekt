@@ -21,6 +21,7 @@ interface NavSection {
 
 const TOP_ITEMS: NavItem[] = [
     { to: '/admin/dashboard', label: 'Prehľad', icon: '📊', activeColor: 'text-orange-700', activeBg: 'bg-orange-50' },
+    { to: '/admin/prevadzka-overview', label: 'Dodanie podkladov', icon: '✅', activeColor: 'text-orange-700', activeBg: 'bg-orange-50' },
     { to: '/admin/meal-plan', label: 'Jedálniček', icon: '🗓️', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
     { to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: '📖', activeColor: 'text-teal-700', activeBg: 'bg-teal-50' },
 ];

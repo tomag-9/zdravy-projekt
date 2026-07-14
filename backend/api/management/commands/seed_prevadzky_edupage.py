@@ -37,6 +37,14 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Palisády", "Palisády"),
         ("Stupava", "Stupava"),
     ],
+    # Školička: EduPage payer labely majú prefix dodávateľa B/BM, ktorý strippuje
+    # `skolickams_payer_hook` (BM→NO MILK). Zostanú čisté `Lúka`/`Les` (+sd/učiteľ
+    # varianty prefixovo sadnú). Riadok `Hosť` hook prepíše na `Lúka`. Stupne 1./2.
+    # sa cez tento EduPage neobjednávajú. Overené proti živým dátam (6/2026): 0 nezaradených.
+    "Škôlka MS": [
+        ("Lúka", "Lúka"),
+        ("Les", "Les"),
+    ],
 }
 
 

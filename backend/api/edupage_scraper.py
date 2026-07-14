@@ -203,6 +203,9 @@ class ScrapeResult:
     config_notes: list[str] = field(default_factory=list)
     # Písmená označené per-prevádzka hookom ako „skontroluj ručne" (napr. Krásňanko ZD).
     attention: list[str] = field(default_factory=list)
+    # `attention` rozpadnuté podľa prevádzky, do ktorej porcie s daným flagom
+    # reálne padli. Prázdne pri jedno-prevádzkovom scrape (vtedy platí `attention`).
+    attention_by_prevadzka: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ------------------------------------------------------------------
@@ -523,6 +526,7 @@ class EdupageScraper:
         unmapped: list[str] = []
         attention: list[str] = []
         letter_hook = config.letter_hook if config is not None else None
+        payer_hook = config.payer_hook if config is not None else None
 
         if not prehlad_raw:
             warnings.append("prehlad block not found in HTML")
@@ -546,6 +550,8 @@ class EdupageScraper:
         counts: dict[str, dict[str, dict[str, dict[str, dict[str, int]]]]] = {}
         matches = prevadzka_matches or {}
         unmatched: list[str] = []
+        # bucket (názov prevádzky) -> flagy, ktoré do neho reálne padli
+        attention_buckets: dict[str, set[str]] = {}
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -571,11 +577,13 @@ class EdupageScraper:
                 rule = letter_hook(letter, skratka, nazov) if letter_hook else None
                 portion_override = rule.portion if rule else None
 
+                flag_label: str | None = None
                 if rule is not None and (rule.menu or rule.diet):
                     menu_variant = rule.menu
                     diet_name = rule.diet
                     if rule.flag:
-                        attention.append(f"{letter}:{skratka}{rule.flag}")
+                        flag_label = f"{letter}:{skratka}{rule.flag}"
+                        attention.append(flag_label)
                 else:
                     menu_variant = self.resolve_menu_variant(skratka, nazov)
                     diet_name = None
@@ -602,19 +610,29 @@ class EdupageScraper:
                         continue
 
                     payer_info = payer_map.get(str(payer_id), {})
+                    payer_name = payer_info.get("name", "")
+                    payer_rule = payer_hook(payer_name) if payer_hook else None
+                    match_name = (
+                        payer_rule.match_name
+                        if payer_rule and payer_rule.match_name is not None
+                        else payer_name
+                    )
                     portion_name = (
                         portion_override
+                        or (payer_rule.portion if payer_rule else None)
                         or payer_info.get("portion")
                         or DEFAULT_PORTION_NAME
                     )
-                    payer_diet = payer_info.get("diet") or None
+                    payer_diet = (
+                        (payer_rule.diet if payer_rule else None)
+                        or payer_info.get("diet")
+                        or None
+                    )
                     effective_diet = diet_name or payer_diet
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
 
                     if matches:
-                        bucket = match_prevadzka(
-                            matches, payer_info.get("name", ""), nazov
-                        )
+                        bucket = match_prevadzka(matches, match_name, nazov)
                         if bucket is None:
                             # Radšej nahlás neúplný scrape, než ticho zahodiť porcie.
                             unmatched.append(
@@ -623,6 +641,9 @@ class EdupageScraper:
                             continue
                     else:
                         bucket = ""
+
+                    if flag_label is not None:
+                        attention_buckets.setdefault(bucket, set()).add(flag_label)
 
                     counts_by_meal = counts.setdefault(bucket, {})
                     meal_counts = counts_by_meal.setdefault(meal_key, {})
@@ -671,6 +692,11 @@ class EdupageScraper:
             unmapped_letters=list(set(unmapped)),
             warnings=warnings,
             attention=sorted(set(attention)),
+            attention_by_prevadzka={
+                bucket: sorted(flags)
+                for bucket, flags in attention_buckets.items()
+                if bucket and flags
+            },
         )
 
 

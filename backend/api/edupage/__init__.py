@@ -4,6 +4,7 @@ from .base import (
     OLOVRANT,
     LetterRule,
     OlovrantMode,
+    PayerRule,
     PrevadzkaConfig,
     apply_config,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "OLOVRANT",
     "LetterRule",
     "OlovrantMode",
+    "PayerRule",
     "PrevadzkaConfig",
     "apply_config",
     "config_pre_url",

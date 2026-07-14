@@ -74,3 +74,49 @@ class TestAutoOrderScheduleSync:
 
         task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
         assert task.crontab.day_of_week == "1-5"
+
+
+@pytest.mark.django_db
+class TestCelokZdrojObjednavok:
+    """UserProfile signál drží Celok.zdroj_objednavok v súlade s is_edupage."""
+
+    def _profile(self, is_edupage):
+        from django.contrib.auth.models import User
+
+        from api.models import UserProfile
+
+        user = User.objects.create_user(
+            username=f"zdroj-{is_edupage}@x.sk", email=f"zdroj-{is_edupage}@x.sk"
+        )
+        # Auto-vytvorí celok cez signál.
+        return UserProfile.objects.create(
+            user=user, company_name="Zdroj Test", is_edupage=is_edupage
+        )
+
+    def test_edupage_profile_marks_celok_as_edupage(self):
+        from api.models import Celok
+
+        profile = self._profile(is_edupage=True)
+        profile.refresh_from_db()
+        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+
+    def test_app_profile_marks_celok_as_app(self):
+        from api.models import Celok
+
+        profile = self._profile(is_edupage=False)
+        profile.refresh_from_db()
+        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
+
+    def test_toggling_is_edupage_updates_celok(self):
+        from api.models import Celok
+
+        profile = self._profile(is_edupage=False)
+        profile.refresh_from_db()
+        celok = profile.celok
+        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
+
+        profile.is_edupage = True
+        profile.save()
+
+        celok.refresh_from_db()
+        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE

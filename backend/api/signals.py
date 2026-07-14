@@ -547,10 +547,29 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
     objednávať. Default: celok aj prevádzka sa volajú ako profil. Viac-prevádzkové
     celky sa dokonfigurujú zvlášť.
     """
+    from api.models import Celok, Prevadzka, UserProfile
+
+    zdroj = (
+        Celok.ZdrojObjednavok.EDUPAGE
+        if instance.is_edupage
+        else Celok.ZdrojObjednavok.APP
+    )
+
+    # Existujúci profil: udrž zdroj celku v súlade s is_edupage (napr. keď admin
+    # prepne prevádzku na EduPage). Meníme len keď treba, nech nespúšťame zápis
+    # zbytočne.
     if not created or instance.celok_id is not None:
+        if instance.celok_id is not None and Celok.objects.filter(
+            pk=instance.celok_id
+        ).exclude(zdroj_objednavok=zdroj).update(zdroj_objednavok=zdroj):
+            logger.info(
+                "Celok %s zdroj_objednavok → %s (profil %s)",
+                instance.celok_id,
+                zdroj,
+                instance.pk,
+            )
         return
     try:
-        from api.models import Celok, Prevadzka, UserProfile
 
         nazov = (instance.company_name or "").strip() or instance.user.email
 
@@ -570,6 +589,7 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
             billing_name=instance.billing_name,
             ico=instance.ico,
             dic=instance.dic,
+            zdroj_objednavok=zdroj,
         )
         Prevadzka.objects.create(celok=celok, nazov=nazov)
         # update() namiesto save(), aby sa signál nezavolal rekurzívne.

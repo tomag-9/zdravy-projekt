@@ -41,6 +41,28 @@ class LetterRule:
 LetterHook = Callable[[str, str, str], LetterRule | None]  # (letter, skratka, nazov)
 
 
+@dataclass(frozen=True)
+class PayerRule:
+    """Ako upraviť jeden payer label, keď engine sám nestačí.
+
+    Na rozdiel od `LetterRule` (rieši menu písmeno) beží na payer LABELI. Existuje pre
+    školy, kde je v labeli zakódované niečo, čo kazí buď matching prevádzky, alebo diétu —
+    typicky Školička, kde prefix `B `/`BM ` je DODÁVATEĽ (Bruško / Bruško Milk), nie
+    súčasť názvu výdajne. `match_name` sa použije na priradenie prevádzky namiesto surového
+    labelu; `None` polia = nechaj engine/config rozhodnúť.
+    """
+
+    match_name: str | None = (
+        None  # názov pre match_prevadzka (bez dodávateľského prefixu)
+    )
+    diet: str | None = None
+    portion: str | None = None
+
+
+# Hook beží na každý payer label pred agregáciou.
+PayerHook = Callable[[str], PayerRule | None]  # (payer_name)
+
+
 class OlovrantMode(StrEnum):
     """Odkiaľ berieme olovrant pre danú prevádzku.
 
@@ -60,6 +82,7 @@ class PrevadzkaConfig:
     olovrant_mode: OlovrantMode
     poznamka: str = ""
     letter_hook: LetterHook | None = None
+    payer_hook: PayerHook | None = None
 
 
 def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:

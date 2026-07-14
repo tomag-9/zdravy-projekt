@@ -88,6 +88,8 @@ services:
         condition: service_healthy
       mailhog:
         condition: service_started
+    healthcheck:
+      disable: true
 
   celery-beat:
     build:
@@ -114,6 +116,8 @@ services:
       backend:
         condition: service_started
     restart: on-failure
+    healthcheck:
+      disable: true
 
   frontend:
     build:

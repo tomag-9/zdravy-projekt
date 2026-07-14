@@ -21,6 +21,15 @@ class DailyOrder(models.Model):
     )
     date = models.DateField(db_index=True)
     data = models.JSONField(default=dict)
+    scrape_flags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
+            "{'attention': [...], 'config_notes': [...]}. Prázdne pri ručných "
+            "objednávkach a pri scrape bez upozornení."
+        ),
+    )
     is_auto = models.BooleanField(
         default=False, help_text="True if this order was auto-generated after deadline"
     )
@@ -251,6 +260,10 @@ class Celok(models.Model):
     prevádzok.
     """
 
+    class ZdrojObjednavok(models.TextChoices):
+        APP = "app", "Aplikácia"
+        EDUPAGE = "edupage", "EduPage"
+
     nazov = models.CharField(max_length=255, unique=True)
     billing_name = models.CharField(max_length=255, blank=True)
     adresa = models.CharField(
@@ -258,6 +271,16 @@ class Celok(models.Model):
     )
     ico = models.CharField(max_length=20, blank=True)
     dic = models.CharField(max_length=20, blank=True)
+    zdroj_objednavok = models.CharField(
+        max_length=16,
+        choices=ZdrojObjednavok.choices,
+        default=ZdrojObjednavok.APP,
+        db_index=True,
+        help_text=(
+            "Odkiaľ chodia objednávky celku: 'edupage' (scraper) alebo 'app' "
+            "(klient v appke). Určuje zaradenie v admin prehľade dodania podkladov."
+        ),
+    )
 
     class Meta:
         ordering = ["nazov"]

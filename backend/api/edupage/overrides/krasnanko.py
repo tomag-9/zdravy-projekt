@@ -8,16 +8,16 @@
     NG    No Gluten              → NO GLUTEN, detská porcia
     KZ    Klasik dospelý Z       → klasik, DOSPELÁ porcia   (Z = zamestnanec)
     NMZ   No milk dospelý Z      → NO MILK, DOSPELÁ porcia
-    KZD   Klasik detská Z        → klasik, detská porcia    + flag „!"
-    NMZD  No milk detská Z       → NO MILK, detská porcia   + flag „!"
+    KZD   Klasik detská Z        → klasik, detská porcia   (Klasik detská, berieme tak)
+    NMZD  No milk detská Z       → NO MILK, detská porcia
     DIA   Dia                    → DIA
 
 Zamestnanecký status (`Z`) nás v KAVZE nezaujíma — škola ho tam len eviduje. Dôležitá
 je **porcia**, a tú engine z `porcia` kódu payera prečíta zle: payer `Klasik Z` má
 `porcia=0` (Škôlka), hoci `KZ` je dospelý. Preto porciu určujeme zo skratky.
 
-`ZD` (zamestnanec + detská porcia) zaraďujeme ako MS/Škôlka, ale necháme flag „!",
-lebo kombinácia je nezvyčajná a chceme ju vedieť skontrolovať.
+`ZD` (zamestnanec + detská porcia) = klasik detská porcia, berieme ju tak bez ďalšej
+kontroly — nie je to nič výnimočné (potvrdené userom 7/13), preto žiadny attention flag.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ _RULES: dict[str, LetterRule] = {
     "NG": LetterRule(portion=DETSKA, diet="NO GLUTEN"),
     "KZ": LetterRule(portion=DOSPELA, menu="A"),
     "NMZ": LetterRule(portion=DOSPELA, diet="NO MILK"),
-    "KZD": LetterRule(portion=DETSKA, menu="A", flag="!"),
-    "NMZD": LetterRule(portion=DETSKA, diet="NO MILK", flag="!"),
+    "KZD": LetterRule(portion=DETSKA, menu="A"),
+    "NMZD": LetterRule(portion=DETSKA, diet="NO MILK"),
     "DIA": LetterRule(portion=DETSKA, diet="DIA"),
 }
 

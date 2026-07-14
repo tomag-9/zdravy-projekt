@@ -57,6 +57,22 @@ def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, 
     return OrderData(order_data).meal_row(meal_key)
 
 
+def meal_counts(order_data: Dict[str, Any]) -> Dict[str, int]:
+    """Return per-meal totals for an order: {breakfast, lunch, olovrant, total}.
+
+    Zdieľané reportmi, ktorým stačia holé počty (nie rozpis menu/diét).
+    """
+    bf = build_user_meal_row(order_data, "breakfast")["total"]
+    lu = build_user_meal_row(order_data, "lunch")["total"]
+    ol = build_user_meal_row(order_data, "olovrant")["total"]
+    return {
+        "breakfast": bf,
+        "lunch": lu,
+        "olovrant": ol,
+        "total": bf + lu + ol,
+    }
+
+
 def merge_meal_totals(totals: Dict[str, Any], meal_row: Dict[str, Any]) -> None:
     """
     Accumulate meal_row counts into totals dict (in-place).
