@@ -29,6 +29,7 @@ Stupne 1./2. sa cez tento EduPage neobjednávajú (v guest dátach nie sú).
 from __future__ import annotations
 
 import re
+import unicodedata
 
 from ..base import PayerRule
 
@@ -38,12 +39,19 @@ _SUPPLIER_PREFIX_RE = re.compile(r"^\s*(BM|B)\s*[-–]\s*(.+)$", re.IGNORECASE)
 _LUKA = "Lúka"
 
 
+def _fold(value: str) -> str:
+    """ASCII-fold + casefold, ako inde v scraperi (diakritika/velkosť nerozhoduje)."""
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).strip()
+
+
 def skolickams_payer_hook(payer_name: str) -> PayerRule | None:
     """Odstrihni dodávateľský prefix `B`/`BM`; z `BM` odvoď NO MILK; `Hosť`→Lúka."""
     name = (payer_name or "").strip()
 
-    # Hosť nemá výdajňu — rozhodnutím usera ho rátame k Lúke.
-    if name.lower() == "hosť":
+    # Hosť nemá výdajňu — rozhodnutím usera ho rátame k Lúke. Porovnávame ASCII-fold,
+    # aby diakritika/veľkosť písmen nerozhodla ("Hosť"/"host"/"HOSŤ").
+    if _fold(name) == "host":
         return PayerRule(match_name=_LUKA)
 
     match = _SUPPLIER_PREFIX_RE.match(name)

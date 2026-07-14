@@ -173,6 +173,10 @@ def _real_counts_by_facility(wb) -> dict[str, dict[str, Decimal]]:
         if raw_facility not in (None, ""):
             facility = _normalize(raw_facility)
             counts.setdefault(facility, {})
+            # New facility → drop the previous facility's section context, so a
+            # facility that starts without its own section header can't inherit it
+            # and misbucket counts.
+            meal_type = None
         druh = sheet.cell(row=row, column=2).value
         count = sheet.cell(row=row, column=4).value
         if druh not in (None, "") and count in (None, ""):
@@ -340,14 +344,18 @@ def _real_gram_values_by_name(
 
     Returns ``None`` for a component whose dish isn't in this day's header (e.g. a
     diet-only facility whose menu differs from the standard) so the caller can skip
-    it rather than report a bogus diff against 0.
+    it rather than report a bogus diff against 0. Each real column is consumed at
+    most once: if two app components normalize to the same dish name, only the first
+    reads it (the rest get ``None``) so the real grams aren't double-counted.
     """
     values: list[Decimal | None] = []
+    used_columns: set[int] = set()
     for name in component_names:
         col = header_columns.get(_normalize(name))
-        if col is None:
+        if col is None or col in used_columns:
             values.append(None)
             continue
+        used_columns.add(col)
         total = Decimal("0")
         for row_number in row_numbers:
             total += _decimal(sheet.cell(row=row_number, column=col).value)

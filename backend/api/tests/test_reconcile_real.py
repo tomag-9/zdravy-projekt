@@ -13,6 +13,7 @@ from api.management.commands.reconcile_real import (
     _count_or_none,
     _expand_block_rows,
     _load_alias_map,
+    _real_counts_by_facility,
     _real_gram_values_by_name,
     _real_header_columns,
     _rekey_by_alias,
@@ -196,6 +197,54 @@ class TestHarok1BlockParsing(unittest.TestCase):
         cols = _real_header_columns(self.ws)
         vals = _real_gram_values_by_name(self.ws, [2], ["Neexistuje"], cols)
         self.assertEqual(vals, [None])
+
+    def test_duplicate_dish_name_not_double_counted(self):
+        # dva app komponenty s rovnakým názvom jedla → real stĺpec sa číta len raz
+        cols = _real_header_columns(self.ws)
+        vals = _real_gram_values_by_name(self.ws, [2], ["Polievka", "Polievka"], cols)
+        self.assertEqual(vals, [Decimal("2400"), None])
+
+
+class TestRealCountsMealTypeReset(unittest.TestCase):
+    """meal_type sa nesmie preniesť z predošlej prevádzky bez vlastnej sekcie."""
+
+    def _sheet(self, rows):
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "vyúčtovanie"
+        ws.append(["Zariadenie", "Druh", "Cena", "Počet", "Spolu"])  # header row 1
+        for r in rows:
+            ws.append(r)
+        return _FakeWB(ws)
+
+    def test_facility_without_section_does_not_inherit_prev_meal_type(self):
+        # Fac A ends on OLOVRANT (snack); Fac B has NO section header before its
+        # count row → that count must NOT be bucketed as snack.
+        rows = [
+            ["Fac A", "OBED", None, None, None],
+            [None, "Klasik", 5, 10, 50],
+            ["Fac A", "OLOVRANT", None, None, None],
+            [None, "Klasik", 1, 8, 8],
+            ["Fac B", None, None, 7, None],  # name only, stray count, no section
+        ]
+        wb = self._sheet(rows)
+        result = _real_counts_by_facility(wb)
+        self.assertEqual(
+            result["fac a"], {"lunch": Decimal("10"), "snack": Decimal("8")}
+        )
+        # Fac B's stray count is dropped (no meal_type), not attributed to snack.
+        self.assertNotIn("fac b", result)
+
+
+class _FakeWB:
+    """Minimal workbook shim exposing one sheet under the 'vyúčtovanie' name."""
+
+    def __init__(self, sheet):
+        self._sheet = sheet
+        self.sheetnames = ["vyúčtovanie"]
+
+    def __getitem__(self, name):
+        return self._sheet
 
 
 if __name__ == "__main__":

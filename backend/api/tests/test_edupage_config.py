@@ -265,6 +265,11 @@ class TestSkolickamsPayerHook(unittest.TestCase):
         self.assertEqual(rule.match_name, "Lúka")
         self.assertIsNone(rule.diet)
 
+    def test_host_matched_ascii_folded(self):
+        # diakritika/veľkosť nesmie rozhodnúť: "HOSŤ" / "host" tiež → Lúka
+        for variant in ("HOSŤ", "host", " Hosť "):
+            self.assertEqual(skolickams_payer_hook(variant).match_name, "Lúka")
+
     def test_label_without_supplier_prefix_falls_through(self):
         self.assertIsNone(skolickams_payer_hook("učiteľ Lúka"))
 
