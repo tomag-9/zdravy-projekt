@@ -1,0 +1,20 @@
+{
+  "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report.",
+
+  "Fantastická Škôlka": "fantasticka",
+  "Jolly Homeschool – Jolly 1": "Jolly 1",
+  "Jolly Homeschool – Jolly 2": "Jolly 2",
+  "Jolly Homeschool – Jolly 3": "Jolly 3",
+  "MŠ Dobrého Pastiera": "klubik ms dobreho pastiera",
+  "MŠ Edulienka – Palisády": "edulienka",
+  "MŠ Felix Karlovská": "felix",
+  "MŠ Filipáneriho": "filipa neriho",
+  "MŠ Krásnanko": "krasnanko",
+  "MŠ Libellus": "libellus",
+  "MŠ Rozmanitá": "rozmanita skolka",
+  "MŠ Prameň": "pramienok",
+  "MŠ Zdravé Bruško": "deutsche schule",
+  "ZŠ Ivanka pri Dunaji": "ivanka",
+  "Škôlka MS – Les": "skolicka les",
+  "Škôlka MS – Lúka": "skolicka luka"
+}
