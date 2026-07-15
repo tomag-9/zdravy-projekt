@@ -124,13 +124,21 @@ rows:
 - **Container Runtime** — backend CPU/memory from cAdvisor, backend OOM events,
   and backend uptime based on `container_start_time_seconds`.
 
-## Alerts to create in Grafana Cloud (Alerting → Alert rules)
+## Grafana Cloud alerting
 
-There's no infra-as-code alert provisioning in this repo (Grafana Cloud
-alerting is normally managed via its UI or Terraform, and this repo has
-neither a Terraform setup nor an API key configured) — create these by hand
-under the Grafana Cloud stack's **Alerting** section, evaluating against the
-same Prometheus data source as the dashboard. Suggested starting set:
+Grafana alert rules live in Terraform under
+`observability/terraform/grafana-alerts`. They evaluate against the same
+Prometheus/Mimir data source as the dashboard. To let GitHub Actions validate
+and plan changes, create these repository secrets:
+
+- `GRAFANA_URL`
+- `GRAFANA_AUTH`
+- `GRAFANA_PROMETHEUS_DS_UID`
+
+Optionally set repository variable `GRAFANA_ENVIRONMENT` if the target
+environment label is not `production`.
+
+The Terraform rule group currently manages this starting set:
 
 | Alert                     | Expression                                                                                                   | For   | Severity |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------|-------|----------|
@@ -146,11 +154,14 @@ same Prometheus data source as the dashboard. Suggested starting set:
 | Login failure rate spike  | `100 * sum(increase(auth_login_attempts_total{result="failure"}[15m])) / sum(increase(auth_login_attempts_total[15m])) > 50` | 5m    | warning  |
 | Cache hit rate collapse   | `100 * sum(rate(django_cache_hits_total[10m])) / sum(rate(django_cache_get_total[10m])) < 50`                   | 10m   | warning  |
 
-Route them to whatever contact point you set up (email/Slack/etc. under
-Grafana Cloud → Alerting → Contact points). Sentry has its own, separate
-alerting (Settings → Alerts on the Sentry project) for error-spike/new-issue
-notifications — worth turning on there too since Prometheus alerts above
-only see HTTP-level symptoms, not exception details.
+Notification contact points and notification policies are still managed in the
+Grafana UI. Terraform deliberately does not touch the notification policy tree
+yet, because Grafana treats it as one shared resource and an incomplete import
+can overwrite existing routing.
+
+Sentry has its own, separate alerting (Settings → Alerts on the Sentry project)
+for error-spike/new-issue notifications — worth turning on there too since
+Prometheus alerts above only see HTTP-level symptoms, not exception details.
 
 Avoid alerts on `process_cpu_seconds_total`, `process_resident_memory_bytes`,
 or other Django `process_*` series while Gunicorn multiprocess mode is enabled;
