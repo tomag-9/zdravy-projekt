@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Plus, X, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import { PageHead, Card, CardHead, Button, Input, Select, Checkbox } from "./ui";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -240,234 +242,137 @@ const MealCatalogAdmin: React.FC = () => {
     templates.filter((t) => t.category === category);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div>
-        <h2 className="text-3xl font-bold text-gray-900">Katalóg jedál</h2>
-        <p className="text-gray-500 mt-1">
-          Spravujte koeficienty vekových skupín a pridávajte nové rozloženia do
-          katalógu váh jedál.
-        </p>
-      </div>
+    <>
+      <PageHead
+        eyebrow="Katalóg"
+        title="Katalóg jedál"
+        desc="Spravujte koeficienty vekových skupín a pridávajte nové rozloženia do katalógu váh jedál."
+      />
 
-      {/* Portion types / coefficients */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-        <h3 className="text-lg font-bold text-gray-900 mb-4">
-          Typy porcií a koeficienty
-        </h3>
-        <div className="space-y-2">
-          {portionTypes.map((pt) => (
-            <div key={pt.id} className="flex items-center gap-3">
-              <span className="w-40 text-sm font-medium text-gray-700">{pt.name}</span>
-              <input
-                type="number"
-                step="1"
-                min="1"
-                value={coefficientDrafts[pt.id] ?? ""}
-                onChange={(e) =>
-                  setCoefficientDrafts((d) => ({ ...d, [pt.id]: e.target.value }))
-                }
-                className="w-24 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-              />
-              <span className="text-sm text-gray-500">%</span>
-              <button
-                onClick={() => saveCoefficient(pt)}
-                disabled={savingPortionTypeId === pt.id}
-                className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 transition disabled:opacity-50"
-              >
-                {savingPortionTypeId === pt.id ? "Ukladám…" : "Uložiť"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Catalog templates by category */}
-      {loading ? (
-        <div className="flex justify-center py-8">
-          <div className="animate-spin w-6 h-6 border-4 border-teal-500 border-t-transparent rounded-full" />
-        </div>
-      ) : (
-        CATEGORIES.map((category) => (
-          <div
-            key={category}
-            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-gray-900">
-                {CATEGORY_LABELS[category]}
-              </h3>
-              <button
-                onClick={() => openAddForm(category)}
-                className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 transition"
-              >
-                + Pridať nové rozloženie
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              {templatesByCategory(category).map((tpl) => (
-                <div
-                  key={tpl.id}
-                  className={`flex items-center justify-between gap-3 p-3 rounded-lg border ${
-                    tpl.is_active ? "border-gray-100" : "border-gray-100 opacity-50"
-                  }`}
-                >
-                  <div>
-                    <span className="font-medium text-gray-800">{tpl.name}</span>
-                    <span
-                      className={`text-sm ml-2 ${tpl.unit_exception ? "text-amber-600" : "text-gray-500"}`}
-                    >
-                      {tpl.weight_label}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => toggleTemplateActive(tpl)}
-                    className="text-sm px-3 py-1 rounded-md hover:bg-gray-50 transition text-gray-600"
-                  >
-                    {tpl.is_active ? "Deaktivovať" : "Aktivovať"}
-                  </button>
-                </div>
-              ))}
-              {templatesByCategory(category).length === 0 && (
-                <p className="text-sm text-gray-400">Žiadne rozloženia.</p>
-              )}
-            </div>
-
-            {addingCategory === category && (
-              <div className="mt-4 border-t border-gray-100 pt-4 space-y-3">
-                <input
-                  type="text"
-                  placeholder={`Názov (napr. "${CATEGORY_LABELS[category]} 8")`}
-                  value={newTemplate.name}
-                  onChange={(e) =>
-                    setNewTemplate((t) => ({ ...t, name: e.target.value }))
-                  }
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+      <div className="zpa-stack">
+        {/* Portion types / coefficients */}
+        <Card pad>
+          <CardHead title="Typy porcií a koeficienty" />
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+            {portionTypes.map((pt) => (
+              <div key={pt.id} className="zpa-coefrow">
+                <span style={{ width: 160, fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, color: "var(--green-900)" }}>{pt.name}</span>
+                <Input
+                  type="number"
+                  step="1"
+                  min="1"
+                  value={coefficientDrafts[pt.id] ?? ""}
+                  onChange={(e) => setCoefficientDrafts((d) => ({ ...d, [pt.id]: e.target.value }))}
                 />
+                <span style={{ fontSize: 14, color: "var(--ink-3)" }}>%</span>
+                <Button variant="secondary" sm onClick={() => saveCoefficient(pt)} disabled={savingPortionTypeId === pt.id}>
+                  {savingPortionTypeId === pt.id ? "Ukladám…" : "Uložiť"}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
 
-                <div className="space-y-2">
-                  <span className="text-xs font-semibold text-gray-500">Zložky</span>
-                  {newTemplate.components.map((c, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Názov zložky (napr. Hlavná zložka)"
-                        value={c.label}
-                        onChange={(e) => updateComponent(i, { label: e.target.value })}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Množstvo"
-                        value={c.grams}
-                        onChange={(e) => updateComponent(i, { grams: e.target.value })}
-                        className="w-24 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                      <select
-                        value={c.unit}
-                        onChange={(e) =>
-                          updateComponent(i, { unit: e.target.value as Component["unit"] })
-                        }
-                        className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
-                      >
-                        <option value="g">g</option>
-                        <option value="ml">ml</option>
-                        <option value="text">text</option>
-                      </select>
-                      <button
-                        onClick={() => removeComponentRow(i)}
-                        disabled={newTemplate.components.length === 1}
-                        className="text-red-500 hover:text-red-700 text-sm px-2 disabled:opacity-30"
-                      >
-                        ✕
-                      </button>
+        {/* Catalog templates by category */}
+        {loading ? (
+          <div className="zpa-empty"><Loader2 className="zpa-spin" /> Načítavam…</div>
+        ) : (
+          CATEGORIES.map((category) => (
+            <Card key={category} pad>
+              <CardHead
+                title={CATEGORY_LABELS[category]}
+                actions={
+                  <Button sm onClick={() => openAddForm(category)}>
+                    <Plus /> Pridať nové rozloženie
+                  </Button>
+                }
+              />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
+                {templatesByCategory(category).map((tpl) => (
+                  <div key={tpl.id} className="zpa-tplrow" style={tpl.is_active ? undefined : { opacity: 0.5 }}>
+                    <div>
+                      <span className="nm">{tpl.name}</span>
+                      <span className={`wl${tpl.unit_exception ? " exc" : ""}`}>{tpl.weight_label}</span>
                     </div>
-                  ))}
-                  <button
-                    onClick={addComponentRow}
-                    className="text-sm text-teal-700 hover:text-teal-900"
-                  >
-                    + Pridať zložku
-                  </button>
-                </div>
+                    <Button variant="ghost" sm onClick={() => toggleTemplateActive(tpl)}>
+                      {tpl.is_active ? "Deaktivovať" : "Aktivovať"}
+                    </Button>
+                  </div>
+                ))}
+                {templatesByCategory(category).length === 0 && (
+                  <p style={{ fontSize: 14, color: "var(--ink-mute)", margin: 0 }}>Žiadne rozloženia.</p>
+                )}
+              </div>
 
-                <label className="flex items-center gap-2 text-sm text-gray-600">
-                  <input
-                    type="checkbox"
-                    checked={newTemplate.hasException}
-                    onChange={(e) =>
-                      setNewTemplate((t) => ({ ...t, hasException: e.target.checked }))
-                    }
+              {addingCategory === category && (
+                <div style={{ marginTop: 16, borderTop: "1px solid var(--line-soft)", paddingTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+                  <Input
+                    placeholder={`Názov (napr. "${CATEGORY_LABELS[category]} 8")`}
+                    value={newTemplate.name}
+                    onChange={(e) => setNewTemplate((t) => ({ ...t, name: e.target.value }))}
                   />
-                  Táto zložka má pevný počet kusov podľa vekovej skupiny (napr. vajce)
-                </label>
 
-                {newTemplate.hasException && (
-                  <div className="space-y-2 bg-amber-50 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        placeholder="Názov zložky (napr. Vajce)"
-                        value={newTemplate.exceptionLabel}
-                        onChange={(e) =>
-                          setNewTemplate((t) => ({ ...t, exceptionLabel: e.target.value }))
-                        }
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                      <input
-                        type="text"
-                        placeholder="Jednotka (napr. ks)"
-                        value={newTemplate.exceptionUnit}
-                        onChange={(e) =>
-                          setNewTemplate((t) => ({ ...t, exceptionUnit: e.target.value }))
-                        }
-                        className="w-24 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                      />
-                    </div>
-                    {portionTypes.map((pt) => (
-                      <div key={pt.id} className="flex items-center gap-2">
-                        <span className="w-40 text-sm text-gray-600">{pt.name}</span>
-                        <input
-                          type="text"
-                          placeholder="Počet ks"
-                          value={newTemplate.exceptionCounts[pt.name] ?? ""}
-                          onChange={(e) =>
-                            setNewTemplate((t) => ({
-                              ...t,
-                              exceptionCounts: {
-                                ...t.exceptionCounts,
-                                [pt.name]: e.target.value,
-                              },
-                            }))
-                          }
-                          className="w-24 border border-gray-200 rounded-lg px-3 py-1.5 text-sm"
-                        />
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <span className="zpa-label">Zložky</span>
+                    {newTemplate.components.map((c, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Input placeholder="Názov zložky (napr. Hlavná zložka)" value={c.label} onChange={(e) => updateComponent(i, { label: e.target.value })} />
+                        <Input placeholder="Množstvo" value={c.grams} onChange={(e) => updateComponent(i, { grams: e.target.value })} style={{ width: 110 }} />
+                        <Select value={c.unit} onChange={(e) => updateComponent(i, { unit: e.target.value as Component["unit"] })} style={{ width: "auto" }}>
+                          <option value="g">g</option>
+                          <option value="ml">ml</option>
+                          <option value="text">text</option>
+                        </Select>
+                        <button className="zpa-iconbtn" onClick={() => removeComponentRow(i)} disabled={newTemplate.components.length === 1} aria-label="Odstrániť zložku">
+                          <X />
+                        </button>
                       </div>
                     ))}
+                    <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" style={{ alignSelf: "flex-start", paddingLeft: 0 }} onClick={addComponentRow}>
+                      <Plus /> Pridať zložku
+                    </button>
                   </div>
-                )}
 
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setAddingCategory(null)}
-                    className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition text-sm"
-                  >
-                    Zrušiť
-                  </button>
-                  <button
-                    onClick={handleCreateTemplate}
-                    disabled={saving}
-                    className="px-4 py-2 rounded-lg bg-teal-600 text-white text-sm hover:bg-teal-700 transition disabled:opacity-50"
-                  >
-                    {saving ? "Ukladám…" : "Pridať do katalógu"}
-                  </button>
+                  <Checkbox on={newTemplate.hasException} onChange={(v) => setNewTemplate((t) => ({ ...t, hasException: v }))}>
+                    Táto zložka má pevný počet kusov podľa vekovej skupiny (napr. vajce)
+                  </Checkbox>
+
+                  {newTemplate.hasException && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, background: "rgba(255,201,92,0.12)", borderRadius: "var(--radius-md)", padding: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <Input placeholder="Názov zložky (napr. Vajce)" value={newTemplate.exceptionLabel} onChange={(e) => setNewTemplate((t) => ({ ...t, exceptionLabel: e.target.value }))} />
+                        <Input placeholder="Jednotka (napr. ks)" value={newTemplate.exceptionUnit} onChange={(e) => setNewTemplate((t) => ({ ...t, exceptionUnit: e.target.value }))} style={{ width: 110 }} />
+                      </div>
+                      {portionTypes.map((pt) => (
+                        <div key={pt.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ width: 160, fontSize: 14, color: "var(--ink-2)" }}>{pt.name}</span>
+                          <Input
+                            placeholder="Počet ks"
+                            value={newTemplate.exceptionCounts[pt.name] ?? ""}
+                            onChange={(e) =>
+                              setNewTemplate((t) => ({ ...t, exceptionCounts: { ...t.exceptionCounts, [pt.name]: e.target.value } }))
+                            }
+                            style={{ width: 110 }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <Button variant="ghost" onClick={() => setAddingCategory(null)}>Zrušiť</Button>
+                    <Button onClick={handleCreateTemplate} disabled={saving}>
+                      {saving ? "Ukladám…" : "Pridať do katalógu"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
-        ))
-      )}
-    </div>
+              )}
+            </Card>
+          ))
+        )}
+      </div>
+    </>
   );
 };
 
