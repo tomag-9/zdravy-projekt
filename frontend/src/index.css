@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "./pages/client/pc.css";
+@import "./pages/admin/admin.css";
 
 @source "./index.html";
 @source "./src/**/*.{js,ts,jsx,tsx}";

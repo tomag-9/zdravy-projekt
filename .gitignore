@@ -105,7 +105,9 @@ venv/
 #sh
 rebuild-dev.sh
 check-all.sh
+scripts/sync-devbox.sh
 
 notes.md
 tasks.md
+feedback.md
 test/
