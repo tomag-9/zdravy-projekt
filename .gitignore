@@ -87,6 +87,8 @@ crash.*.log
 # Certificates
 certbot/
 
+.code-review-graph/
+
 # Logs
 *.log
 logs/
