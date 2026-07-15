@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { Modal, Button } from './ui';
+import AdminProfileModal from './AdminProfileModal';
 
 type Icon = React.ComponentType<{ className?: string }>;
 
@@ -59,6 +60,7 @@ const AdminLayout: React.FC = () => {
     const location = useLocation();
     const [navOpen, setNavOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
+    const [showProfileModal, setShowProfileModal] = React.useState(false);
 
     React.useEffect(() => {
         setNavOpen(false);
@@ -123,11 +125,18 @@ const AdminLayout: React.FC = () => {
                     </nav>
 
                     <div className="zpa-user">
-                        <div className="avatar">{initial}</div>
-                        <div className="body">
-                            <div className="nm">{displayName}</div>
-                            <div className="em">{user?.email}</div>
-                        </div>
+                        <button
+                            type="button"
+                            className="zpa-user-btn"
+                            onClick={() => setShowProfileModal(true)}
+                            title="Upraviť profil"
+                        >
+                            <div className="avatar">{initial}</div>
+                            <div className="body">
+                                <div className="nm">{displayName}</div>
+                                <div className="em">{user?.email}</div>
+                            </div>
+                        </button>
                         <button className="logout" onClick={() => setShowLogoutModal(true)} title="Odhlásiť sa">
                             <LogOut />
                         </button>
@@ -165,6 +174,8 @@ const AdminLayout: React.FC = () => {
                     <p style={{ margin: 0, color: 'var(--ink-2)' }}>Budete presmerovaný na prihlasovaciu obrazovku.</p>
                 </Modal>
             )}
+
+            {showProfileModal && <AdminProfileModal onClose={() => setShowProfileModal(false)} />}
         </div>
     );
 };
