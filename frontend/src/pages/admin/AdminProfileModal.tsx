@@ -30,6 +30,7 @@ const AdminProfileModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [sendingReset, setSendingReset] = useState(false);
+    const [confirmingReset, setConfirmingReset] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -101,6 +102,7 @@ const AdminProfileModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             toastError('Chyba pri odosielaní odkazu.');
         } finally {
             setSendingReset(false);
+            setConfirmingReset(false);
         }
     };
 
@@ -140,9 +142,25 @@ const AdminProfileModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
                         <p style={{ fontSize: 12.5, color: 'var(--ink-3)', margin: '4px 0 12px' }}>
                             Pošleme vám na e-mail odkaz, cez ktorý si nastavíte nové heslo.
                         </p>
-                        <Button type="button" variant="secondary" onClick={handlePasswordReset} disabled={sendingReset}>
-                            <KeyRound /> {sendingReset ? 'Odosielam…' : 'Zmeniť heslo'}
-                        </Button>
+                        {confirmingReset ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <p style={{ margin: 0, fontSize: 13.5, color: 'var(--ink-2)' }}>
+                                    Naozaj odoslať odkaz na zmenu hesla na <strong style={{ color: 'var(--green-900)' }}>{form.email}</strong>?
+                                </p>
+                                <div style={{ display: 'flex', gap: 8 }}>
+                                    <Button type="button" variant="secondary" onClick={handlePasswordReset} disabled={sendingReset}>
+                                        <KeyRound /> {sendingReset ? 'Odosielam…' : 'Áno, odoslať odkaz'}
+                                    </Button>
+                                    <Button type="button" variant="ghost" onClick={() => setConfirmingReset(false)} disabled={sendingReset}>
+                                        Zrušiť
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                            <Button type="button" variant="secondary" onClick={() => setConfirmingReset(true)}>
+                                <KeyRound /> Zmeniť heslo
+                            </Button>
+                        )}
                     </div>
                 </>
             )}
