@@ -17,6 +17,7 @@ Vyúčtovanie Edulienky uvádza **počty porcií v štvrtinách**, kým appka po
 |-----|------------------------------|--------------|--------------|---------|
 | 13.7 | Klasik 8.25 + menu B 4.25 + 1.stupeň 2 | **14.5** | 14 | −0.5 |
 | 14.7 | Klasik 4.25 + menu B 7.25 + 1.stupeň 2 | **13.5** | 13 | −0.5 |
+| 15.7 | súčet (nová master tabuľka) | **10.5** | 10 | −0.5 |
 
 **Otázka:** Čo znamenajú tie `.25` porcie v Edulienke? Je to dôsledok **dotácie**
 (dotovaná časť obeda sa účtuje ako zlomok), alebo deti reálne dostávajú **čiastočné
@@ -28,6 +29,7 @@ musí vedieť účtovať zlomky.
 ## 🔴 Fantastická Škôlka — obed 14.7 o 1 menej
 
 - 14.7: appka **8**, reálne **9** (obed). 13.7 pritom sedí presne (8/8).
+- 15.7: appka **9**, reálne **10** (obed) → opäť −1. Pattern sa opakuje, nejde o náhodu.
 
 **Otázka:** Bola 14.7 v Fantastickej nejaká porcia doobjednaná/pridaná mimo EduPage
 (neskorá objednávka, hosť)? Appka ťahá stav z EduPage, takže porciu pridanú mimo systému
@@ -53,3 +55,14 @@ olovrant sa u nich fakturuje mimo tejto tabuľky („olovrant samostatne"):
 Zdravé Bruško, Edulienka, Fantastická, Felix, Filipáneriho, Prameň.
 
 **Info, netreba akciu** — očakávané, nie chyba appky. Ak by to malo byť inak, potvrdiť s klientom.
+
+---
+
+## ⚪ 15.7 — formát tabuľky nezmenený, kľúčové obedy sedia
+
+Vyúčtovanie `15.7.2026_tabuľka_NOVÁ4.xlsx` má **rovnaký formát** ako všetky doterajšie
+(stĺpec `Druh pokrmu` s OBED/OLOVRANT, 110 prevádzok, 687 riadkov — identické so 14.7).
+Reconcile na 15.7 zlyhal len preto, že v dev DB nebol **meal plán** pre daný deň (DB bola
+medzitým vyresetovaná), nie kvôli formátu. Kľúčové obedy (kde sa olovrant fakturuje
+samostatne, teda total = obed) sedia presne: Zdravé Bruško (Deutsche schule) 69/69,
+Felix 10/10, Filipa Nériho 21/21.

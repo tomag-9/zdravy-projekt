@@ -130,13 +130,29 @@ def _resolve_workbook(date_str: str) -> Path:
     y, m, d = (int(p) for p in date_str.split("-"))
     date_cls(y, m, d)  # validate
     # Filenames use non-zero-padded D.M.YYYY, e.g. "9.7.2026_...".
-    pattern = f"{d}.{m}.{y}_*.xlsx"
-    matches = sorted(glob.glob(str(REAL_DIR / pattern)))
-    if not matches:
+    stem = f"{d}.{m}.{y}_*"
+    matches = sorted(glob.glob(str(REAL_DIR / f"{stem}.xlsx")))
+    if matches:
+        return Path(matches[0])
+    # A day sometimes lands only as an Apple Numbers export or a PDF. We can't
+    # parse those reliably (numbers-parser can't decode current .numbers files,
+    # and the _rano PDFs are a different desiata/gramage table), so instead of a
+    # confusing empty reconciliation, tell the operator exactly what to do.
+    others = sorted(
+        glob.glob(str(REAL_DIR / f"{stem}.numbers"))
+        + glob.glob(str(REAL_DIR / f"{stem}.pdf"))
+    )
+    if others:
+        names = ", ".join(Path(p).name for p in others)
         raise CommandError(
-            f"No real workbook for {date_str} in {REAL_DIR} (looked for {pattern})."
+            f"No .xlsx real workbook for {date_str}, only: {names}. "
+            "Reconciliation needs the .xlsx form (vyúčtovanie + Hárok1 sheets). "
+            "In Numbers use File → Export To → Excel and drop the .xlsx into "
+            f"{REAL_DIR}, then re-run."
         )
-    return Path(matches[0])
+    raise CommandError(
+        f"No real workbook for {date_str} in {REAL_DIR} (looked for {stem}.xlsx)."
+    )
 
 
 # ── Tier 1: counts from the vyúčtovanie sheet ──────────────────────────────────

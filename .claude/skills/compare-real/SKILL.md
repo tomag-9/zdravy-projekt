@@ -33,6 +33,17 @@ day, and report whether they match and exactly where they differ.
   its grams, e.g. `210g (185g/25g) Zemiakový prívarok …`. Use these when there is **no
   daily `real/` workbook** for the requested day (verify the menu/gram recipe only).
 
+## Accepted file formats
+
+Reconciliation reads only the **`.xlsx`** form (the `vyúčtovanie` + `Hárok1` sheets).
+All daily workbooks share one identical layout — there is no format variant to special-case.
+Apple **`.numbers`** exports can't be parsed reliably (current files are written by a Numbers
+version no Python decoder handles, and LibreOffice won't import them) and the `_rano.pdf`
+files are a separate desiata/gramage table, so `reconcile_real` **does not** parse either.
+If a day arrives only as `.numbers`/`.pdf`, the command stops with an actionable message —
+export it in Numbers via **File → Export To → Excel**, drop the `.xlsx` into `test/data/real`,
+and re-run.
+
 ## Prerequisites (app side)
 
 The app numbers come from `MealPlanService.gramage_dashboard(date)`, which needs the
