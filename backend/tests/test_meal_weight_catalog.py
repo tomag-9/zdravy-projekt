@@ -155,6 +155,52 @@ def test_gramage_dashboard_pools_all_order_variants_for_variant_less_main_course
 
 
 @pytest.mark.django_db
+def test_menu_b_uses_real_xlsx_component_split_when_main_course_is_unvarianted():
+    """
+    Week 28/2026 real workbooks keep Menu B in the same component columns as
+    Menu A. Until a daily plan has a real B-specific template, B counts must use
+    the imported XLSX component split instead of the PDF-only 275g total.
+    """
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
+    main_course = MealTemplate.objects.create(
+        category="main_course",
+        name="Real XLSX main course",
+        weight_label="90g + 110g + 25g",
+        base_weight_grams="225.00",
+        components=[
+            {"label": "Mäso", "grams": "90", "unit": "g"},
+            {"label": "Príloha", "grams": "110", "unit": "g"},
+            {"label": "Šalát", "grams": "25", "unit": "g"},
+        ],
+    )
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 7))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=main_course,
+        category="main_course",
+        menu_variant="",
+    )
+    user = User.objects.create_user(username="menu-b@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        date=plan.date,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 3, "B": 2}, "diets": {}}}},
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+
+    assert [
+        (
+            group["meal"],
+            group["variant"],
+            [component["label"] for component in group["components"]],
+        )
+        for group in data["col_groups"]
+    ] == [("main_course", "", ["Mäso", "Príloha", "Šalát"])]
+    assert data["rows"][0]["standard_col_grams"] == [["450.00", "550.00", "125.00"]]
+
+
+@pytest.mark.django_db
 def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_course():
     """
     A 'lunch' order fans out to both soup and main_course (two dishes prepared

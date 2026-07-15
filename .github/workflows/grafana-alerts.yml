@@ -1,0 +1,74 @@
+name: Grafana Alerts Terraform
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/grafana-alerts.yml"
+      - "observability/terraform/grafana-alerts/**"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/grafana-alerts.yml"
+      - "observability/terraform/grafana-alerts/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: grafana-alerts-terraform-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_DIR: observability/terraform/grafana-alerts
+  TF_IMAGE: hashicorp/terraform:1.10.5
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VAR_grafana_url: ${{ secrets.GRAFANA_URL }}
+  TF_VAR_grafana_auth: ${{ secrets.GRAFANA_AUTH }}
+  TF_VAR_prometheus_datasource_uid: ${{ secrets.GRAFANA_PROMETHEUS_DS_UID }}
+  TF_VAR_environment: ${{ vars.GRAFANA_ENVIRONMENT || 'production' }}
+
+jobs:
+  validate-and-plan:
+    name: Validate Grafana alerts
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Check Terraform formatting
+        run: docker run --rm -v "$PWD/${TF_DIR}:/work" -w /work "$TF_IMAGE" fmt -check -recursive
+
+      - name: Validate Terraform
+        run: |
+          docker run --rm \
+            -v "$PWD/${TF_DIR}:/work" \
+            -w /work \
+            -e TF_DATA_DIR=/tmp/terraform-data \
+            --entrypoint sh \
+            "$TF_IMAGE" -c "terraform init -backend=false -lockfile=readonly && terraform validate"
+
+      - name: Plan Grafana alert changes
+        if: ${{ env.TF_VAR_grafana_url != '' && env.TF_VAR_grafana_auth != '' && env.TF_VAR_prometheus_datasource_uid != '' }}
+        run: |
+          docker run --rm \
+            -v "$PWD/${TF_DIR}:/work" \
+            -w /work \
+            -e TF_IN_AUTOMATION \
+            -e TF_INPUT \
+            -e TF_VAR_grafana_url \
+            -e TF_VAR_grafana_auth \
+            -e TF_VAR_prometheus_datasource_uid \
+            -e TF_VAR_environment \
+            -e TF_DATA_DIR=/tmp/terraform-data \
+            --entrypoint sh \
+            "$TF_IMAGE" -c "terraform init -backend=false -lockfile=readonly && terraform plan -no-color"
+
+      - name: Explain skipped plan
+        if: ${{ env.TF_VAR_grafana_url == '' || env.TF_VAR_grafana_auth == '' || env.TF_VAR_prometheus_datasource_uid == '' }}
+        run: |
+          echo "Skipping terraform plan because Grafana secrets are not configured."
+          echo "Required secrets: GRAFANA_URL, GRAFANA_AUTH, GRAFANA_PROMETHEUS_DS_UID."

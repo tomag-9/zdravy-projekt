@@ -23,6 +23,26 @@ def user_operation_name(user) -> str:
     return company_name or user.email
 
 
+def order_row_label(order) -> str:
+    """Názov riadku objednávky v reportoch a exportoch.
+
+    Celok s viacerými prevádzkami musí byť vo výstupe rozpadnutý — inak by dve
+    prevádzky toho istého celku vyzerali ako dva identické riadky. Celok s jedinou
+    prevádzkou ostáva pomenovaný ako doteraz.
+    """
+    prevadzka = getattr(order, "prevadzka", None)
+    if prevadzka is None:
+        return user_operation_name(order.user)
+
+    celok = prevadzka.celok
+    # Iterujeme cez .all(), nie .filter().count(): pri prefetchnutom
+    # `prevadzka__celok__prevadzky` to nespustí dotaz na každý riadok reportu.
+    aktivne = sum(1 for p in celok.prevadzky.all() if p.is_active)
+    if aktivne > 1:
+        return f"{celok.nazov} – {prevadzka.nazov}"
+    return user_operation_name(order.user)
+
+
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:
     """
     Return {categories: [...], total: int} for a meal.
@@ -35,6 +55,22 @@ def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, 
         Dictionary with categories and total count
     """
     return OrderData(order_data).meal_row(meal_key)
+
+
+def meal_counts(order_data: Dict[str, Any]) -> Dict[str, int]:
+    """Return per-meal totals for an order: {breakfast, lunch, olovrant, total}.
+
+    Zdieľané reportmi, ktorým stačia holé počty (nie rozpis menu/diét).
+    """
+    bf = build_user_meal_row(order_data, "breakfast")["total"]
+    lu = build_user_meal_row(order_data, "lunch")["total"]
+    ol = build_user_meal_row(order_data, "olovrant")["total"]
+    return {
+        "breakfast": bf,
+        "lunch": lu,
+        "olovrant": ol,
+        "total": bf + lu + ol,
+    }
 
 
 def merge_meal_totals(totals: Dict[str, Any], meal_row: Dict[str, Any]) -> None:

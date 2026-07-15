@@ -7,9 +7,29 @@ from django.utils import timezone
 
 
 class DailyOrder(models.Model):
+    # `user` = kto objednávku zadal (audit, deadline kontroly).
+    # `prevadzka` = za koho je objednávka. Identita riadku je (prevadzka, date):
+    # jeden login môže objednávať za viac prevádzok, a jednu prevádzku môže
+    # objednávať viac loginov.
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
+    prevadzka = models.ForeignKey(
+        "Prevadzka",
+        on_delete=models.CASCADE,
+        related_name="orders",
+        null=True,
+        blank=True,
+    )
     date = models.DateField(db_index=True)
     data = models.JSONField(default=dict)
+    scrape_flags = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
+            "{'attention': [...], 'config_notes': [...]}. Prázdne pri ručných "
+            "objednávkach a pri scrape bez upozornení."
+        ),
+    )
     is_auto = models.BooleanField(
         default=False, help_text="True if this order was auto-generated after deadline"
     )
@@ -17,16 +37,44 @@ class DailyOrder(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ["user", "date"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prevadzka", "date"], name="unique_order_per_prevadzka_date"
+            )
+        ]
         indexes = [
             models.Index(fields=["user", "date"]),
+            models.Index(fields=["prevadzka", "date"]),
             models.Index(fields=["is_auto"]),  # For filtering auto-generated orders
             models.Index(fields=["created_at"]),  # For audit and recent order queries
         ]
         ordering = ["-date"]
 
     def __str__(self) -> str:
-        return f"{self.user.email} - {self.date}"
+        return f"{self.prevadzka or self.user.email} - {self.date}"
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        """Doplní prevádzku, ak ju volajúci neuviedol a je jednoznačná.
+
+        Pri celku s jednou prevádzkou nemá zmysel nútiť každého volajúceho, aby ju
+        vypisoval. Pri viacerých je to však nejednoznačné — radšej vyhodíme chybu,
+        než by sme uložili objednávku bez prevádzky (tichý `None`), ktorá by sa
+        nezobrazila v žiadnom per-prevádzka reporte a obišla by aj unique constraint
+        (Postgres pripúšťa viac NULL). Celok bez prevádzky (napr. účet bez profilu)
+        necháme prejsť ako legacy.
+        """
+        if self.prevadzka_id is None and self.user_id is not None:
+            profile = UserProfile.objects.filter(user_id=self.user_id).first()
+            if profile is not None:
+                prve_dve = list(profile.dostupne_prevadzky()[:2])
+                if len(prve_dve) == 1:
+                    self.prevadzka = prve_dve[0]
+                elif len(prve_dve) > 1:
+                    raise ValueError(
+                        "DailyOrder bez prevádzky pre login s viacerými prevádzkami "
+                        f"(user_id={self.user_id}). Prevádzku musí určiť volajúci."
+                    )
+        return super().save(*args, **kwargs)
 
     @property
     def status(self) -> str:
@@ -82,21 +130,24 @@ class GlobalSettings(models.Model):
     deadline_breakfast_is_day_before = models.BooleanField(
         default=False,
         help_text=(
-            "When enabled, breakfast deadline applies to the day"
-            " before the meal date"
+            "When enabled, breakfast deadline applies to the day before the meal date"
         ),
     )
     deadline_lunch_is_day_before = models.BooleanField(
         default=False,
         help_text=(
-            "When enabled, lunch deadline applies to the day" " before the meal date"
+            "When enabled, lunch deadline applies to the day before the meal date"
         ),
     )
     deadline_olovrant_is_day_before = models.BooleanField(
         default=False,
         help_text=(
-            "When enabled, olovrant deadline applies to the day" " before the meal date"
+            "When enabled, olovrant deadline applies to the day before the meal date"
         ),
+    )
+    edupage_auto_scrape_enabled = models.BooleanField(
+        default=True,
+        help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
     )
     report_email_recipients = models.JSONField(
         default=list,
@@ -162,12 +213,119 @@ class UserProfile(models.Model):
         default=False,
         help_text="True once the client has completed or dismissed the onboarding tour.",
     )
+    celok = models.ForeignKey(
+        "Celok",
+        on_delete=models.PROTECT,
+        related_name="profily",
+        null=True,
+        blank=True,
+        help_text="Celok, pod ktorý toto prihlásenie patrí.",
+    )
+    prevadzky = models.ManyToManyField(
+        "Prevadzka",
+        blank=True,
+        related_name="profily",
+        help_text=(
+            "Prevádzky, ku ktorým má toto prihlásenie prístup. "
+            "Prázdne = všetky prevádzky celku."
+        ),
+    )
 
     class Meta:
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
         return self.company_name or self.user.email
+
+    def dostupne_prevadzky(self):
+        """Prevádzky, ktoré toto prihlásenie smie objednávať.
+
+        Prázdny M2M znamená „celý celok", nie „nič" — inak by každý nový login
+        stratil prístup, kým mu ho niekto ručne nenaklikal.
+        """
+        if self.celok_id is None:
+            return Prevadzka.objects.none()
+        vybrane = self.prevadzky.filter(is_active=True)
+        if vybrane.exists():
+            return vybrane
+        return self.celok.prevadzky.filter(is_active=True)
+
+
+class Celok(models.Model):
+    """Fakturačná jednotka — zastrešuje 1..N prevádzok a 1..N prihlásení.
+
+    Celok má fakturačnú adresu; prevádzka má výdajnú adresu. Sú to rôzne adresy,
+    preto sú to rôzne modely. `Celok` je samostatná entita (nie `UserProfile`), lebo
+    pod jeden celok môže patriť viac loginov — každý s prístupom k inej podmnožine
+    prevádzok.
+    """
+
+    class ZdrojObjednavok(models.TextChoices):
+        APP = "app", "Aplikácia"
+        EDUPAGE = "edupage", "EduPage"
+
+    nazov = models.CharField(max_length=255, unique=True)
+    billing_name = models.CharField(max_length=255, blank=True)
+    adresa = models.CharField(
+        max_length=500, blank=True, help_text="Fakturačná adresa celku."
+    )
+    ico = models.CharField(max_length=20, blank=True)
+    dic = models.CharField(max_length=20, blank=True)
+    zdroj_objednavok = models.CharField(
+        max_length=16,
+        choices=ZdrojObjednavok.choices,
+        default=ZdrojObjednavok.APP,
+        db_index=True,
+        help_text=(
+            "Odkiaľ chodia objednávky celku: 'edupage' (scraper) alebo 'app' "
+            "(klient v appke). Určuje zaradenie v admin prehľade dodania podkladov."
+        ),
+    )
+
+    class Meta:
+        ordering = ["nazov"]
+
+    def __str__(self) -> str:
+        return self.nazov
+
+
+class Prevadzka(models.Model):
+    """Jedna prevádzka (miesto výdaja) v rámci celku.
+
+    Objednávky sa vždy vedú per prevádzka (`DailyOrder.prevadzka`), aj keď má celok
+    len jednu — jednotný model je lacnejší než dve vetvy v každom reporte.
+    """
+
+    celok = models.ForeignKey(Celok, on_delete=models.CASCADE, related_name="prevadzky")
+    nazov = models.CharField(
+        max_length=255,
+        help_text="Názov prevádzky, napr. 'Jolly 1'. Kľúč v DailyOrder.data.",
+    )
+    adresa = models.CharField(
+        max_length=500, blank=True, help_text="Adresa výdajného miesta."
+    )
+    # Prázdne pre jedno-prevádzkové celky: berie sa všetko, čo scraper vráti.
+    edupage_match = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Prefix payer labelu / menu skratky, podľa ktorého sa EduPage riadky "
+            "priradia tejto prevádzke (napr. 'J1', 'Palisády', 'B - Les')."
+        ),
+    )
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["celok_id", "sort_order", "nazov"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["celok", "nazov"], name="unique_prevadzka_nazov_per_celok"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.nazov
 
 
 class PasswordResetToken(models.Model):
@@ -327,12 +485,27 @@ class MealPlanItem(models.Model):
     # Denormalised for query convenience
     category = models.CharField(max_length=20, choices=MealCategory.choices)
     menu_variant = models.CharField(max_length=10, blank=True)
+    diet = models.ForeignKey(
+        "Diet",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="meal_plan_items",
+        help_text="Optional diet-specific meal plan item. Null means standard/default.",
+    )
 
     class Meta:
-        unique_together = ["meal_plan", "category", "menu_variant"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meal_plan", "category", "menu_variant", "diet"],
+                name="uniq_meal_plan_item_slot_diet",
+                nulls_distinct=False,
+            )
+        ]
 
     def __str__(self) -> str:
-        return f"{self.meal_plan.date} {self.category} {self.menu_variant}"
+        diet = f" {self.diet.name}" if self.diet_id else ""
+        return f"{self.meal_plan.date} {self.category} {self.menu_variant}{diet}"
 
 
 class EnrolledCount(models.Model):

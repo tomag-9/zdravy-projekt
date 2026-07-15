@@ -98,12 +98,10 @@ describe('AdminOrderEditorModal', () => {
 
     it('calls onClose when ✕ icon button is clicked', () => {
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
-        // The X button is the first button in the header (no text, has SVG icon)
-        const closeBtn = screen.getAllByRole('button').find(
-            (btn) => btn.querySelector('svg') && btn.getAttribute('class')?.includes('text-gray-400'),
-        );
+        // The X button in the header carries the accessible label "Zavrieť".
+        const closeBtn = screen.getByRole('button', { name: /zavrieť/i });
         expect(closeBtn).toBeTruthy();
-        fireEvent.click(closeBtn!);
+        fireEvent.click(closeBtn);
         expect(BASE_PROPS.onClose).toHaveBeenCalledTimes(1);
     });
 

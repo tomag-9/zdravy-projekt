@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import OrderService, { DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
 import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
@@ -80,9 +80,14 @@ const safeParse = (key: string, fallback: any) => {
     }
 };
 
-export const useOrder = () => {
+export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = false) => {
     const { apiFetch, user } = useAuth();
     const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
+    const scopedKey = useCallback(
+        (base: string, date: string) =>
+            activePrevadzkaId ? `${base}_${date}_prevadzka_${activePrevadzkaId}` : `${base}_${date}`,
+        [activePrevadzkaId]
+    );
     // Settings
 
     const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
@@ -119,20 +124,21 @@ export const useOrder = () => {
     // Ref mirrors selectedDate synchronously so persistence effects never write
     // the previous day's currentOrder under the new date key (race condition fix)
     const selectedDateRef = useRef(selectedDate);
+    const loadedPrevadzkaIdRef = useRef(activePrevadzkaId);
     const [prevDayLunches, setPrevDayLunches] = useState(0);
 
-    const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(`activeMeals_${selectedDate}`, { breakfast: false, lunch: true, olovrant: false }));
+    const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(scopedKey('activeMeals', selectedDate), { breakfast: false, lunch: true, olovrant: false }));
 
     const [fullDayOrder, setFullDayOrderState] = useState<boolean>(() =>
-        safeParse(`fullDayOrder_${selectedDate}`, false)
+        safeParse(scopedKey('fullDayOrder', selectedDate), false)
     );
 
     const [fullDayData, setFullDayData] = useState<MealData>(() =>
-        safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal())
+        safeParse(scopedKey('fullDayData', selectedDate), OrderService.createEmptyMeal())
     );
 
     const [specialDietNote, setSpecialDietNote] = useState<string>(() =>
-        safeParse(`specialDietNote_${selectedDate}`, '')
+        safeParse(scopedKey('specialDietNote', selectedDate), '')
     );
 
     const [currentOrder, setCurrentOrder] = useState<DailyOrder>(() => {
@@ -143,20 +149,20 @@ export const useOrder = () => {
             lunch: OrderService.createEmptyMeal(),
             olovrant: OrderService.createEmptyMeal()
         };
-        return safeParse(`order_${selectedDate}`, initial);
+        return safeParse(scopedKey('order', selectedDate), initial);
     });
 
     // Keep ref in sync — runs before other effects that depend on selectedDate
     useEffect(() => {
         selectedDateRef.current = selectedDate;
-    }, [selectedDate]);
+    }, [selectedDate, scopedKey]);
 
     // Load prev day lunches
     useEffect(() => {
         const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
         const prevDateStr = OrderService.toLocalDateString(prevDate);
-        const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
+        const prevOrderSaved = localStorage.getItem(scopedKey('order', prevDateStr));
         if (prevOrderSaved) {
             try {
                 const prevOrder = JSON.parse(prevOrderSaved);
@@ -165,7 +171,7 @@ export const useOrder = () => {
         } else {
             setPrevDayLunches(0);
         }
-    }, [selectedDate]);
+    }, [selectedDate, scopedKey]);
 
     // Persistence
     // NOTE: order/activeMeals persistence intentionally does NOT include selectedDate
@@ -174,11 +180,26 @@ export const useOrder = () => {
     // without the race condition where the new selectedDate fires the effect with
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
     useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
-    useEffect(() => { localStorage.setItem(`order_${selectedDateRef.current}`, JSON.stringify(currentOrder)); }, [currentOrder]);
-    useEffect(() => { localStorage.setItem(`activeMeals_${selectedDateRef.current}`, JSON.stringify(activeMeals)); }, [activeMeals]);
-    useEffect(() => { localStorage.setItem(`fullDayOrder_${selectedDateRef.current}`, JSON.stringify(fullDayOrder)); }, [fullDayOrder]);
-    useEffect(() => { localStorage.setItem(`fullDayData_${selectedDateRef.current}`, JSON.stringify(fullDayData)); }, [fullDayData]);
-    useEffect(() => { localStorage.setItem(`specialDietNote_${selectedDateRef.current}`, JSON.stringify(specialDietNote)); }, [specialDietNote]);
+    useEffect(() => {
+        if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
+        localStorage.setItem(scopedKey('order', selectedDateRef.current), JSON.stringify(currentOrder));
+    }, [currentOrder, activePrevadzkaId, scopedKey]);
+    useEffect(() => {
+        if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
+        localStorage.setItem(scopedKey('activeMeals', selectedDateRef.current), JSON.stringify(activeMeals));
+    }, [activeMeals, activePrevadzkaId, scopedKey]);
+    useEffect(() => {
+        if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
+        localStorage.setItem(scopedKey('fullDayOrder', selectedDateRef.current), JSON.stringify(fullDayOrder));
+    }, [fullDayOrder, activePrevadzkaId, scopedKey]);
+    useEffect(() => {
+        if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
+        localStorage.setItem(scopedKey('fullDayData', selectedDateRef.current), JSON.stringify(fullDayData));
+    }, [fullDayData, activePrevadzkaId, scopedKey]);
+    useEffect(() => {
+        if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
+        localStorage.setItem(scopedKey('specialDietNote', selectedDateRef.current), JSON.stringify(specialDietNote));
+    }, [specialDietNote, activePrevadzkaId, scopedKey]);
 
     // Reset/Re-init on Date Change
     useEffect(() => {
@@ -190,20 +211,21 @@ export const useOrder = () => {
 
         // On new date, if no local storage, default to all closed
         const defaultActive = { breakfast: false, lunch: false, olovrant: false };
-        let newActive = safeParse(`activeMeals_${selectedDate}`, defaultActive);
+        let newActive = safeParse(scopedKey('activeMeals', selectedDate), defaultActive);
         if (!newActive) {
             newActive = defaultActive;
         }
 
-        const newOrder = safeParse(`order_${selectedDate}`, emptyOrder) as DailyOrder;
+        const newOrder = safeParse(scopedKey('order', selectedDate), emptyOrder) as DailyOrder;
 
+        loadedPrevadzkaIdRef.current = activePrevadzkaId;
         setTouchedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
-        setFullDayOrderState(safeParse(`fullDayOrder_${selectedDate}`, false));
-        setFullDayData(safeParse(`fullDayData_${selectedDate}`, OrderService.createEmptyMeal()));
-        setSpecialDietNote(safeParse(`specialDietNote_${selectedDate}`, ''));
-    }, [selectedDate]);
+        setFullDayOrderState(safeParse(scopedKey('fullDayOrder', selectedDate), false));
+        setFullDayData(safeParse(scopedKey('fullDayData', selectedDate), OrderService.createEmptyMeal()));
+        setSpecialDietNote(safeParse(scopedKey('specialDietNote', selectedDate), ''));
+    }, [selectedDate, activePrevadzkaId, scopedKey]);
 
     // Fetch Order from API (server authority; merges into local state)
     useEffect(() => {
@@ -211,7 +233,9 @@ export const useOrder = () => {
 
         const loadOrder = async () => {
             try {
-                const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/`);
+                if (waitForPrevadzkaChoice && !activePrevadzkaId) return;
+                const suffix = activePrevadzkaId ? `?prevadzka=${activePrevadzkaId}` : '';
+                const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/${suffix}`);
                 if (response.ok) {
                     // API returns { id, status, data: { breakfast... } }
                     const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder };
@@ -245,7 +269,7 @@ export const useOrder = () => {
         }
 
         return () => { isMounted = false; };
-    }, [selectedDate, apiFetch, user]); // Depend on selectedDate
+    }, [selectedDate, apiFetch, user, activePrevadzkaId, waitForPrevadzkaChoice]); // Depend on selectedDate
 
     const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
     const [clientContactInfo, setClientContactInfo] = useState<ClientContactInfo>({
@@ -316,8 +340,7 @@ export const useOrder = () => {
                 }
                 // A meal key is only restricted to specific menu variants when
                 // its published item(s) actually carry a menu_variant. A single
-                // uniform selection (no menu_variant — the normal case for the
-                // catalog-based admin editor) means the meal is available for
+                // uniform selection (no menu_variant) means the meal is available for
                 // every menu variant, so it must NOT be treated as "occupied".
                 const availability: Record<string, Set<string>> = {};
                 const unrestrictedMealKeys = new Set<string>();
@@ -399,7 +422,7 @@ export const useOrder = () => {
             const curr = parseDate(selectedDate);
             curr.setDate(curr.getDate() - i);
             const dStr = OrderService.toLocalDateString(curr);
-            const raw = localStorage.getItem(`order_${dStr}`);
+            const raw = localStorage.getItem(scopedKey('order', dStr));
             if (raw) {
                 try {
                     const p = JSON.parse(raw);
@@ -446,7 +469,7 @@ export const useOrder = () => {
         // and then SET `currentOrder` if empty, it will naturally re-run.
         // The re-run will find it NOT empty, and thus stabilize.
         // To be safe against "React Hook useEffect has missing dependencies", we include them.
-    }, [activeMeals, selectedDate, currentOrder, touchedMeals]);
+    }, [activeMeals, selectedDate, currentOrder, touchedMeals, scopedKey]);
 
     // Copy Logic - Olovrant from Lunch
     useEffect(() => {
@@ -472,7 +495,7 @@ export const useOrder = () => {
             const prevDate = parseDate(selectedDate);
             prevDate.setDate(prevDate.getDate() - 1);
             const prevDateStr = OrderService.toLocalDateString(prevDate);
-            const prevOrderSaved = localStorage.getItem(`order_${prevDateStr}`);
+            const prevOrderSaved = localStorage.getItem(scopedKey('order', prevDateStr));
             if (prevOrderSaved) {
                 try {
                     const prevOrder = JSON.parse(prevOrderSaved);
@@ -491,7 +514,7 @@ export const useOrder = () => {
                 } catch (e) { logger.error(e); }
             }
         }
-    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals]);
+    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals, scopedKey]);
 
     // Actions
 
@@ -548,7 +571,7 @@ export const useOrder = () => {
 
 
 
-    const submitOrder = async (date: string) => {
+    const submitOrder = async (date: string, prevadzkaId = activePrevadzkaId) => {
         const isMealActive = (key: 'breakfast' | 'lunch' | 'olovrant') =>
             fullDayOrder ? adminVisibleMeals.includes(key) : activeMeals[key];
 
@@ -567,7 +590,12 @@ export const useOrder = () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ date, status: 'submitted', data: { ...payload, special_diet_note: specialDietNote || undefined } })
+                body: JSON.stringify({
+                    date,
+                    status: 'submitted',
+                    ...(prevadzkaId ? { prevadzka: prevadzkaId } : {}),
+                    data: { ...payload, special_diet_note: specialDietNote || undefined }
+                })
             });
 
             if (!response.ok) {
@@ -590,7 +618,7 @@ export const useOrder = () => {
         }
     };
 
-    const deleteOrder = async (date: string) => {
+    const deleteOrder = async (date: string, prevadzkaId = activePrevadzkaId) => {
         const empty: DailyOrder = {
             status: 'draft',
             breakfast: OrderService.createEmptyMeal(),
@@ -606,8 +634,8 @@ export const useOrder = () => {
         } else {
             // If deleting another day (e.g. from history), manually clear its local storage
             // so it doesn't persist as "submitted" or "dirty"
-            localStorage.removeItem(`order_${date}`);
-            localStorage.removeItem(`activeMeals_${date}`);
+            localStorage.removeItem(scopedKey('order', date));
+            localStorage.removeItem(scopedKey('activeMeals', date));
         }
 
         try {
@@ -617,7 +645,12 @@ export const useOrder = () => {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ date, status: 'draft', data: empty })
+                body: JSON.stringify({
+                    date,
+                    status: 'draft',
+                    ...(prevadzkaId ? { prevadzka: prevadzkaId } : {}),
+                    data: empty
+                })
             });
             logger.debug('Order deleted/reset on API');
         } catch (e) {
@@ -646,7 +679,6 @@ export const useOrder = () => {
         ? visibleDietDetails.map(d => d.name)
         : [];
 
-    // Override getAvailableDiets to intersection of enabledDiets (local preference) AND adminVisibleDiets
     const getAvailableDiets = (categoryName: string) => {
         const diets = OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
         if (!diets.includes(SPECIAL_DIET_NAME)) {
@@ -672,7 +704,7 @@ export const useOrder = () => {
         const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
         const prevDateStr = OrderService.toLocalDateString(prevDate);
-        const raw = localStorage.getItem(`order_${prevDateStr}`);
+        const raw = localStorage.getItem(scopedKey('order', prevDateStr));
         if (raw) {
             try {
                 const prevOrder = JSON.parse(raw);

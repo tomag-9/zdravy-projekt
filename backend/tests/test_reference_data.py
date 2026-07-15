@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 
-from api.models import ClientSettings, Diet
+from api.models import ClientSettings, Diet, PortionType
 
 
 @pytest.mark.django_db
@@ -30,6 +30,23 @@ def test_init_reference_data_seeds_default_diets_idempotently():
     assert Diet.objects.filter(name="DIA").exists()
     assert Diet.objects.filter(name="NO MILK").count() == 1
     assert Diet.objects.get(name="NO MILK").description
+
+
+@pytest.mark.django_db
+def test_init_reference_data_syncs_real_portion_coefficients():
+    call_command("init_reference_data")
+    call_command("init_reference_data")
+
+    coefficients = {
+        name: str(coefficient)
+        for name, coefficient in PortionType.objects.values_list("name", "coefficient")
+    }
+
+    assert coefficients["Jasle"] == "0.7500"
+    assert coefficients["Škôlka"] == "1.0000"
+    assert coefficients["ZŠ 1.stupeň"] == "1.2500"
+    assert coefficients["ZŠ 2.stupeň"] == "1.5000"
+    assert coefficients["Dospelý (SŠ)"] == "2.0000"
 
 
 @pytest.mark.django_db

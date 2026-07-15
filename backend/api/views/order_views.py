@@ -14,8 +14,9 @@ from rest_framework.response import Response
 
 from ..exceptions import ClientOnlyError
 from ..models import DailyOrder
-from ..serializers import DailyOrderSerializer
+from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
+from ..services.prevadzka_service import dostupne_prevadzky
 
 
 @extend_schema_view(
@@ -67,7 +68,24 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 # to prevent returning ALL orders by default (which breaks by_date logic).
                 queryset = queryset.filter(user=user)
         else:
-            queryset = queryset.filter(user=user)
+            # Objednávka patrí prevádzke, `user` je iba audit toho, kto ju zadal.
+            # Viac loginov pod jedným celkom má vidieť rovnakú objednávku prevádzky.
+            queryset = queryset.filter(prevadzka__in=dostupne_prevadzky(user))
+
+        prevadzka_id = self.request.query_params.get("prevadzka")
+        if prevadzka_id:
+            try:
+                prevadzka_id_int = int(prevadzka_id)
+            except (TypeError, ValueError):
+                raise ValidationError({"prevadzka": "Must be an integer."})
+            if (
+                not user.is_staff
+                and not dostupne_prevadzky(user).filter(pk=prevadzka_id_int).exists()
+            ):
+                raise ValidationError(
+                    {"prevadzka": "Prevádzka nepatrí tomuto prihláseniu."}
+                )
+            queryset = queryset.filter(prevadzka_id=prevadzka_id_int)
 
         return queryset
 
@@ -118,6 +136,16 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             return Response(
                 {"data": {}}, status=status.HTTP_200_OK
             )  # Return empty struct if not found
+        except DailyOrder.MultipleObjectsReturned:
+            return Response(
+                {
+                    "prevadzka": (
+                        "Prihlásenie má viac objednávok pre tento deň. "
+                        "Pošlite ?prevadzka=<id>."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 @extend_schema(tags=["orders"])
@@ -179,3 +207,18 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
 
         result = apply_auto_orders(target_date)
         return Response(result, status=status.HTTP_200_OK)
+
+
+class PrevadzkaViewSet(viewsets.ReadOnlyModelViewSet):
+    """Prevádzky, za ktoré prihlásený klient smie objednávať.
+
+    Frontend podľa počtu rozhodne: jedna → objednáva rovno (ako doteraz),
+    viac → najprv nechá vybrať prevádzku.
+    """
+
+    serializer_class = PrevadzkaSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self) -> QuerySet:
+        return dostupne_prevadzky(self.request.user).select_related("celok")

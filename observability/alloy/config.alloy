@@ -90,6 +90,38 @@ prometheus.scrape "django" {
 	forward_to   = [prometheus.remote_write.grafana.receiver]
 }
 
+prometheus.exporter.cadvisor "docker" {
+	docker_host      = "unix:///var/run/docker.sock"
+	storage_duration = "5m"
+}
+
+prometheus.scrape "cadvisor" {
+	targets         = prometheus.exporter.cadvisor.docker.targets
+	forward_to      = [prometheus.relabel.cadvisor.receiver]
+	scrape_interval = "30s"
+}
+
+prometheus.relabel "cadvisor" {
+	forward_to = [prometheus.remote_write.grafana.receiver]
+
+	rule {
+		target_label = "job"
+		replacement  = "cadvisor"
+	}
+
+	rule {
+		target_label = "environment"
+		replacement  = sys.env("ALLOY_ENVIRONMENT")
+	}
+
+	// Keep this app's containers only to limit Grafana Cloud cardinality/cost.
+	rule {
+		source_labels = ["name"]
+		regex         = ".+zdravy-projekt.+"
+		action        = "keep"
+	}
+}
+
 prometheus.remote_write "grafana" {
 	endpoint {
 		url = sys.env("GRAFANA_PROM_URL")

@@ -7,17 +7,72 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..exporters import PDFReportExporter, XLSXReportExporter
-from ..models import DailyOrder
+from ..models import Celok, DailyOrder, Prevadzka
 from ..services import ReportService
-from ..utils import user_operation_name
+from ..utils import meal_counts, order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
 
 logger = logging.getLogger(__name__)
 
 
+def build_prevadzka_overview(target_date):
+    """Payload pre prehľad dodania podkladov za deň.
+
+    Zdieľané JSON endpointom aj XLSX/PDF exportmi, nech sa logika (klasifikácia
+    edupage/app, počty, flagy) nerozchádza medzi výstupmi.
+    """
+    prevadzky = (
+        Prevadzka.objects.filter(is_active=True)
+        .select_related("celok")
+        .order_by("celok__nazov", "sort_order", "nazov")
+    )
+
+    orders_by_prevadzka = {
+        order.prevadzka_id: order
+        for order in DailyOrder.objects.filter(
+            date=target_date, prevadzka__isnull=False
+        )
+    }
+
+    edupage_rows = []
+    app_rows = []
+    for prevadzka in prevadzky:
+        is_edupage = prevadzka.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+        order = orders_by_prevadzka.get(prevadzka.id)
+        data = {}
+        flags = {"attention": [], "config_notes": []}
+        if order is not None:
+            data = order.data if isinstance(order.data, dict) else {}
+            if isinstance(order.scrape_flags, dict):
+                flags = {
+                    "attention": order.scrape_flags.get("attention", []) or [],
+                    "config_notes": order.scrape_flags.get("config_notes", []) or [],
+                }
+
+        row = {
+            "prevadzka_id": prevadzka.id,
+            "nazov": prevadzka.nazov,
+            "celok": prevadzka.celok.nazov,
+            "delivered": order is not None,
+            "counts": meal_counts(data),
+            "flags": flags,
+            "has_warning": bool(flags["attention"] or flags["config_notes"]),
+        }
+        (edupage_rows if is_edupage else app_rows).append(row)
+
+    return {
+        "date": target_date.isoformat(),
+        "edupage": edupage_rows,
+        "app": app_rows,
+    }
+
+
 @extend_schema_view(
     daily_stats=extend_schema(tags=["admin"]),
     daily_report=extend_schema(tags=["admin"]),
+    prevadzka_overview=extend_schema(tags=["admin"]),
+    prevadzka_overview_xlsx=extend_schema(tags=["admin"]),
+    prevadzka_overview_pdf=extend_schema(tags=["admin"]),
     daily_report_xlsx=extend_schema(tags=["admin"]),
     daily_report_pdf=extend_schema(tags=["admin"]),
 )
@@ -28,6 +83,21 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     """
 
     permission_classes = [permissions.IsAdminUser]
+
+    def _parse_date(self, request):
+        """Parse ?date=YYYY-MM-DD; vráti date alebo DRF Response(400)."""
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            return datetime.date.fromisoformat(date_str)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "invalid date format, expected YYYY-MM-DD"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     @action(detail=False, methods=["get"], url_path="daily-stats")
     def daily_stats(self, request):
@@ -85,8 +155,11 @@ class AdminSummaryViewSet(viewsets.ViewSet):
 
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "user__settings")
-            .order_by("user__email")
+            .select_related(
+                "user", "user__profile", "user__settings", "prevadzka__celok"
+            )
+            .prefetch_related("prevadzka__celok__prevadzky")
+            .order_by("user__email", "prevadzka__sort_order", "prevadzka__nazov")
         )
 
         totals = {
@@ -112,7 +185,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             rows.append(
                 {
                     "user_id": user.id,
-                    "name": user_operation_name(user),
+                    "name": order_row_label(order),
                     "email": user.email,
                     "breakfast": bf,
                     "lunch": lu,
@@ -129,6 +202,64 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         return Response(
             {"date": target_date.isoformat(), "rows": rows, "totals": totals}
         )
+
+    @action(detail=False, methods=["get"], url_path="prevadzka-overview")
+    def prevadzka_overview(self, request):
+        """Prehľad dodania podkladov za deň, rozdelený na EduPage a in-app prevádzky.
+
+        Pre každú aktívnu prevádzku vráti, či za daný deň existuje objednávka
+        (`delivered`), počty raňajok/obedov/olovrantov a prípadné upozornenia
+        zo scrapu (`flags`), z ktorých frontend vyrobí ✅ / ❌ / ⚠️.
+        """
+        parsed = self._parse_date(request)
+        if isinstance(parsed, Response):
+            return parsed
+        return Response(build_prevadzka_overview(parsed))
+
+    @action(detail=False, methods=["get"], url_path="prevadzka-overview-xlsx")
+    def prevadzka_overview_xlsx(self, request):
+        """Download prehľad dodania podkladov as XLSX."""
+        from django.http import HttpResponse
+
+        from ..exporters import PrevadzkaOverviewXLSXExporter
+
+        parsed = self._parse_date(request)
+        if isinstance(parsed, Response):
+            return parsed
+        payload = build_prevadzka_overview(parsed)
+        xlsx_bytes = PrevadzkaOverviewXLSXExporter(payload).generate()
+
+        response = HttpResponse(
+            xlsx_bytes,
+            content_type=(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ),
+        )
+        response["Content-Disposition"] = (
+            f'attachment; filename="dodanie_podkladov_{parsed.isoformat()}.xlsx"'
+        )
+        return response
+
+    @action(detail=False, methods=["get"], url_path="prevadzka-overview-pdf")
+    def prevadzka_overview_pdf(self, request):
+        """Download prehľad dodania podkladov as PDF."""
+        import io
+
+        from django.http import FileResponse
+
+        from ..exporters import PrevadzkaOverviewPDFExporter
+
+        parsed = self._parse_date(request)
+        if isinstance(parsed, Response):
+            return parsed
+        payload = build_prevadzka_overview(parsed)
+        pdf_bytes = PrevadzkaOverviewPDFExporter(payload).generate()
+
+        response = FileResponse(io.BytesIO(pdf_bytes), content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="dodanie_podkladov_{parsed.isoformat()}.pdf"'
+        )
+        return response
 
     @action(detail=False, methods=["get"], url_path="daily-report-xlsx")
     def daily_report_xlsx(self, request):

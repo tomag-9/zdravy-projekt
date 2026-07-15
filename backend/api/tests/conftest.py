@@ -32,6 +32,13 @@ def user(db):
     if created:
         user.set_password("client123")
         user.save()
+    # Klient bez profilu nemá prevádzku, a teda nemá kam objednávať. V produkcii
+    # profil vzniká pri založení klienta, tak ho fixture musí mať tiež.
+    from api.models import UserProfile
+
+    UserProfile.objects.get_or_create(
+        user=user, defaults={"company_name": "Client Test"}
+    )
     return user
 
 

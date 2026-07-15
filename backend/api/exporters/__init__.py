@@ -3,6 +3,10 @@
 from .meal_plan_pdf_exporter import MealPlanPDFExporter
 from .meal_plan_xlsx_exporter import MealPlanXLSXExporter
 from .pdf_exporter import PDFReportExporter
+from .prevadzka_overview_exporter import (
+    PrevadzkaOverviewPDFExporter,
+    PrevadzkaOverviewXLSXExporter,
+)
 from .xlsx_exporter import XLSXReportExporter
 
 __all__ = [
@@ -10,4 +14,6 @@ __all__ = [
     "XLSXReportExporter",
     "MealPlanXLSXExporter",
     "MealPlanPDFExporter",
+    "PrevadzkaOverviewXLSXExporter",
+    "PrevadzkaOverviewPDFExporter",
 ]

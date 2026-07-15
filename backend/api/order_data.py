@@ -22,20 +22,33 @@ def safe_count(value: Any) -> int:
 @dataclass(frozen=True)
 class MealCategory:
     meal: str
-    name: str
+    name: str  # názov porcie (Škôlka, ZŠ 1.stupeň…) — gramáž ho mapuje na PortionType
     menu_counts: Mapping[str, Any]
     diets: Mapping[str, Any]
+    prevadzka: str | None = None  # None = záznam bez úrovne prevádzky (legacy)
 
     @property
     def menu_total(self) -> int:
         return sum(safe_count(count) for count in self.menu_counts.values())
 
 
+def _is_leaf(value: Any) -> bool:
+    """Leaf = {"menuCounts": ..., "diets": ...} — najhlbšia úroveň dát."""
+    return isinstance(value, Mapping) and ("menuCounts" in value or "diets" in value)
+
+
 class OrderData:
     """Parser/value object for order data.
 
-    Legacy flat meals are normalized on read so historical data and older tests
-    remain safe while all callers use one traversal API.
+    Číta tri tvary, aby historické záznamy aj staršie testy ostali bezpečné a všetci
+    volajúci používali jednu traverzačnú API:
+
+        flat: {meal: {menuCounts, diets}}
+        v1:   {meal: {porcia: {menuCounts, diets}}}
+        v2:   {meal: {prevádzka: {porcia: {menuCounts, diets}}}}
+
+    `MealCategory.name` je vždy porcia, aj vo v2 — gramáž tak funguje bez zmeny.
+    Prevádzku nesie `MealCategory.prevadzka` (None pri flat/v1).
     """
 
     def __init__(self, data: Mapping[str, Any] | None):
@@ -48,7 +61,7 @@ class OrderData:
             if not isinstance(meal_data, Mapping):
                 continue
 
-            if "menuCounts" in meal_data or "diets" in meal_data:
+            if _is_leaf(meal_data):
                 yield self._category_from_details(meal_key, meal_key, meal_data)
                 continue
 
@@ -57,11 +70,31 @@ class OrderData:
                     details, Mapping
                 ):
                     continue
-                yield self._category_from_details(meal_key, category_name, details)
+
+                if _is_leaf(details):
+                    # v1: category_name je porcia.
+                    yield self._category_from_details(meal_key, category_name, details)
+                    continue
+
+                # v2: category_name je prevádzka, o úroveň nižšie sú porcie.
+                for portion_name, portion_details in details.items():
+                    if not isinstance(portion_name, str) or not _is_leaf(
+                        portion_details
+                    ):
+                        continue
+                    yield self._category_from_details(
+                        meal_key,
+                        portion_name,
+                        portion_details,
+                        prevadzka=category_name,
+                    )
 
     @staticmethod
     def _category_from_details(
-        meal: str, category_name: str, details: Mapping[Any, Any]
+        meal: str,
+        category_name: str,
+        details: Mapping[Any, Any],
+        prevadzka: str | None = None,
     ) -> MealCategory:
         menu_counts = details.get("menuCounts") or {}
         diets = details.get("diets") or {}
@@ -70,6 +103,7 @@ class OrderData:
             name=category_name,
             menu_counts=menu_counts if isinstance(menu_counts, Mapping) else {},
             diets=diets if isinstance(diets, Mapping) else {},
+            prevadzka=prevadzka,
         )
 
     def is_empty(self) -> bool:

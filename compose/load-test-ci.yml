@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-zdravy_projekt_load_test}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: sh -c "python manage.py migrate && python manage.py init_roles && python manage.py init_reference_data && python manage.py ensure_global_settings && python manage.py real_initial_seed_prevadzky && python manage.py sync_periodic_tasks --fix && python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ../backend:/app
+    environment:
+      DJANGO_SETTINGS_MODULE: app.settings.dev
+      POSTGRES_DB: ${POSTGRES_DB:-zdravy_projekt_load_test}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_URL: redis://redis:6379
+      EMAIL_HOST: mailhog
+      EMAIL_PORT: 1025
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-BPWWCgQ8JraWheFRIUrMpzw2KgnXj3qXSTLmb1wi9o1lj1ofI6LCidmXcc3xb072BmmOfgQijCuqQG0tn5UwjY4}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-Puur0QT5cW1ev5w_XDuAifu5jNJQy7nwWdsMdLdBV38}
+      VAPID_ADMIN_EMAIL: ${VAPID_ADMIN_EMAIL:-admin@example.com}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailhog:
+        condition: service_started

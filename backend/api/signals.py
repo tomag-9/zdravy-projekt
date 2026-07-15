@@ -59,7 +59,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – " "skipping auto-order schedule sync."
+            "django_celery_beat not installed – skipping auto-order schedule sync."
         )
         return
 
@@ -120,7 +120,7 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – " "skipping daily report schedule sync."
+            "django_celery_beat not installed – skipping daily report schedule sync."
         )
         return
 
@@ -337,6 +337,16 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
         return
 
     try:
+        if not getattr(settings_instance, "edupage_auto_scrape_enabled", True):
+            deleted_count, _ = PeriodicTask.objects.filter(
+                name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+            ).delete()
+            logger.info(
+                "Edupage auto scrape disabled; deleted %d periodic task(s)",
+                deleted_count,
+            )
+            return
+
         all_meal_types = ["breakfast", "lunch", "olovrant"]
 
         # Group meal types by deadline time and target-day rule.
@@ -527,3 +537,64 @@ def on_diet_changed(sender, instance, **kwargs):
     except Exception as exc:
         logger.exception("Error clearing Diet list cache: %s", exc)
         _capture_signal_failure(exc, "diet_changed")
+
+
+@receiver(post_save, sender="api.UserProfile")
+def on_user_profile_saved(sender, instance, created, **kwargs):
+    """Každý profil musí mať celok a aspoň jednu prevádzku.
+
+    Objednávky sa vedú per prevádzka, takže profil bez prevádzky by nemal kam
+    objednávať. Default: celok aj prevádzka sa volajú ako profil. Viac-prevádzkové
+    celky sa dokonfigurujú zvlášť.
+    """
+    from api.models import Celok, Prevadzka, UserProfile
+
+    zdroj = (
+        Celok.ZdrojObjednavok.EDUPAGE
+        if instance.is_edupage
+        else Celok.ZdrojObjednavok.APP
+    )
+
+    # Existujúci profil: udrž zdroj celku v súlade s is_edupage (napr. keď admin
+    # prepne prevádzku na EduPage). Meníme len keď treba, nech nespúšťame zápis
+    # zbytočne.
+    if not created or instance.celok_id is not None:
+        if instance.celok_id is not None and Celok.objects.filter(
+            pk=instance.celok_id
+        ).exclude(zdroj_objednavok=zdroj).update(zdroj_objednavok=zdroj):
+            logger.info(
+                "Celok %s zdroj_objednavok → %s (profil %s)",
+                instance.celok_id,
+                zdroj,
+                instance.pk,
+            )
+        return
+    try:
+
+        nazov = (instance.company_name or "").strip() or instance.user.email
+
+        # Každý auto-vytvorený profil dostane VLASTNÝ celok. Zdieľať jeden celok
+        # medzi viacerými loginmi je legitímne, ale to sa konfiguruje ručne — tu
+        # nesmieme dva rovnako pomenované (ale nesúvisiace) profily ticho zlúčiť,
+        # inak by ich prevádzky a objednávky kolidovali. `Celok.nazov` je unique,
+        # tak pri zhode odlíšime názov emailom, resp. pk.
+        celok_nazov = nazov
+        if Celok.objects.filter(nazov=celok_nazov).exists():
+            celok_nazov = f"{nazov} ({instance.user.email})"
+        if Celok.objects.filter(nazov=celok_nazov).exists():
+            celok_nazov = f"{nazov} (#{instance.pk})"
+
+        celok = Celok.objects.create(
+            nazov=celok_nazov,
+            billing_name=instance.billing_name,
+            ico=instance.ico,
+            dic=instance.dic,
+            zdroj_objednavok=zdroj,
+        )
+        Prevadzka.objects.create(celok=celok, nazov=nazov)
+        # update() namiesto save(), aby sa signál nezavolal rekurzívne.
+        UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
+        instance.celok = celok
+    except Exception as exc:
+        logger.exception("Error creating default Celok/Prevadzka: %s", exc)
+        _capture_signal_failure(exc, "user_profile_saved")

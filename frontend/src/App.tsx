@@ -39,6 +39,7 @@ import ClientDetail from "./pages/admin/ClientDetail";
 import AdminUserList from "./pages/admin/AdminUserList";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import PrevadzkaOverview from "./pages/admin/PrevadzkaOverview";
 import SystemSettings from "./pages/admin/SystemSettings";
 import MealPlanCalendar from "./pages/admin/MealPlanCalendar";
 import MealCatalogAdmin from "./pages/admin/MealCatalogAdmin";
@@ -180,6 +181,7 @@ export default function App() {
               <Route path="/admin" element={<AdminRoute />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
+                <Route path="prevadzka-overview" element={<ErrorBoundary><PrevadzkaOverview /></ErrorBoundary>} />
                 <Route path="clients" element={<ErrorBoundary><ClientList /></ErrorBoundary>} />
                 <Route path="clients/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
                 <Route path="roles" element={<ErrorBoundary><AdminUserList /></ErrorBoundary>} />

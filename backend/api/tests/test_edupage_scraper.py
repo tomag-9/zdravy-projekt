@@ -171,16 +171,23 @@ class TestResolveMenuVariant(unittest.TestCase):
 
 
 class TestBuildJidMap(unittest.TestCase):
-    def _build(self, vydaj_od, jid="2"):
-        nastavenia = [
-            {
-                "setting": "vydaj_normal",
-                "hodnota": json.dumps(
-                    {"1": {jid: {"vydaj_od": vydaj_od, "vydaj_do": "14:00"}}}
-                ),
-            }
-        ]
-        return EdupageScraper._build_jid_map(nastavenia)
+    TARGET_DATE = date(2026, 6, 17)
+
+    def _build(self, vydaj_od, jid="2", target_date=None, plati_od=None, plati_do=None):
+        row = {
+            "setting": "vydaj_normal",
+            "hodnota": json.dumps(
+                {"1": {jid: {"vydaj_od": vydaj_od, "vydaj_do": "14:00"}}}
+            ),
+        }
+        if plati_od is not None:
+            row["plati_od"] = plati_od
+        if plati_do is not None:
+            row["plati_do"] = plati_do
+        nastavenia = [row]
+        return EdupageScraper._build_jid_map(
+            nastavenia, target_date or self.TARGET_DATE
+        )
 
     def test_lunch(self):
         self.assertEqual(self._build("11:00")["2"], "lunch")
@@ -196,11 +203,98 @@ class TestBuildJidMap(unittest.TestCase):
         self.assertEqual(self._build("10:00")["2"], "lunch")
 
     def test_empty_nastavenia_returns_empty(self):
-        self.assertEqual(EdupageScraper._build_jid_map([]), {})
+        self.assertEqual(EdupageScraper._build_jid_map([], self.TARGET_DATE), {})
 
     def test_wrong_setting_ignored(self):
         nastavenia = [{"setting": "something_else", "hodnota": "{}"}]
-        self.assertEqual(EdupageScraper._build_jid_map(nastavenia), {})
+        self.assertEqual(
+            EdupageScraper._build_jid_map(nastavenia, self.TARGET_DATE), {}
+        )
+
+    def test_row_within_plati_od_plati_do_is_used(self):
+        result = self._build("11:00", plati_od="2025-09-01", plati_do="2026-07-31")
+        self.assertEqual(result["2"], "lunch")
+
+    def test_row_before_plati_od_is_ignored(self):
+        # target_date (2026-06-17) is before this row's validity window starts.
+        result = self._build("11:00", plati_od="2026-09-01", plati_do="2027-07-31")
+        self.assertEqual(result, {})
+
+    def test_row_after_plati_do_is_ignored(self):
+        # target_date (2026-06-17) is after this row's validity window ended -
+        # a stale schedule from a previous school year must not apply.
+        result = self._build("11:00", plati_od="2024-09-01", plati_do="2025-07-31")
+        self.assertEqual(result, {})
+
+    def test_only_the_row_valid_for_target_date_is_applied(self):
+        """Two schedules covering different school years must not both
+        apply - only the one whose plati_od/plati_do covers target_date."""
+        old_row = {
+            "setting": "vydaj_normal",
+            "plati_od": "2024-09-01",
+            "plati_do": "2025-07-31",
+            "hodnota": json.dumps(
+                {"1": {"2": {"vydaj_od": "12:00", "vydaj_do": "13:00"}}}
+            ),
+        }
+        new_row = {
+            "setting": "vydaj_normal",
+            "plati_od": "2025-09-01",
+            "plati_do": "2026-07-31",
+            "hodnota": json.dumps(
+                {"1": {"2": {"vydaj_od": "11:00", "vydaj_do": "14:00"}}}
+            ),
+        }
+        result = EdupageScraper._build_jid_map([old_row, new_row], self.TARGET_DATE)
+        self.assertEqual(result["2"], "lunch")
+
+
+class TestBuildPayerMap(unittest.TestCase):
+    TARGET_DATE = date(2026, 6, 17)
+
+    def test_row_without_validity_dates_always_applies(self):
+        typy = [
+            {
+                "setting": "typy_platitelov",
+                "hodnota": {"1": {"nazov": "MŠ Klasik", "porcia": "0"}},
+            }
+        ]
+        result = EdupageScraper._build_payer_map(typy, self.TARGET_DATE)
+        self.assertEqual(result["1"]["portion"], "Škôlka")
+
+    def test_row_outside_validity_window_is_ignored(self):
+        """A payer-mapping row from a previous school year (already expired
+        by plati_do) must not apply to a scrape for a later date - it may
+        assign payer_ids to different diets/portions than the current row."""
+        typy = [
+            {
+                "setting": "typy_platitelov",
+                "plati_od": "2024-09-01",
+                "plati_do": "2025-07-31",
+                "hodnota": {"1": {"nazov": "MŠ Klasik", "porcia": "0"}},
+            }
+        ]
+        result = EdupageScraper._build_payer_map(typy, self.TARGET_DATE)
+        self.assertEqual(result, {})
+
+    def test_only_row_valid_for_target_date_is_applied(self):
+        """Two overlapping payer-mapping rows (e.g. reassigned payer_id
+        across a school-year change) must not both merge in - only the one
+        whose plati_od/plati_do actually covers target_date should apply."""
+        old_row = {
+            "setting": "typy_platitelov",
+            "plati_od": "2024-09-01",
+            "plati_do": "2025-07-31",
+            "hodnota": {"14": {"nazov": "MŠ NoGluten", "porcia": "0"}},
+        }
+        new_row = {
+            "setting": "typy_platitelov",
+            "plati_od": "2025-09-01",
+            "plati_do": "2026-07-31",
+            "hodnota": {"14": {"nazov": "MŠ NoMilk", "porcia": "0"}},
+        }
+        result = EdupageScraper._build_payer_map([old_row, new_row], self.TARGET_DATE)
+        self.assertEqual(result["14"]["diet"], "NO MILK")
 
 
 class TestInjectDate(unittest.TestCase):
@@ -401,6 +495,54 @@ class TestParse(unittest.TestCase):
         self.assertEqual(result.order_data["breakfast"]["Škôlka"]["diets"], {})
         self.assertEqual(result.order_data["lunch"]["Škôlka"]["diets"], {})
         self.assertEqual(result.order_data["olovrant"]["Škôlka"]["diets"], {})
+
+    def test_parse_late_olovrant_window_does_not_double_count_lunch(self):
+        """Regression test for a real production discrepancy: an olovrant
+        window starting at 14:30 has vydaj_od hour=14, same as an hour=14
+        lunch window ending at 14:00 — both used to fall under the old
+        "hour < 15" lunch bucket, silently summing two distinct real meals
+        into one "lunch" count (e.g. 10 lunch + 10 olovrant reported as 20
+        lunch, tripling the day's total with a 3rd breakfast window)."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "1": {"A": {"typ_platitela": {"1": {"o": 10}}}},
+                    "2": {"A": {"typ_platitela": {"1": {"o": 10}}}},
+                    "3": {"A": {"typ_platitela": {"1": {"o": 10}}}},
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {"A": {"nazov": "Klasik", "skratka": "A"}}
+        nastavenia = [
+            {
+                "setting": "vydaj_normal",
+                "hodnota": json.dumps(
+                    {
+                        "1": {
+                            "1": {"vydaj_od": "09:30", "vydaj_do": "10:30"},
+                            "2": {"vydaj_od": "11:00", "vydaj_do": "14:00"},
+                            "3": {"vydaj_od": "14:30", "vydaj_do": "15:30"},
+                        }
+                    }
+                ),
+            }
+        ]
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            nastavenia,
+            self._typy([(1, "MŠ Klasik", 0)]),
+            self.DATE_STR,
+        )
+        result = self._scrape_html(html)
+
+        self.assertEqual(
+            result.order_data["breakfast"]["Škôlka"]["menuCounts"]["A"], 10
+        )
+        self.assertEqual(result.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 10)
+        self.assertEqual(result.order_data["olovrant"]["Škôlka"]["menuCounts"]["A"], 10)
 
     def test_parse_menu_a_as_plain_menu_without_diet(self):
         prehlad = {

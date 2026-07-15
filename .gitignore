@@ -74,12 +74,29 @@ env/*
 *.env.staging
 *.env.prod
 
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+
 # Certificates
 certbot/
+
+.code-review-graph/
 
 # Logs
 *.log
 logs/
+
+# Load test outputs and local secrets
+load-tests/out/
+load-tests/*.env
+load-tests/*.json
 
 #tmp
 tmp/
@@ -90,7 +107,9 @@ venv/
 #sh
 rebuild-dev.sh
 check-all.sh
+scripts/sync-devbox.sh
 
 notes.md
 tasks.md
+feedback.md
 test/

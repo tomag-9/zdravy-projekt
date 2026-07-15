@@ -86,6 +86,15 @@ docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest --cov=
 docker compose --env-file .env.dev -f compose/dev.yml exec backend pytest api/tests/integration/test_order_api.py
 ```
 
+> **`pytest` is the only supported backend test runner.** Bare `pytest` already
+> covers both `tests/` and `api/tests/` (see `testpaths` in `pytest.ini`), so run
+> it without a path argument before pushing — passing a single directory hides
+> failures in the other. The suite runs with `--nomigrations`, so tables are built
+> straight from the models and reference data (portion types, diets…) is **not**
+> seeded; tests that need it create it themselves. `python manage.py test` is
+> **not** supported: it applies the data migrations, and the seeded rows then
+> collide with the fixtures.
+
 **Local testing without Docker:**
 
 ```bash

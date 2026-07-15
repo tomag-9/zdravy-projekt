@@ -7,6 +7,7 @@ import OrderService, { DailyOrder, MealData } from '../client/services/OrderServ
 import { CATEGORIES } from '../client/config/constants';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
+import { Button, Field, Input } from './ui';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -162,51 +163,43 @@ const AdminOrderEditorModal: React.FC<Props> = ({
 
     return (
         <div
-            className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm overflow-y-auto p-4 animate-in fade-in duration-200"
+            className="zpa-scrim"
+            style={{ alignItems: 'flex-start', overflowY: 'auto', padding: 16 }}
             onClick={handleOverlayClick}
         >
             <div
-                className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl my-4 animate-in zoom-in-95 duration-200"
+                className="zpa-modal"
+                style={{ maxWidth: 780, width: '100%', margin: '16px 0', maxHeight: 'none' }}
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="admin-order-editor-title"
             >
                 {/* Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                <div className="zpa-modal-head">
                     <div>
-                        <h2 id="admin-order-editor-title" className="text-xl font-bold text-gray-900">
+                        <h3 id="admin-order-editor-title">
                             {existingOrder ? 'Upraviť objednávku' : 'Nová objednávka'}
-                        </h2>
+                        </h3>
                         {existingOrder && (
-                            <p className="text-sm text-gray-500 mt-0.5">{existingOrder.date}</p>
+                            <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: '2px 0 0' }}>{existingOrder.date}</p>
                         )}
                     </div>
-                    <button
-                        type="button"
-                        aria-label="Zavrieť"
-                        onClick={onClose}
-                        className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <X className="w-5 h-5" />
+                    <button type="button" aria-label="Zavrieť" onClick={onClose} className="zpa-modal-close">
+                        <X />
                     </button>
                 </div>
 
                 {/* Date picker (new orders only) */}
                 {!existingOrder && (
-                    <div className="px-6 pt-5">
-                        <label htmlFor="order-date" className="block text-sm font-medium text-gray-700 mb-1">Dátum objednávky</label>
-                        <input
-                            id="order-date"
-                            type="date"
-                            value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-[var(--green-500)] outline-none"
-                        />
+                    <div style={{ padding: '20px 24px 0' }}>
+                        <Field label="Dátum objednávky">
+                            <Input id="order-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
+                        </Field>
                     </div>
                 )}
 
                 {/* Meal cards */}
-                <div className="px-6 py-5 space-y-4">
+                <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {visibleMealsList.map(({ key, label, icon }) => {
                         const isActive = activeMeals[key];
                         return (
@@ -252,20 +245,11 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                 </div>
 
                 {/* Footer */}
-                <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-                    <button
-                        onClick={onClose}
-                        className="px-5 py-2.5 text-gray-600 hover:bg-gray-100 rounded-xl font-medium transition-colors"
-                    >
-                        Zrušiť
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="px-6 py-2.5 bg-[var(--green-700)] hover:bg-[var(--green-800)] disabled:opacity-60 text-[var(--bg-cream)] font-semibold rounded-xl shadow-md transition-all"
-                    >
-                        {saving ? 'Ukladám...' : 'Uložiť'}
-                    </button>
+                <div className="zpa-modal-foot">
+                    <Button variant="ghost" onClick={onClose}>Zrušiť</Button>
+                    <Button onClick={handleSave} disabled={saving}>
+                        {saving ? 'Ukladám…' : 'Uložiť'}
+                    </Button>
                 </div>
             </div>
 

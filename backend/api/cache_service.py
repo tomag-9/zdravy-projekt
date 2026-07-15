@@ -92,7 +92,7 @@ def set_cached(key: str, value: Any, timeout: Optional[int] = None) -> None:
     except Exception as exc:
         # Log Redis connection/timeout errors but don't crash
         logger.warning(
-            "Cache set failed for key '%s': %s (%s). " "Data will not be cached.",
+            "Cache set failed for key '%s': %s (%s). Data will not be cached.",
             key,
             exc.__class__.__name__,
             exc,
