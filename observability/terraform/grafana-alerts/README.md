@@ -29,6 +29,11 @@ Optional GitHub repository variable:
 
 - `GRAFANA_ENVIRONMENT` (defaults to `production`)
 
+GitHub Actions validates and plans these alerts for PRs into `main`, pushes to
+`main`, and manual `workflow_dispatch` runs. It intentionally does not run for
+every `develop` PR because the configured secrets target the production Grafana
+stack by default.
+
 ## Local commands
 
 ```bash

@@ -2,12 +2,12 @@ name: Grafana Alerts Terraform
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [main]
     paths:
       - ".github/workflows/grafana-alerts.yml"
       - "observability/terraform/grafana-alerts/**"
   push:
-    branches: [develop]
+    branches: [main]
     paths:
       - ".github/workflows/grafana-alerts.yml"
       - "observability/terraform/grafana-alerts/**"
