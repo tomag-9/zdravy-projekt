@@ -51,6 +51,18 @@ PORTION_CODE_MAP = {
     "4": "Dospelý (SŠ)",
 }
 
+PREDSKOLAK_PORTION_NAME = "Predškolák"
+# EduPage nemá pre predškoláka vlastný kód porcie — školy ho hlásia cez názov
+# platiteľskej skupiny (`Klasik - predškoláci`). Rozlíšenie je potrebné, lebo
+# `porcia=1` zlieva predškolákov s naozajstným 1. stupňom, no účtujú sa inak
+# (Edulienka: predškolák 1,25 porcie, prvostupniar 1).
+_PREDSKOLAK_KEY_FRAGMENTS = ("predskolac", "predskolak")
+# Zámerne len pre `porcia=1`: Predškolák má rovnaký gramážový koeficient ako
+# `ZŠ 1.stupeň`, takže gramy ostávajú identické — je to len rozpad tohto kódu.
+# Libellus a Krásňanko hlásia predškolákov ako `porcia=0` (MŠ gramáž), tých by
+# preznačenie posunulo z 200 g na 250 g, preto sa ich toto pravidlo netýka.
+_PREDSKOLAK_PORTION_CODE = "1"
+
 # ------------------------------------------------------------------
 # Known mappings: Edupage abbreviation → our Diet.name
 # ------------------------------------------------------------------
@@ -410,7 +422,9 @@ class EdupageScraper:
                 portion_code = str(payer_data.get("porcia", "")).strip()
                 payer_map[str(payer_id)] = {
                     "name": name,
-                    "portion": PORTION_CODE_MAP.get(portion_code, DEFAULT_PORTION_NAME),
+                    "portion": EdupageScraper.resolve_payer_portion_name(
+                        name, portion_code
+                    ),
                     "diet": EdupageScraper.resolve_payer_diet_name(name) or "",
                 }
         return payer_map
@@ -465,6 +479,20 @@ class EdupageScraper:
                 return diet_name
 
         return nazov.strip() or skratka.strip()
+
+    @staticmethod
+    def resolve_payer_portion_name(nazov: str, portion_code: str) -> str:
+        """Map an Edupage payer group to our PortionType.name.
+
+        Splits `porcia=1` into `Predškolák` / `ZŠ 1.stupeň` by group label — the
+        two share a portion code but not a billing coefficient.
+        """
+        key = _normalise_key(nazov)
+        if portion_code == _PREDSKOLAK_PORTION_CODE and any(
+            fragment in key for fragment in _PREDSKOLAK_KEY_FRAGMENTS
+        ):
+            return PREDSKOLAK_PORTION_NAME
+        return PORTION_CODE_MAP.get(portion_code, DEFAULT_PORTION_NAME)
 
     @staticmethod
     def resolve_payer_diet_name(nazov: str) -> str | None:

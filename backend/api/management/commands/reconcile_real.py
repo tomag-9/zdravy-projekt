@@ -221,6 +221,11 @@ _APP_MEAL_TO_TYPE = {
 
 
 def _app_counts_by_meal_type(row: dict[str, Any]) -> dict[str, Decimal]:
+    """Počty porcií per meal type tak, ako ich vykazuje gramážový dashboard.
+
+    Fakturačný koeficient (Edulienka: predškolák = 1,25) je už zarátaný tam —
+    tu sa preto nesmie aplikovať druhýkrát.
+    """
     buckets: dict[str, Decimal] = {}
     for sub in row.get("sub_rows", []):
         meal_type = _APP_MEAL_TO_TYPE.get(sub.get("meal", ""))

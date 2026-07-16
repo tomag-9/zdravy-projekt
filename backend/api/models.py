@@ -1,9 +1,13 @@
 import datetime
+import logging
+from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 class DailyOrder(models.Model):
@@ -315,6 +319,17 @@ class Prevadzka(models.Model):
     )
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
+    # Oddelené od PortionType.coefficient (ten je len gramáž): prevádzka môže
+    # fakturovať porciu inou váhou, než akú má na tanieri. Edulienka účtuje
+    # predškoláka (EduPage `porcia=1` → `ZŠ 1.stupeň`) ako 1,25 porcie.
+    billing_portion_coefficients = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "{PortionType.name: koeficient} pre počet fakturovaných porcií. "
+            "Chýbajúci typ = 1.0, teda prázdne {} = beží po hlavách ako doteraz."
+        ),
+    )
 
     class Meta:
         ordering = ["celok_id", "sort_order", "nazov"]
@@ -323,6 +338,22 @@ class Prevadzka(models.Model):
                 fields=["celok", "nazov"], name="unique_prevadzka_nazov_per_celok"
             )
         ]
+
+    def billing_coefficient(self, portion_name: str) -> Decimal:
+        """Koeficient fakturovanej porcie pre daný PortionType.name (default 1.0)."""
+        raw = (self.billing_portion_coefficients or {}).get(portion_name)
+        if raw is None:
+            return Decimal("1")
+        try:
+            return Decimal(str(raw))
+        except (InvalidOperation, TypeError):
+            logger.warning(
+                "Prevadzka %s: nečitateľný billing koeficient %r pre %r — beriem 1.0",
+                self.pk,
+                raw,
+                portion_name,
+            )
+            return Decimal("1")
 
     def __str__(self) -> str:
         return self.nazov
