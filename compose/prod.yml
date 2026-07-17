@@ -1,6 +1,6 @@
 services:
   backend:
-    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${PROD_IMAGE_TAG:?Set PROD_IMAGE_TAG to the immutable production tag, for example prod-<git-sha>}
     environment:
       DJANGO_SETTINGS_MODULE: app.settings.prod
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
@@ -67,7 +67,7 @@ services:
           memory: ${BACKEND_MEMORY_RESERVATION:-256M}
 
   celery:
-    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${PROD_IMAGE_TAG:?Set PROD_IMAGE_TAG to the immutable production tag, for example prod-<git-sha>}
     command: >
       sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
@@ -123,7 +123,7 @@ services:
           memory: ${CELERY_MEMORY_RESERVATION:-256M}
 
   celery-beat:
-    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${BACKEND_IMAGE_TAG:-prod}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-backend:${PROD_IMAGE_TAG:?Set PROD_IMAGE_TAG to the immutable production tag, for example prod-<git-sha>}
     command: >
       sh -c "until python -c \"import os, redis; redis.from_url(os.environ['REDIS_URL']).ping()\" 2>/dev/null;
              do echo 'Waiting for Redis...'; sleep 2; done &&
@@ -171,7 +171,7 @@ services:
           memory: ${CELERY_BEAT_MEMORY_RESERVATION:-128M}
 
   frontend:
-    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-frontend:${FRONTEND_IMAGE_TAG:-prod}
+    image: ${REGISTRY_USERNAME:?Set REGISTRY_USERNAME in Dokploy env}/zdravy-projekt-frontend:${PROD_IMAGE_TAG:?Set PROD_IMAGE_TAG to the immutable production tag, for example prod-<git-sha>}
     networks:
       - app
       - dokploy-network
