@@ -9,7 +9,12 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..edupage_scraper import EdupageScraper, nest_order_data_by_category
+from ..edupage_scraper import (
+    EdupageScraper,
+    build_prevadzka_matches,
+    nest_order_data_by_category,
+    prevadzky_without_match,
+)
 from ..models import DailyOrder, EdupageUpload, UserProfile
 
 logger = logging.getLogger(__name__)
@@ -192,16 +197,18 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 continue
 
             by_nazov = {p.nazov: p for p in prevadzky}
-            matches = {
-                p.edupage_match: p.nazov for p in prevadzky if p.edupage_match.strip()
-            }
-            if len(prevadzky) > 1 and len(matches) < len(prevadzky):
+            matches = build_prevadzka_matches(prevadzky)
+            bez_matchu = prevadzky_without_match(prevadzky)
+            if len(prevadzky) > 1 and bez_matchu:
                 results.append(
                     {
                         "operation_id": profile.pk,
                         "name": str(profile),
                         "status": "skipped",
-                        "reason": "multi-prevadzka operation is missing edupage_match",
+                        "reason": (
+                            "multi-prevadzka operation is missing edupage_match: "
+                            + ", ".join(bez_matchu)
+                        ),
                     }
                 )
                 continue

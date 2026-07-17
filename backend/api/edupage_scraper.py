@@ -168,6 +168,26 @@ def _has_diet_signal(key: str) -> bool:
     return any(fragment in key for fragment in _NAZOV_KEYWORD_MAP)
 
 
+def build_prevadzka_matches(prevadzky) -> dict[str, str]:
+    """{prefix: názov prevádzky} pre `match_prevadzka`.
+
+    Jedna prevádzka môže prispieť viacerými prefixami (`edupage_match` oddelený
+    čiarkami), preto sa mapa nedá postaviť ako `{p.edupage_match: p.nazov}` a jej
+    veľkosť sa nesmie porovnávať s počtom prevádzok — na to je
+    `prevadzky_without_match`.
+    """
+    matches: dict[str, str] = {}
+    for prevadzka in prevadzky:
+        for prefix in prevadzka.edupage_prefixes():
+            matches[prefix] = prevadzka.nazov
+    return matches
+
+
+def prevadzky_without_match(prevadzky) -> list[str]:
+    """Prevádzky bez použiteľného `edupage_match` — split by im nemal čo priradiť."""
+    return [p.nazov for p in prevadzky if not p.edupage_prefixes()]
+
+
 def match_prevadzka(
     matches: dict[str, str], payer_name: str, menu_nazov: str
 ) -> str | None:

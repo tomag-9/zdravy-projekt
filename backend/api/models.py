@@ -314,9 +314,21 @@ class Prevadzka(models.Model):
         blank=True,
         help_text=(
             "Prefix payer labelu / menu skratky, podľa ktorého sa EduPage riadky "
-            "priradia tejto prevádzke (napr. 'J1', 'Palisády', 'B - Les')."
+            "priradia tejto prevádzke (napr. 'J1', 'Palisády', 'B - Les'). "
+            "Viac prefixov oddeľ čiarkou — škola nemá spoločný prefix, jej skupiny "
+            "sa volajú '1.st', '2.st' aj 'Dospelý' ('1.st, 2.st, Dospelý')."
         ),
     )
+
+    def edupage_prefixes(self) -> list[str]:
+        """`edupage_match` rozpadnutý na jednotlivé prefixy.
+
+        Jeden prefix nestačí všade: MŠ skupiny zdieľajú prefix `MŠ`, ale školské sa
+        volajú `1.st.`, `2.st.` aj `Dospelý` — bez viacerých prefixov by školské
+        riadky ostali nezaradené a scrape by celý celok zahodil ako neúplný.
+        """
+        return [part.strip() for part in self.edupage_match.split(",") if part.strip()]
+
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)
     # Oddelené od PortionType.coefficient (ten je len gramáž): prevádzka môže
