@@ -27,6 +27,7 @@ _BREAD_WORDS = ("pecivo", "pečivo", "chlieb", "zemla", "žemľa", "rozok", "ro�
 _PIECE_RATIOS = {
     "Jasle": Decimal("1"),
     "Škôlka": Decimal("1"),
+    "Predškolák": Decimal("1.5"),
     "ZŠ 1.stupeň": Decimal("1.5"),
     "ZŠ 2.stupeň": Decimal("1.5"),
     "Dospelý (SŠ)": Decimal("2"),

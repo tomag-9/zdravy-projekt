@@ -1,57 +1,5 @@
 {
-  "__inputs": [
-    {
-      "name": "DS_PROMETHEUS",
-      "label": "Prometheus",
-      "description": "Grafana Cloud Prometheus/Mimir data source that Alloy remote-writes to",
-      "type": "datasource",
-      "pluginId": "prometheus"
-    }
-  ],
-  "__requires": [
-    {
-      "type": "grafana",
-      "id": "grafana",
-      "name": "Grafana",
-      "version": "10.0.0"
-    },
-    {
-      "type": "datasource",
-      "id": "prometheus",
-      "name": "Prometheus",
-      "version": "1.0.0"
-    },
-    {
-      "type": "panel",
-      "id": "stat",
-      "name": "Stat",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "timeseries",
-      "name": "Time series",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "table",
-      "name": "Table",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "gauge",
-      "name": "Gauge",
-      "version": ""
-    },
-    {
-      "type": "panel",
-      "id": "row",
-      "name": "Row",
-      "version": ""
-    }
-  ],
+  "id": null,
   "title": "Zdravy projekt - Backend Overview",
   "uid": "zdravy-backend-overview",
   "description": "Django/Celery backend golden signals, latency percentiles, slowest endpoints, login stats, DB/cache health. Fed by Grafana Alloy scraping /metrics/ and remote-writing to Grafana Cloud.",
@@ -74,7 +22,6 @@
         "name": "DS_PROMETHEUS",
         "type": "datasource",
         "query": "prometheus",
-        "current": {},
         "label": "Prometheus data source"
       },
       {
@@ -84,10 +31,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "query": {
-          "query": "label_values(django_http_requests_total_by_view_transport_method_total, environment)",
-          "refId": "envQuery"
-        },
+        "query": "label_values(django_http_requests_total_by_view_transport_method_total, environment)",
         "refresh": 2,
         "includeAll": true,
         "multi": true,
@@ -96,7 +40,8 @@
           "value": "$__all"
         },
         "label": "Environment",
-        "allValue": ".*"
+        "allValue": ".*",
+        "definition": "label_values(django_http_requests_total_by_view_transport_method_total, environment)"
       }
     ]
   },
@@ -146,7 +91,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -206,7 +151,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -272,7 +217,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -330,7 +275,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -388,7 +333,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -454,7 +399,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -521,7 +466,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -662,7 +607,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -782,7 +727,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -862,7 +807,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -953,7 +898,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -1011,7 +956,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1079,7 +1024,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1155,7 +1100,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1261,7 +1206,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1380,7 +1325,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1485,7 +1430,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -1545,7 +1490,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -1622,7 +1567,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1727,7 +1672,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1805,7 +1750,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -1920,7 +1865,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -2037,7 +1982,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -2137,7 +2082,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               }
             ]
@@ -2236,7 +2181,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -2300,7 +2245,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "red"
               },
               {
@@ -2381,7 +2326,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -2461,7 +2406,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "green"
               },
               {
@@ -2539,7 +2484,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "red"
               },
               {
@@ -2601,7 +2546,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "value": 0,
+                "value": null,
                 "color": "red"
               },
               {

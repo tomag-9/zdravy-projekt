@@ -14,7 +14,13 @@ from api.edupage import (
 )
 from api.edupage.overrides.krasnanko import krasnanko_letter_hook
 from api.edupage.overrides.skolickams import skolickams_payer_hook
-from api.edupage_scraper import EdupageScraper, ScrapeResult, match_prevadzka
+from api.edupage_scraper import (
+    EdupageScraper,
+    ScrapeResult,
+    build_prevadzka_matches,
+    match_prevadzka,
+    prevadzky_without_match,
+)
 
 TARGET = date(2026, 6, 17)
 
@@ -357,6 +363,78 @@ class TestMatchPrevadzka(unittest.TestCase):
         self.assertEqual(
             match_prevadzka(matches, "J1 2.st klasik", ""), "Jolly 1 druhy stupen"
         )
+
+
+class _FakePrevadzka:
+    """Len to, čo `build_prevadzka_matches` potrebuje — bez DB."""
+
+    def __init__(self, nazov, edupage_match):
+        self.nazov = nazov
+        self.edupage_match = edupage_match
+
+    def edupage_prefixes(self):
+        return [p.strip() for p in self.edupage_match.split(",") if p.strip()]
+
+
+class TestBuildPrevadzkaMatches(unittest.TestCase):
+    """Dobrodružstvo: škola nemá spoločný prefix → `edupage_match` s čiarkami."""
+
+    DOBRODRUZSTVO = [
+        _FakePrevadzka("MŠ Dobrodružstvo", "MŠ"),
+        _FakePrevadzka("ZŠ Dobrodružstvo", "1.st, 2.st, Dospelý"),
+    ]
+
+    def test_each_prefix_maps_to_its_prevadzka(self):
+        self.assertEqual(
+            build_prevadzka_matches(self.DOBRODRUZSTVO),
+            {
+                "MŠ": "MŠ Dobrodružstvo",
+                "1.st": "ZŠ Dobrodružstvo",
+                "2.st": "ZŠ Dobrodružstvo",
+                "Dospelý": "ZŠ Dobrodružstvo",
+            },
+        )
+
+    def test_live_payer_groups_all_land(self):
+        """Všetkých 14 skupín z živého EduPage (17.7.2026) musí sadnúť.
+
+        Nezaradený riadok = neúplný scrape → celý celok sa zahodí.
+        """
+        matches = build_prevadzka_matches(self.DOBRODRUZSTVO)
+        skolka = ["MŠ klasik", "MŠ Vege", "MŠ His", "MŠ No paradaj."]
+        skola = [
+            "1.st.",
+            "1.st. ŠD",
+            "2.st.",
+            "Dospelý",
+            "2. st. ŠD",
+            "2. st. bezlep",
+            "1.st. ŠD vege",
+            "1. st. ŠD bezlak",
+            "2.st ŠD bezlak",
+            "1.st His ŠD",
+        ]
+        for nazov in skolka:
+            self.assertEqual(
+                match_prevadzka(matches, nazov, ""), "MŠ Dobrodružstvo", nazov
+            )
+        for nazov in skola:
+            self.assertEqual(
+                match_prevadzka(matches, nazov, ""), "ZŠ Dobrodružstvo", nazov
+            )
+
+    def test_single_prefix_still_works(self):
+        self.assertEqual(
+            build_prevadzka_matches([_FakePrevadzka("Jolly 1", "J1")]),
+            {"J1": "Jolly 1"},
+        )
+
+    def test_prevadzka_without_match_is_reported(self):
+        prevadzky = [_FakePrevadzka("Lúka", "Lúka"), _FakePrevadzka("Hosť", "  ")]
+        self.assertEqual(prevadzky_without_match(prevadzky), ["Hosť"])
+
+    def test_all_matched_reports_nothing(self):
+        self.assertEqual(prevadzky_without_match(self.DOBRODRUZSTVO), [])
 
 
 class TestParseSplit(unittest.TestCase):

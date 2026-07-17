@@ -26,6 +26,81 @@ def _normalize_portion_name(value: object) -> str:
     return " ".join(ascii_value.replace(".", " ").replace("-", " ").split())
 
 
+# Do ktorého riadku prevádzka vykazuje porciu, ktorú účtuje koeficientom.
+# Edulienka nemá pre predškolákov vlastný riadok — píše ich do MŠ riadku ako
+# 1,25 porcie (`Klasik 8.25` = 7 MŠ + 1 predškolák). Uplatní sa len tam, kde je
+# na prevádzke nastavený `billing_portion_coefficients` pre daný typ porcie.
+_BILLING_MERGE_TARGET = {"Predškolák": "Škôlka"}
+
+
+def _tidy_count(value: int | Decimal) -> int | Decimal:
+    """Celé číslo vráti ako `int`, zlomok ako Decimal bez chvostových núl.
+
+    `Decimal.normalize()` sama nestačí — z `Decimal("10.00")` spraví `1E+1`,
+    čo je v exporte aj v JSON-e nezmysel. Preto sa celé hodnoty preklápajú na
+    `int`, aby `4 × 1,25` bolo `5` a nie `5.0`.
+    """
+    if isinstance(value, int):
+        return value
+    if value == value.to_integral_value():
+        return int(value)
+    return value.normalize()
+
+
+def _billed_count(count: int, billing_coeff: Decimal) -> int | Decimal:
+    """Počet porcií do výkazu. Bez koeficientu ostáva `int` — nechceme, aby sa
+    všetkým prevádzkam zmenil typ počtu z celého čísla na Decimal."""
+    if billing_coeff == 1:
+        return count
+    return _tidy_count(Decimal(count) * billing_coeff)
+
+
+def _merge_billed_sub_rows(sub_rows: list[dict]) -> list[dict]:
+    """Zlúči riadky, ktoré po premenovaní portion_name spadli na rovnaký label.
+
+    Gramy sú per riadok už správne (predškolák 250 g), takže sa len sčítajú —
+    súčet ostáva identický, mení sa iba to, do ktorého riadku je rozpísaný.
+    """
+    merged: dict[tuple, dict] = {}
+    order: list[tuple] = []
+    for sub_row in sub_rows:
+        key = (
+            sub_row["type"],
+            sub_row["meal"],
+            sub_row.get("variant", ""),
+            sub_row.get("diet_name", ""),
+            sub_row["label"],
+        )
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = dict(sub_row)
+            order.append(key)
+            continue
+        existing["count"] = _tidy_count(existing["count"] + sub_row["count"])
+        existing["col_grams"] = _sum_col_grams(
+            existing["col_grams"], sub_row["col_grams"]
+        )
+    return [merged[key] for key in order]
+
+
+def _sum_col_grams(left: list, right: list) -> list:
+    """Sčíta dve serializované gramážové mriežky (list skupín × komponentov)."""
+    result = []
+    for left_group, right_group in zip(left, right):
+        if not left_group:
+            result.append(right_group)
+        elif not right_group:
+            result.append(left_group)
+        else:
+            result.append(
+                [
+                    str((Decimal(a) + Decimal(b)).quantize(Decimal("0.01")))
+                    for a, b in zip(left_group, right_group)
+                ]
+            )
+    return result
+
+
 class MealPlanService:
     """Service for meal plan creation and gramage calculations."""
 
@@ -559,11 +634,22 @@ class MealPlanService:
 
         for order in orders:
             client_label = order_row_label(order)
+            prevadzka = getattr(order, "prevadzka", None)
+            billing_coeffs = (
+                {
+                    name: prevadzka.billing_coefficient(name)
+                    for name in (prevadzka.billing_portion_coefficients or {})
+                }
+                if prevadzka is not None
+                else {}
+            )
             sub_rows: list[dict] = []
-            client_total_count = 0
+            # Decimal len tam, kde prevádzka účtuje zlomkovú porciu
+            # (Edulienka: predškolák 1,25); inde ostáva int.
+            client_total_count: int | Decimal = 0
             client_standard_totals = _empty_group_totals()
             diet_summary_totals: dict[str, list[list[Decimal]]] = {}
-            diet_summary_counts: dict[str, int] = {}
+            diet_summary_counts: dict[str, int | Decimal] = {}
             order_data = order.data if isinstance(order.data, dict) else {}
 
             for order_meal, meal_data in order_data.items():
@@ -594,9 +680,19 @@ class MealPlanService:
                     for category in OrderData({order_meal: meal_data}).iter_categories(
                         order_meal
                     ):
-                        portion_name = category.name
-                        coeff = pt_by_name.get(
-                            _canonical_portion_name(portion_name), Decimal("1.0000")
+                        portion_name = _canonical_portion_name(category.name)
+                        coeff = pt_by_name.get(portion_name, Decimal("1.0000"))
+                        # Fakturačný koeficient je nezávislý od gramážového:
+                        # gramy sa vždy rátajú z počtu hláv (predškolák = 250 g),
+                        # koeficient ide len do vykázaného počtu porcií.
+                        billing_coeff = billing_coeffs.get(portion_name, Decimal("1"))
+                        # Prevádzka s koeficientom vykazuje porciu v cudzom riadku
+                        # (Edulienka píše predškoláka do MŠ riadku ako 1,25), preto
+                        # sa riadok premenuje a nižšie zlúči s cieľovým.
+                        display_portion_name = (
+                            _BILLING_MERGE_TARGET.get(portion_name, portion_name)
+                            if billing_coeff != 1
+                            else portion_name
                         )
                         menu_counts = category.menu_counts
                         diets = category.diets
@@ -655,33 +751,35 @@ class MealPlanService:
                         for variant, count in adjusted_variant_counts:
                             if count <= 0:
                                 continue
+                            # Gramy z počtu hláv, nie z fakturovaného počtu.
                             grams = _col_grams(
                                 meal, variant, coeff, count, portion_name
                             )
                             _merge_group_totals(totals, grams)
                             _merge_group_totals(client_standard_totals, grams)
+                            billed_count = _billed_count(count, billing_coeff)
 
                             if is_variant_meal and variant:
                                 label = (
-                                    f"{portion_name} - {MEAL_LABELS[meal]} "
+                                    f"{display_portion_name} - {MEAL_LABELS[meal]} "
                                     f"Menu {variant}"
                                 )
                             else:
-                                label = f"{portion_name} - {MEAL_LABELS[meal]}"
+                                label = f"{display_portion_name} - {MEAL_LABELS[meal]}"
 
                             sub_rows.append(
                                 {
                                     "type": "standard",
                                     "meal": meal,
                                     "variant": variant,
-                                    "portion_name": portion_name,
+                                    "portion_name": display_portion_name,
                                     "label": label,
-                                    "count": count,
+                                    "count": billed_count,
                                     "col_grams": grams,
                                 }
                             )
                             if count_towards_summary:
-                                client_total_count += count
+                                client_total_count += billed_count
 
                         for diet_name, diet_count_raw in sorted(diets.items()):
                             diet_count = _safe_nonneg_int(diet_count_raw)
@@ -690,14 +788,15 @@ class MealPlanService:
                             diet_grams = _col_grams_diet(
                                 meal, diet_name, coeff, diet_count, portion_name
                             )
+                            billed_diet_count = _billed_count(diet_count, billing_coeff)
                             sub_rows.append(
                                 {
                                     "type": "diet",
                                     "meal": meal,
-                                    "portion_name": portion_name,
+                                    "portion_name": display_portion_name,
                                     "diet_name": diet_name,
-                                    "label": f"{portion_name} - {diet_name}",
-                                    "count": diet_count,
+                                    "label": f"{display_portion_name} - {diet_name}",
+                                    "count": billed_diet_count,
                                     "col_grams": diet_grams,
                                 }
                             )
@@ -708,7 +807,7 @@ class MealPlanService:
                                 diet_summary_totals[diet_name], diet_grams
                             )
                             if count_towards_summary:
-                                diet_summary_counts[diet_name] += diet_count
+                                diet_summary_counts[diet_name] += billed_diet_count
 
             for correction in order_data.get("__gram_corrections__", []):
                 if not isinstance(correction, dict):
@@ -728,6 +827,9 @@ class MealPlanService:
                     }
                 )
 
+            if billing_coeffs:
+                sub_rows = _merge_billed_sub_rows(sub_rows)
+
             if sub_rows:
                 settings = getattr(order.user, "settings", None)
                 admin_order_note = str(
@@ -736,7 +838,7 @@ class MealPlanService:
                 diet_summary_rows = [
                     {
                         "name": name,
-                        "count": diet_summary_counts[name],
+                        "count": _tidy_count(diet_summary_counts[name]),
                         "col_grams": _serialize_group_totals(diet_summary_totals[name]),
                     }
                     for name in sorted(diet_summary_counts)
@@ -745,9 +847,10 @@ class MealPlanService:
                     {
                         "client": client_label,
                         "client_id": order.user_id,
-                        "total_count": client_total_count
-                        + sum(diet_summary_counts.values()),
-                        "standard_total_count": client_total_count,
+                        "total_count": _tidy_count(
+                            client_total_count + sum(diet_summary_counts.values())
+                        ),
+                        "standard_total_count": _tidy_count(client_total_count),
                         "standard_col_grams": _serialize_group_totals(
                             client_standard_totals
                         ),

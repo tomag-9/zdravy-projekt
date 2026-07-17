@@ -32,8 +32,8 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Jolly 3", "J3"),
     ],
     # Názvy sú krátke, lebo v reportoch sa prefixujú celkom:
-    # "MŠ Edulienka – Palisády".
-    "MŠ Edulienka": [
+    # "Edulienka – Palisády".
+    "Edulienka": [
         ("Palisády", "Palisády"),
         ("Stupava", "Stupava"),
     ],
@@ -44,6 +44,15 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
     "Škôlka MS": [
         ("Lúka", "Lúka"),
         ("Les", "Les"),
+    ],
+    # Hárok1 vedie školu ako pod-riadok škôlky (`DOBRODRUŽSTVO Škola` za blokom
+    # `dobrodružstvo`), ale sú to dve prevádzky jedného celku. EduPage ich rozlišuje
+    # spoľahlivo: škôlkové skupiny majú prefix `MŠ`, školské sa volajú `1.st`, `2.st`
+    # a `Dospelý` — spoločný prefix nemajú, preto sú vymenované. Overené proti živým
+    # dátam (17.7.2026): všetkých 14 skupín sadne, 0 nezaradených.
+    "dobrodružstvo": [
+        ("MŠ Dobrodružstvo", "MŠ"),
+        ("ZŠ Dobrodružstvo", "1.st, 2.st, Dospelý"),
     ],
 }
 
@@ -64,6 +73,19 @@ class Command(BaseCommand):
                 self.stderr.write(f"✗ celok neexistuje: {celok_nazov}")
                 continue
 
+            # Fakturačný koeficient visí na prevádzke, ale platí pre celý celok
+            # (Edulienka účtuje predškoláka 1,25 všade). Sub-prevádzky ho musia
+            # zdediť po tej, ktorú nahrádzajú — inak ho split ticho zhodí na {}
+            # a predškolák sa zrazu účtuje ako 1.
+            zdedeny_koeficient: dict = next(
+                (
+                    p.billing_portion_coefficients
+                    for p in Prevadzka.objects.filter(celok=celok)
+                    if p.billing_portion_coefficients
+                ),
+                {},
+            )
+
             for sort_order, (nazov, match) in enumerate(prevadzky, start=1):
                 obj, created = Prevadzka.objects.update_or_create(
                     celok=celok,
@@ -72,6 +94,7 @@ class Command(BaseCommand):
                         "edupage_match": match,
                         "sort_order": sort_order,
                         "is_active": True,
+                        "billing_portion_coefficients": zdedeny_koeficient,
                     },
                 )
                 verb = "vytvorená" if created else "aktualizovaná"
