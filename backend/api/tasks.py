@@ -402,7 +402,12 @@ def scrape_edupage_orders_task(
         from django.db import transaction
         from django.utils import timezone
 
-        from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
+        from api.edupage_scraper import (
+            EdupageScraper,
+            build_prevadzka_matches,
+            nest_order_data_by_category,
+            prevadzky_without_match,
+        )
         from api.models import DailyOrder, GlobalSettings, UserProfile
         from api.services import _next_workday
 
@@ -486,16 +491,15 @@ def scrape_edupage_orders_task(
             # Viac prevádzok → EduPage riadky rozdelíme podľa `edupage_match`.
             # Jedna prevádzka → split nerobíme a všetko ide do nej.
             by_nazov = {p.nazov: p for p in prevadzky}
-            matches = {
-                p.edupage_match: p.nazov for p in prevadzky if p.edupage_match.strip()
-            }
-            if len(prevadzky) > 1 and len(matches) < len(prevadzky):
+            matches = build_prevadzka_matches(prevadzky)
+            bez_matchu = prevadzky_without_match(prevadzky)
+            if len(prevadzky) > 1 and bez_matchu:
                 logger.error(
-                    "scrape_edupage_orders_task: %s má %d prevádzok, ale len %d má "
+                    "scrape_edupage_orders_task: %s má %d prevádzok, ale %s nemá "
                     "edupage_match — preskakujem, aby sa objem nezapísal nesprávne",
                     profile.company_name,
                     len(prevadzky),
-                    len(matches),
+                    ", ".join(bez_matchu),
                 )
                 skipped += 1
                 continue

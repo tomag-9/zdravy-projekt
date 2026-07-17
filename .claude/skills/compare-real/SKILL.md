@@ -20,13 +20,26 @@ day, and report whether they match and exactly where they differ.
 ## The two data sources
 
 - **`test/data/real/`** — reality **per day**. Files named `D.M.YYYY_tabuľka_NOVÁ4.xlsx`
-  (non-zero-padded day/month, e.g. `9.7.2026_...`). Two sheets:
-  - **`vyúčtovanie`** — billing sheet. Column `Zariadenie` (facility) + `Druh pokrmu`
-    (meal kind) + **`Počet pokrmov` (col 4) = the ground truth for portion COUNTS.**
-    This is the count authority — never use Hárok1 numbers as counts.
-  - **`Hárok1`** — the per-portion-type **gramage** table. Row 1 = menu (soup, main,
-    snack…); rows below give grams per portion type (KLASIK / JASLE / 1.STUPEŇ /
-    2.STUPEŇ / DOSPELÁ) and per diet. Column A = label, columns B+ = component grams.
+  (non-zero-padded day/month, e.g. `9.7.2026_...`). Two sheets, but only one is data:
+  - **`Hárok1`** — **the authority for BOTH counts and grams.** The only sheet the
+    client actually sees and maintains. Layout:
+    - Row 1 = the day's dishes (soup, main, …, pečivo, nátierka). Order changes daily.
+    - Rows 2–6 = base gramage per portion type (KLASIK 200 / JASLE 150 / 1.STUPEŇ 250 /
+      2.STUPEŇ 300 / DOSPELÁ 400).
+    - Then one block per facility: a **gram row** (col A = label, cols B+ = grams), an
+      optional address line, then a **count line** (col A = headcount), followed by
+      diet rows in the same gram-row / count-line pairs.
+    - A row serves whichever meals its non-zero columns belong to — one count can be a
+      lunch *and* an olovrant. Facilities with differing counts get an own `OLOVRANT`
+      sub-block, whose row is empty in the lunch columns.
+    - Self-checking: `count × base gramage == row grams` holds for every block. If it
+      doesn't, the workbook is wrong — say so rather than reporting an app diff.
+  - **`vyúčtovanie`** — **NOT a data source. Never read counts from it.** It is
+    `veryHidden` (the client cannot even see it), every count cell is just a
+    `=Hárok1!A856` reference, and some have rotted to `#REF!` — silently dropping real
+    portions. It also copies olovrant from obed and omits olovrant for facilities that
+    do serve it. Every phantom diff we chased (Krásnanko "+1", Filipa Nériho "no
+    olovrant", Rozmanitá) came from trusting it.
 - **`test/data/jedalnicky/`** — the **current-week menus** as PDFs, one per diet:
   `Week <NN>_<YYYY>_<Diet>.pdf` (Klasik, Vege, NoMilk, NoGluten, NoNoNo, Učiteľ,
   Histamin, MenuB, Benjamin, Monte…). Each PDF lists, per weekday, every meal with
@@ -35,7 +48,7 @@ day, and report whether they match and exactly where they differ.
 
 ## Accepted file formats
 
-Reconciliation reads only the **`.xlsx`** form (the `vyúčtovanie` + `Hárok1` sheets).
+Reconciliation reads only the **`.xlsx`** form (the `Hárok1` sheet).
 All daily workbooks share one identical layout — there is no format variant to special-case.
 Apple **`.numbers`** exports can't be parsed reliably (current files are written by a Numbers
 version no Python decoder handles, and LibreOffice won't import them) and the `_rano.pdf`
@@ -72,13 +85,17 @@ POSTGRES_DB=zdravy_projekt_dev POSTGRES_HOST=localhost \
 The command auto-resolves the workbook by date, then emits a JSON report on **stdout**
 and a one-line summary on **stderr**. It runs two tiers:
 
-1. **Tier 1 — counts, PER MEAL TYPE.** App per-facility counts vs the `vyúčtovanie`
-   `Počet pokrmov`, compared **like-for-like by meal type** (`lunch` ↔ OBED,
-   `snack` ↔ OLOVRANT, `breakfast` ↔ RAŇAJKY/DESIATA). This matters: a facility that
-   only bills OBED must **not** be faulted against the app's lunch+olovrant grand total.
-   **OBED (lunch) is the reliable signal** — it ties out across facilities. OLOVRANT
-   often reads `real=0` because many providers bill olovrant separately ("olovrant
-   samostatne"), not in this sheet — call that out as a billing-scope note, not an app bug.
+1. **Tier 1 — counts, PER MEAL TYPE.** App per-facility counts vs the `Hárok1` count
+   lines, compared **like-for-like by meal type** (`lunch`, `snack`, `breakfast`). This
+   matters: a facility that only orders obed must **not** be faulted against the app's
+   lunch+olovrant grand total. Which Hárok1 column is lunch and which is olovrant is
+   derived from the app's own `col_groups` (matched by dish name), because the dishes
+   change daily.
+   A `snack` bucket that is genuinely absent means the facility did not order olovrant
+   that day — **not** "billed separately". `"olovrant samostatne"` is a literal text note
+   in Hárok1 (e.g. Jolly 3), and facilities that do serve olovrant carry it either in the
+   pečivo/nátierka columns of their main row (Filipa Nériho) or in an own `OLOVRANT`
+   sub-block (Krásnanko). Both are read.
 2. **Tier 2 — gramage.** App per-component grams vs the `Hárok1` grams, per facility.
    Only mismatches (and `MISSING_REAL_ROW`) are listed. Columns are matched **by dish
    name** (Hárok1 header row 1) — the workbook's column order differs from the app and

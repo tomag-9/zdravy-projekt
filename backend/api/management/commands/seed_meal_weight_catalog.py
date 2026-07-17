@@ -29,6 +29,7 @@ _VAJCE_EXCEPTION = {
     "counts_by_portion_type": {
         "Jasle": "0.5",
         "Škôlka": "0.5",
+        "Predškolák": "0.5",
         "ZŠ 1.stupeň": "0.5",
         "ZŠ 2.stupeň": "1",
         "Dospelý (SŠ)": "1",
@@ -41,6 +42,7 @@ _GULICKA_EXCEPTION = {
     "counts_by_portion_type": {
         "Jasle": "1",
         "Škôlka": "1",
+        "Predškolák": "2",
         "ZŠ 1.stupeň": "2",
         "ZŠ 2.stupeň": "2",
         "Dospelý (SŠ)": "3",

@@ -99,6 +99,9 @@ def test_import_real_gram_distributions_keeps_piece_exception_idempotent(tmp_pat
         "counts_by_portion_type": {
             "Jasle": "1",
             "Škôlka": "1",
+            # Predškolák dedí kusový pomer po `ZŠ 1.stupeň` — je s ním gramážovo
+            # zhodný (250 g), oddelený je len kvôli fakturácii.
+            "Predškolák": "1.5",
             "ZŠ 1.stupeň": "1.5",
             "ZŠ 2.stupeň": "1.5",
             "Dospelý (SŠ)": "2",
