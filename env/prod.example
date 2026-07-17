@@ -37,8 +37,9 @@ SENTRY_TRACES_SAMPLE_RATE=0.1
 
 # Images
 REGISTRY_USERNAME=dockerhub-username
-BACKEND_IMAGE_TAG=prod
-FRONTEND_IMAGE_TAG=prod
+# Use the immutable tag printed by the production GitHub Actions workflow.
+# Backend, celery, celery-beat, and frontend must run from the same source commit.
+PROD_IMAGE_TAG=prod-<full-git-sha>
 
 # Runtime limits / Swarm rolling update controls
 BACKEND_REPLICAS=2
