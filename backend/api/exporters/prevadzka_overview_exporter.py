@@ -21,6 +21,11 @@ def _status_label(row: dict[str, Any]) -> str:
         return "NEDODANÉ"
     if row["has_warning"]:
         return "SKONTROLUJ"
+    status = row.get("delivery_status")
+    if status == "manual_zero":
+        return "NULA"
+    if status == "auto":
+        return "AUTO KÓPIA"
     return "OK"
 
 

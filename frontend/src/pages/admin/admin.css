@@ -30,6 +30,7 @@
 .zpa-statusdot.ok { background: rgba(114,136,75,0.16); color: var(--green-700); }
 .zpa-statusdot.warn { background: rgba(255,201,92,0.28); color: var(--mustard-700); }
 .zpa-statusdot.err { background: rgba(201,46,82,0.10); color: var(--coral-600); }
+.zpa-statusdot.zero { background: rgba(96,113,137,0.14); color: var(--ink-3); font-family: var(--font-display); font-size: 13px; font-weight: 800; }
 .zpa-ovrow { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line-soft); transition: background 160ms; }
 .zpa-ovrow:first-child { border-top: 0; }
 .zpa-ovrow:hover { background: var(--bg-cream-soft); }
@@ -602,17 +603,34 @@
 /* ========================================================== *
  * Gramáž data table (meal-coded)
  * ========================================================== */
-.zpa-gram { width: max-content; min-width: 100%; border-collapse: collapse; font-size: 13px; }
+.zpa-gram-wrap { max-height: calc(100vh - 168px); overflow: auto; }
+.zpa-gram {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+}
 .zpa-gram th,
 .zpa-gram td { min-width: 76px; }
 .zpa-gram th:first-child,
 .zpa-gram td:first-child { min-width: 216px; max-width: 300px; }
-.zpa-gram th, .zpa-gram td { padding: 7px 9px; }
-.zpa-gram thead .grp { color: #fff; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 12.5px; border-left: 1px solid rgba(255,255,255,0.25); }
+.zpa-gram th, .zpa-gram td { padding: 7px 9px; box-sizing: border-box; }
+.zpa-gram thead {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: var(--green-900);
+    box-shadow: 0 1px 0 rgba(23,53,5,0.16);
+}
+.zpa-gram thead th { background-clip: padding-box; }
+.zpa-gram .meal-sep { box-shadow: inset 1px 0 rgba(23,53,5,0.22); }
+.zpa-gram thead .meal-sep { box-shadow: inset 1px 0 rgba(255,255,255,0.32); }
+.zpa-gram thead .grp { color: #fff; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 12.5px; }
 .zpa-gram thead .grp small { display: block; max-width: 128px; margin: 0 auto; font-weight: 400; font-size: 10px; opacity: 0.8; text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zpa-gram thead .comp { color: #fff; text-align: center; font-size: 11px; font-weight: 500; }
 .zpa-gram thead .comp small { display: block; font-size: 9.5px; opacity: 0.7; white-space: nowrap; }
-.zpa-gram .corner { background: var(--green-900); color: var(--bg-cream); text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 12px; position: sticky; left: 0; z-index: 2; }
+.zpa-gram .corner { background: var(--green-900); color: var(--bg-cream); text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 12px; position: sticky; left: 0; z-index: 7; }
 /* meal hues */
 /* meal hues — seven visually distinct families (raňajky ≠ olovrant;
  * Menu A/B/C/V each its own colour). -1 header, -2 sub-header, -cell tint. */

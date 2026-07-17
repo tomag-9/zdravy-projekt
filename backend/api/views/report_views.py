@@ -41,8 +41,17 @@ def build_prevadzka_overview(target_date):
         order = orders_by_prevadzka.get(prevadzka.id)
         data = {}
         flags = {"attention": [], "config_notes": []}
+        counts = meal_counts(data)
+        delivery_status = "missing"
         if order is not None:
             data = order.data if isinstance(order.data, dict) else {}
+            counts = meal_counts(data)
+            if order.is_auto:
+                delivery_status = "auto"
+            elif counts["total"] == 0:
+                delivery_status = "manual_zero"
+            else:
+                delivery_status = "manual"
             if isinstance(order.scrape_flags, dict):
                 flags = {
                     "attention": order.scrape_flags.get("attention", []) or [],
@@ -54,7 +63,8 @@ def build_prevadzka_overview(target_date):
             "nazov": prevadzka.nazov,
             "celok": prevadzka.celok.nazov,
             "delivered": order is not None,
-            "counts": meal_counts(data),
+            "delivery_status": delivery_status,
+            "counts": counts,
             "flags": flags,
             "has_warning": bool(flags["attention"] or flags["config_notes"]),
         }

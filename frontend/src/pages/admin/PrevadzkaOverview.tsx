@@ -21,6 +21,7 @@ interface OverviewRow {
   nazov: string;
   celok: string;
   delivered: boolean;
+  delivery_status?: "missing" | "manual_zero" | "auto" | "manual";
   counts: OverviewCounts;
   flags: { attention: string[]; config_notes: string[] };
   has_warning: boolean;
@@ -43,10 +44,34 @@ const toDateString = (d: Date): string => {
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
-const StatusDot: React.FC<{ row: OverviewRow }> = ({ row }) => {
+const StatusDot: React.FC<{ row: OverviewRow; source: "edupage" | "app" }> = ({ row, source }) => {
+  if (source === "app") {
+    if (row.delivery_status === "manual_zero") {
+      return (
+        <span className="zpa-statusdot zero" title="Manuálne odoslaná nulová objednávka">
+          0
+        </span>
+      );
+    }
+    if (row.delivery_status === "auto") {
+      return (
+        <span className="zpa-statusdot warn" title="Automaticky skopírované z predchádzajúceho dňa">
+          <AlertTriangle />
+        </span>
+      );
+    }
+    if (row.delivery_status === "manual") {
+      return (
+        <span className="zpa-statusdot ok" title="Manuálne zadané">
+          <Check />
+        </span>
+      );
+    }
+  }
+
   if (!row.delivered) {
     return (
-      <span className="zpa-statusdot err" title="Prevádzka zatiaľ nedodala podklady">
+      <span className="zpa-statusdot err" title="Zatiaľ nedošlo nič">
         <X />
       </span>
     );
@@ -73,11 +98,11 @@ const MealCount: React.FC<{ label: string; value: number; strong?: boolean }> = 
   </div>
 );
 
-const OverviewRowItem: React.FC<{ row: OverviewRow }> = ({ row }) => {
+const OverviewRowItem: React.FC<{ row: OverviewRow; source: "edupage" | "app" }> = ({ row, source }) => {
   const showCelok = row.celok && row.celok !== row.nazov;
   return (
     <div className="zpa-ovrow">
-      <StatusDot row={row} />
+      <StatusDot row={row} source={source} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div className="nm">{row.nazov}</div>
         {showCelok && <div className="sub">{row.celok}</div>}
@@ -99,9 +124,10 @@ const CategoryCard: React.FC<{
   title: string;
   icon: React.ReactNode;
   rows: OverviewRow[];
-}> = ({ title, icon, rows }) => {
+  source: "edupage" | "app";
+}> = ({ title, icon, rows, source }) => {
   const delivered = rows.filter((r) => r.delivered).length;
-  const warnings = rows.filter((r) => r.delivered && r.has_warning).length;
+  const warnings = rows.filter((r) => r.delivered && (r.has_warning || r.delivery_status === "auto")).length;
   return (
     <Card style={{ overflow: "hidden" }}>
       <div className="zpa-card-head" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-soft)" }}>
@@ -119,7 +145,7 @@ const CategoryCard: React.FC<{
       ) : (
         <div>
           {rows.map((row) => (
-            <OverviewRowItem key={row.prevadzka_id} row={row} />
+            <OverviewRowItem key={row.prevadzka_id} row={row} source={source} />
           ))}
         </div>
       )}
@@ -212,8 +238,8 @@ const PrevadzkaOverview: React.FC = () => {
         <div className="zpa-empty">Načítavam…</div>
       ) : (
         <div className="zpa-grid-2">
-          <CategoryCard title="EduPage prevádzky" icon={<Upload />} rows={data?.edupage ?? []} />
-          <CategoryCard title="App prevádzky" icon={<Smartphone />} rows={data?.app ?? []} />
+          <CategoryCard title="EduPage prevádzky" icon={<Upload />} rows={data?.edupage ?? []} source="edupage" />
+          <CategoryCard title="App prevádzky" icon={<Smartphone />} rows={data?.app ?? []} source="app" />
         </div>
       )}
     </>

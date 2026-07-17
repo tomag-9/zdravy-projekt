@@ -441,7 +441,11 @@ class MealPlanService:
                 t = item.template
                 if item.menu_variant:
                     key = f"{item.category}_{item.menu_variant}"
-                    label = f"{MEAL_LABELS[item.category]} Menu {item.menu_variant}"
+                    label = (
+                        f"Menu {item.menu_variant}"
+                        if item.category == MealCategory.MAIN_COURSE
+                        else f"{MEAL_LABELS[item.category]} Menu {item.menu_variant}"
+                    )
                 else:
                     key, label = (
                         item.category,

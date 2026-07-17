@@ -152,6 +152,12 @@ function mealHue(meal: string, variant: string): string {
   return "snack";
 }
 
+function colGroupDisplayLabel(cg: Pick<ColGroup, "label" | "meal" | "variant" | "diet_name">): string {
+  if (cg.meal !== "main_course" || !cg.variant) return cg.label;
+  const base = `Menu ${cg.variant.toUpperCase()}`;
+  return cg.diet_name ? `${base} - ${cg.diet_name}` : base;
+}
+
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
 function toDateString(d: Date): string {
@@ -489,7 +495,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       );
     }
     return col_groups.map((cg, gi) => ({
-      label: cg.label,
+      label: colGroupDisplayLabel(cg),
       count: countMap.get(`${cg.meal}_${cg.variant}_${cg.diet_name ?? ""}`) ?? 0,
       // gram values only for this col_group's index; empty for all others
       col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
@@ -498,7 +504,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
   const buildPortionSummary = useCallback((summaryRows: ClientRow[]): PortionSummaryItem[] => {
     const summaries = col_groups.map<PortionSummaryItem>((cg) => ({
-      label: cg.label,
+      label: colGroupDisplayLabel(cg),
       count: 0,
       col_grams: emptySummaryGrams(),
     }));
@@ -545,10 +551,11 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         const hue = colGroupHues[gi];
         return cg.components.map((component, ci) => {
           const formatted = formatValue(grams[ci], component);
+          const separatorClass = gi > 0 && ci === 0 ? " meal-sep" : "";
           return formatted ? (
-            <td key={`${gi}-${ci}`} className={`cell-num mh-${hue}-cell`}>{formatted}</td>
+            <td key={`${gi}-${ci}`} className={`cell-num mh-${hue}-cell${separatorClass}`}>{formatted}</td>
           ) : (
-            <td key={`${gi}-${ci}`} className="cell-empty">—</td>
+            <td key={`${gi}-${ci}`} className={`cell-empty${separatorClass}`}>—</td>
           );
         });
       })}
@@ -659,21 +666,21 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
   return (
     <Card style={{ overflow: "hidden" }}>
-      <div className="zpa-table-wrap">
+      <div className="zpa-table-wrap zpa-gram-wrap">
         <table className="zpa-gram">
           <thead>
             <tr>
               <th className="corner" rowSpan={2}>Prevádzka / Riadok</th>
               {col_groups.map((cg, gi) => (
-                <th key={cg.key} className={`grp mh-${colGroupHues[gi]}-1`} colSpan={cg.components.length}>
-                  {cg.label}<small>{cg.template_name}</small>
+                <th key={cg.key} className={`grp mh-${colGroupHues[gi]}-1${gi > 0 ? " meal-sep" : ""}`} colSpan={cg.components.length}>
+                  {colGroupDisplayLabel(cg)}<small>{cg.template_name}</small>
                 </th>
               ))}
             </tr>
             <tr>
               {col_groups.map((cg, gi) =>
                 cg.components.map((comp, ci) => (
-                  <th key={`${cg.key}-${ci}`} className={`comp mh-${colGroupHues[gi]}-2`}>
+                  <th key={`${cg.key}-${ci}`} className={`comp mh-${colGroupHues[gi]}-2${gi > 0 && ci === 0 ? " meal-sep" : ""}`}>
                     {comp.label}
                     <small>
                       {comp.is_exception
@@ -688,37 +695,32 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
           <tbody>
             {data.blocks?.length ? (
               <>
-                {data.blocks.map((block, blockIndex) => (
-                  <React.Fragment key={`block-${block.id}`}>
-                    <tr className="band">
-                      <td colSpan={1 + totalComponents}>{block.name}</td>
-                    </tr>
-                    {block.routes.map((route) => (
-                      <React.Fragment key={`route-${route.id}`}>
-                        <tr className="route-row">
-                          <td colSpan={1 + totalComponents}>
-                            <span className="route-pill">
-                              <span>{route.name}</span>
-                              {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).length > 0 && (
-                                <small>{[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}</small>
-                              )}
-                            </span>
-                          </td>
-                        </tr>
-                        {route.rows.length ? (
-                          route.rows.map(renderClientRow)
-                        ) : (
-                          <tr>
-                            <td colSpan={1 + totalComponents} style={{ color: "var(--ink-mute)", padding: "10px 20px" }}>
-                              Žiadne riadky v tejto trase pre vybraný deň.
+                {data.blocks.map((block, blockIndex) => {
+                  const visibleRoutes = block.routes.filter((route) => route.rows.length > 0);
+                  return (
+                    <React.Fragment key={`block-${block.id}`}>
+                      <tr className="band">
+                        <td colSpan={1 + totalComponents}>{block.name}</td>
+                      </tr>
+                      {visibleRoutes.map((route) => (
+                        <React.Fragment key={`route-${route.id}`}>
+                          <tr className="route-row">
+                            <td colSpan={1 + totalComponents}>
+                              <span className="route-pill">
+                                <span>{route.name}</span>
+                                {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).length > 0 && (
+                                  <small>{[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}</small>
+                                )}
+                              </span>
                             </td>
                           </tr>
-                        )}
-                      </React.Fragment>
-                    ))}
-                    {renderPortionSummary(`Súhrn porcií ${blockIndex + 1}`, blockSummaries.get(block.id) ?? [])}
-                  </React.Fragment>
-                ))}
+                          {route.rows.map(renderClientRow)}
+                        </React.Fragment>
+                      ))}
+                      {renderPortionSummary(`Súhrn porcií ${blockIndex + 1}`, blockSummaries.get(block.id) ?? [])}
+                    </React.Fragment>
+                  );
+                })}
                 {(data.unassigned_rows?.length ?? 0) > 0 && (
                   <>
                     <tr className="band">
@@ -745,7 +747,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                         ? value.toLocaleString("sk-SK", { maximumFractionDigits: 2, minimumFractionDigits: 0 })
                         : Math.round(value).toString()
                       : "0";
-                  return <td key={`${gi}-${ci}`}>{formatted}</td>;
+                  return <td key={`${gi}-${ci}`} className={gi > 0 && ci === 0 ? "meal-sep" : undefined}>{formatted}</td>;
                 })
               )}
             </tr>
