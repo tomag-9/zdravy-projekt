@@ -13,10 +13,13 @@ from api.management.commands.reconcile_real import (
     _combine_count_buckets,
     _count_or_none,
     _expand_block_rows,
+    _facility_header_rows,
     _load_alias_map,
+    _normalize,
     _real_counts_by_facility,
     _real_gram_values_by_name,
     _real_header_columns,
+    _real_rows_by_label,
     _rekey_by_alias,
 )
 
@@ -308,6 +311,53 @@ class TestRealCountsFromHarok1(unittest.TestCase):
         )
         self.assertEqual(counts["fac a"]["lunch"], Decimal("1"))
         self.assertEqual(counts["fac b"]["lunch"], Decimal("2"))
+
+    def test_note_number_on_address_row_does_not_hide_facility(self):
+        """Poznámkový stĺpec nie je gramážový dátový stĺpec."""
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Hárok1"
+        ws.append(["dátum", "Polievka", "Hlavné", "Pečivo", "Nátierka", None])
+        ws.append(["Fac A", 200, 100, 1, 25, None])
+        ws.append(["Ulica 1", None, None, None, None, "2x GN"])
+        ws.append([1, None, None, None, None, None])
+
+        self.assertEqual(_facility_header_rows(ws), [2])
+        counts = _real_counts_by_facility(ws, _column_meal_types(ws, self.COL_GROUPS))
+        self.assertEqual(counts["fac a"]["lunch"], Decimal("1"))
+
+    def test_duplicate_facility_names_are_split_by_address(self):
+        counts = self._counts(
+            [
+                ["Škôlkáreň", 3400, 1700, 17, 425],
+                ["Komárovská 64, Podunajské", None, None, None, None],
+                [17, None, None, None, None],
+                ["Škôlkáreň", 4200, 2100, 21, 525],
+                ["PATRÓNKA", None, None, None, None],
+                [21, None, None, None, None],
+            ]
+        )
+        self.assertEqual(
+            counts["skolkaren (komarovska 64, podunajske)"]["lunch"],
+            Decimal("17"),
+        )
+        self.assertEqual(counts["skolkaren (patronka)"]["lunch"], Decimal("21"))
+        self.assertNotIn("skolkaren", counts)
+
+    def test_tier2_rows_use_duplicate_address_key_too(self):
+        ws = self._sheet(
+            [
+                ["Škôlkáreň", 3400, 1700, 17, 425],
+                ["Komárovská 64, Podunajské", None, None, None, None],
+                [17, None, None, None, None],
+                ["Škôlkáreň", 4200, 2100, 21, 525],
+                ["PATRÓNKA", None, None, None, None],
+                [21, None, None, None, None],
+            ]
+        )
+        rows = _real_rows_by_label(ws)
+        self.assertEqual(rows[_normalize("Škôlkáreň (Komárovská 64, Podunajské)")], [3])
+        self.assertEqual(rows[_normalize("Škôlkáreň (PATRÓNKA)")], [6])
 
     def test_facility_ordering_nothing_is_dropped(self):
         counts = self._counts(

@@ -62,6 +62,50 @@ def _harok1_name_by_normalized(workbook_path: Path | None) -> dict[str, str]:
     return {_normalize(e["name"]): e["name"] for e in _facility_rows(sheet)}
 
 
+def _find_celok(key: str) -> Celok | None:
+    return next((c for c in Celok.objects.all() if _normalize(c.nazov) == key), None)
+
+
+def _profile_targets_prevadzka(profile, prevadzka) -> bool:
+    selected = list(profile.prevadzky.all())
+    return not selected or selected == [prevadzka]
+
+
+def _rename_1to1_celok(celok: Celok, target: str, dry_run: bool) -> tuple[bool, str]:
+    """Rename a one-prevádzka celok, its sole prevádzka and matching login labels."""
+    if not target:
+        return False, "chýba cieľový názov"
+    if celok.nazov == target:
+        return False, "už má cieľový názov"
+    if Celok.objects.filter(nazov=target).exclude(pk=celok.pk).exists():
+        return False, "cieľový názov už existuje"
+
+    prevadzky = list(celok.prevadzky.all())
+    if len(prevadzky) != 1:
+        return False, "nie je 1:1 celok"
+
+    if dry_run:
+        return True, ""
+
+    old_celok = celok.nazov
+    prevadzka = prevadzky[0]
+    old_prevadzka = prevadzka.nazov
+
+    prevadzka.nazov = target
+    prevadzka.save(update_fields=["nazov"])
+
+    for profile in celok.profily.all():
+        if not _profile_targets_prevadzka(profile, prevadzka):
+            continue
+        if profile.company_name in ("", old_celok, old_prevadzka):
+            profile.company_name = target
+            profile.save(update_fields=["company_name"])
+
+    celok.nazov = target
+    celok.save(update_fields=["nazov"])
+    return True, ""
+
+
 class Command(BaseCommand):
     help = "Rename celky/prevádzky/logins to their Hárok1 names (1:1 facilities only)."
 
@@ -78,19 +122,15 @@ class Command(BaseCommand):
 
         renames: list[tuple[str, str]] = []
         skipped: list[tuple[str, str]] = []
+        processed_celok_ids: set[int] = set()
 
         with transaction.atomic():
             for app_label, real_labels in alias_map.items():
                 celok_key, prevadzka_suffix = _split_app_label(app_label)
-                celok = next(
-                    (
-                        c
-                        for c in Celok.objects.all()
-                        if _normalize(c.nazov) == celok_key
-                    ),
-                    None,
-                )
+                celok = _find_celok(celok_key)
                 if celok is None:
+                    continue
+                if celok.pk in processed_celok_ids:
                     continue
                 if prevadzka_suffix or len(real_labels) > 1:
                     skipped.append(
@@ -103,29 +143,32 @@ class Command(BaseCommand):
                 )
                 if not target or target == celok.nazov:
                     continue
-                renames.append((celok.nazov, target))
-                if options["dry_run"]:
+                old_name = celok.nazov
+                renamed, reason = _rename_1to1_celok(celok, target, options["dry_run"])
+                if renamed:
+                    renames.append((old_name, target))
+                    processed_celok_ids.add(celok.pk)
                     continue
-
-                celok.prevadzky.filter(nazov=celok.nazov).update(nazov=target)
-                celok.profily.update(company_name=target)
-                celok.nazov = target
-                celok.save(update_fields=["nazov"])
+                if reason not in {"už má cieľový názov", "chýba cieľový názov"}:
+                    skipped.append((old_name, reason))
 
             # Celky with no alias entry but an explicit override still need renaming.
             for key, target in _NAME_OVERRIDES.items():
-                celok = next(
-                    (c for c in Celok.objects.all() if _normalize(c.nazov) == key), None
-                )
-                if celok is None or celok.nazov == target:
+                celok = _find_celok(key)
+                if (
+                    celok is None
+                    or celok.nazov == target
+                    or celok.pk in processed_celok_ids
+                ):
                     continue
-                renames.append((celok.nazov, target))
-                if options["dry_run"]:
+                old_name = celok.nazov
+                renamed, reason = _rename_1to1_celok(celok, target, options["dry_run"])
+                if renamed:
+                    renames.append((old_name, target))
+                    processed_celok_ids.add(celok.pk)
                     continue
-                celok.prevadzky.filter(nazov=celok.nazov).update(nazov=target)
-                celok.profily.update(company_name=target)
-                celok.nazov = target
-                celok.save(update_fields=["nazov"])
+                if reason not in {"už má cieľový názov", "chýba cieľový názov"}:
+                    skipped.append((old_name, reason))
 
             if options["dry_run"]:
                 transaction.set_rollback(True)

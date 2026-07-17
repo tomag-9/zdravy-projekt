@@ -86,6 +86,125 @@ def _facility_rows(sheet) -> list[dict]:
     return roster
 
 
+def _duplicate_roster_names(roster: list[dict]) -> set[str]:
+    counts: dict[str, int] = {}
+    for entry in roster:
+        key = _normalize(entry["name"])
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    return {key for key, count in counts.items() if count > 1}
+
+
+def _disambiguated_name(entry: dict, duplicate_names: set[str]) -> str:
+    """Unique internal label for facilities that share the same workbook name."""
+    name = entry["name"]
+    if _normalize(name) not in duplicate_names:
+        return name
+    suffix = entry.get("address") or entry.get("route") or ""
+    return f"{name} ({suffix})" if suffix else name
+
+
+def _facility_identity_key(name: str, address: str) -> str:
+    """Stable key for a workbook facility occurrence: name + delivery address."""
+    if address:
+        return f"{_normalize(name)}\n{_normalize(address)}"
+    return _normalize(name)
+
+
+def _index_existing_facilities():
+    by_name: dict[str, list[Celok]] = {}
+    by_identity: dict[str, Celok] = {}
+    for celok in Celok.objects.prefetch_related("prevadzky").all():
+        name_key = _normalize(celok.nazov)
+        by_name.setdefault(name_key, []).append(celok)
+        if celok.adresa:
+            by_identity.setdefault(
+                _facility_identity_key(celok.nazov, celok.adresa), celok
+            )
+        for prevadzka in celok.prevadzky.all():
+            prev_name_key = _normalize(prevadzka.nazov)
+            if prev_name_key != name_key:
+                by_name.setdefault(prev_name_key, []).append(celok)
+            if prevadzka.adresa:
+                by_identity.setdefault(
+                    _facility_identity_key(prevadzka.nazov, prevadzka.adresa), celok
+                )
+    return by_name, by_identity
+
+
+def _first_unique(candidates: list[Celok] | None) -> Celok | None:
+    if not candidates:
+        return None
+    unique = {c.pk: c for c in candidates}
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    return None
+
+
+def _addresses_for(celok: Celok) -> set[str]:
+    addresses = {_normalize(celok.adresa)}
+    addresses.update(_normalize(p.adresa) for p in celok.prevadzky.all())
+    return {a for a in addresses if a}
+
+
+def _rename_single_facility_if_safe(celok: Celok, target: str, address: str) -> None:
+    """Upgrade an old duplicate-name seed to its unambiguous 1:1 label."""
+    if not target or celok.nazov == target:
+        return
+    prevadzky = list(celok.prevadzky.all())
+    if len(prevadzky) != 1:
+        return
+    if Celok.objects.filter(nazov=target).exclude(pk=celok.pk).exists():
+        return
+
+    old_name = celok.nazov
+    prevadzka = prevadzky[0]
+    celok.nazov = target
+    if address and not celok.adresa:
+        celok.adresa = address
+    celok.save(update_fields=["nazov", "adresa"])
+
+    if prevadzka.nazov == old_name or _normalize(prevadzka.nazov) == _normalize(
+        old_name
+    ):
+        prevadzka.nazov = target
+    if address and not prevadzka.adresa:
+        prevadzka.adresa = address
+    prevadzka.save(update_fields=["nazov", "adresa"])
+
+    for profile in celok.profily.all():
+        selected = list(profile.prevadzky.all())
+        if selected and selected != [prevadzka]:
+            continue
+        if profile.company_name in ("", old_name):
+            profile.company_name = target
+            profile.save(update_fields=["company_name"])
+
+
+def _match_existing_duplicate(
+    entry: dict,
+    by_name: dict[str, list[Celok]],
+    by_identity: dict[str, Celok],
+    used: set[int],
+) -> Celok | None:
+    identity = _facility_identity_key(entry["name"], entry["address"])
+    match = by_identity.get(identity)
+    if match is not None:
+        return match
+
+    candidates = [
+        c for c in by_name.get(_normalize(entry["name"]), []) if c.pk not in used
+    ]
+    if len(candidates) != 1:
+        return None
+    candidate = candidates[0]
+    entry_address = _normalize(entry["address"])
+    candidate_addresses = _addresses_for(candidate)
+    if not candidate_addresses or entry_address in candidate_addresses:
+        return candidate
+    return None
+
+
 def _real_label_to_app(alias_map: dict[str, list[str]]) -> dict[str, str]:
     """{normalized Hárok1 label → app label} — the alias map, inverted."""
     inverted: dict[str, str] = {}
@@ -158,10 +277,12 @@ class Command(BaseCommand):
             raise CommandError(f"{workbook_path.name} has no Hárok1 sheet.")
 
         roster = _facility_rows(wb["Hárok1"])
+        duplicate_names = _duplicate_roster_names(roster)
         alias_map = _load_alias_map(str(ALIAS_MAP)) if ALIAS_MAP.exists() else {}
         real_to_app = _real_label_to_app(alias_map)
 
-        existing = {_normalize(c.nazov): c for c in Celok.objects.all()}
+        existing_by_name, existing_by_identity = _index_existing_facilities()
+        used_existing: set[int] = set()
         taken_emails = set(User.objects.values_list("username", flat=True))
 
         created, linked, added_prevadzky = [], [], []
@@ -170,14 +291,25 @@ class Command(BaseCommand):
         with transaction.atomic():
             for entry in roster:
                 key = _normalize(entry["name"])
+                operation_name = _disambiguated_name(entry, duplicate_names)
                 app_label = real_to_app.get(key, "")
                 celok_key, prevadzka_name = _split_app_label(app_label)
                 # Already in the DB — under its own name, or under the app name the
                 # alias map ties this workbook label to.
-                match = existing.get(key) or (
-                    existing.get(celok_key) if celok_key else None
-                )
+                if key in duplicate_names and not app_label:
+                    match = _first_unique(
+                        existing_by_name.get(_normalize(operation_name))
+                    ) or _match_existing_duplicate(
+                        entry, existing_by_name, existing_by_identity, used_existing
+                    )
+                else:
+                    match = _first_unique(existing_by_name.get(key)) or (
+                        _first_unique(existing_by_name.get(celok_key))
+                        if celok_key
+                        else None
+                    )
                 if match:
+                    used_existing.add(match.pk)
                     # An aliased sub-unit (Jolly 1) may still be missing its prevádzka
                     # even though its celok exists.
                     if prevadzka_name and not options["dry_run"]:
@@ -188,32 +320,56 @@ class Command(BaseCommand):
                         )
                         if made:
                             added_prevadzky.append((entry["name"], match.nazov))
+                    if (
+                        key in duplicate_names
+                        and not app_label
+                        and not options["dry_run"]
+                    ):
+                        _rename_single_facility_if_safe(
+                            match, operation_name, entry["address"]
+                        )
                     linked.append((entry["name"], match.nazov))
                     continue
                 if options["dry_run"]:
-                    created.append(entry["name"])
+                    created.append(operation_name)
                     continue
 
                 celok = Celok.objects.create(
-                    nazov=entry["name"],
+                    nazov=operation_name,
                     adresa=entry["address"],
                     zdroj_objednavok=Celok.ZdrojObjednavok.APP,
                 )
                 prevadzka = Prevadzka.objects.create(
-                    celok=celok, nazov=entry["name"], adresa=entry["address"]
+                    celok=celok, nazov=operation_name, adresa=entry["address"]
                 )
-                email = _email_for(entry["name"], taken_emails)
+                email = _email_for(operation_name, taken_emails)
                 password = secrets.token_urlsafe(9)
                 user = User.objects.create_user(
                     username=email, email=email, password=password
                 )
                 UserProfile.objects.create(
-                    user=user, company_name=entry["name"], celok=celok, is_edupage=False
+                    user=user,
+                    company_name=operation_name,
+                    celok=celok,
+                    is_edupage=False,
                 )
                 user.profile.prevadzky.add(prevadzka)
-                existing[key] = celok
-                created.append(entry["name"])
-                credentials.append({**entry, "email": email, "password": password})
+                existing_by_name.setdefault(_normalize(operation_name), []).append(
+                    celok
+                )
+                existing_by_identity[
+                    _facility_identity_key(entry["name"], entry["address"])
+                ] = celok
+                used_existing.add(celok.pk)
+                created.append(operation_name)
+                credentials.append(
+                    {
+                        **entry,
+                        "operation_name": operation_name,
+                        "email": email,
+                        "password": password,
+                    }
+                )
 
             if options["dry_run"]:
                 transaction.set_rollback(True)

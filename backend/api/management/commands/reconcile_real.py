@@ -239,9 +239,15 @@ def _app_gram_values(row: dict[str, Any], col_groups: list[dict]) -> list[Decima
 
 
 def _real_rows_by_label(sheet) -> dict[str, list[int]]:
+    """{facility label → header row(s)} using the same labels as Tier 1."""
     rows: dict[str, list[int]] = {}
-    for row_index in range(1, sheet.max_row + 1):
-        normalized = _normalize(sheet.cell(row=row_index, column=1).value)
+    legend_rows = _legend_rows(sheet)
+    header_rows = _facility_header_rows(sheet, legend_rows)
+    duplicate_names = _duplicate_facility_names(sheet, header_rows)
+    for row_index in header_rows:
+        normalized = _normalize(
+            _facility_label_from_header(sheet, row_index, duplicate_names)
+        )
         if normalized:
             rows.setdefault(normalized, []).append(row_index)
     return rows
@@ -262,18 +268,34 @@ def _real_header_columns(sheet) -> dict[str, int]:
     return columns
 
 
+def _real_data_columns(sheet) -> list[int]:
+    """Columns that carry real food data, excluding spacer/notes columns.
+
+    Hárok1 leaves the free-text note column's header blank. Treating every column up
+    to ``max_column`` as data lets prose notes with numbers masquerade as grams, which
+    can hide the address row under a facility header.
+    """
+    return [
+        col
+        for col in range(2, sheet.max_column + 1)
+        if _normalize(sheet.cell(row=1, column=col).value)
+    ]
+
+
 def _has_grams(sheet, row: int) -> bool:
     """Whether any data column on this row carries a number.
 
     Deliberately not limited to col B (the soup): an ``OLOVRANT`` sub-block row is
     empty in the lunch columns and only fills pečivo/nátierka. Testing col B alone
     made those rows look like address lines, which both dropped their grams from
-    Tier 2 and truncated the facility block at that point.
+    Tier 2 and truncated the facility block at that point. The scan is limited to
+    columns with meal headers, so prose/note columns cannot turn an address into a
+    fake gram row just because the note contains a number.
     """
     return any(
         isinstance(sheet.cell(row=row, column=col).value, (int, float))
         and not isinstance(sheet.cell(row=row, column=col).value, bool)
-        for col in range(2, sheet.max_column + 1)
+        for col in _real_data_columns(sheet)
     )
 
 
@@ -350,9 +372,10 @@ def _starts_new_facility(sheet, row: int, legend_rows: set[int] | None = None) -
     )
 
 
-def _facility_header_rows(sheet) -> list[int]:
+def _facility_header_rows(sheet, legend_rows: set[int] | None = None) -> list[int]:
     """Every facility header row in Hárok1, in sheet order."""
-    legend_rows = _legend_rows(sheet)
+    if legend_rows is None:
+        legend_rows = _legend_rows(sheet)
     return [
         row
         for row in range(2, sheet.max_row + 1)
@@ -360,7 +383,44 @@ def _facility_header_rows(sheet) -> list[int]:
     ]
 
 
-def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
+def _address_below_header(sheet, header: int) -> str:
+    """Delivery address/marker immediately below a facility header, if present."""
+    if _is_address_row(sheet, header + 1):
+        return str(sheet.cell(row=header + 1, column=1).value or "").strip()
+    return ""
+
+
+def _facility_label_from_header(
+    sheet, header: int, duplicate_names: set[str] | None = None
+) -> str:
+    """Return the report label for a Hárok1 facility header.
+
+    Most workbook names are unique and can stay untouched. If the same name appears
+    more than once (currently Škôlkáreň), the address/marker line is part of the
+    identity so the two facilities do not collapse into one report bucket.
+    """
+    name = str(sheet.cell(row=header, column=1).value or "").strip()
+    if not name:
+        return ""
+    if duplicate_names and _normalize(name) in duplicate_names:
+        address = _address_below_header(sheet, header)
+        if address:
+            return f"{name} ({address})"
+    return name
+
+
+def _duplicate_facility_names(sheet, header_rows: list[int]) -> set[str]:
+    counts: dict[str, int] = {}
+    for header in header_rows:
+        key = _normalize(sheet.cell(row=header, column=1).value)
+        if key:
+            counts[key] = counts.get(key, 0) + 1
+    return {key for key, count in counts.items() if count > 1}
+
+
+def _expand_block_rows(
+    sheet, header_rows: list[int], legend_rows: set[int] | None = None
+) -> list[int]:
     """Expand each facility header row to its full block (klasik + diet sub-rows).
 
     In Hárok1 a facility is a block: the header row (KLASIK grams), an address line,
@@ -372,7 +432,8 @@ def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
     into the facility above it.
     """
     max_row = sheet.max_row
-    legend_rows = _legend_rows(sheet)
+    if legend_rows is None:
+        legend_rows = _legend_rows(sheet)
     result: list[int] = []
     for header in header_rows:
         result.append(header)
@@ -448,12 +509,17 @@ def _real_counts_by_facility(
     apart onto different row sets.
     """
     counts: dict[str, dict[str, Decimal]] = {}
-    for header in _facility_header_rows(sheet):
-        facility = _normalize(sheet.cell(row=header, column=1).value)
+    legend_rows = _legend_rows(sheet)
+    header_rows = _facility_header_rows(sheet, legend_rows)
+    duplicate_names = _duplicate_facility_names(sheet, header_rows)
+    for header in header_rows:
+        facility = _normalize(
+            _facility_label_from_header(sheet, header, duplicate_names)
+        )
         if not facility:
             continue
         bucket = counts.setdefault(facility, {})
-        for row in _expand_block_rows(sheet, [header]):
+        for row in _expand_block_rows(sheet, [header], legend_rows):
             count = _count_below(sheet, row)
             if count is None:
                 continue
