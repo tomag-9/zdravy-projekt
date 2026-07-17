@@ -260,6 +260,22 @@ class TestRealCountsFromHarok1(unittest.TestCase):
         )
         self.assertEqual(counts["fac a"]["lunch"], Decimal("19"))
 
+    def test_count_line_above_empty_diet_is_not_a_facility(self):
+        """Regresia: počtový riadok nad diétou s prázdnou gramážou vyzeral ako
+        hlavička prevádzky — vznikla fiktívna prevádzka „18" a blok sa odsekol."""
+        counts = self._counts(
+            [
+                ["Fac A", 3600, 1800, 18, 450],
+                ["Hrušková 2D", None, None, None, None],
+                [18, None, None, None, None],
+                ["Diéta bez gramáže", None, None, None, None],
+                ["Diabetik", 200, 100, 1, 25],
+                [1, None, None, None, None],
+            ]
+        )
+        self.assertNotIn("18", counts)
+        self.assertEqual(counts["fac a"]["lunch"], Decimal("19"))
+
     def test_olovrant_sub_block_counts_as_snack_only(self):
         """Regresia: OLOVRANT riadok má prázdny stĺpec B.
 

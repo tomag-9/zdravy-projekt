@@ -298,27 +298,65 @@ def _is_address_row(sheet, row: int) -> bool:
     )
 
 
-def _starts_new_facility(sheet, row: int) -> bool:
-    """A facility header is any row immediately followed by an address line.
+# The base-gramage legend (KLASIK / JASLE / 1.STUPEŇ / 2.STUPEŇ / DOSPELÁ), repeated
+# above every delivery route. Its rows carry grams, so they must be kept out of the
+# facility blocks around them — but the labels alone can't identify them: `Klasik` and
+# `Dospelá` are also used as diet names inside blocks. `JASLE` never is, so the run is
+# anchored on it and verified against the full sequence (holds in all 11 workbooks).
+_LEGEND_SEQUENCE = ("klasik", "jasle", "1 stupen", "2 stupen", "dospela")
+_LEGEND_ANCHOR_OFFSET = 1  # index of "jasle" within the sequence
 
-    This holds even when the header itself has empty grams (e.g. `Rozmanita Škola`),
-    which a gram-row test would miss — that miss let one facility's block bleed into
-    the next.
+
+def _legend_rows(sheet) -> set[int]:
+    """Row numbers belonging to any base-gramage legend block."""
+    rows: set[int] = set()
+    for row in range(2, sheet.max_row + 1):
+        if _normalize(sheet.cell(row=row, column=1).value) != "jasle":
+            continue
+        start = row - _LEGEND_ANCHOR_OFFSET
+        labels = [
+            _normalize(sheet.cell(row=start + offset, column=1).value)
+            for offset in range(len(_LEGEND_SEQUENCE))
+        ]
+        if tuple(labels) == _LEGEND_SEQUENCE:
+            rows.update(range(start, start + len(_LEGEND_SEQUENCE)))
+    return rows
+
+
+# An `OLOVRANT` row opens a snack sub-block *inside* a facility, sometimes followed by
+# its own `KLASIK` sub-legend line. It must never read as a new facility, or the parent
+# facility loses its olovrant to a phantom one.
+_SUB_BLOCK_LABELS = {"olovrant"}
+
+
+def _starts_new_facility(sheet, row: int, legend_rows: set[int] | None = None) -> bool:
+    """A named row immediately followed by an address line.
+
+    The address test alone isn't enough: a count line sitting above a diet label whose
+    grams are all empty also matches, which invented number-named facilities ("12") and
+    cut the real block short at that point. A facility header always has a *name*, so
+    require col A to be text that doesn't parse as a count.
     """
-    return _is_address_row(sheet, row + 1)
+    name = sheet.cell(row=row, column=1).value
+    if legend_rows is None:
+        legend_rows = _legend_rows(sheet)
+    return (
+        isinstance(name, str)
+        and name.strip() != ""
+        and _count_or_none(name) is None
+        and _normalize(name) not in _SUB_BLOCK_LABELS
+        and row not in legend_rows
+        and _is_address_row(sheet, row + 1)
+    )
 
 
 def _facility_header_rows(sheet) -> list[int]:
-    """Every facility header row in Hárok1, in sheet order.
-
-    Skips the first rows, which are the day's dish header and the KLASIK/JASLE/…
-    base-gramage legend rather than facilities.
-    """
+    """Every facility header row in Hárok1, in sheet order."""
+    legend_rows = _legend_rows(sheet)
     return [
         row
         for row in range(2, sheet.max_row + 1)
-        if _starts_new_facility(sheet, row)
-        and _normalize(sheet.cell(row=row, column=1).value)
+        if _starts_new_facility(sheet, row, legend_rows)
     ]
 
 
@@ -328,14 +366,19 @@ def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
     In Hárok1 a facility is a block: the header row (KLASIK grams), an address line,
     then alternating diet gram-rows / count-lines, until the next facility header.
     The app aggregates klasik + diets, so Tier-2 must sum the whole block.
+
+    A block ends at the next facility *or* at a legend block (which opens the next
+    delivery route) — the legend's own rows carry grams and would otherwise be summed
+    into the facility above it.
     """
     max_row = sheet.max_row
+    legend_rows = _legend_rows(sheet)
     result: list[int] = []
     for header in header_rows:
         result.append(header)
         row = header + 1
         while row <= max_row:
-            if _starts_new_facility(sheet, row):
+            if row in legend_rows or _starts_new_facility(sheet, row, legend_rows):
                 break
             if _is_gram_row(sheet, row):
                 result.append(row)
