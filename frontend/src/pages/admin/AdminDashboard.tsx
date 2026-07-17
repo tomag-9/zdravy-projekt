@@ -44,6 +44,12 @@ interface DietSummaryRow {
   col_grams: string[][];
 }
 
+interface PortionSummaryItem {
+  label: string;
+  count: number;
+  col_grams: string[][];
+}
+
 interface ClientRow {
   client: string;
   client_id: number;
@@ -457,8 +463,22 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     [col_groups],
   );
 
+  const emptySummaryGrams = useCallback(
+    () => col_groups.map((cg) => cg.components.map(() => "0")),
+    [col_groups],
+  );
+
+  const addGramValues = (target: string[][], source: string[] | undefined, groupIndex: number) => {
+    if (!source) return;
+    target[groupIndex] = target[groupIndex].map((current, componentIndex) => {
+      const currentValue = parseFloat(current || "0");
+      const nextValue = parseFloat(source[componentIndex] || "0");
+      return String((Number.isFinite(currentValue) ? currentValue : 0) + (Number.isFinite(nextValue) ? nextValue : 0));
+    });
+  };
+
   // One summary entry per col_group: count from count_summary, grams from totals[gi]
-  const perMenuSummary = useMemo(() => {
+  const totalPortionSummary = useMemo<PortionSummaryItem[]>(() => {
     const countMap = new Map<string, number>();
     for (const section of data.count_summary) {
       const key = `${section.meal}_${section.variant}_${section.diet_name ?? ""}`;
@@ -475,6 +495,38 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
     }));
   }, [col_groups, data.count_summary, totals]);
+
+  const buildPortionSummary = useCallback((summaryRows: ClientRow[]): PortionSummaryItem[] => {
+    const summaries = col_groups.map<PortionSummaryItem>((cg) => ({
+      label: cg.label,
+      count: 0,
+      col_grams: emptySummaryGrams(),
+    }));
+
+    for (const row of summaryRows) {
+      for (const subRow of row.sub_rows) {
+        const groupIndex = col_groups.findIndex((cg) =>
+          cg.meal === subRow.meal &&
+          (cg.variant || "") === (subRow.variant || "") &&
+          (cg.diet_name ?? "") === (subRow.type === "diet" ? subRow.label : "")
+        );
+        if (groupIndex < 0) continue;
+        summaries[groupIndex].count += subRow.count;
+        addGramValues(summaries[groupIndex].col_grams, subRow.col_grams[groupIndex], groupIndex);
+      }
+    }
+
+    return summaries;
+  }, [col_groups, emptySummaryGrams]);
+
+  const blockSummaries = useMemo(() => {
+    const summaryByBlock = new Map<number, PortionSummaryItem[]>();
+    for (const block of data.blocks ?? []) {
+      const blockRows = block.routes.flatMap((route) => route.rows);
+      summaryByBlock.set(block.id, buildPortionSummary(blockRows));
+    }
+    return summaryByBlock;
+  }, [buildPortionSummary, data.blocks]);
 
   const formatValue = (rawValue: string | undefined, component: Component) => {
     if (!rawValue) return null;
@@ -522,6 +574,25 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       </td>
       <GramCells col_grams={col_grams} />
     </tr>
+  );
+
+  const renderPortionSummary = (title: string, summary: PortionSummaryItem[]) => (
+    <>
+      <tr className="portion-summary-band">
+        <td colSpan={1 + totalComponents}>{title}</td>
+      </tr>
+      {summary.map((item, gi) => (
+        <tr key={`${title}_${gi}`} className="portion-summary-row">
+          <td>
+            <span className="lbl-line">
+              <span>{item.label}</span>
+              <CountBadge count={item.count} />
+            </span>
+          </td>
+          <GramCells col_grams={item.col_grams} />
+        </tr>
+      ))}
+    </>
   );
 
   const renderClientRow = (row: ClientRow) => {
@@ -617,7 +688,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
           <tbody>
             {data.blocks?.length ? (
               <>
-                {data.blocks.map((block) => (
+                {data.blocks.map((block, blockIndex) => (
                   <React.Fragment key={`block-${block.id}`}>
                     <tr className="band">
                       <td colSpan={1 + totalComponents}>{block.name}</td>
@@ -645,6 +716,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                         )}
                       </React.Fragment>
                     ))}
+                    {renderPortionSummary(`Súhrn porcií ${blockIndex + 1}`, blockSummaries.get(block.id) ?? [])}
                   </React.Fragment>
                 ))}
                 {(data.unassigned_rows?.length ?? 0) > 0 && (
@@ -661,18 +733,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             )}
           </tbody>
           <tfoot>
-            <tr className="band"><td colSpan={1 + totalComponents}>Súhrn porcií</td></tr>
-            {perMenuSummary.map((item, gi) => (
-              <tr key={`pm_${gi}`} style={{ background: "var(--bg-cream-warm)" }}>
-                <td style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-800)", paddingLeft: 20 }}>
-                  <span className="lbl-line">
-                    <span>{item.label}</span>
-                    <CountBadge count={item.count} />
-                  </span>
-                </td>
-                <GramCells col_grams={item.col_grams} />
-              </tr>
-            ))}
+            {renderPortionSummary("Porcie celkom", totalPortionSummary)}
             <tr className="total">
               <td className="corner" style={{ textAlign: "left" }}>CELKOM (g / ml)</td>
               {col_groups.map((cg, gi) =>
