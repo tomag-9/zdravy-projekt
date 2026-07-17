@@ -103,8 +103,8 @@ and a one-line summary on **stderr**. It runs two tiers:
    has a blank spacer, so positional reads are wrong. Each facility's grams are the sum
    of its whole **block** (KLASIK header row + diet sub-rows, until the next facility,
    detected by the address line beneath a header). Residual Tier-2 diffs after this are
-   count-driven (they track a Tier-1 count gap) or olovrant billed separately (real=0),
-   not column/aggregation bugs.
+   usually count-driven (they track a Tier-1 count gap), missing menu-column matches, or
+   unresolved facility mapping — not column/aggregation bugs.
 
 Flags: `--alias-map <path>` (facility name dictionary, below), `--workbook <path>`
 (override auto-resolve), `--count-tolerance N` (default 0), `--gram-tolerance N`

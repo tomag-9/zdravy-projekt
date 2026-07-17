@@ -25,6 +25,7 @@ ich berie ako prefix, nie substring, takže `mšMal` nechytí `mšHey`.
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
+from django.utils import timezone
 
 from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
@@ -118,15 +119,32 @@ class Command(BaseCommand):
             f"  login {EMAIL} → {len(prevadzky)} prevádzok naprieč celkami"
         )
 
-        # Starý zberný celok padá až teraz, keď už profil neukazuje naň (FK je PROTECT).
+        # Starý zberný celok nechávame kvôli histórii. Od dneška vyššie sú jeho
+        # objednávky duplicitné: nové samostatné celky ich prescrapujú za seba.
         stary = Celok.objects.filter(nazov=STARY_CELOK).first()
         if stary is not None:
-            objednavky = DailyOrder.objects.filter(prevadzka__celok=stary).count()
-            self.stdout.write(
-                f"  mažem zberný celok '{STARY_CELOK}' ({objednavky} objednávok)"
+            dnes = timezone.localdate()
+            duplicitne = DailyOrder.objects.filter(
+                prevadzka__celok=stary, date__gte=dnes
             )
-            if not dry_run:
-                stary.delete()
+            pocet = duplicitne.count()
+            if pocet:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"  '{STARY_CELOK}': mažem {pocet} objednávok od {dnes} "
+                        "(duplikáty, nové celky ich prescrapujú)"
+                    )
+                )
+                if not dry_run:
+                    duplicitne.delete()
+
+            for stara in Prevadzka.objects.filter(celok=stary):
+                self.stdout.write(
+                    f"  '{STARY_CELOK}': retirujem historickú prevádzku '{stara.nazov}'"
+                )
+                if not dry_run:
+                    stara.is_active = False
+                    stara.save(update_fields=["is_active"])
 
         if dry_run:
             self.stdout.write(self.style.WARNING("\n--dry-run: rollback"))
