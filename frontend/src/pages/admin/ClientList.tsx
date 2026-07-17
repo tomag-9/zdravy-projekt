@@ -36,6 +36,91 @@ const EMPTY_OPERATION_FORM: OperationForm = {
   mealsguest_url: "",
 };
 
+interface OperationFieldsProps {
+  form: OperationForm;
+  setForm: React.Dispatch<React.SetStateAction<OperationForm>>;
+  source: "create" | "edit";
+  testingUrl: "create" | "edit" | null;
+  urlTestResult: { ok: boolean; message: string } | null;
+  onClearUrlTestResult: () => void;
+  onTestMealsguestUrl: (url: string, source: "create" | "edit") => void;
+}
+
+const OperationFields: React.FC<OperationFieldsProps> = ({
+  form,
+  setForm,
+  source,
+  testingUrl,
+  urlTestResult,
+  onClearUrlTestResult,
+  onTestMealsguestUrl,
+}) => (
+  <>
+    <Field label="Názov prevádzky" req hint="(interný)">
+      <Input required value={form.company_name} onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))} />
+    </Field>
+    <Field label="Názov spoločnosti" hint="(fakturácia)">
+      <Input value={form.billing_name} onChange={(e) => setForm((f) => ({ ...f, billing_name: e.target.value }))} />
+    </Field>
+    <Field label="Email" req>
+      <Input type="email" required value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+    </Field>
+    <div className="zpa-grid-2">
+      <Field label="IČO">
+        <Input value={form.ico} onChange={(e) => setForm((f) => ({ ...f, ico: e.target.value }))} />
+      </Field>
+      <Field label="DIČ">
+        <Input value={form.dic} onChange={(e) => setForm((f) => ({ ...f, dic: e.target.value }))} />
+      </Field>
+    </div>
+    <Checkbox
+      on={form.is_edupage}
+      onChange={(v) => {
+        setForm((f) => ({ ...f, is_edupage: v, ...(!v && { api_identifier: "", mealsguest_url: "" }) }));
+        onClearUrlTestResult();
+      }}
+    >
+      Edupage prevádzka
+    </Checkbox>
+    {form.is_edupage && (
+      <>
+        <Field label="Edupage identifikátor">
+          <Input
+            placeholder="Identifikátor pre párovanie v Edupage súboroch"
+            value={form.api_identifier}
+            onChange={(e) => setForm((f) => ({ ...f, api_identifier: e.target.value }))}
+          />
+        </Field>
+        <Field label="MealsGuest URL">
+          <div style={{ display: "flex", gap: 8 }}>
+            <Input
+              placeholder="https://skola.edupage.org/menu/mealsGuest?id=TOKEN"
+              value={form.mealsguest_url}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, mealsguest_url: e.target.value }));
+                onClearUrlTestResult();
+              }}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={testingUrl === source}
+              onClick={() => onTestMealsguestUrl(form.mealsguest_url, source)}
+            >
+              {testingUrl === source ? "Testujem…" : "Test"}
+            </Button>
+          </div>
+          {urlTestResult && (
+            <p style={{ marginTop: 6, fontSize: 12, color: urlTestResult.ok ? "var(--green-600)" : "var(--coral-600)" }}>
+              {urlTestResult.message}
+            </p>
+          )}
+        </Field>
+      </>
+    )}
+  </>
+);
+
 const ClientList: React.FC = () => {
   const { apiFetch } = useAuth();
   const { success, error: toastError } = useToast();
@@ -214,61 +299,6 @@ const ClientList: React.FC = () => {
       (u.profile?.billing_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // Shared operation form body (create + edit)
-  const OperationFields: React.FC<{
-    form: OperationForm;
-    setForm: React.Dispatch<React.SetStateAction<OperationForm>>;
-    source: "create" | "edit";
-  }> = ({ form, setForm, source }) => (
-    <>
-      <Field label="Názov prevádzky" req hint="(interný)">
-        <Input required value={form.company_name} onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))} />
-      </Field>
-      <Field label="Názov spoločnosti" hint="(fakturácia)">
-        <Input value={form.billing_name} onChange={(e) => setForm((f) => ({ ...f, billing_name: e.target.value }))} />
-      </Field>
-      <Field label="Email" req>
-        <Input type="email" required value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-      </Field>
-      <div className="zpa-grid-2">
-        <Field label="IČO">
-          <Input value={form.ico} onChange={(e) => setForm((f) => ({ ...f, ico: e.target.value }))} />
-        </Field>
-        <Field label="DIČ">
-          <Input value={form.dic} onChange={(e) => setForm((f) => ({ ...f, dic: e.target.value }))} />
-        </Field>
-      </div>
-      <Checkbox
-        on={form.is_edupage}
-        onChange={(v) => { setForm((f) => ({ ...f, is_edupage: v, ...(!v && { api_identifier: "", mealsguest_url: "" }) })); setUrlTestResult(null); }}
-      >
-        Edupage prevádzka
-      </Checkbox>
-      {form.is_edupage && (
-        <>
-          <Field label="Edupage identifikátor">
-            <Input placeholder="Identifikátor pre párovanie v Edupage súboroch" value={form.api_identifier} onChange={(e) => setForm((f) => ({ ...f, api_identifier: e.target.value }))} />
-          </Field>
-          <Field label="MealsGuest URL">
-            <div style={{ display: "flex", gap: 8 }}>
-              <Input
-                placeholder="https://skola.edupage.org/menu/mealsGuest?id=TOKEN"
-                value={form.mealsguest_url}
-                onChange={(e) => { setForm((f) => ({ ...f, mealsguest_url: e.target.value })); setUrlTestResult(null); }}
-              />
-              <Button type="button" variant="secondary" disabled={testingUrl === source} onClick={() => testMealsguestUrl(form.mealsguest_url, source)}>
-                {testingUrl === source ? "Testujem…" : "Test"}
-              </Button>
-            </div>
-            {urlTestResult && (
-              <p style={{ marginTop: 6, fontSize: 12, color: urlTestResult.ok ? "var(--green-600)" : "var(--coral-600)" }}>{urlTestResult.message}</p>
-            )}
-          </Field>
-        </>
-      )}
-    </>
-  );
-
   return (
     <>
       <PageHead
@@ -353,7 +383,15 @@ const ClientList: React.FC = () => {
           }
         >
           <form id="create-op-form" onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <OperationFields form={clientForm} setForm={setClientForm} source="create" />
+            <OperationFields
+              form={clientForm}
+              setForm={setClientForm}
+              source="create"
+              testingUrl={testingUrl}
+              urlTestResult={urlTestResult}
+              onClearUrlTestResult={() => setUrlTestResult(null)}
+              onTestMealsguestUrl={testMealsguestUrl}
+            />
           </form>
         </Modal>
       )}
@@ -373,7 +411,15 @@ const ClientList: React.FC = () => {
           }
         >
           <form id="edit-op-form" onSubmit={handleEdit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <OperationFields form={editForm} setForm={setEditForm} source="edit" />
+            <OperationFields
+              form={editForm}
+              setForm={setEditForm}
+              source="edit"
+              testingUrl={testingUrl}
+              urlTestResult={urlTestResult}
+              onClearUrlTestResult={() => setUrlTestResult(null)}
+              onTestMealsguestUrl={testMealsguestUrl}
+            />
           </form>
         </Modal>
       )}

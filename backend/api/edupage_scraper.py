@@ -168,18 +168,24 @@ def _has_diet_signal(key: str) -> bool:
     return any(fragment in key for fragment in _NAZOV_KEYWORD_MAP)
 
 
-def build_prevadzka_matches(prevadzky) -> dict[str, str]:
-    """{prefix: názov prevádzky} pre `match_prevadzka`.
+def build_prevadzka_matches(prevadzky) -> dict[str, list[str]]:
+    """{prefix: [názvy prevádzok]} pre `match_prevadzka`.
 
     Jedna prevádzka môže prispieť viacerými prefixami (`edupage_match` oddelený
-    čiarkami), preto sa mapa nedá postaviť ako `{p.edupage_match: p.nazov}` a jej
+    bodkočiarkami), preto sa mapa nedá postaviť ako `{p.edupage_match: p.nazov}` a jej
     veľkosť sa nesmie porovnávať s počtom prevádzok — na to je
     `prevadzky_without_match`.
+
+    Hodnota je zoznam, lebo jeden prefix môže patriť viacerým prevádzkam: EduPage
+    Zdravého Brúska zlučuje MŠ Malokarpatské a MŠ Heyrovského do jednej skratky
+    (`mšMal,Hey`) pri desiate a olovrante. Rozpad na tie dve škôlky v dátach nie je,
+    tak sa počet zapíše NAPLNO obom — dočasne, kým klient menu nerozdelí (viď
+    feedback.md). Nadhodnocuje to fakturáciu oboch, ale je to vedomé.
     """
-    matches: dict[str, str] = {}
+    matches: dict[str, list[str]] = {}
     for prevadzka in prevadzky:
         for prefix in prevadzka.edupage_prefixes():
-            matches[prefix] = prevadzka.nazov
+            matches.setdefault(prefix, []).append(prevadzka.nazov)
     return matches
 
 
@@ -189,25 +195,49 @@ def prevadzky_without_match(prevadzky) -> list[str]:
 
 
 def match_prevadzka(
-    matches: dict[str, str], payer_name: str, menu_nazov: str
-) -> str | None:
+    matches: dict[str, list[str]],
+    payer_name: str,
+    menu_nazov: str,
+    menu_skratka: str = "",
+) -> list[str]:
     """Priraď EduPage riadok prevádzke podľa `edupage_match` prefixu.
 
-    Prevádzka je zakódovaná ako PREFIX payer labelu (`J1 1.st. klasik`, `B - Les`)
-    alebo názvu menu (`Palisády nM`). Skúšame oboje. Match je `startswith`, nie
-    substring — inak by krátky `edupage_match` (napr. `Les`) chytil aj nesúvisiaci
-    label, kde sa ten reťazec vyskytne v strede. Dlhšie prefixy majú prednosť, aby
-    `J1` neprebilo špecifickejší match.
+    Prevádzka je zakódovaná ako PREFIX payer labelu (`J1 1.st. klasik`, `B - Les`),
+    názvu menu (`Palisády nM`) alebo skratky menu (`dsbA`, `zšlaNM`). Skúšame všetky
+    tri. Skratka je jediný spoľahlivý nosič tam, kde EduPage zastrešuje viac
+    samostatných subjektov: Zdravé Brúsko vedie päť škôl a ich payer labely (`MŠ
+    Klasik`, `MŠ Vege`) ani názvy menu (`Klasik`) školu neurčujú — skratka áno.
+
+    Match je `startswith`, nie substring — inak by krátky `edupage_match` (napr. `Les`)
+    chytil aj nesúvisiaci label, kde sa ten reťazec vyskytne v strede. Dlhšie prefixy
+    majú prednosť, aby `J1` neprebilo špecifickejší match; vyhráva teda JEDEN prefix,
+    a viac prevádzok vráti len vtedy, keď si ten istý prefix zdieľajú (`mšMal,Hey`).
+
+    Vracia zoznam — prázdny znamená „nepriradené", nie „nič sa nedeje": volajúci to
+    musí nahlásiť ako neúplný scrape, inak by porcie ticho zmizli.
+
+    Skratka má PREDNOSŤ pred payer labelom, lebo je to jediný spoľahlivý nosič: v
+    skratke je prefix celok a suffix porcia (`dsbNMNE` = Deutsche schule + NoMilk/
+    NoEgg). Payer label pomenúva len skupinu a vie si so skratkou protirečiť —
+    riadok `payer='MŠ Mal. NoMilk'` so skratkou `dsbNMNE` je porcia Deutsche schule,
+    nie Malokarpatského, hoci payer začína na `mšMal`. Keby vyhral payer, porcia by
+    sa fakturovala nesprávnej škole.
     """
-    payer_key = _normalise_key(payer_name)
-    menu_key = _normalise_key(menu_nazov)
-    for prefix in sorted(matches, key=len, reverse=True):
-        prefix_key = _normalise_key(prefix)
-        if not prefix_key:
+    kandidati = (
+        _normalise_key(menu_skratka),
+        _normalise_key(payer_name),
+        _normalise_key(menu_nazov),
+    )
+    for key in kandidati:
+        if not key:
             continue
-        if payer_key.startswith(prefix_key) or menu_key.startswith(prefix_key):
-            return matches[prefix]
-    return None
+        for prefix in sorted(matches, key=len, reverse=True):
+            prefix_key = _normalise_key(prefix)
+            if not prefix_key:
+                continue
+            if key.startswith(prefix_key):
+                return list(matches[prefix])
+    return []
 
 
 # ------------------------------------------------------------------
@@ -252,7 +282,7 @@ class EdupageScraper:
         self,
         mealsguest_url: str,
         target_date: date,
-        prevadzka_matches: dict[str, str] | None = None,
+        prevadzka_matches: dict[str, list[str]] | None = None,
     ) -> ScrapeResult:
         url = self._inject_date(mealsguest_url, target_date)
         html = self._fetch(url)
@@ -563,7 +593,7 @@ class EdupageScraper:
         html: str,
         target_date: date,
         config: PrevadzkaConfig | None = None,
-        prevadzka_matches: dict[str, str] | None = None,
+        prevadzka_matches: dict[str, list[str]] | None = None,
     ) -> ScrapeResult:
         prehlad_raw = self._extract_block(html, "prehlad")
         nazov_menu_raw = self._extract_block(html, "nazovMenu")
@@ -680,33 +710,36 @@ class EdupageScraper:
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
 
                     if matches:
-                        bucket = match_prevadzka(matches, match_name, nazov)
-                        if bucket is None:
+                        buckets = match_prevadzka(matches, match_name, nazov, skratka)
+                        if not buckets:
                             # Radšej nahlás neúplný scrape, než ticho zahodiť porcie.
                             unmatched.append(
                                 f"{letter}:{skratka}/{payer_info.get('name', payer_id)}"
                             )
                             continue
                     else:
-                        bucket = ""
+                        buckets = [""]
 
-                    if flag_label is not None:
-                        attention_buckets.setdefault(bucket, set()).add(flag_label)
+                    # Zdieľaná skratka (`mšMal,Hey`) padne viacerým prevádzkam naraz —
+                    # celý počet každej z nich, nie delený. Viď `build_prevadzka_matches`.
+                    for bucket in buckets:
+                        if flag_label is not None:
+                            attention_buckets.setdefault(bucket, set()).add(flag_label)
 
-                    counts_by_meal = counts.setdefault(bucket, {})
-                    meal_counts = counts_by_meal.setdefault(meal_key, {})
-                    portion_counts = meal_counts.setdefault(
-                        portion_name, {"menuCounts": {}, "diets": {}}
-                    )
-                    menu_counts = portion_counts["menuCounts"]
-                    diet_counts = portion_counts["diets"]
-                    menu_counts[effective_menu] = (
-                        menu_counts.get(effective_menu, 0) + total
-                    )
-                    if effective_diet:
-                        diet_counts[effective_diet] = (
-                            diet_counts.get(effective_diet, 0) + total
+                        counts_by_meal = counts.setdefault(bucket, {})
+                        meal_counts = counts_by_meal.setdefault(meal_key, {})
+                        portion_counts = meal_counts.setdefault(
+                            portion_name, {"menuCounts": {}, "diets": {}}
                         )
+                        menu_counts = portion_counts["menuCounts"]
+                        diet_counts = portion_counts["diets"]
+                        menu_counts[effective_menu] = (
+                            menu_counts.get(effective_menu, 0) + total
+                        )
+                        if effective_diet:
+                            diet_counts[effective_diet] = (
+                                diet_counts.get(effective_diet, 0) + total
+                            )
 
         def _clean(counts_by_meal: dict) -> dict[str, Any]:
             return {

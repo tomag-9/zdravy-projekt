@@ -169,10 +169,10 @@ def _resolve_workbook(date_str: str) -> Path:
 # ── Tier 1: counts from the Hárok1 sheet ───────────────────────────────────────
 # Meal-type buckets are compared like-for-like: a facility that only bills OBED
 # must not be faulted against the app's lunch+olovrant grand total.
-MEAL_TYPES = ("lunch", "snack", "breakfast")
+MEAL_TYPES = ("breakfast", "lunch", "snack")
 
 
-# Maps app meal-plan categories to the vyúčtovanie meal-type buckets. Soup and
+# Maps app meal-plan categories to reconciliation meal-type buckets. Soup and
 # main_course share one headcount (a "lunch"), so only main_course is counted.
 _APP_MEAL_TO_TYPE = {
     "main_course": "lunch",
@@ -636,14 +636,9 @@ class Command(BaseCommand):
             row, app_buckets = app_counts[key]
             real_buckets = real_counts[key]
             client = str(row.get("client", ""))
-            # Only compare meal types that either side actually billed/ordered.
             for meal_type in MEAL_TYPES:
-                app_val = app_buckets.get(meal_type)
-                real_val = real_buckets.get(meal_type)
-                if app_val is None and real_val is None:
-                    continue
-                app_val = app_val or Decimal("0")
-                real_val = real_val or Decimal("0")
+                app_val = app_buckets.get(meal_type) or Decimal("0")
+                real_val = real_buckets.get(meal_type) or Decimal("0")
                 diff = app_val - real_val
                 count_findings.append(
                     {
