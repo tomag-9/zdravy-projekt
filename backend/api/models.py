@@ -93,6 +93,12 @@ class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
+    color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        help_text="Voliteľná HEX farba pre admin prehľady, napr. #F97316.",
+    )
 
     def __str__(self) -> str:
         return self.name
@@ -341,6 +347,29 @@ class Prevadzka(models.Model):
         return [part.strip() for part in self.edupage_match.split(";") if part.strip()]
 
     sort_order = models.PositiveSmallIntegerField(default=0)
+    delivery_route = models.ForeignKey(
+        "DeliveryRoute",
+        on_delete=models.SET_NULL,
+        related_name="prevadzky",
+        null=True,
+        blank=True,
+        help_text="Rozvozová trasa používaná v admin Prehľade.",
+    )
+    delivery_sort_order = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Poradie prevádzky v rámci rozvozovej trasy.",
+    )
+    report_alias = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Voliteľný názov v admin Prehľade, ak sa má líšiť od názvu prevádzky.",
+    )
+    delivery_note = models.TextField(
+        blank=True,
+        default="",
+        help_text="Interná poznámka pre rozvozový/gramážový prehľad.",
+    )
     is_active = models.BooleanField(default=True)
     # Oddelené od PortionType.coefficient (ten je len gramáž): prevádzka môže
     # fakturovať porciu inou váhou, než akú má na tanieri. Edulienka účtuje
@@ -380,6 +409,47 @@ class Prevadzka(models.Model):
 
     def __str__(self) -> str:
         return self.nazov
+
+
+class DeliveryBlock(models.Model):
+    """Hlavný blok rozvozového prehľadu, napr. bežné trasy alebo extra trasy."""
+
+    name = models.CharField(max_length=120, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    include_in_main_summary = models.BooleanField(default=True)
+    include_in_extra_summary = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class DeliveryRoute(models.Model):
+    """Jedna rozvozová trasa v rámci bloku."""
+
+    block = models.ForeignKey(
+        DeliveryBlock, on_delete=models.CASCADE, related_name="routes"
+    )
+    name = models.CharField(max_length=160)
+    driver = models.CharField(max_length=80, blank=True, default="")
+    departure_time = models.TimeField(null=True, blank=True)
+    note = models.TextField(blank=True, default="")
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["block__sort_order", "sort_order", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["block", "name"], name="unique_delivery_route_name_per_block"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class PasswordResetToken(models.Model):

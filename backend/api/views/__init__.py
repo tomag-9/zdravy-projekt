@@ -18,6 +18,13 @@ from .auth_views import (
     SafeTokenRefreshView,
 )
 
+# Delivery layout views
+from .delivery_views import (
+    AdminPrevadzkaDeliveryViewSet,
+    DeliveryBlockViewSet,
+    DeliveryRouteViewSet,
+)
+
 # Diet views
 from .diet_views import DietViewSet
 
@@ -84,6 +91,10 @@ __all__ = [
     "GlobalSettingsViewSet",
     # Diet
     "DietViewSet",
+    # Delivery layout
+    "AdminPrevadzkaDeliveryViewSet",
+    "DeliveryBlockViewSet",
+    "DeliveryRouteViewSet",
     # Meal plan
     "DailyMealPlanViewSet",
     "PortionTypeViewSet",

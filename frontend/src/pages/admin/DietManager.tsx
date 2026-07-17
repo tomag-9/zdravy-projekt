@@ -10,6 +10,7 @@ interface Diet {
   name: string;
   is_active: boolean;
   description: string;
+  color?: string;
 }
 
 interface DeleteConfirm {
@@ -22,6 +23,7 @@ interface RenameModal {
   currentName: string;
   newName: string;
   description: string;
+  color: string;
 }
 
 const DietManager: React.FC = () => {
@@ -30,6 +32,7 @@ const DietManager: React.FC = () => {
   const [diets, setDiets] = useState<Diet[]>([]);
   const [newDietName, setNewDietName] = useState("");
   const [newDietDescription, setNewDietDescription] = useState("");
+  const [newDietColor, setNewDietColor] = useState("#FDE68A");
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
   const [renameModal, setRenameModal] = useState<RenameModal | null>(null);
   const [renaming, setRenaming] = useState(false);
@@ -65,6 +68,7 @@ const DietManager: React.FC = () => {
           body: JSON.stringify({
             name: newDietName.trim(),
             description: newDietDescription.trim(),
+            color: newDietColor,
             is_active: true,
           }),
         },
@@ -77,6 +81,7 @@ const DietManager: React.FC = () => {
         });
         setNewDietName("");
         setNewDietDescription("");
+        setNewDietColor("#FDE68A");
         fetchDiets();
         success("Diéta bola úspešne pridaná");
       } else {
@@ -121,19 +126,20 @@ const DietManager: React.FC = () => {
           body: JSON.stringify({
             name: renameModal.newName.trim(),
             description: renameModal.description.trim(),
+            color: renameModal.color,
           }),
         },
       );
       if (res.ok) {
-        success("Diéta bola premenovaná");
+        success("Diéta bola uložená");
         fetchDiets();
         setRenameModal(null);
       } else {
-        error("Nepodarilo sa premenovať diétu (možno názov už existuje)");
+        error("Nepodarilo sa uložiť diétu (možno názov už existuje)");
       }
     } catch (e) {
       logger.error(e);
-      error("Chyba pri premenovaní diéty");
+      error("Chyba pri ukladaní diéty");
     } finally {
       setRenaming(false);
     }
@@ -164,6 +170,15 @@ const DietManager: React.FC = () => {
                 placeholder="Popis diéty pre prevádzku"
               />
             </Field>
+            <Field label="Farba">
+              <Input
+                type="color"
+                value={newDietColor}
+                onChange={(e) => setNewDietColor(e.target.value)}
+                aria-label="Farba novej diéty"
+                style={{ width: 64, padding: 4 }}
+              />
+            </Field>
             <Button type="submit" disabled={!newDietName.trim()}>
               <Plus /> Pridať diétu
             </Button>
@@ -176,11 +191,25 @@ const DietManager: React.FC = () => {
           <div className="zpa-grid-cards">
             {diets.map((diet) => (
               <Card key={diet.id} pad className="zpa-diet-card">
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
+                <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 999,
+                      background: diet.color || "#FDE68A",
+                      boxShadow: "inset 0 0 0 1px rgba(39, 52, 34, 0.18)",
+                      flex: "0 0 18px",
+                      marginTop: 2,
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
                   {diet.description && (
                     <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
                   )}
+                  </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                   <IconButton
@@ -191,6 +220,7 @@ const DietManager: React.FC = () => {
                         currentName: diet.name,
                         newName: diet.name,
                         description: diet.description || "",
+                        color: diet.color || "#FDE68A",
                       })
                     }
                   >
@@ -230,7 +260,7 @@ const DietManager: React.FC = () => {
       {/* Rename modal */}
       {renameModal && (
         <Modal
-          title="Premenovať diétu"
+          title="Upraviť diétu"
           onClose={() => setRenameModal(null)}
           foot={
             <>
@@ -242,7 +272,8 @@ const DietManager: React.FC = () => {
                   !renameModal.newName.trim() ||
                   (renameModal.newName.trim() === renameModal.currentName &&
                     renameModal.description.trim() ===
-                      (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim())
+                      (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim() &&
+                    renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#FDE68A"))
                 }
               >
                 {renaming ? "Ukladám…" : "Uložiť"}
@@ -270,6 +301,15 @@ const DietManager: React.FC = () => {
               onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
               placeholder="Popis diéty pre prevádzku"
               rows={4}
+            />
+          </Field>
+          <Field label="Farba">
+            <Input
+              type="color"
+              value={renameModal.color}
+              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, color: e.target.value } : prev))}
+              aria-label={`Farba diéty ${renameModal.currentName}`}
+              style={{ width: 64, padding: 4 }}
             />
           </Field>
         </Modal>

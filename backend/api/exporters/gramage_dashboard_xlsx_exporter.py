@@ -32,6 +32,8 @@ class GramageDashboardXLSXExporter:
         menu_b_fill = PatternFill("solid", fgColor="2563EB")
         cat_font = Font(bold=True)
         cat_fill = PatternFill("solid", fgColor="F1F5F9")
+        block_fill = PatternFill("solid", fgColor="1E40AF")
+        route_fill = PatternFill("solid", fgColor="DBEAFE")
         diet_fill = PatternFill("solid", fgColor="FEF9C3")
         total_font = Font(bold=True, color="FFFFFF")
         total_fill = PatternFill("solid", fgColor="1E40AF")
@@ -51,6 +53,16 @@ class GramageDashboardXLSXExporter:
             if "MENU B" in upper:
                 return menu_b_fill
             return None
+
+        def diet_row_fill(row):
+            color = str(row.get("diet_color") or row.get("color") or "").lstrip("#")
+            if not color:
+                color = str(
+                    (self.data.get("diet_colors") or {}).get(row.get("name"), "")
+                ).lstrip("#")
+            if len(color) == 6:
+                return PatternFill("solid", fgColor=color.upper())
+            return diet_fill
 
         # ── Column layout ───────────────────────────────────────────────────
         # Columns: A=Prevádzka/Riadok, B=Počet, then components
@@ -152,9 +164,8 @@ class GramageDashboardXLSXExporter:
         def write_summary_row(label, count, col_grams, fill):
             write_row(label, count, col_grams, font=cat_font, fill=fill)
 
-        # ── Data rows ────────────────────────────────────────────────────────
-        for row in rows:
-            # Client header
+        def write_client(row):
+            nonlocal DATA_ROW
             ws.cell(
                 row=DATA_ROW,
                 column=1,
@@ -174,7 +185,7 @@ class GramageDashboardXLSXExporter:
 
             for sr in row["sub_rows"]:
                 f = (
-                    diet_fill
+                    diet_row_fill(sr)
                     if sr["type"] == "diet"
                     else menu_variant_fill(sr["label"])
                 )
@@ -197,8 +208,69 @@ class GramageDashboardXLSXExporter:
                     diet_row["name"],
                     diet_row["count"],
                     diet_row["col_grams"],
-                    PatternFill("solid", fgColor="FEF3C7"),
+                    diet_row_fill(diet_row),
                 )
+
+            if row.get("delivery_note"):
+                ws.cell(
+                    row=DATA_ROW, column=1, value=f"Poznámka: {row['delivery_note']}"
+                )
+                ws.merge_cells(
+                    start_row=DATA_ROW,
+                    start_column=1,
+                    end_row=DATA_ROW,
+                    end_column=total_cols,
+                )
+                for c in range(1, total_cols + 1):
+                    ws.cell(row=DATA_ROW, column=c).fill = PatternFill(
+                        "solid", fgColor="EEF2E3"
+                    )
+                DATA_ROW += 1
+
+        def write_band(label, fill, font=None):
+            nonlocal DATA_ROW
+            ws.cell(row=DATA_ROW, column=1, value=label)
+            ws.merge_cells(
+                start_row=DATA_ROW,
+                start_column=1,
+                end_row=DATA_ROW,
+                end_column=total_cols,
+            )
+            for c in range(1, total_cols + 1):
+                cell = ws.cell(row=DATA_ROW, column=c)
+                cell.fill = fill
+                cell.font = font or cat_font
+            DATA_ROW += 1
+
+        # ── Data rows ────────────────────────────────────────────────────────
+        blocks = self.data.get("blocks") or []
+        unassigned_rows = self.data.get("unassigned_rows") or []
+        if blocks:
+            for block in blocks:
+                write_band(block["name"], block_fill, Font(bold=True, color="FFFFFF"))
+                for route in block.get("routes", []):
+                    suffix = []
+                    if route.get("departure_time"):
+                        suffix.append(route["departure_time"][:5])
+                    if route.get("driver"):
+                        suffix.append(route["driver"])
+                    route_label = route["name"]
+                    if suffix:
+                        route_label = f"{route_label} - {' / '.join(suffix)}"
+                    write_band(route_label, route_fill, cat_font)
+                    for row in route.get("rows", []):
+                        write_client(row)
+            if unassigned_rows:
+                write_band(
+                    "Nepriradené prevádzky",
+                    PatternFill("solid", fgColor="FEE2E2"),
+                    cat_font,
+                )
+                for row in unassigned_rows:
+                    write_client(row)
+        else:
+            for row in rows:
+                write_client(row)
 
         # ── Totals row ───────────────────────────────────────────────────────
         totals_count = _tidy_count(
