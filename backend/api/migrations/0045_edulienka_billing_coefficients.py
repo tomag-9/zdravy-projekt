@@ -14,6 +14,12 @@ PORTION_TYPES = [
 
 EDULIENKA_COEFFICIENTS = {"Predškolák": "1.25"}
 
+# Exact names only. `icontains="Edulienka"` also matches **Medulienka**, a different
+# kindergarten in the same roster — it would have silently billed Medulienka's
+# preschoolers at 1,25. The app has renamed the celok over time, so both spellings are
+# listed rather than a substring.
+EDULIENKA_CELOK_NAMES = ("Edulienka", "MŠ Edulienka")
+
 
 def sync_portion_types(apps, schema_editor):
     PortionType = apps.get_model("api", "PortionType")
@@ -26,14 +32,14 @@ def sync_portion_types(apps, schema_editor):
 
 def set_edulienka_coefficients(apps, schema_editor):
     Prevadzka = apps.get_model("api", "Prevadzka")
-    Prevadzka.objects.filter(celok__nazov__icontains="Edulienka").update(
+    Prevadzka.objects.filter(celok__nazov__in=EDULIENKA_CELOK_NAMES).update(
         billing_portion_coefficients=EDULIENKA_COEFFICIENTS
     )
 
 
 def unset_edulienka_coefficients(apps, schema_editor):
     Prevadzka = apps.get_model("api", "Prevadzka")
-    Prevadzka.objects.filter(celok__nazov__icontains="Edulienka").update(
+    Prevadzka.objects.filter(celok__nazov__in=EDULIENKA_CELOK_NAMES).update(
         billing_portion_coefficients={}
     )
 
