@@ -26,6 +26,7 @@ class DeliverySeedRow:
     note: str = ""
     canonical_name: str = ""
     match_names: tuple[str, ...] = ()
+    is_edupage: bool = False
 
     @property
     def prevadzka_name(self) -> str:
@@ -68,7 +69,7 @@ ROUTES = [
 ]
 
 DELIVERY_ROWS = [
-    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 3"),
+    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 3", is_edupage=True),
     DeliverySeedRow(
         "1.Trasa - Pezinská - Heňo/Ivan", "LILLIUM GARDEN", address="Štúrova 61, Modra"
     ),
@@ -90,8 +91,8 @@ DELIVERY_ROWS = [
         canonical_name="ZŠ Ivanka pri Dunaji",
         match_names=("ivánka", "Ivanka pri Dunaji"),
     ),
-    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 1"),
-    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 2"),
+    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 1", is_edupage=True),
+    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 2", is_edupage=True),
     DeliverySeedRow(
         "1.Trasa - Pezinská - Heňo/Ivan",
         "benjamín pezinok",
@@ -178,6 +179,16 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "trasa 5 - RADKO - 10:00", "Fantastická Škôlka", alias="Fantastická"
     ),
+    DeliverySeedRow(
+        "trasa 5 - RADKO - 10:00",
+        "SZŠ FAN",
+        alias="Fantastická škola",
+        match_names=(
+            "Fantastická Škola",
+            "SZŠ Fantastická",
+            "Súkromná základná škola Fantastická",
+        ),
+    ),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Ostravská"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Stromček"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Predškoláci"),
@@ -230,8 +241,18 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Libellus Camp", address="Mokrohájska 3"
     ),
-    DeliverySeedRow("TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Les", alias="Školička les"),
-    DeliverySeedRow("TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Lúka", alias="Školička lúka"),
+    DeliverySeedRow(
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Les",
+        alias="Školička les",
+        is_edupage=True,
+    ),
+    DeliverySeedRow(
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Lúka",
+        alias="Školička lúka",
+        is_edupage=True,
+    ),
     DeliverySeedRow(
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
         "Školička 1.stupeň",
@@ -249,12 +270,6 @@ DELIVERY_ROWS = [
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
         "Deutsche schule",
         address="Bárdošova 33, Bratislava",
-    ),
-    DeliverySeedRow(
-        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
-        "MŠ Zdravé Bruško",
-        alias="Little Big",
-        note="Alias z reálneho XLSX, ešte potvrdiť voči prevádzke.",
     ),
     DeliverySeedRow("TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Škôlkáreň - Mokrohájska"),
     DeliverySeedRow(
@@ -338,6 +353,8 @@ DELIVERY_ROWS = [
     DeliverySeedRow("TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "ZŠ Malokarpatská"),
 ]
 
+OBSOLETE_CELKY = ("MŠ Zdravé Bruško",)
+
 
 class Command(BaseCommand):
     help = "Seed real delivery routes and Excel-derived operations for local dev."
@@ -389,6 +406,8 @@ class Command(BaseCommand):
             for sort_order, row in enumerate(rows, start=1):
                 _upsert_prevadzka(row, route, sort_order)
 
+        _delete_obsolete_celky()
+
         self.stdout.write(
             self.style.SUCCESS(f"Seeded {len(DELIVERY_ROWS)} real delivery operations.")
         )
@@ -406,6 +425,9 @@ def _upsert_prevadzka(
 ) -> Prevadzka:
     display_name = row.prevadzka_name
     celok, _ = Celok.objects.get_or_create(nazov=display_name)
+    if row.is_edupage and celok.zdroj_objednavok != Celok.ZdrojObjednavok.EDUPAGE:
+        celok.zdroj_objednavok = Celok.ZdrojObjednavok.EDUPAGE
+        celok.save(update_fields=["zdroj_objednavok"])
     existing = _find_existing_prevadzka(row)
     if existing is None:
         existing = Prevadzka(celok=celok, nazov=display_name)
@@ -438,3 +460,7 @@ def _candidate_names(row: DeliverySeedRow) -> Iterable[str]:
             continue
         seen.add(key)
         yield name
+
+
+def _delete_obsolete_celky() -> None:
+    Celok.objects.filter(nazov__in=OBSOLETE_CELKY).delete()

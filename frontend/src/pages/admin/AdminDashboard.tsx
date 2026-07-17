@@ -624,11 +624,13 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                     </tr>
                     {block.routes.map((route) => (
                       <React.Fragment key={`route-${route.id}`}>
-                        <tr style={{ background: "var(--bg-cream-soft)" }}>
-                          <td colSpan={1 + totalComponents} style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)", padding: "10px 20px" }}>
-                            {route.name}
-                            <span style={{ marginLeft: 8, fontSize: 12, fontFamily: "var(--font-sans)", color: "var(--ink-3)" }}>
-                              {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}
+                        <tr className="route-row">
+                          <td colSpan={1 + totalComponents}>
+                            <span className="route-pill">
+                              <span>{route.name}</span>
+                              {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).length > 0 && (
+                                <small>{[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}</small>
+                              )}
                             </span>
                           </td>
                         </tr>

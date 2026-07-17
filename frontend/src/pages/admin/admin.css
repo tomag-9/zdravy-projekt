@@ -345,9 +345,21 @@
 .zpa-iconbtn svg { width: 17px; height: 17px; }
 .zpa-iconbtn:hover { background: var(--bg-cream-soft); color: var(--green-700); }
 .zpa-iconbtn--danger:hover { background: rgba(201,46,82,0.08); color: var(--coral-600); }
-.zpa-drag-handle { cursor: grab; color: var(--ink-mute); touch-action: none; }
-.zpa-drag-handle:hover { color: var(--green-700); background: rgba(114,136,75,0.10); }
-.zpa-drag-handle:active { cursor: grabbing; }
+.zpa-draggable-row { cursor: grab; }
+.zpa-draggable-row:hover { background: rgba(114,136,75,0.06); }
+.zpa-draggable-row:active { cursor: grabbing; }
+.zpa-draggable-row.is-dragging { opacity: 0.55; background: rgba(114,136,75,0.10); }
+.zpa-draggable-row button,
+.zpa-draggable-row select,
+.zpa-draggable-row input,
+.zpa-draggable-row textarea { cursor: auto; }
+.zpa-row-grip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: var(--radius-sm);
+    color: var(--ink-mute); pointer-events: none;
+}
+.zpa-draggable-row:hover .zpa-row-grip { color: var(--green-700); background: rgba(114,136,75,0.10); }
+.zpa-row-grip svg { width: 17px; height: 17px; }
 
 /* ========================================================== *
  * Cards
@@ -612,6 +624,37 @@
 .mh-menuV-1 { background: #5F7639; } .mh-menuV-2 { background: #74893F; }   .mh-menuV-cell { background: rgba(124,152,83,0.12); }
 .mh-snack-1 { background: #7E3A55; } .mh-snack-2 { background: #964A69; }   .mh-snack-cell { background: rgba(156,74,107,0.09); }
 
+.zpa-gram tbody .band td {
+    background: var(--green-800); color: var(--peach-400);
+    font-family: var(--font-display); font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: var(--tracking-caps);
+    padding: 9px 16px;
+}
+.zpa-gram .route-row td {
+    min-width: 0; padding: 12px 16px 7px;
+    background: linear-gradient(180deg, rgba(114,136,75,0.08), rgba(114,136,75,0.03));
+    border-top: 2px solid rgba(114,136,75,0.28);
+    border-bottom: 1px solid rgba(114,136,75,0.14);
+}
+.zpa-gram .route-pill {
+    display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
+    padding: 6px 10px 6px 12px; border-radius: var(--radius-pill);
+    background: #fff; color: var(--green-900);
+    border: 1px solid rgba(114,136,75,0.28);
+    box-shadow: 0 1px 0 rgba(23,53,5,0.04);
+    font-family: var(--font-display); font-weight: 700; font-size: 12.5px;
+}
+.zpa-gram .route-pill::before {
+    content: ""; width: 7px; height: 7px; border-radius: 999px;
+    background: var(--green-600); flex: 0 0 auto;
+}
+.zpa-gram .route-pill > span {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zpa-gram .route-pill small {
+    flex: 0 0 auto; color: var(--ink-3);
+    font-family: var(--font-sans); font-size: 11px; font-weight: 600;
+}
 .zpa-gram .client-row td { background: var(--bg-cream-soft); border-top: 2px solid var(--line); padding: 0; }
 .zpa-gram .client-toggle {
     width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px;

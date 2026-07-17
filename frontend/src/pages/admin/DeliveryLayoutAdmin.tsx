@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Boxes, GripVertical, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, Boxes, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
@@ -101,6 +101,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const saveVersionRef = useRef(0);
 
   const routeOptions = useMemo(
     () => layout.blocks.flatMap((block) => block.routes.map((route) => ({ route, block }))),
@@ -124,8 +125,37 @@ const DeliveryLayoutAdmin: React.FC = () => {
     void fetchLayout();
   }, [fetchLayout]);
 
+  const persistLayout = async (nextLayout: DeliveryLayout) => {
+    const saveVersion = saveVersionRef.current + 1;
+    saveVersionRef.current = saveVersion;
+    setSaving(true);
+    try {
+      const payload = renumberLayout(nextLayout);
+      const res = await apiFetch(`${API}/admin/delivery-blocks/reorder/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        toastError("Nepodarilo sa uložiť poradie.");
+        if (saveVersionRef.current === saveVersion) await fetchLayout();
+        return;
+      }
+      const savedLayout = renumberLayout(await res.json());
+      if (saveVersionRef.current === saveVersion) setLayout(savedLayout);
+    } catch (e) {
+      logger.error(e);
+      toastError("Chyba pri ukladaní poradia.");
+      if (saveVersionRef.current === saveVersion) await fetchLayout();
+    } finally {
+      if (saveVersionRef.current === saveVersion) setSaving(false);
+    }
+  };
+
   const updateLayout = (recipe: (draft: DeliveryLayout) => DeliveryLayout) => {
-    setLayout((current) => renumberLayout(recipe(current)));
+    const nextLayout = renumberLayout(recipe(layout));
+    setLayout(nextLayout);
+    void persistLayout(nextLayout);
   };
 
   const moveBlock = (blockId: number, delta: number) => {
@@ -143,6 +173,15 @@ const DeliveryLayoutAdmin: React.FC = () => {
     setDragging(nextDragging);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("application/x-zpa-delivery", JSON.stringify(nextDragging));
+  };
+
+  const startRowDrag = (event: React.DragEvent, nextDragging: DragState) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, select, input, textarea, a")) {
+      event.preventDefault();
+      return;
+    }
+    startDrag(event, nextDragging);
   };
 
   const allowDrop = (event: React.DragEvent, type: DragState["type"]) => {
@@ -212,7 +251,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
       body: (
         <p>
           Prevádzka <strong>{prevadzka.report_alias || prevadzka.nazov}</strong> sa presunie medzi nepriradené
-          prevádzky. Zmena sa uloží až po kliknutí na <strong>Uložiť poradie</strong>.
+          prevádzky. Po potvrdení sa zmena uloží automaticky.
         </p>
       ),
       confirmLabel: "Odobrať z trasy",
@@ -267,29 +306,6 @@ const DeliveryLayoutAdmin: React.FC = () => {
         unassigned_prevadzky: unassigned,
       };
     });
-  };
-
-  const saveLayout = async () => {
-    setSaving(true);
-    try {
-      const payload = renumberLayout(layout);
-      const res = await apiFetch(`${API}/admin/delivery-blocks/reorder/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        toastError("Nepodarilo sa uložiť poradie.");
-        return;
-      }
-      setLayout(renumberLayout(await res.json()));
-      success("Rozvozové poradie bolo uložené.");
-    } catch (e) {
-      logger.error(e);
-      toastError("Chyba pri ukladaní poradia.");
-    } finally {
-      setSaving(false);
-    }
   };
 
   const createBlock = async (e: React.FormEvent) => {
@@ -410,9 +426,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
             <Button variant="secondary" onClick={() => setShowBlockModal(true)}>
               <Plus /> Blok
             </Button>
-            <Button onClick={saveLayout} disabled={saving || loading}>
-              <Save /> {saving ? "Ukladám…" : "Uložiť poradie"}
-            </Button>
+            <Badge tone={saving || loading ? "orange" : "green"}>{saving ? "Ukladám…" : "Auto uloženie"}</Badge>
           </>
         }
       />
@@ -488,6 +502,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
                           route.prevadzky.map((prevadzka) => (
                             <tr
                               key={prevadzka.id}
+                              className={`zpa-draggable-row${dragging?.type === "prevadzka" && dragging.prevadzkaId === prevadzka.id ? " is-dragging" : ""}`}
+                              draggable
+                              onDragStart={(event) => startRowDrag(event, { type: "prevadzka", prevadzkaId: prevadzka.id })}
+                              onDragEnd={() => setDragging(null)}
                               onDragOver={(event) => allowDrop(event, "prevadzka")}
                               onDrop={(event) => {
                                 if (dragging?.type !== "prevadzka") return;
@@ -498,16 +516,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                               }}
                             >
                               <td style={{ width: 48 }}>
-                                <IconButton
-                                  className="zpa-drag-handle"
-                                  draggable
-                                  title="Presunúť prevádzku"
-                                  aria-label="Presunúť prevádzku"
-                                  onDragStart={(event) => startDrag(event, { type: "prevadzka", prevadzkaId: prevadzka.id })}
-                                  onDragEnd={() => setDragging(null)}
-                                >
+                                <span className="zpa-row-grip" title="Presunúť prevádzku" aria-label="Presunúť prevádzku">
                                   <GripVertical />
-                                </IconButton>
+                                </span>
                               </td>
                               <td>
                                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{prevadzka.report_alias || prevadzka.nazov}</div>
@@ -558,6 +569,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
                     layout.unassigned_prevadzky.map((prevadzka) => (
                       <tr
                         key={prevadzka.id}
+                        className={`zpa-draggable-row${dragging?.type === "prevadzka" && dragging.prevadzkaId === prevadzka.id ? " is-dragging" : ""}`}
+                        draggable
+                        onDragStart={(event) => startRowDrag(event, { type: "prevadzka", prevadzkaId: prevadzka.id })}
+                        onDragEnd={() => setDragging(null)}
                         onDragOver={(event) => allowDrop(event, "prevadzka")}
                         onDrop={(event) => {
                           if (dragging?.type !== "prevadzka") return;
@@ -568,16 +583,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         }}
                       >
                         <td style={{ width: 48 }}>
-                          <IconButton
-                            className="zpa-drag-handle"
-                            draggable
-                            title="Presunúť prevádzku"
-                            aria-label="Presunúť prevádzku"
-                            onDragStart={(event) => startDrag(event, { type: "prevadzka", prevadzkaId: prevadzka.id })}
-                            onDragEnd={() => setDragging(null)}
-                          >
+                          <span className="zpa-row-grip" title="Presunúť prevádzku" aria-label="Presunúť prevádzku">
                             <GripVertical />
-                          </IconButton>
+                          </span>
                         </td>
                         <td>
                           <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{prevadzka.nazov}</div>

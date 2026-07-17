@@ -25,7 +25,6 @@ ich berie ako prefix, nie substring, takže `mšMal` nechytí `mšHey`.
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
-from django.utils import timezone
 
 from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
@@ -119,32 +118,23 @@ class Command(BaseCommand):
             f"  login {EMAIL} → {len(prevadzky)} prevádzok naprieč celkami"
         )
 
-        # Starý zberný celok nechávame kvôli histórii. Od dneška vyššie sú jeho
-        # objednávky duplicitné: nové samostatné celky ich prescrapujú za seba.
+        # Starý zberný celok nie je reálna škola. Nechávame len technický EduPage
+        # login a päť reálnych celkov vyššie; pôvodný artefakt zmažeme úplne.
         stary = Celok.objects.filter(nazov=STARY_CELOK).first()
         if stary is not None:
-            dnes = timezone.localdate()
-            duplicitne = DailyOrder.objects.filter(
-                prevadzka__celok=stary, date__gte=dnes
-            )
-            pocet = duplicitne.count()
-            if pocet:
+            objednavky = DailyOrder.objects.filter(prevadzka__celok=stary)
+            pocet_objednavok = objednavky.count()
+            if pocet_objednavok:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  '{STARY_CELOK}': mažem {pocet} objednávok od {dnes} "
-                        "(duplikáty, nové celky ich prescrapujú)"
+                        f"  '{STARY_CELOK}': mažem {pocet_objednavok} historických "
+                        "objednávok z neexistujúceho zberného celku"
                     )
                 )
-                if not dry_run:
-                    duplicitne.delete()
-
-            for stara in Prevadzka.objects.filter(celok=stary):
-                self.stdout.write(
-                    f"  '{STARY_CELOK}': retirujem historickú prevádzku '{stara.nazov}'"
-                )
-                if not dry_run:
-                    stara.is_active = False
-                    stara.save(update_fields=["is_active"])
+            self.stdout.write(f"  '{STARY_CELOK}': mažem neexistujúci celok")
+            if not dry_run:
+                objednavky.delete()
+                stary.delete()
 
         if dry_run:
             self.stdout.write(self.style.WARNING("\n--dry-run: rollback"))

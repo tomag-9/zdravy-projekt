@@ -67,6 +67,11 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
 def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
     settings.DEBUG = True
     Diet.objects.create(name="NO GLUTEN")
+    old_zdrave_brusko_celok = Celok.objects.create(nazov="MŠ Zdravé Bruško")
+    old_zdrave_brusko = Prevadzka.objects.create(
+        celok=old_zdrave_brusko_celok,
+        nazov="MŠ Zdravé Bruško",
+    )
     ivanka_celok = Celok.objects.create(nazov="ZŠ Ivanka pri Dunaji")
     ivanka = Prevadzka.objects.create(celok=ivanka_celok, nazov="ZŠ Ivanka pri Dunaji")
     veterinarna_celok = Celok.objects.create(nazov="SŠ VETERINÁRNA")
@@ -75,6 +80,8 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
         nazov="SŠ VETERINÁRNA",
         adresa="Pod brehmi 6, Bratislava",
     )
+    fan_celok = Celok.objects.create(nazov="SZŠ FAN")
+    fan = Prevadzka.objects.create(celok=fan_celok, nazov="SZŠ FAN")
 
     management.call_command("seed_real_delivery_layout")
     management.call_command("seed_real_delivery_layout")
@@ -84,7 +91,7 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
         == 2
     )
     assert DeliveryRoute.objects.count() == len(ROUTES)
-    assert Prevadzka.objects.count() == len(DELIVERY_ROWS)
+    assert Prevadzka.objects.filter(is_active=True).count() == len(DELIVERY_ROWS)
 
     nova_tulipa = Prevadzka.objects.get(nazov="Nova Tulipa")
     assert nova_tulipa.delivery_route.name == "trasa 2 - 9:25 - Ivan/Heňo"
@@ -100,6 +107,19 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
         veterinarna.delivery_route.name == "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO"
     )
     assert veterinarna.report_alias == "SŠ VETERINÁRNA Pod brehmi 6"
+
+    fan.refresh_from_db()
+    assert fan.delivery_route.name == "trasa 5 - RADKO - 10:00"
+    assert fan.report_alias == "Fantastická škola"
+
+    assert not Celok.objects.filter(pk=old_zdrave_brusko_celok.pk).exists()
+    assert not Prevadzka.objects.filter(pk=old_zdrave_brusko.pk).exists()
+
+    for nazov in ["Jolly 1", "Jolly 2", "Jolly 3", "Les", "Lúka"]:
+        assert (
+            Prevadzka.objects.get(nazov=nazov).celok.zdroj_objednavok
+            == Celok.ZdrojObjednavok.EDUPAGE
+        )
 
     no_gluten = Diet.objects.get(name="NO GLUTEN")
     assert no_gluten.color == "#2563EB"
