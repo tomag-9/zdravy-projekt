@@ -410,6 +410,7 @@ def scrape_edupage_orders_task(
         )
         from api.models import DailyOrder, GlobalSettings, UserProfile
         from api.services import _next_workday
+        from api.utils import filter_order_data_for_prevadzka
 
         valid_meal_types = {"breakfast", "lunch", "olovrant"}
         if isinstance(meal_types, str):
@@ -475,11 +476,7 @@ def scrape_edupage_orders_task(
         scraped = errors = skipped = 0
 
         for profile in profiles:
-            prevadzky = (
-                list(profile.celok.prevadzky.filter(is_active=True))
-                if profile.celok_id
-                else []
-            )
+            prevadzky = list(profile.dostupne_prevadzky())
             if not prevadzky:
                 logger.warning(
                     "scrape_edupage_orders_task: %s nemá žiadnu prevádzku — preskakujem",
@@ -552,6 +549,9 @@ def scrape_edupage_orders_task(
 
                     nested_order_data = nest_order_data_by_category(
                         data_by_nazov.get(nazov, {}), nazov
+                    )
+                    nested_order_data = filter_order_data_for_prevadzka(
+                        nested_order_data, nazov
                     )
                     imported_data = _filter_order_data_by_meals(
                         nested_order_data, requested_meals

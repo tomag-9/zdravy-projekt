@@ -16,6 +16,7 @@ from ..edupage_scraper import (
     prevadzky_without_match,
 )
 from ..models import DailyOrder, EdupageUpload, UserProfile
+from ..utils import filter_order_data_for_prevadzka
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
         scraper = EdupageScraper()
 
         for profile in qs.select_related("user", "celok").prefetch_related(
-            "celok__prevadzky"
+            "celok__prevadzky", "prevadzky"
         ):
             if not profile.mealsguest_url:
                 results.append(
@@ -180,11 +181,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 continue
 
-            prevadzky = (
-                list(profile.celok.prevadzky.filter(is_active=True))
-                if profile.celok_id
-                else []
-            )
+            prevadzky = list(profile.dostupne_prevadzky())
             if not prevadzky:
                 results.append(
                     {
@@ -266,6 +263,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                     order_data = nest_order_data_by_category(
                         data_by_nazov.get(nazov, {}), nazov
                     )
+                    order_data = filter_order_data_for_prevadzka(order_data, nazov)
                     order, created = DailyOrder.objects.update_or_create(
                         prevadzka=prevadzka,
                         date=target_date,

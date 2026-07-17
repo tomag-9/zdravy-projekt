@@ -246,12 +246,17 @@ class UserProfile(models.Model):
 
         Prázdny M2M znamená „celý celok", nie „nič" — inak by každý nový login
         stratil prístup, kým mu ho niekto ručne nenaklikal.
+
+        Vyplnený M2M platí aj bez celku a smie siahať naprieč celkami: jeden EduPage
+        môže zastrešovať viac samostatných subjektov (Zdravé Brúsko vedie pod jedným
+        loginom päť škôl, ktoré fakturujú každá zvlášť). Spoločný EduPage teda nie je
+        príznak celku, preto sa tu na celok neviažeme.
         """
-        if self.celok_id is None:
-            return Prevadzka.objects.none()
         vybrane = self.prevadzky.filter(is_active=True)
         if vybrane.exists():
             return vybrane
+        if self.celok_id is None:
+            return Prevadzka.objects.none()
         return self.celok.prevadzky.filter(is_active=True)
 
 
@@ -315,8 +320,10 @@ class Prevadzka(models.Model):
         help_text=(
             "Prefix payer labelu / menu skratky, podľa ktorého sa EduPage riadky "
             "priradia tejto prevádzke (napr. 'J1', 'Palisády', 'B - Les'). "
-            "Viac prefixov oddeľ čiarkou — škola nemá spoločný prefix, jej skupiny "
-            "sa volajú '1.st', '2.st' aj 'Dospelý' ('1.st, 2.st, Dospelý')."
+            "Viac prefixov oddeľ BODKOČIARKOU — škola nemá spoločný prefix, jej "
+            "skupiny sa volajú '1.st', '2.st' aj 'Dospelý' ('1.st; 2.st; Dospelý'). "
+            "Čiarka oddeľovač byť nemôže: sama sa vyskytuje v skratkách menu "
+            "('mšMal,Hey' je jedna skratka pre dve škôlky)."
         ),
     )
 
@@ -326,8 +333,12 @@ class Prevadzka(models.Model):
         Jeden prefix nestačí všade: MŠ skupiny zdieľajú prefix `MŠ`, ale školské sa
         volajú `1.st.`, `2.st.` aj `Dospelý` — bez viacerých prefixov by školské
         riadky ostali nezaradené a scrape by celý celok zahodil ako neúplný.
+
+        Oddeľovač je bodkočiarka, nie čiarka: EduPage skratky čiarku bežne obsahujú
+        (`mšMal,Hey` je JEDNA skratka zdieľaná dvoma škôlkami), takže čiarkový
+        oddeľovač by ju rozsekol na dva neplatné prefixy.
         """
-        return [part.strip() for part in self.edupage_match.split(",") if part.strip()]
+        return [part.strip() for part in self.edupage_match.split(";") if part.strip()]
 
     sort_order = models.PositiveSmallIntegerField(default=0)
     is_active = models.BooleanField(default=True)

@@ -86,7 +86,8 @@ The command auto-resolves the workbook by date, then emits a JSON report on **st
 and a one-line summary on **stderr**. It runs two tiers:
 
 1. **Tier 1 — counts, PER MEAL TYPE.** App per-facility counts vs the `Hárok1` count
-   lines, compared **like-for-like by meal type** (`lunch`, `snack`, `breakfast`). This
+   lines, compared **like-for-like by meal type** (`breakfast`, `lunch`, `snack`;
+   `snack` = olovrant). This
    matters: a facility that only orders obed must **not** be faulted against the app's
    lunch+olovrant grand total. Which Hárok1 column is lunch and which is olovrant is
    derived from the app's own `col_groups` (matched by dish name), because the dishes
@@ -121,8 +122,13 @@ maps them; pass it with `--alias-map`. Matching is ASCII-folded/punctuation-stri
 A facility still landing in both `app_only` and `real_only` is an unresolved mapping —
 **resolve the spelling and add it to `facility_aliases.json`, don't invent a match.** Add
 only confident pairings; leave ambiguous ones out and list them as unresolved in the
-report (e.g. `SZŠ FAN` — no clear real counterpart; `Zdravé Bruško ↔ deutsche schule`
-was confirmed via count match).
+report (e.g. `SZŠ FAN` — no clear real counterpart). `Zdravé Brúsko` is no longer
+an alias for `deutsche schule`; the app should label the split row as `Deutsche schule`
+directly.
+
+`Deutsche schule` has a special service rule: even if EduPage contains breakfast/snack
+rows for it, the app should ignore those meals. Expected reconciliation is
+`breakfast=0`, `snack=0`, and lunch compared normally.
 
 ## How to run — week comparison (no daily `real/` workbook)
 
