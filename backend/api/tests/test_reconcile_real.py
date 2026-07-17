@@ -9,6 +9,7 @@ from tempfile import NamedTemporaryFile
 from openpyxl import Workbook
 
 from api.management.commands.reconcile_real import (
+    _column_meal_types,
     _combine_count_buckets,
     _count_or_none,
     _expand_block_rows,
@@ -205,46 +206,102 @@ class TestHarok1BlockParsing(unittest.TestCase):
         self.assertEqual(vals, [Decimal("2400"), None])
 
 
-class TestRealCountsMealTypeReset(unittest.TestCase):
-    """meal_type sa nesmie preniesť z predošlej prevádzky bez vlastnej sekcie."""
+class TestRealCountsFromHarok1(unittest.TestCase):
+    """Počty sa čítajú z Hárok1 — jediného hárku, ktorý klient reálne udržiava."""
+
+    # Stĺpce: A=názov, B=polievka, C=hlavné, D=pečivo, E=nátierka
+    COL_GROUPS = [
+        {
+            "meal": "main_course",
+            "components": [{"label": "Polievka"}, {"label": "Hlavné"}],
+        },
+        {
+            "meal": "afternoon_snack",
+            "components": [{"label": "Pečivo"}, {"label": "Nátierka"}],
+        },
+    ]
 
     def _sheet(self, rows):
         wb = Workbook()
         ws = wb.active
-        ws.title = "vyúčtovanie"
-        ws.append(["Zariadenie", "Druh", "Cena", "Počet", "Spolu"])  # header row 1
+        ws.title = "Hárok1"
+        ws.append(["dátum", "Polievka", "Hlavné", "Pečivo", "Nátierka"])
+        ws.append(["KLASIK", 200, 100, 1, 25])
         for r in rows:
             ws.append(r)
-        return _FakeWB(ws)
+        return ws
 
-    def test_facility_without_section_does_not_inherit_prev_meal_type(self):
-        # Fac A ends on OLOVRANT (snack); Fac B has NO section header before its
-        # count row → that count must NOT be bucketed as snack.
-        rows = [
-            ["Fac A", "OBED", None, None, None],
-            [None, "Klasik", 5, 10, 50],
-            ["Fac A", "OLOVRANT", None, None, None],
-            [None, "Klasik", 1, 8, 8],
-            ["Fac B", None, None, 7, None],  # name only, stray count, no section
-        ]
-        wb = self._sheet(rows)
-        result = _real_counts_by_facility(wb)
-        self.assertEqual(
-            result["fac a"], {"lunch": Decimal("10"), "snack": Decimal("8")}
+    def _counts(self, rows):
+        ws = self._sheet(rows)
+        return _real_counts_by_facility(ws, _column_meal_types(ws, self.COL_GROUPS))
+
+    def test_shared_count_covers_lunch_and_snack(self):
+        """Filipa Nériho: jeden počet, obed aj olovrant — riadok plní oba stĺpce."""
+        counts = self._counts(
+            [
+                ["Fac A", 3400, 1700, 17, 425],
+                ["Zlatohorská 18", None, None, None, None],
+                [17, None, None, None, None],
+            ]
         )
-        # Fac B's stray count is dropped (no meal_type), not attributed to snack.
-        self.assertNotIn("fac b", result)
+        self.assertEqual(
+            counts["fac a"], {"lunch": Decimal("17"), "snack": Decimal("17")}
+        )
 
+    def test_diet_rows_add_to_facility(self):
+        counts = self._counts(
+            [
+                ["Fac A", 3600, 1800, 18, 450],
+                ["Hrušková 2D", None, None, None, None],
+                [18, None, None, None, None],
+                ["Diabetik", 200, 100, 1, 25],
+                [1, None, None, None, None],
+            ]
+        )
+        self.assertEqual(counts["fac a"]["lunch"], Decimal("19"))
 
-class _FakeWB:
-    """Minimal workbook shim exposing one sheet under the 'vyúčtovanie' name."""
+    def test_olovrant_sub_block_counts_as_snack_only(self):
+        """Regresia: OLOVRANT riadok má prázdny stĺpec B.
 
-    def __init__(self, sheet):
-        self._sheet = sheet
-        self.sheetnames = ["vyúčtovanie"]
+        Test na samotný stĺpec B ho označil za adresu — tým z Tier 2 zmizla jeho
+        gramáž a blok prevádzky sa na ňom odsekol.
+        """
+        counts = self._counts(
+            [
+                ["Fac A", 3600, 1800, None, None],
+                ["Hrušková 2D", None, None, None, None],
+                [18, None, None, None, None],
+                ["OLOVRANT", None, None, 16, 400],
+                [16, None, None, None, None],
+            ]
+        )
+        self.assertEqual(
+            counts["fac a"], {"lunch": Decimal("18"), "snack": Decimal("16")}
+        )
 
-    def __getitem__(self, name):
-        return self._sheet
+    def test_next_facility_ends_the_block(self):
+        counts = self._counts(
+            [
+                ["Fac A", 200, 100, 1, 25],
+                ["Ulica 1", None, None, None, None],
+                [1, None, None, None, None],
+                ["Fac B", 400, 200, 2, 50],
+                ["Ulica 2", None, None, None, None],
+                [2, None, None, None, None],
+            ]
+        )
+        self.assertEqual(counts["fac a"]["lunch"], Decimal("1"))
+        self.assertEqual(counts["fac b"]["lunch"], Decimal("2"))
+
+    def test_facility_ordering_nothing_is_dropped(self):
+        counts = self._counts(
+            [
+                ["Fac A", 0, 0, 0, 0],
+                ["Ulica 1", None, None, None, None],
+                [0, None, None, None, None],
+            ]
+        )
+        self.assertNotIn("fac a", counts)
 
 
 if __name__ == "__main__":

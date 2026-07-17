@@ -1,8 +1,19 @@
 """Two-tier reconciliation of app output against a real workbook.
 
-Tier 1 (counts / sizes / diets): app per-client portion counts vs the
-``vyúčtovanie`` sheet ``Počet pokrmov`` column (ground truth for counts).
-Tier 2 (gramage): app gramage totals vs the ``Hárok1`` sheet grams.
+Both tiers read the ``Hárok1`` sheet — it is the only sheet the client actually
+maintains. Tier 1 takes counts from the count line under each gram row; Tier 2
+takes grams from the gram rows themselves.
+
+The workbooks also carry a ``vyúčtovanie`` sheet, but it is **not** a data source:
+it is marked ``veryHidden`` (invisible even to Excel's Unhide dialog), every count
+cell in it is a plain ``=Hárok1!A856`` reference, and several of those references
+have rotted to ``#REF!`` (Krásnanko's ``nogluten`` row, every day 13.–16.7.), which
+silently swallowed real portions. It also copies olovrant from obed rather than
+carrying separate counts, and omits olovrant entirely for facilities that do serve
+it. Reading counts from it produced phantom diffs against the app; Hárok1 does not.
+
+Hárok1 is self-checking: ``count × base gramage == row grams`` holds for all 145
+blocks, so a bad cell shows up as an inconsistency instead of a wrong answer.
 
 The real workbook for a date is auto-resolved from ``test/data/real`` using the
 ``D.M.YYYY_...xlsx`` naming convention. Emits a machine-readable JSON report on
@@ -146,7 +157,7 @@ def _resolve_workbook(date_str: str) -> Path:
         names = ", ".join(Path(p).name for p in others)
         raise CommandError(
             f"No .xlsx real workbook for {date_str}, only: {names}. "
-            "Reconciliation needs the .xlsx form (vyúčtovanie + Hárok1 sheets). "
+            "Reconciliation needs the .xlsx form (the Hárok1 sheet). "
             "In Numbers use File → Export To → Excel and drop the .xlsx into "
             f"{REAL_DIR}, then re-run."
         )
@@ -155,60 +166,10 @@ def _resolve_workbook(date_str: str) -> Path:
     )
 
 
-# ── Tier 1: counts from the vyúčtovanie sheet ──────────────────────────────────
+# ── Tier 1: counts from the Hárok1 sheet ───────────────────────────────────────
 # Meal-type buckets are compared like-for-like: a facility that only bills OBED
-# must not be faulted against the app's lunch+olovrant grand total. Order matters
-# below — "ranajky + obed" must hit "obed" (lunch), not "ranajky" (breakfast).
+# must not be faulted against the app's lunch+olovrant grand total.
 MEAL_TYPES = ("lunch", "snack", "breakfast")
-
-
-def _section_meal_type(section: str) -> str | None:
-    if "olovrant" in section:
-        return "snack"
-    if "obed" in section:
-        return "lunch"
-    if "desiata" in section or "ranajky" in section:
-        return "breakfast"
-    return None
-
-
-def _real_counts_by_facility(wb) -> dict[str, dict[str, Decimal]]:
-    """{facility → {meal_type → Σ Počet pokrmov}} from the vyúčtovanie sheet.
-
-    A row with a ``Druh pokrmu`` (col 2) but no ``Počet`` (col 4) is a section
-    header (OBED / OLOVRANT / …); the rows beneath it carry the counts.
-    """
-    if "vyúčtovanie" not in wb.sheetnames:
-        return {}
-    sheet = wb["vyúčtovanie"]
-    counts: dict[str, dict[str, Decimal]] = {}
-    facility: str | None = None
-    meal_type: str | None = None
-    for row in range(2, sheet.max_row + 1):
-        raw_facility = sheet.cell(row=row, column=1).value
-        if raw_facility not in (None, ""):
-            facility = _normalize(raw_facility)
-            counts.setdefault(facility, {})
-            # New facility → drop the previous facility's section context, so a
-            # facility that starts without its own section header can't inherit it
-            # and misbucket counts.
-            meal_type = None
-        druh = sheet.cell(row=row, column=2).value
-        count = sheet.cell(row=row, column=4).value
-        if druh not in (None, "") and count in (None, ""):
-            meal_type = _section_meal_type(_normalize(druh))
-        if facility is None or meal_type is None:
-            continue
-        parsed = _count_or_none(count)
-        if parsed is not None:
-            bucket = counts[facility]
-            bucket[meal_type] = bucket.get(meal_type, Decimal("0")) + parsed
-    # Drop facilities/meal-types that are entirely zero (not billed that day).
-    return {
-        fac: {mt: v for mt, v in buckets.items() if v > 0}
-        for fac, buckets in counts.items()
-        if any(v > 0 for v in buckets.values())
-    }
 
 
 # Maps app meal-plan categories to the vyúčtovanie meal-type buckets. Soup and
@@ -301,25 +262,38 @@ def _real_header_columns(sheet) -> dict[str, int]:
     return columns
 
 
+def _has_grams(sheet, row: int) -> bool:
+    """Whether any data column on this row carries a number.
+
+    Deliberately not limited to col B (the soup): an ``OLOVRANT`` sub-block row is
+    empty in the lunch columns and only fills pečivo/nátierka. Testing col B alone
+    made those rows look like address lines, which both dropped their grams from
+    Tier 2 and truncated the facility block at that point.
+    """
+    return any(
+        isinstance(sheet.cell(row=row, column=col).value, (int, float))
+        and not isinstance(sheet.cell(row=row, column=col).value, bool)
+        for col in range(2, sheet.max_column + 1)
+    )
+
+
 def _is_gram_row(sheet, row: int) -> bool:
-    """A data row carrying grams: a text label in col A and a number in col B."""
+    """A data row carrying grams: a text label in col A and numbers alongside."""
     a = sheet.cell(row=row, column=1).value
-    b = sheet.cell(row=row, column=2).value
-    return isinstance(a, str) and a.strip() != "" and isinstance(b, (int, float))
+    return isinstance(a, str) and a.strip() != "" and _has_grams(sheet, row)
 
 
 def _is_address_row(sheet, row: int) -> bool:
-    """Address line: non-numeric text label with an empty grams column.
+    """Address line: a text label with no numbers anywhere on the row.
 
     Distinct from a count line (`12` or the TEXT '1'), whose col-A value parses as a
     number — the ``_count_or_none`` guard keeps those from looking like addresses.
     """
     a = sheet.cell(row=row, column=1).value
-    b = sheet.cell(row=row, column=2).value
     return (
         isinstance(a, str)
         and a.strip() != ""
-        and b in (None, "")
+        and not _has_grams(sheet, row)
         and _count_or_none(a) is None
     )
 
@@ -332,6 +306,20 @@ def _starts_new_facility(sheet, row: int) -> bool:
     the next.
     """
     return _is_address_row(sheet, row + 1)
+
+
+def _facility_header_rows(sheet) -> list[int]:
+    """Every facility header row in Hárok1, in sheet order.
+
+    Skips the first rows, which are the day's dish header and the KLASIK/JASLE/…
+    base-gramage legend rather than facilities.
+    """
+    return [
+        row
+        for row in range(2, sheet.max_row + 1)
+        if _starts_new_facility(sheet, row)
+        and _normalize(sheet.cell(row=row, column=1).value)
+    ]
 
 
 def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
@@ -353,6 +341,87 @@ def _expand_block_rows(sheet, header_rows: list[int]) -> list[int]:
                 result.append(row)
             row += 1
     return result
+
+
+def _count_below(sheet, row: int) -> Decimal | None:
+    """The count line belonging to the gram row ``row``.
+
+    In Hárok1 a gram row is followed by a line whose col A holds the headcount —
+    directly for diet rows, or one line further down for a facility header (the
+    address sits in between). Stop at the next gram row so a block whose count line
+    is missing reads as ``None`` instead of stealing the next row's count.
+    """
+    for candidate in (row + 1, row + 2):
+        if candidate > sheet.max_row or _is_gram_row(sheet, candidate):
+            return None
+        parsed = _count_or_none(sheet.cell(row=candidate, column=1).value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _column_meal_types(sheet, col_groups: list[dict]) -> dict[int, str]:
+    """{Hárok1 column index → meal_type}, derived from the app's own dashboard.
+
+    Which dish is lunch and which is olovrant changes daily, so the mapping is taken
+    from the app's ``col_groups`` (each carries its meal category) and matched to the
+    header by dish name rather than hard-coded column positions or name guesses.
+    """
+    header_columns = _real_header_columns(sheet)
+    result: dict[int, str] = {}
+    for group in col_groups:
+        meal_type = _APP_MEAL_TO_TYPE.get(group.get("meal", ""))
+        if meal_type is None:
+            continue
+        for component in group["components"]:
+            col = header_columns.get(_normalize(component["label"]))
+            if col is not None:
+                result.setdefault(col, meal_type)
+    return result
+
+
+def _row_meal_types(sheet, row: int, column_meal_types: dict[int, str]) -> set[str]:
+    """Meal types this gram row actually serves — those with non-zero grams.
+
+    A row can serve several at once: Filipa Nériho's header carries both the soup and
+    the pečivo/nátierka columns, so its single headcount is a lunch *and* an olovrant.
+    Facilities that order olovrant separately instead get their own ``OLOVRANT``
+    sub-block, whose row is non-zero only in the snack columns.
+    """
+    served: set[str] = set()
+    for col, meal_type in column_meal_types.items():
+        value = _count_or_none(sheet.cell(row=row, column=col).value)
+        if value is not None and value != 0:
+            served.add(meal_type)
+    return served
+
+
+def _real_counts_by_facility(
+    sheet, column_meal_types: dict[int, str]
+) -> dict[str, dict[str, Decimal]]:
+    """{facility → {meal_type → Σ headcount}} from Hárok1.
+
+    Walks the same facility blocks Tier 2 uses, so counts and grams can never drift
+    apart onto different row sets.
+    """
+    counts: dict[str, dict[str, Decimal]] = {}
+    for header in _facility_header_rows(sheet):
+        facility = _normalize(sheet.cell(row=header, column=1).value)
+        if not facility:
+            continue
+        bucket = counts.setdefault(facility, {})
+        for row in _expand_block_rows(sheet, [header]):
+            count = _count_below(sheet, row)
+            if count is None:
+                continue
+            for meal_type in _row_meal_types(sheet, row, column_meal_types):
+                bucket[meal_type] = bucket.get(meal_type, Decimal("0")) + count
+    # Drop facilities/meal-types that are entirely zero (not ordering that day).
+    return {
+        fac: {mt: v for mt, v in buckets.items() if v > 0}
+        for fac, buckets in counts.items()
+        if any(v > 0 for v in buckets.values())
+    }
 
 
 def _real_gram_values_by_name(
@@ -437,9 +506,15 @@ class Command(BaseCommand):
         # which is pathologically slow on a read_only worksheet.
         wb = load_workbook(workbook_path, data_only=True)
 
+        har_sheet = wb["Hárok1"] if "Hárok1" in wb.sheetnames else wb.active
+
         # ── Tier 1: counts (per meal type) ────────────────────────────────────
         real_counts = _rekey_by_alias(
-            _real_counts_by_facility(wb), alias_map, _combine_count_buckets
+            _real_counts_by_facility(
+                har_sheet, _column_meal_types(har_sheet, col_groups)
+            ),
+            alias_map,
+            _combine_count_buckets,
         )
         app_counts = {
             _key(r.get("client", "")): (r, _app_counts_by_meal_type(r))
@@ -480,7 +555,6 @@ class Command(BaseCommand):
         # ── Tier 2: gramage ───────────────────────────────────────────────────
         gram_findings = []
         if width:
-            har_sheet = wb["Hárok1"] if "Hárok1" in wb.sheetnames else wb.active
             header_columns = _real_header_columns(har_sheet)
             component_names = _component_names(col_groups)
             real_gram_rows = _rekey_by_alias(
