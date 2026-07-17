@@ -326,7 +326,7 @@ class MealPlanService:
         """
         import re as _re
 
-        from ..models import DailyMealPlan, DailyOrder, PortionType
+        from ..models import DailyMealPlan, DailyOrder, DeliveryRoute, Diet, PortionType
 
         MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
         VARIANT_ORDER = ["A", "B", "C", "V"]
@@ -340,6 +340,21 @@ class MealPlanService:
         }
         # Single source of truth for category labels: MealCategory.choices.
         MEAL_LABELS = dict(MealCategory.choices)
+        DEFAULT_DIET_COLORS = {
+            "No Milk": "#F59E0B",
+            "No Gluten": "#EF4444",
+            "No Milk – No Gluten": "#EA580C",
+            "No Milk - No Gluten": "#EA580C",
+            "No No No": "#9333EA",
+            "VEGGIE": "#16A34A",
+            "Vege": "#16A34A",
+            "Histamín": "#0EA5E9",
+            "DIA": "#64748B",
+        }
+        diet_color_map = {
+            diet.name: (diet.color or DEFAULT_DIET_COLORS.get(diet.name, "#FDE68A"))
+            for diet in Diet.objects.filter(is_active=True)
+        }
 
         def _normalize_variant(value: object) -> str:
             variant = str(value or "").strip()
@@ -436,6 +451,25 @@ class MealPlanService:
                 if diet_name:
                     key = f"{key}_diet_{item.diet_id}"
                     label = f"{label} - {diet_name}"
+                components = parse_components(
+                    t.name, t.components, t.weight_label, t.unit_exception
+                )
+                if (
+                    item.category == MealCategory.BREAKFAST_SNACK
+                    and len(components) > 1
+                ):
+                    total_base = sum(
+                        Decimal(str(component.get("base_grams") or "0"))
+                        for component in components
+                        if not component.get("is_exception")
+                    )
+                    components = [
+                        {
+                            "label": "Raňajky-desiata spolu",
+                            "base_grams": str(total_base),
+                            "unit": "g",
+                        }
+                    ]
                 col_groups.append(
                     {
                         "key": key,
@@ -444,10 +478,11 @@ class MealPlanService:
                         "variant": item.menu_variant,
                         "diet_id": item.diet_id,
                         "diet_name": diet_name,
-                        "template_name": t.name,
-                        "components": parse_components(
-                            t.name, t.components, t.weight_label, t.unit_exception
+                        "diet_color": (
+                            diet_color_map.get(diet_name, "") if diet_name else ""
                         ),
+                        "template_name": t.name,
+                        "components": components,
                     }
                 )
 
@@ -626,10 +661,21 @@ class MealPlanService:
         orders = (
             DailyOrder.objects.filter(date=date_str)
             .select_related(
-                "user", "user__profile", "user__settings", "prevadzka__celok"
+                "user",
+                "user__profile",
+                "user__settings",
+                "prevadzka__celok",
+                "prevadzka__delivery_route__block",
             )
             .prefetch_related("prevadzka__celok__prevadzky")
-            .order_by("user__email", "prevadzka__sort_order", "prevadzka__nazov")
+            .order_by(
+                "prevadzka__delivery_route__block__sort_order",
+                "prevadzka__delivery_route__sort_order",
+                "prevadzka__delivery_sort_order",
+                "prevadzka__sort_order",
+                "prevadzka__nazov",
+                "user__email",
+            )
         )
 
         for order in orders:
@@ -796,6 +842,9 @@ class MealPlanService:
                                     "portion_name": display_portion_name,
                                     "diet_name": diet_name,
                                     "label": f"{display_portion_name} - {diet_name}",
+                                    "diet_color": diet_color_map.get(
+                                        diet_name, "#FDE68A"
+                                    ),
                                     "count": billed_diet_count,
                                     "col_grams": diet_grams,
                                 }
@@ -835,6 +884,26 @@ class MealPlanService:
                 admin_order_note = str(
                     getattr(settings, "admin_order_note", "") or ""
                 ).strip()
+                delivery_route = (
+                    getattr(prevadzka, "delivery_route", None)
+                    if prevadzka is not None
+                    else None
+                )
+                delivery_block = (
+                    getattr(delivery_route, "block", None)
+                    if delivery_route is not None
+                    else None
+                )
+                delivery_note = (
+                    str(getattr(prevadzka, "delivery_note", "") or "").strip()
+                    if prevadzka is not None
+                    else ""
+                )
+                display_client = (
+                    str(getattr(prevadzka, "report_alias", "") or "").strip()
+                    or (prevadzka.nazov if prevadzka is not None else "")
+                    or client_label
+                )
                 diet_summary_rows = [
                     {
                         "name": name,
@@ -845,8 +914,42 @@ class MealPlanService:
                 ]
                 rows.append(
                     {
-                        "client": client_label,
+                        "client": display_client,
                         "client_id": order.user_id,
+                        "row_key": (
+                            f"prevadzka-{prevadzka.id}"
+                            if prevadzka is not None
+                            else f"user-{order.user_id}"
+                        ),
+                        "prevadzka_id": prevadzka.id if prevadzka is not None else None,
+                        "delivery_block_id": (
+                            delivery_block.id if delivery_block is not None else None
+                        ),
+                        "delivery_block_name": (
+                            delivery_block.name if delivery_block is not None else ""
+                        ),
+                        "delivery_block_sort_order": (
+                            delivery_block.sort_order
+                            if delivery_block is not None
+                            else 9999
+                        ),
+                        "delivery_route_id": (
+                            delivery_route.id if delivery_route is not None else None
+                        ),
+                        "delivery_route_name": (
+                            delivery_route.name if delivery_route is not None else ""
+                        ),
+                        "delivery_route_sort_order": (
+                            delivery_route.sort_order
+                            if delivery_route is not None
+                            else 9999
+                        ),
+                        "delivery_sort_order": (
+                            prevadzka.delivery_sort_order
+                            if prevadzka is not None
+                            else 9999
+                        ),
+                        "delivery_note": delivery_note,
                         "total_count": _tidy_count(
                             client_total_count + sum(diet_summary_counts.values())
                         ),
@@ -860,7 +963,68 @@ class MealPlanService:
                     }
                 )
 
-        rows.sort(key=lambda r: str(r["client"]).lower())
+        rows.sort(
+            key=lambda r: (
+                r["delivery_block_sort_order"],
+                r["delivery_route_sort_order"],
+                r["delivery_sort_order"],
+                str(r["client"]).casefold(),
+            )
+        )
+
+        def _delivery_blocks_payload(rows_for_payload: list[dict]) -> tuple[list, list]:
+            route_rows: dict[int, list[dict]] = {}
+            unassigned_rows = []
+            for row in rows_for_payload:
+                route_id = row.get("delivery_route_id")
+                if route_id is None:
+                    unassigned_rows.append(row)
+                    continue
+                route_rows.setdefault(route_id, []).append(row)
+
+            if not route_rows:
+                return [], unassigned_rows
+
+            routes = (
+                DeliveryRoute.objects.filter(is_active=True, block__is_active=True)
+                .select_related("block")
+                .order_by("block__sort_order", "sort_order", "name")
+            )
+            blocks_by_id: dict[int, dict] = {}
+            for route in routes:
+                block = route.block
+                block_payload = blocks_by_id.setdefault(
+                    block.id,
+                    {
+                        "id": block.id,
+                        "name": block.name,
+                        "sort_order": block.sort_order,
+                        "include_in_main_summary": block.include_in_main_summary,
+                        "include_in_extra_summary": block.include_in_extra_summary,
+                        "routes": [],
+                    },
+                )
+                block_payload["routes"].append(
+                    {
+                        "id": route.id,
+                        "name": route.name,
+                        "driver": route.driver,
+                        "departure_time": (
+                            route.departure_time.isoformat()
+                            if route.departure_time
+                            else None
+                        ),
+                        "note": route.note,
+                        "sort_order": route.sort_order,
+                        "rows": route_rows.get(route.id, []),
+                    }
+                )
+
+            blocks = sorted(
+                blocks_by_id.values(),
+                key=lambda item: (item["sort_order"], item["name"].casefold()),
+            )
+            return blocks, unassigned_rows
 
         totals_serialized = _serialize_group_totals(totals)
 
@@ -946,11 +1110,16 @@ class MealPlanService:
                 }
             )
 
+        delivery_blocks, unassigned_rows = _delivery_blocks_payload(rows)
+
         return {
             "date": date_str,
             "meal_plan_id": plan_id,
             "col_groups": col_groups,
             "rows": rows,
+            "blocks": delivery_blocks,
+            "unassigned_rows": unassigned_rows,
             "totals": totals_serialized,
             "count_summary": count_summary,
+            "diet_colors": diet_color_map,
         }

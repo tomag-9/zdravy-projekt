@@ -7,7 +7,16 @@ from api.management.commands.real_initial_seed_prevadzky import (
     EDUPAGE_VISIBLE_MEALS,
     SCHOOLS,
 )
-from api.models import ClientSettings, Diet, GlobalSettings, UserProfile
+from api.management.commands.seed_real_delivery_layout import DELIVERY_ROWS, ROUTES
+from api.models import (
+    ClientSettings,
+    DeliveryBlock,
+    DeliveryRoute,
+    Diet,
+    GlobalSettings,
+    Prevadzka,
+    UserProfile,
+)
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
 
 
@@ -51,6 +60,29 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         .filter(visible_diets=dia)
         .exists()
     )
+
+
+@pytest.mark.django_db
+def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
+    settings.DEBUG = True
+    Diet.objects.create(name="NO GLUTEN")
+
+    management.call_command("seed_real_delivery_layout")
+    management.call_command("seed_real_delivery_layout")
+
+    assert (
+        DeliveryBlock.objects.filter(name__in=["Bežné trasy", "Trasa extra"]).count()
+        == 2
+    )
+    assert DeliveryRoute.objects.count() == len(ROUTES)
+    assert Prevadzka.objects.count() == len(DELIVERY_ROWS)
+
+    nova_tulipa = Prevadzka.objects.get(nazov="Nova Tulipa")
+    assert nova_tulipa.delivery_route.name == "trasa 2 - 9:25 - Ivan/Heňo"
+    assert nova_tulipa.delivery_sort_order == 1
+
+    no_gluten = Diet.objects.get(name="NO GLUTEN")
+    assert no_gluten.color == "#2563EB"
 
 
 @pytest.mark.django_db

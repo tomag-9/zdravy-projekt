@@ -6,6 +6,7 @@ import {
     CalendarDays,
     BookOpen,
     Building,
+    Route as RouteIcon,
     Upload,
     Salad,
     Sliders,
@@ -38,6 +39,7 @@ type NavEntry = NavItem | NavSection;
 const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: Gauge },
     { kind: 'item', to: '/admin/prevadzka-overview', label: 'Dodanie podkladov', icon: ClipboardCheck },
+    { kind: 'item', to: '/admin/delivery-layout', label: 'Poradie a trasy', icon: RouteIcon },
     { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays },
     { kind: 'item', to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: BookOpen },
     { kind: 'section', label: 'Prevádzky', icon: Building },
@@ -145,7 +147,7 @@ const AdminLayout: React.FC = () => {
             </aside>
 
             <main className="zpa-main" id="zpa-main">
-                <div className="zpa-content">
+                <div className={`zpa-content${location.pathname === '/admin/dashboard' ? ' zpa-content--wide' : ''}`}>
                     <Outlet />
                 </div>
             </main>
