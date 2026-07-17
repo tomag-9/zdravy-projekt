@@ -9,6 +9,7 @@ from api.management.commands.real_initial_seed_prevadzky import (
 )
 from api.management.commands.seed_real_delivery_layout import DELIVERY_ROWS, ROUTES
 from api.models import (
+    Celok,
     ClientSettings,
     DeliveryBlock,
     DeliveryRoute,
@@ -66,6 +67,14 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
 def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
     settings.DEBUG = True
     Diet.objects.create(name="NO GLUTEN")
+    ivanka_celok = Celok.objects.create(nazov="ZŠ Ivanka pri Dunaji")
+    ivanka = Prevadzka.objects.create(celok=ivanka_celok, nazov="ZŠ Ivanka pri Dunaji")
+    veterinarna_celok = Celok.objects.create(nazov="SŠ VETERINÁRNA")
+    veterinarna = Prevadzka.objects.create(
+        celok=veterinarna_celok,
+        nazov="SŠ VETERINÁRNA",
+        adresa="Pod brehmi 6, Bratislava",
+    )
 
     management.call_command("seed_real_delivery_layout")
     management.call_command("seed_real_delivery_layout")
@@ -80,6 +89,17 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
     nova_tulipa = Prevadzka.objects.get(nazov="Nova Tulipa")
     assert nova_tulipa.delivery_route.name == "trasa 2 - 9:25 - Ivan/Heňo"
     assert nova_tulipa.delivery_sort_order == 1
+
+    ivanka.refresh_from_db()
+    assert ivanka.delivery_route.name == "1.Trasa - Pezinská - Heňo/Ivan"
+    assert ivanka.delivery_sort_order == 5
+    assert ivanka.report_alias == "Ivanka"
+
+    veterinarna.refresh_from_db()
+    assert (
+        veterinarna.delivery_route.name == "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO"
+    )
+    assert veterinarna.report_alias == "SŠ VETERINÁRNA Pod brehmi 6"
 
     no_gluten = Diet.objects.get(name="NO GLUTEN")
     assert no_gluten.color == "#2563EB"

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Boxes, GripVertical, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Boxes, GripVertical, Plus, Save, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
@@ -52,6 +52,13 @@ type DragState =
   | { type: "route"; routeId: number }
   | { type: "prevadzka"; prevadzkaId: number };
 
+interface ConfirmDialogState {
+  title: string;
+  body: React.ReactNode;
+  confirmLabel: string;
+  onConfirm: () => void | Promise<void>;
+}
+
 function renumberLayout(layout: DeliveryLayout): DeliveryLayout {
   return {
     blocks: layout.blocks.map((block, bi) => ({
@@ -89,6 +96,8 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [newRouteDriver, setNewRouteDriver] = useState("");
   const [newRouteTime, setNewRouteTime] = useState("");
   const [dragging, setDragging] = useState<DragState | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const routeOptions = useMemo(
     () => layout.blocks.flatMap((block) => block.routes.map((route) => ({ route, block }))),
@@ -168,9 +177,18 @@ const DeliveryLayoutAdmin: React.FC = () => {
     });
   };
 
-  const dropPrevadzka = (targetRouteId: number | null, beforePrevadzkaId?: number) => {
-    if (dragging?.type !== "prevadzka") return;
-    if (beforePrevadzkaId === dragging.prevadzkaId) return;
+  const findPrevadzka = (prevadzkaId: number) => {
+    for (const block of layout.blocks) {
+      for (const route of block.routes) {
+        const prevadzka = route.prevadzky.find((item) => item.id === prevadzkaId);
+        if (prevadzka) return { prevadzka, route };
+      }
+    }
+    const prevadzka = layout.unassigned_prevadzky.find((item) => item.id === prevadzkaId);
+    return prevadzka ? { prevadzka, route: null } : null;
+  };
+
+  const movePrevadzka = (prevadzkaId: number, targetRouteId: number | null, beforePrevadzkaId?: number) => {
     updateLayout((current) => {
       let moved: DeliveryPrevadzka | null = null;
       const blocksWithout = current.blocks.map((block) => ({
@@ -178,14 +196,14 @@ const DeliveryLayoutAdmin: React.FC = () => {
         routes: block.routes.map((route) => ({
           ...route,
           prevadzky: route.prevadzky.filter((prevadzka) => {
-            if (prevadzka.id !== dragging.prevadzkaId) return true;
+            if (prevadzka.id !== prevadzkaId) return true;
             moved = prevadzka;
             return false;
           }),
         })),
       }));
       const unassignedWithout = current.unassigned_prevadzky.filter((prevadzka) => {
-        if (prevadzka.id !== dragging.prevadzkaId) return true;
+        if (prevadzka.id !== prevadzkaId) return true;
         moved = prevadzka;
         return false;
       });
@@ -212,6 +230,36 @@ const DeliveryLayoutAdmin: React.FC = () => {
         unassigned_prevadzky: unassignedWithout,
       };
     });
+  };
+
+  const requestUnassignPrevadzka = (prevadzka: DeliveryPrevadzka, move: () => void) => {
+    setConfirmDialog({
+      title: "Odobrať prevádzku z trasy?",
+      body: (
+        <p>
+          Prevádzka <strong>{prevadzka.report_alias || prevadzka.nazov}</strong> sa presunie medzi nepriradené
+          prevádzky. Zmena sa uloží až po kliknutí na <strong>Uložiť poradie</strong>.
+        </p>
+      ),
+      confirmLabel: "Odobrať z trasy",
+      onConfirm: move,
+    });
+  };
+
+  const dropPrevadzka = (targetRouteId: number | null, beforePrevadzkaId?: number) => {
+    if (dragging?.type !== "prevadzka") return;
+    if (beforePrevadzkaId === dragging.prevadzkaId) return;
+
+    if (targetRouteId === null) {
+      const source = findPrevadzka(dragging.prevadzkaId);
+      if (source?.route) {
+        const prevadzkaId = dragging.prevadzkaId;
+        requestUnassignPrevadzka(source.prevadzka, () => movePrevadzka(prevadzkaId, null, beforePrevadzkaId));
+        return;
+      }
+    }
+
+    movePrevadzka(dragging.prevadzkaId, targetRouteId, beforePrevadzkaId);
   };
 
   const assignPrevadzka = (prevadzkaId: number, routeId: number | null) => {
@@ -315,13 +363,37 @@ const DeliveryLayoutAdmin: React.FC = () => {
   };
 
   const deleteRoute = async (route: DeliveryRoute) => {
-    if (!window.confirm(`Odstrániť trasu „${route.name}“? Prevádzky ostanú nepriradené.`)) return;
     const res = await apiFetch(`${API}/admin/delivery-routes/${route.id}/`, { method: "DELETE" });
     if (res.ok || res.status === 204) {
       await fetchLayout();
       success("Trasa bola odstránená.");
     } else {
       toastError("Nepodarilo sa odstrániť trasu.");
+    }
+  };
+
+  const requestDeleteRoute = (route: DeliveryRoute) => {
+    setConfirmDialog({
+      title: "Odstrániť trasu?",
+      body: (
+        <p>
+          Trasa <strong>{route.name}</strong> sa odstráni. Prevádzky z tejto trasy ostanú nepriradené a bude
+          ich treba zaradiť nanovo.
+        </p>
+      ),
+      confirmLabel: "Odstrániť trasu",
+      onConfirm: () => deleteRoute(route),
+    });
+  };
+
+  const confirmAction = async () => {
+    if (!confirmDialog) return;
+    setConfirmBusy(true);
+    try {
+      await confirmDialog.onConfirm();
+      setConfirmDialog(null);
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -405,16 +477,16 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         onDragEnd={() => setDragging(null)}
                       >
                         <GripVertical />
-	                      </IconButton>
-	                      <div style={{ minWidth: 0 }}>
-	                        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)" }}>{route.name}</div>
-	                        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
-	                          {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ") || "Bez času a vodiča"}
-	                        </div>
-	                      </div>
-	                    </div>
+                      </IconButton>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)" }}>{route.name}</div>
+                        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+                          {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ") || "Bez času a vodiča"}
+                        </div>
+                      </div>
+                    </div>
                     <div style={{ display: "inline-flex", gap: 4 }}>
-                      <IconButton onClick={() => void deleteRoute(route)} title="Odstrániť trasu" aria-label="Odstrániť trasu">
+                      <IconButton onClick={() => requestDeleteRoute(route)} title="Odstrániť trasu" aria-label="Odstrániť trasu">
                         <Trash2 />
                       </IconButton>
                     </div>
@@ -462,7 +534,13 @@ const DeliveryLayoutAdmin: React.FC = () => {
                                 <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{prevadzka.celok}{prevadzka.adresa ? ` · ${prevadzka.adresa}` : ""}</div>
                               </td>
                               <td className="r">
-                                <Button sm variant="ghost" onClick={() => assignPrevadzka(prevadzka.id, null)}>Odobrať</Button>
+                                <Button
+                                  sm
+                                  variant="ghost"
+                                  onClick={() => requestUnassignPrevadzka(prevadzka, () => assignPrevadzka(prevadzka.id, null))}
+                                >
+                                  Odobrať
+                                </Button>
                               </td>
                             </tr>
                           ))
@@ -587,6 +665,27 @@ const DeliveryLayoutAdmin: React.FC = () => {
               </Field>
             </div>
           </form>
+        </Modal>
+      )}
+
+      {confirmDialog && (
+        <Modal
+          title={confirmDialog.title}
+          icon={<AlertTriangle />}
+          iconKind="warn"
+          onClose={() => {
+            if (!confirmBusy) setConfirmDialog(null);
+          }}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setConfirmDialog(null)} disabled={confirmBusy}>Zrušiť</Button>
+              <Button onClick={() => void confirmAction()} disabled={confirmBusy}>
+                {confirmBusy ? "Pracujem…" : confirmDialog.confirmLabel}
+              </Button>
+            </>
+          }
+        >
+          {confirmDialog.body}
         </Modal>
       )}
     </>

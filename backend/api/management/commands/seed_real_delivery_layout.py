@@ -8,6 +8,7 @@ kept here as an idempotent seed command.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Iterable
 
 from django.conf import settings
 from django.core.management.base import BaseCommand
@@ -23,6 +24,12 @@ class DeliverySeedRow:
     alias: str = ""
     address: str = ""
     note: str = ""
+    canonical_name: str = ""
+    match_names: tuple[str, ...] = ()
+
+    @property
+    def prevadzka_name(self) -> str:
+        return (self.canonical_name or self.name).strip()
 
 
 DIET_COLORS = {
@@ -74,6 +81,14 @@ DELIVERY_ROWS = [
         "1.Trasa - Pezinská - Heňo/Ivan",
         "benjamín senec",
         address="Tulipánová 7, Senec",
+    ),
+    DeliverySeedRow(
+        "1.Trasa - Pezinská - Heňo/Ivan",
+        "Ivanka",
+        alias="Ivanka",
+        address="SNP",
+        canonical_name="ZŠ Ivanka pri Dunaji",
+        match_names=("ivánka", "Ivanka pri Dunaji"),
     ),
     DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 1"),
     DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Jolly 2"),
@@ -293,6 +308,8 @@ DELIVERY_ROWS = [
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
         "SŠ VETERINÁRNA",
         alias="SŠ VETERINÁRNA Pod brehmi 6",
+        address="Pod brehmi 6, Bratislava",
+        match_names=("SŠ VETERINÁRNA Pod brehmi 6",),
     ),
     DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Waldorf Kukučínova"
@@ -387,12 +404,13 @@ def _rows_by_route() -> dict[str, list[DeliverySeedRow]]:
 def _upsert_prevadzka(
     row: DeliverySeedRow, route: DeliveryRoute, sort_order: int
 ) -> Prevadzka:
-    display_name = row.name.strip()
+    display_name = row.prevadzka_name
     celok, _ = Celok.objects.get_or_create(nazov=display_name)
-    existing = Prevadzka.objects.filter(nazov=display_name).first()
+    existing = _find_existing_prevadzka(row)
     if existing is None:
         existing = Prevadzka(celok=celok, nazov=display_name)
-    existing.celok = existing.celok or celok
+    existing.celok = celok
+    existing.nazov = display_name
     existing.adresa = row.address or existing.adresa
     existing.delivery_route = route
     existing.delivery_sort_order = sort_order
@@ -401,3 +419,22 @@ def _upsert_prevadzka(
     existing.is_active = True
     existing.save()
     return existing
+
+
+def _find_existing_prevadzka(row: DeliverySeedRow) -> Prevadzka | None:
+    for name in _candidate_names(row):
+        existing = Prevadzka.objects.filter(nazov__iexact=name).first()
+        if existing is not None:
+            return existing
+    return None
+
+
+def _candidate_names(row: DeliverySeedRow) -> Iterable[str]:
+    seen: set[str] = set()
+    for raw_name in (row.prevadzka_name, row.name, row.alias, *row.match_names):
+        name = raw_name.strip()
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        yield name
