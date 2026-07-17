@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 
+from ..services.meal_plan_service import _tidy_count
+
 
 class GramageDashboardXLSXExporter:
     def __init__(self, data: dict):
@@ -199,9 +201,11 @@ class GramageDashboardXLSXExporter:
                 )
 
         # ── Totals row ───────────────────────────────────────────────────────
-        totals_count = sum(
-            sum(sr["count"] for sr in r["sub_rows"] if sr["type"] == "standard")
-            for r in rows
+        totals_count = _tidy_count(
+            sum(
+                sum(sr["count"] for sr in r["sub_rows"] if sr["type"] == "standard")
+                for r in rows
+            )
         )
         total_col_grams = [[g for g in grp] for grp in totals]
         ws.cell(row=DATA_ROW, column=1, value="CELKOM")
