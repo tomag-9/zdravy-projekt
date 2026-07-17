@@ -148,3 +148,39 @@ Reconcile na 15.7 zlyhal len preto, že v dev DB nebol **meal plán** pre daný 
 medzitým vyresetovaná), nie kvôli formátu. Kľúčové obedy (kde sa olovrant fakturuje
 samostatne, teda total = obed) sedia presne: Zdravé Bruško (Deutsche schule) 69/69,
 Felix 10/10, Filipa Nériho 21/21.
+
+---
+
+## ❗ Zdravé Brúsko — MŠ Malokarpatské a MŠ Heyrovského zdieľajú stĺpec (desiata + olovrant)
+
+`zdravebrusko.edupage.org` nie je škola, je to spoločný EduPage piatich **samostatných
+subjektov**, ktoré fakturujú každý zvlášť (spoločný EduPage nie je príznak celku).
+Rozdelenie ide cez skratku menu (`nazovMenu`), nie cez payer label — payer je jediný
+(`Škôlka`) a nerozlišuje nič.
+
+Overené naživo proti EduPage (17.7.2026):
+
+| Chod | Písmená menu → škola |
+|------|----------------------|
+| Desiata | `A`=dsbA · `B`=sšvA · **`C`=mšMal,Hey** |
+| Obed | `A`–`F`,`J`=dsb · `G`–`I`=sšv · `K`,`L`,`R`=zšla · `M`–`O`=mšMal · `P`,`Q`=mšHey |
+| Olovrant | `A`=dsbA · `B`=sšvA · **`C`=mšMal,Hey** |
+
+**Špeciálne pravidlo:** `Deutsche schule` síce v EduPage vie niesť skratky pri desiate
+alebo olovrante, ale reálne sa pre ňu tieto chody nevydávajú ani nefakturujú. Pri
+importe sa preto pre `Deutsche schule` ponecháva iba obed; raňajky/desiata a olovrant
+sa ignorujú.
+
+**❗ Otvorené — treba rozhodnutie klienta:** menu `C` (`mšMal,Hey`) zlučuje **MŠ
+Malokarpatské námestie 6** a **MŠ Heyrovského 4** do jedného stĺpca pri **desiate a
+olovrante**. Z dát sa nedá zistiť, koľko z toho počtu patrí ktorej škôlke — a keďže
+fakturujú samostatne, nedá sa to ani odhadnúť. Pri obede sú rozlíšené (`M`/`N`/`O` vs
+`P`/`Q`), problém je len desiata + olovrant.
+
+**Dočasné riešenie:** desiatu a olovrant z menu `C` zapisujeme **naplno obom** škôlkam
+(nie delené na polovicu). Znamená to, že súčet porcií cez celý EduPage bude o tento
+počet vyšší než realita a **fakturácia oboch škôlok je nadhodnotená**, kým klient
+nerozdelí `C` na dve menu v EduPage konfigu. Toto je vedomý dočasný stav, nie chyba.
+
+**Poznámka:** veterinárna sa tohto netýka — `sšv*` má vlastné skratky vo všetkých
+troch chodoch.

@@ -1,11 +1,22 @@
 """Shared utility functions for report processing."""
 
 import datetime
+import unicodedata
 from typing import Any, Dict
 
 from rest_framework.exceptions import ValidationError as DRFValidationError
 
 from .order_data import OrderData
+
+NON_SERVED_ORDER_MEALS_BY_PREVADZKA = {
+    "deutsche schule": {"breakfast", "olovrant"},
+}
+
+
+def _meal_rule_key(value: object) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").casefold())
+    ascii_value = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return " ".join(ascii_value.replace(".", " ").replace("-", " ").split())
 
 
 def parse_date_param(date_str: str, param: str = "date") -> datetime.date:
@@ -38,9 +49,27 @@ def order_row_label(order) -> str:
     # Iterujeme cez .all(), nie .filter().count(): pri prefetchnutom
     # `prevadzka__celok__prevadzky` to nespustí dotaz na každý riadok reportu.
     aktivne = sum(1 for p in celok.prevadzky.all() if p.is_active)
+
+    profile = getattr(order.user, "profile", None)
+    profile_celok_id = getattr(profile, "celok_id", None) if profile else None
+    if profile_celok_id != celok.id:
+        if aktivne > 1:
+            return f"{celok.nazov} – {prevadzka.nazov}"
+        return celok.nazov or prevadzka.nazov
+
     if aktivne > 1:
         return f"{celok.nazov} – {prevadzka.nazov}"
     return user_operation_name(order.user)
+
+
+def filter_order_data_for_prevadzka(
+    order_data: Dict[str, Any], prevadzka_nazov: str
+) -> Dict[str, Any]:
+    """Apply prevádzka-specific meal availability rules to imported order data."""
+    blocked = NON_SERVED_ORDER_MEALS_BY_PREVADZKA.get(_meal_rule_key(prevadzka_nazov))
+    if not blocked:
+        return order_data
+    return {meal: data for meal, data in order_data.items() if meal not in blocked}
 
 
 def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, Any]:

@@ -320,14 +320,14 @@ class TestPayerHookInParse(unittest.TestCase):
 
     def test_supplier_prefix_stripped_lets_clean_match_win(self):
         cfg = _cfg(OlovrantMode.EDUPAGE, payer_hook=skolickams_payer_hook)
-        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, cfg)
+        res = self._parse({"Les": ["Les"], "Lúka": ["Lúka"]}, cfg)
         by = res.order_data_by_prevadzka
         self.assertEqual(by["Les"]["lunch"]["Škôlka"]["menuCounts"]["A"], 6)
         self.assertEqual(by["Lúka"]["lunch"]["Škôlka"]["menuCounts"]["A"], 4)
 
     def test_bm_becomes_no_milk_diet(self):
         cfg = _cfg(OlovrantMode.EDUPAGE, payer_hook=skolickams_payer_hook)
-        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, cfg)
+        res = self._parse({"Les": ["Les"], "Lúka": ["Lúka"]}, cfg)
         luka = res.order_data_by_prevadzka["Lúka"]["lunch"]["Škôlka"]
         self.assertEqual(luka["diets"]["NO MILK"], 4)
         les = res.order_data_by_prevadzka["Les"]["lunch"]["Škôlka"]
@@ -335,33 +335,71 @@ class TestPayerHookInParse(unittest.TestCase):
 
     def test_without_hook_supplier_prefix_breaks_clean_match(self):
         # bez hooku `B - Les` prefixovo nesadne na čisté `Les` → unmatched
-        res = self._parse({"Les": "Les", "Lúka": "Lúka"}, config=None)
+        res = self._parse({"Les": ["Les"], "Lúka": ["Lúka"]}, config=None)
         self.assertTrue(res.unmatched_prevadzka)
 
 
 class TestMatchPrevadzka(unittest.TestCase):
-    MATCHES = {"J1": "Jolly 1", "J2": "Jolly 2", "Palisády": "Palisády"}
+    MATCHES = {"J1": ["Jolly 1"], "J2": ["Jolly 2"], "Palisády": ["Palisády"]}
 
     def test_matches_payer_label_prefix(self):
         self.assertEqual(
-            match_prevadzka(self.MATCHES, "J1 1.st. klasik", "klasik A"), "Jolly 1"
+            match_prevadzka(self.MATCHES, "J1 1.st. klasik", "klasik A"), ["Jolly 1"]
         )
 
     def test_matches_menu_nazov(self):
         self.assertEqual(
-            match_prevadzka(self.MATCHES, "Klasik - MŠ", "Palisády nM"), "Palisády"
+            match_prevadzka(self.MATCHES, "Klasik - MŠ", "Palisády nM"), ["Palisády"]
         )
 
     def test_diacritics_and_spaces_ignored(self):
-        self.assertEqual(match_prevadzka({"B - Les": "Les"}, "B-Les sd", ""), "Les")
+        self.assertEqual(match_prevadzka({"B - Les": ["Les"]}, "B-Les sd", ""), ["Les"])
 
-    def test_no_match_returns_none(self):
-        self.assertIsNone(match_prevadzka(self.MATCHES, "J9 klasik", "menu A"))
+    def test_no_match_returns_empty(self):
+        self.assertEqual(match_prevadzka(self.MATCHES, "J9 klasik", "menu A"), [])
 
     def test_longer_prefix_wins(self):
-        matches = {"J1": "Jolly 1", "J1 2.st": "Jolly 1 druhy stupen"}
+        matches = {"J1": ["Jolly 1"], "J1 2.st": ["Jolly 1 druhy stupen"]}
         self.assertEqual(
-            match_prevadzka(matches, "J1 2.st klasik", ""), "Jolly 1 druhy stupen"
+            match_prevadzka(matches, "J1 2.st klasik", ""), ["Jolly 1 druhy stupen"]
+        )
+
+    def test_matches_menu_skratka(self):
+        """Skratka nesie celok v prefixe (`dsbA` = Deutsche schule + Klasik).
+
+        Pri Zdravom Brúsku je to jediný rozlišovač: payer label je pre všetky školy
+        `MŠ ...` a názov menu je `Klasik`.
+        """
+        matches = {"dsb": ["Deutsche schule"], "sšv": ["SŠ VETERINÁRNA"]}
+        self.assertEqual(
+            match_prevadzka(matches, "MŠ Klasik", "Klasik", "dsbA"), ["Deutsche schule"]
+        )
+        self.assertEqual(
+            match_prevadzka(matches, "MŠ Klasik", "Klasik", "sšvA"), ["SŠ VETERINÁRNA"]
+        )
+
+    def test_skratka_beats_conflicting_payer(self):
+        """Payer label si so skratkou vie protirečiť — vyhrať musí skratka.
+
+        `MŠ Mal. NoMilk` so skratkou `dsbNMNE` je porcia Deutsche schule; keby vyhral
+        payer, fakturovala by sa Malokarpatskému.
+        """
+        matches = {"dsb": ["Deutsche schule"], "mšMal": ["MŠ Malokarpatké námestie 6"]}
+        self.assertEqual(
+            match_prevadzka(matches, "MŠ Mal. NoMilk", "NoMilk/NoEgg", "dsbNMNE"),
+            ["Deutsche schule"],
+        )
+
+    def test_shared_skratka_hits_both_prevadzky(self):
+        """`mšMal,Hey` je jedna skratka pre dve škôlky — počet padne naplno obom."""
+        matches = {
+            "mšMal": ["MŠ Malokarpatké námestie 6"],
+            "mšHey": ["MŠ Heyrovského 4"],
+            "mšMal,Hey": ["MŠ Heyrovského 4", "MŠ Malokarpatké námestie 6"],
+        }
+        self.assertEqual(
+            match_prevadzka(matches, "MŠ Diéta", "Diéta Lamač", "mšMal,Hey"),
+            ["MŠ Heyrovského 4", "MŠ Malokarpatké námestie 6"],
         )
 
 
@@ -373,25 +411,25 @@ class _FakePrevadzka:
         self.edupage_match = edupage_match
 
     def edupage_prefixes(self):
-        return [p.strip() for p in self.edupage_match.split(",") if p.strip()]
+        return [p.strip() for p in self.edupage_match.split(";") if p.strip()]
 
 
 class TestBuildPrevadzkaMatches(unittest.TestCase):
-    """Dobrodružstvo: škola nemá spoločný prefix → `edupage_match` s čiarkami."""
+    """Dobrodružstvo: škola nemá spoločný prefix → `edupage_match` s bodkočiarkami."""
 
     DOBRODRUZSTVO = [
         _FakePrevadzka("MŠ Dobrodružstvo", "MŠ"),
-        _FakePrevadzka("ZŠ Dobrodružstvo", "1.st, 2.st, Dospelý"),
+        _FakePrevadzka("ZŠ Dobrodružstvo", "1.st; 2.st; Dospelý"),
     ]
 
     def test_each_prefix_maps_to_its_prevadzka(self):
         self.assertEqual(
             build_prevadzka_matches(self.DOBRODRUZSTVO),
             {
-                "MŠ": "MŠ Dobrodružstvo",
-                "1.st": "ZŠ Dobrodružstvo",
-                "2.st": "ZŠ Dobrodružstvo",
-                "Dospelý": "ZŠ Dobrodružstvo",
+                "MŠ": ["MŠ Dobrodružstvo"],
+                "1.st": ["ZŠ Dobrodružstvo"],
+                "2.st": ["ZŠ Dobrodružstvo"],
+                "Dospelý": ["ZŠ Dobrodružstvo"],
             },
         )
 
@@ -416,17 +454,17 @@ class TestBuildPrevadzkaMatches(unittest.TestCase):
         ]
         for nazov in skolka:
             self.assertEqual(
-                match_prevadzka(matches, nazov, ""), "MŠ Dobrodružstvo", nazov
+                match_prevadzka(matches, nazov, ""), ["MŠ Dobrodružstvo"], nazov
             )
         for nazov in skola:
             self.assertEqual(
-                match_prevadzka(matches, nazov, ""), "ZŠ Dobrodružstvo", nazov
+                match_prevadzka(matches, nazov, ""), ["ZŠ Dobrodružstvo"], nazov
             )
 
     def test_single_prefix_still_works(self):
         self.assertEqual(
             build_prevadzka_matches([_FakePrevadzka("Jolly 1", "J1")]),
-            {"J1": "Jolly 1"},
+            {"J1": ["Jolly 1"]},
         )
 
     def test_prevadzka_without_match_is_reported(self):
@@ -471,17 +509,17 @@ class TestParseSplit(unittest.TestCase):
         return EdupageScraper()._parse(html, TARGET, prevadzka_matches=matches)
 
     def test_counts_split_between_prevadzky(self):
-        res = self._parse([("1", 5), ("2", 3)], {"J1": "Jolly 1", "J2": "Jolly 2"})
+        res = self._parse([("1", 5), ("2", 3)], {"J1": ["Jolly 1"], "J2": ["Jolly 2"]})
         by = res.order_data_by_prevadzka
         self.assertEqual(by["Jolly 1"]["lunch"]["ZŠ 1.stupeň"]["menuCounts"]["A"], 5)
         self.assertEqual(by["Jolly 2"]["lunch"]["ZŠ 1.stupeň"]["menuCounts"]["A"], 3)
 
     def test_merged_order_data_is_the_sum(self):
-        res = self._parse([("1", 5), ("2", 3)], {"J1": "Jolly 1", "J2": "Jolly 2"})
+        res = self._parse([("1", 5), ("2", 3)], {"J1": ["Jolly 1"], "J2": ["Jolly 2"]})
         self.assertEqual(res.order_data["lunch"]["ZŠ 1.stupeň"]["menuCounts"]["A"], 8)
 
     def test_unmatched_row_is_reported_not_silently_dropped(self):
-        res = self._parse([("1", 5), ("9", 4)], {"J1": "Jolly 1"})
+        res = self._parse([("1", 5), ("9", 4)], {"J1": ["Jolly 1"]})
         self.assertEqual(res.order_data["lunch"]["ZŠ 1.stupeň"]["menuCounts"]["A"], 5)
         self.assertTrue(res.unmatched_prevadzka)
         self.assertTrue(res.warnings, "nezaradený riadok musí byť scrape failure")
@@ -497,11 +535,12 @@ class TestMatchPrevadzkaPrefixOnly(unittest.TestCase):
 
     def test_substring_in_middle_does_not_match(self):
         # "Les" sa vyskytuje v strede, nie ako prefix → nesmie matchnúť.
-        self.assertIsNone(
-            match_prevadzka({"Les": "Školička Les"}, "Bez Lesných plodov", "")
+        self.assertEqual(
+            match_prevadzka({"Les": ["Školička Les"]}, "Bez Lesných plodov", ""), []
         )
 
     def test_prefix_matches(self):
         self.assertEqual(
-            match_prevadzka({"Les": "Školička Les"}, "Les učiteľ", ""), "Školička Les"
+            match_prevadzka({"Les": ["Školička Les"]}, "Les učiteľ", ""),
+            ["Školička Les"],
         )

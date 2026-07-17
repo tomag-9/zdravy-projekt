@@ -1,11 +1,13 @@
+import datetime
 from pathlib import Path
 
 import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
+from django.utils import timezone
 from openpyxl import Workbook
 
-from api.models import Celok, Prevadzka, UserProfile
+from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
 
 def _workbook(path: Path, rows: list[list[object]]) -> Path:
@@ -151,3 +153,47 @@ def test_rename_harok1_does_not_rewrite_unrelated_profile_subset(tmp_path, monke
     target_prevadzka.refresh_from_db()
     assert profile.company_name == "Iný login"
     assert target_prevadzka.nazov == "MŠ Zdravé Bruško"
+
+
+@pytest.mark.django_db
+def test_seed_zdrave_brusko_preserves_old_history_and_removes_future_duplicates():
+    stary = Celok.objects.create(nazov="MŠ Zdravé Bruško", zdroj_objednavok="edupage")
+    stara_prevadzka = Prevadzka.objects.create(celok=stary, nazov="MŠ Zdravé Bruško")
+    user = User.objects.create_user(
+        username="zdravebrusko@edupage.local",
+        email="zdravebrusko@edupage.local",
+    )
+    UserProfile.objects.create(
+        user=user,
+        company_name="MŠ Zdravé Bruško",
+        celok=stary,
+        is_edupage=True,
+    )
+    dnes = timezone.localdate()
+    historicka = DailyOrder.objects.create(
+        user=user,
+        prevadzka=stara_prevadzka,
+        date=dnes - datetime.timedelta(days=1),
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}}},
+    )
+    duplicitna = DailyOrder.objects.create(
+        user=user,
+        prevadzka=stara_prevadzka,
+        date=dnes,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 2}, "diets": {}}}},
+    )
+
+    call_command("seed_zdrave_brusko")
+
+    assert Celok.objects.filter(pk=stary.pk).exists()
+    stara_prevadzka.refresh_from_db()
+    assert stara_prevadzka.is_active is False
+    assert DailyOrder.objects.filter(pk=historicka.pk).exists()
+    assert not DailyOrder.objects.filter(pk=duplicitna.pk).exists()
+    assert set(user.profile.prevadzky.values_list("nazov", flat=True)) == {
+        "Deutsche schule",
+        "SŠ VETERINÁRNA",
+        "ZŠ Malokarpatská",
+        "MŠ Heyrovského 4",
+        "MŠ Malokarpatké námestie 6",
+    }
