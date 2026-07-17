@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ArrowDown, ArrowUp, Boxes, GripVertical, Plus, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Boxes, GripVertical, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
@@ -49,7 +49,6 @@ interface DeliveryLayout {
 const EMPTY_LAYOUT: DeliveryLayout = { blocks: [], unassigned_prevadzky: [] };
 
 type DragState =
-  | { type: "route"; routeId: number }
   | { type: "prevadzka"; prevadzkaId: number };
 
 interface ConfirmDialogState {
@@ -95,6 +94,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [newRouteName, setNewRouteName] = useState("");
   const [newRouteDriver, setNewRouteDriver] = useState("");
   const [newRouteTime, setNewRouteTime] = useState("");
+  const [editRoute, setEditRoute] = useState<DeliveryRoute | null>(null);
+  const [editRouteName, setEditRouteName] = useState("");
+  const [editRouteDriver, setEditRouteDriver] = useState("");
+  const [editRouteTime, setEditRouteTime] = useState("");
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -146,35 +149,6 @@ const DeliveryLayoutAdmin: React.FC = () => {
     if (dragging?.type !== type) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-  };
-
-  const dropRoute = (targetBlockId: number, beforeRouteId?: number) => {
-    if (dragging?.type !== "route") return;
-    if (beforeRouteId === dragging.routeId) return;
-    updateLayout((current) => {
-      let moved: DeliveryRoute | null = null;
-      const withoutMoved = current.blocks.map((block) => ({
-        ...block,
-        routes: block.routes.filter((route) => {
-          if (route.id !== dragging.routeId) return true;
-          moved = route;
-          return false;
-        }),
-      }));
-      if (!moved) return current;
-      return {
-        ...current,
-        blocks: withoutMoved.map((block) => {
-          if (block.id !== targetBlockId) return block;
-          const nextRoute = { ...(moved as DeliveryRoute), block: targetBlockId };
-          const routes = [...block.routes];
-          const targetIndex = beforeRouteId ? routes.findIndex((route) => route.id === beforeRouteId) : -1;
-          if (targetIndex >= 0) routes.splice(targetIndex, 0, nextRoute);
-          else routes.push(nextRoute);
-          return { ...block, routes };
-        }),
-      };
-    });
   };
 
   const findPrevadzka = (prevadzkaId: number) => {
@@ -362,6 +336,34 @@ const DeliveryLayoutAdmin: React.FC = () => {
     }
   };
 
+  const openEditRoute = (route: DeliveryRoute) => {
+    setEditRoute(route);
+    setEditRouteName(route.name);
+    setEditRouteDriver(route.driver || "");
+    setEditRouteTime(route.departure_time?.slice(0, 5) || "");
+  };
+
+  const updateRoute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editRoute || !editRouteName.trim()) return;
+    const res = await apiFetch(`${API}/admin/delivery-routes/${editRoute.id}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: editRouteName.trim(),
+        driver: editRouteDriver.trim(),
+        departure_time: editRouteTime || null,
+      }),
+    });
+    if (res.ok) {
+      setEditRoute(null);
+      await fetchLayout();
+      success("Trasa bola upravená.");
+    } else {
+      toastError("Nepodarilo sa upraviť trasu.");
+    }
+  };
+
   const deleteRoute = async (route: DeliveryRoute) => {
     const res = await apiFetch(`${API}/admin/delivery-routes/${route.id}/`, { method: "DELETE" });
     if (res.ok || res.status === 204) {
@@ -427,13 +429,6 @@ const DeliveryLayoutAdmin: React.FC = () => {
             <Card
               key={block.id}
               style={{ overflow: "hidden" }}
-              onDragOver={(event) => allowDrop(event, "route")}
-              onDrop={(event) => {
-                if (dragging?.type !== "route") return;
-                event.preventDefault();
-                dropRoute(block.id);
-                setDragging(null);
-              }}
             >
               <div className="zpa-card-head" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-soft)" }}>
                 <div>
@@ -457,27 +452,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <div
                   key={route.id}
                   style={{ borderBottom: "1px solid var(--line-soft)" }}
-                  onDragOver={(event) => allowDrop(event, "route")}
-                  onDrop={(event) => {
-                    if (dragging?.type !== "route") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    dropRoute(block.id, route.id);
-                    setDragging(null);
-                  }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 20px", background: "var(--bg-cream-soft)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <IconButton
-                        className="zpa-drag-handle"
-                        draggable
-                        title="Presunúť trasu"
-                        aria-label="Presunúť trasu"
-                        onDragStart={(event) => startDrag(event, { type: "route", routeId: route.id })}
-                        onDragEnd={() => setDragging(null)}
-                      >
-                        <GripVertical />
-                      </IconButton>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)" }}>{route.name}</div>
                         <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
@@ -486,6 +463,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                       </div>
                     </div>
                     <div style={{ display: "inline-flex", gap: 4 }}>
+                      <IconButton onClick={() => openEditRoute(route)} title="Upraviť trasu" aria-label="Upraviť trasu">
+                        <Pencil />
+                      </IconButton>
                       <IconButton onClick={() => requestDeleteRoute(route)} title="Odstrániť trasu" aria-label="Odstrániť trasu">
                         <Trash2 />
                       </IconButton>
@@ -662,6 +642,33 @@ const DeliveryLayoutAdmin: React.FC = () => {
               </Field>
               <Field label="Čas">
                 <Input type="time" value={newRouteTime} onChange={(e) => setNewRouteTime(e.target.value)} />
+              </Field>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {editRoute && (
+        <Modal
+          title="Upraviť trasu"
+          onClose={() => setEditRoute(null)}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setEditRoute(null)}>Zrušiť</Button>
+              <Button type="submit" form="edit-route-form">Uložiť</Button>
+            </>
+          }
+        >
+          <form id="edit-route-form" onSubmit={updateRoute} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Field label="Názov trasy" req>
+              <Input required value={editRouteName} onChange={(e) => setEditRouteName(e.target.value)} />
+            </Field>
+            <div className="zpa-grid-2">
+              <Field label="Vodič">
+                <Input value={editRouteDriver} onChange={(e) => setEditRouteDriver(e.target.value)} />
+              </Field>
+              <Field label="Čas">
+                <Input type="time" value={editRouteTime} onChange={(e) => setEditRouteTime(e.target.value)} />
               </Field>
             </div>
           </form>

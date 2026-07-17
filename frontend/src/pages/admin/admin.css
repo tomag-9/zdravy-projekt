@@ -594,16 +594,13 @@
 .zpa-gram th,
 .zpa-gram td { min-width: 76px; }
 .zpa-gram th:first-child,
-.zpa-gram td:first-child { min-width: 240px; }
-.zpa-gram th:nth-child(2),
-.zpa-gram td:nth-child(2) { min-width: 72px; }
+.zpa-gram td:first-child { min-width: 216px; max-width: 300px; }
 .zpa-gram th, .zpa-gram td { padding: 7px 9px; }
 .zpa-gram thead .grp { color: #fff; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 12.5px; border-left: 1px solid rgba(255,255,255,0.25); }
 .zpa-gram thead .grp small { display: block; max-width: 128px; margin: 0 auto; font-weight: 400; font-size: 10px; opacity: 0.8; text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zpa-gram thead .comp { color: #fff; text-align: center; font-size: 11px; font-weight: 500; }
 .zpa-gram thead .comp small { display: block; font-size: 9.5px; opacity: 0.7; white-space: nowrap; }
 .zpa-gram .corner { background: var(--green-900); color: var(--bg-cream); text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 12px; position: sticky; left: 0; z-index: 2; }
-.zpa-gram .cnt { background: var(--green-900); color: var(--bg-cream); text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 12px; }
 /* meal hues */
 /* meal hues — seven visually distinct families (raňajky ≠ olovrant;
  * Menu A/B/C/V each its own colour). -1 header, -2 sub-header, -cell tint. */
@@ -629,9 +626,17 @@
 .zpa-gram .sub-row .lbl { font-weight: 600; color: var(--ink-1); }
 .zpa-gram .sub-row.diet { background: rgba(255,201,92,0.10); }
 .zpa-gram .sub-row.diet .lbl { color: var(--mustard-700); font-style: italic; font-size: 12px; padding-left: 24px; }
+.zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.zpa-gram .lbl-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zpa-gram .count-badge {
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+    min-width: 30px; height: 22px; padding: 0 8px; border-radius: var(--radius-pill);
+    background: rgba(26,77,46,0.10); color: var(--green-900);
+    font-family: var(--font-display); font-size: 12px; font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
 .zpa-gram .cell-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--green-900); }
 .zpa-gram .cell-empty { text-align: right; color: var(--line); }
-.zpa-gram .cell-cnt { text-align: center; font-family: var(--font-display); font-weight: 700; color: var(--green-900); }
 .zpa-gram .summ-std td { background: rgba(114,136,75,0.10); color: var(--green-800); border-top: 1px solid rgba(114,136,75,0.2); font-weight: 600; }
 .zpa-gram .summ-diet td { background: rgba(255,201,92,0.12); color: var(--mustard-700); border-top: 1px solid rgba(255,201,92,0.3); font-weight: 600; }
 .zpa-gram tfoot .band td { background: var(--green-800); color: var(--peach-400); font-family: var(--font-display); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); padding: 9px 16px; }

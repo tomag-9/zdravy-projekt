@@ -503,15 +503,23 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     </>
   );
 
+  const CountBadge = ({ count }: { count: number }) => (
+    <span className="count-badge">{count > 0 ? count : "—"}</span>
+  );
+
   const SummaryRow = ({ label, count, col_grams, kind, color }: {
     label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string;
   }) => (
     <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" && color ? { background: `${color}22` } : undefined}>
       <td>
-        {kind === "diet" && color && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: color, marginRight: 8 }} />}
-        {label}
+        <span className="lbl-line">
+          <span>
+            {kind === "diet" && color && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: color, marginRight: 8 }} />}
+            {label}
+          </span>
+          <CountBadge count={count} />
+        </span>
       </td>
-      <td className="cell-cnt" style={{ color: "inherit" }}>{count > 0 ? count : "—"}</td>
       <GramCells col_grams={col_grams} />
     </tr>
   );
@@ -523,7 +531,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     return (
       <React.Fragment key={key}>
         <tr className="client-row">
-          <td colSpan={2 + totalComponents}>
+          <td colSpan={1 + totalComponents}>
             <button type="button" className="client-toggle" onClick={() => toggleClient(key)}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                 <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
@@ -540,17 +548,21 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         {isExpanded && row.sub_rows.map((sr, si) => (
           <tr key={si} className={`sub-row${sr.type === "diet" ? " diet" : ""}`} style={sr.type === "diet" && sr.diet_color ? { background: `${sr.diet_color}1f` } : undefined}>
             <td className="lbl">
-              {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 999, background: sr.diet_color, marginRight: 8 }} />}
-              {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
+              <span className="lbl-line">
+                <span>
+                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 999, background: sr.diet_color, marginRight: 8 }} />}
+                  {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
+                </span>
+                <CountBadge count={sr.count} />
+              </span>
             </td>
-            <td className="cell-cnt">{sr.count}</td>
             <GramCells col_grams={sr.col_grams} />
           </tr>
         ))}
 
         {isExpanded && row.admin_order_note?.trim() && (
           <tr>
-            <td colSpan={2 + totalComponents} style={{ background: "rgba(114,136,75,0.06)", color: "var(--green-800)", fontSize: 13, padding: "10px 20px" }}>
+            <td colSpan={1 + totalComponents} style={{ background: "rgba(114,136,75,0.06)", color: "var(--green-800)", fontSize: 13, padding: "10px 20px" }}>
               <strong style={{ fontFamily: "var(--font-display)" }}>Poznámka k objednávke:</strong>{" "}
               <span style={{ whiteSpace: "pre-wrap" }}>{row.admin_order_note}</span>
             </td>
@@ -559,7 +571,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
         {isExpanded && row.delivery_note?.trim() && (
           <tr>
-            <td colSpan={2 + totalComponents} style={{ background: "rgba(255,201,92,0.14)", color: "var(--mustard-700)", fontSize: 13, padding: "10px 20px" }}>
+            <td colSpan={1 + totalComponents} style={{ background: "rgba(255,201,92,0.14)", color: "var(--mustard-700)", fontSize: 13, padding: "10px 20px" }}>
               <strong style={{ fontFamily: "var(--font-display)" }}>Rozvoz:</strong>{" "}
               <span style={{ whiteSpace: "pre-wrap" }}>{row.delivery_note}</span>
             </td>
@@ -581,7 +593,6 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
           <thead>
             <tr>
               <th className="corner" rowSpan={2}>Prevádzka / Riadok</th>
-              <th className="cnt" rowSpan={2}>Počet</th>
               {col_groups.map((cg, gi) => (
                 <th key={cg.key} className={`grp mh-${colGroupHues[gi]}-1`} colSpan={cg.components.length}>
                   {cg.label}<small>{cg.template_name}</small>
@@ -609,12 +620,12 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                 {data.blocks.map((block) => (
                   <React.Fragment key={`block-${block.id}`}>
                     <tr className="band">
-                      <td colSpan={2 + totalComponents}>{block.name}</td>
+                      <td colSpan={1 + totalComponents}>{block.name}</td>
                     </tr>
                     {block.routes.map((route) => (
                       <React.Fragment key={`route-${route.id}`}>
                         <tr style={{ background: "var(--bg-cream-soft)" }}>
-                          <td colSpan={2 + totalComponents} style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)", padding: "10px 20px" }}>
+                          <td colSpan={1 + totalComponents} style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)", padding: "10px 20px" }}>
                             {route.name}
                             <span style={{ marginLeft: 8, fontSize: 12, fontFamily: "var(--font-sans)", color: "var(--ink-3)" }}>
                               {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}
@@ -625,7 +636,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                           route.rows.map(renderClientRow)
                         ) : (
                           <tr>
-                            <td colSpan={2 + totalComponents} style={{ color: "var(--ink-mute)", padding: "10px 20px" }}>
+                            <td colSpan={1 + totalComponents} style={{ color: "var(--ink-mute)", padding: "10px 20px" }}>
                               Žiadne riadky v tejto trase pre vybraný deň.
                             </td>
                           </tr>
@@ -637,7 +648,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                 {(data.unassigned_rows?.length ?? 0) > 0 && (
                   <>
                     <tr className="band">
-                      <td colSpan={2 + totalComponents}>Nepriradené prevádzky</td>
+                      <td colSpan={1 + totalComponents}>Nepriradené prevádzky</td>
                     </tr>
                     {data.unassigned_rows?.map(renderClientRow)}
                   </>
@@ -648,16 +659,20 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             )}
           </tbody>
           <tfoot>
-            <tr className="band"><td colSpan={2 + totalComponents}>Súhrn porcií</td></tr>
+            <tr className="band"><td colSpan={1 + totalComponents}>Súhrn porcií</td></tr>
             {perMenuSummary.map((item, gi) => (
               <tr key={`pm_${gi}`} style={{ background: "var(--bg-cream-warm)" }}>
-                <td style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-800)", paddingLeft: 20 }}>{item.label}</td>
-                <td className="cell-cnt">{item.count > 0 ? item.count : "—"}</td>
+                <td style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-800)", paddingLeft: 20 }}>
+                  <span className="lbl-line">
+                    <span>{item.label}</span>
+                    <CountBadge count={item.count} />
+                  </span>
+                </td>
                 <GramCells col_grams={item.col_grams} />
               </tr>
             ))}
             <tr className="total">
-              <td className="corner" colSpan={2} style={{ textAlign: "left" }}>CELKOM (g / ml)</td>
+              <td className="corner" style={{ textAlign: "left" }}>CELKOM (g / ml)</td>
               {col_groups.map((cg, gi) =>
                 cg.components.map((component, ci) => {
                   const value = parseFloat(totals[gi]?.[ci] ?? "");
