@@ -317,6 +317,7 @@ Key variables:
 - `POSTGRES_HOST`: Dokploy-managed Postgres hostname for staging/production
 - `REDIS_URL`: Dokploy-managed Redis internal URL for staging/production; Celery uses DB 0 and Django cache uses DB 1
 - `REGISTRY_USERNAME`: Docker registry namespace used by the deployed image names
+- `PROD_IMAGE_TAG`: immutable production image tag from the production workflow, for example `prod-597a02c9e2afa618f4c1cf24a64923a09721e57c`
 - `EMAIL_HOST`, `EMAIL_HOST_PASSWORD`: SMTP settings required by staging/production
 - `DJANGO_SETTINGS_MODULE`: Settings module (`app.settings.dev/staging/prod`)
 
@@ -364,9 +365,31 @@ GitHub Actions automatically:
 
 Production deployment is handled via Dokploy similarly to staging:
 
-1. GitHub Actions builds and pushes `prod` Docker images on push to `main`
-2. Dokploy pulls fresh images and deploys `compose/prod.yml`
-3. Dokploy owns the public route/Traefik configuration for the production stack
+1. GitHub Actions builds and pushes immutable `prod-<git-sha>` Docker images on push to `main`
+2. GitHub Actions calls the Dokploy API, writes that exact tag to the Compose env as `PROD_IMAGE_TAG`, and triggers `compose.deploy`
+3. Dokploy performs the deployment through its configured Git/SSH key and Swarm integration
+4. Backend, celery, celery-beat, and frontend all use that same immutable tag
+5. Dokploy owns the public route/Traefik configuration for the production stack
+
+The production stack intentionally has no `:prod` fallback. Mutable tags can be
+resolved to an old digest by Swarm/Dokploy, leaving production on stale backend
+or frontend code even after a successful image build. Rollbacks use the same
+mechanism: set `PROD_IMAGE_TAG` back to a previous `prod-<git-sha>` tag and
+redeploy.
+
+Production deploy requires these GitHub Environment `production` secrets:
+
+- `REGISTRY_USERNAME`, `REGISTRY_PASSWORD`: Docker registry credentials
+- `DOKPLOY_API_KEY`: Dokploy API key with permission to update and deploy the production Compose service
+
+Production deploy also requires these GitHub Environment `production` variables:
+
+- `DOKPLOY_URL`: base URL of the Dokploy instance, for example `https://dokploy.example.com`
+- `DOKPLOY_COMPOSE_ID`: production Docker Compose service id from Dokploy
+
+The workflow does not SSH into the Docker host. Dokploy remains the deployment
+owner; GitHub only publishes images and asks Dokploy to deploy the matching
+immutable tag.
 
 ### Observability
 
