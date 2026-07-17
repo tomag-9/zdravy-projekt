@@ -109,10 +109,10 @@ const GRAMAGE_WITH_PLAN = {
   meal_plan_id: 7,
   col_groups: [
     {
-      key: "main_course",
-      label: "Hlavny chod",
+      key: "main_course_B",
+      label: "Hlavný chod Menu B",
       meal: "main_course",
-      variant: "",
+      variant: "B",
       template_name: "Hlavny chod 1",
       components: [{ label: "jedlo", base_grams: "100", unit: "g" }],
     },
@@ -152,6 +152,8 @@ describe("AdminDashboard", () => {
 
     render(<AdminDashboard />);
 
+    expect(await screen.findAllByText("Menu B")).not.toHaveLength(0);
+    expect(screen.queryByText("Hlavný chod Menu B")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledTimes(1);
     });

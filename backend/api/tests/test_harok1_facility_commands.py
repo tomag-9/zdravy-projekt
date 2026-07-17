@@ -156,7 +156,7 @@ def test_rename_harok1_does_not_rewrite_unrelated_profile_subset(tmp_path, monke
 
 
 @pytest.mark.django_db
-def test_seed_zdrave_brusko_preserves_old_history_and_removes_future_duplicates():
+def test_seed_zdrave_brusko_deletes_fake_aggregate_school():
     stary = Celok.objects.create(nazov="MŠ Zdravé Bruško", zdroj_objednavok="edupage")
     stara_prevadzka = Prevadzka.objects.create(celok=stary, nazov="MŠ Zdravé Bruško")
     user = User.objects.create_user(
@@ -185,10 +185,9 @@ def test_seed_zdrave_brusko_preserves_old_history_and_removes_future_duplicates(
 
     call_command("seed_zdrave_brusko")
 
-    assert Celok.objects.filter(pk=stary.pk).exists()
-    stara_prevadzka.refresh_from_db()
-    assert stara_prevadzka.is_active is False
-    assert DailyOrder.objects.filter(pk=historicka.pk).exists()
+    assert not Celok.objects.filter(pk=stary.pk).exists()
+    assert not Prevadzka.objects.filter(pk=stara_prevadzka.pk).exists()
+    assert not DailyOrder.objects.filter(pk=historicka.pk).exists()
     assert not DailyOrder.objects.filter(pk=duplicitna.pk).exists()
     assert set(user.profile.prevadzky.values_list("nazov", flat=True)) == {
         "Deutsche schule",

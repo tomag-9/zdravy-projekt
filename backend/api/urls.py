@@ -7,11 +7,14 @@ from .views import (
     AdminEdupageUploadViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
+    AdminPrevadzkaDeliveryViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
     DailyMealPlanViewSet,
     DailyOrderViewSet,
+    DeliveryBlockViewSet,
+    DeliveryRouteViewSet,
     DietViewSet,
     EmailTokenObtainPairView,
     GlobalSettingsViewSet,
@@ -41,6 +44,21 @@ router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
+router.register(
+    r"admin/delivery-blocks",
+    DeliveryBlockViewSet,
+    basename="admin-delivery-block",
+)
+router.register(
+    r"admin/delivery-routes",
+    DeliveryRouteViewSet,
+    basename="admin-delivery-route",
+)
+router.register(
+    r"admin/prevadzky-delivery",
+    AdminPrevadzkaDeliveryViewSet,
+    basename="admin-prevadzka-delivery",
+)
 router.register(r"admin/summary", AdminSummaryViewSet, basename="adminsummary")
 router.register(
     r"admin/global-settings",

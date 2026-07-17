@@ -15,7 +15,7 @@ class DietSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Diet
-        fields = ["id", "name", "is_active", "description"]
+        fields = ["id", "name", "is_active", "description", "color"]
 
 
 def validate_password_strength(password: str, user: User | None = None) -> str:

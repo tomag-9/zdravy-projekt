@@ -10,6 +10,7 @@ Usage:
 """
 
 from django.contrib.auth.models import User
+from django.core import management
 from django.core.management.base import BaseCommand
 
 from api.models import ClientSettings, Diet, UserProfile
@@ -196,4 +197,7 @@ class Command(BaseCommand):
             self.style.SUCCESS(
                 f"\nDone. Created {created_count}, skipped {skipped_count} schools."
             )
+        )
+        management.call_command(
+            "seed_zdrave_brusko", verbosity=options.get("verbosity", 1)
         )

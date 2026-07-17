@@ -22,6 +22,7 @@ interface ColGroup {
   meal: string;
   variant: string;
   diet_name?: string | null;
+  diet_color?: string;
   template_name: string;
   components: Component[];
 }
@@ -31,12 +32,20 @@ interface SubRow {
   meal: string;
   variant?: string;
   label: string;
+  diet_color?: string;
   count: number;
   col_grams: string[][];
 }
 
 interface DietSummaryRow {
   name: string;
+  color?: string;
+  count: number;
+  col_grams: string[][];
+}
+
+interface PortionSummaryItem {
+  label: string;
   count: number;
   col_grams: string[][];
 }
@@ -44,6 +53,9 @@ interface DietSummaryRow {
 interface ClientRow {
   client: string;
   client_id: number;
+  row_key?: string;
+  prevadzka_id?: number | null;
+  delivery_note?: string;
   total_count: number;
   standard_total_count: number;
   standard_col_grams: string[][];
@@ -71,13 +83,31 @@ interface CountSection {
   diets: CountDietRow[];
 }
 
+interface DeliveryRouteGroup {
+  id: number;
+  name: string;
+  driver?: string;
+  departure_time?: string | null;
+  note?: string;
+  rows: ClientRow[];
+}
+
+interface DeliveryBlockGroup {
+  id: number;
+  name: string;
+  routes: DeliveryRouteGroup[];
+}
+
 interface GramageDashboard {
   date: string;
   meal_plan_id: number | null;
   col_groups: ColGroup[];
   rows: ClientRow[];
+  blocks?: DeliveryBlockGroup[];
+  unassigned_rows?: ClientRow[];
   totals: string[][];
   count_summary: CountSection[];
+  diet_colors?: Record<string, string>;
 }
 
 type OrderMealKey = "breakfast" | "lunch" | "olovrant";
@@ -120,6 +150,12 @@ function mealHue(meal: string, variant: string): string {
     return v === "B" || v === "C" || v === "V" ? `menu${v}` : "menuA";
   }
   return "snack";
+}
+
+function colGroupDisplayLabel(cg: Pick<ColGroup, "label" | "meal" | "variant" | "diet_name">): string {
+  if (cg.meal !== "main_course" || !cg.variant) return cg.label;
+  const base = `Menu ${cg.variant.toUpperCase()}`;
+  return cg.diet_name ? `${base} - ${cg.diet_name}` : base;
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
@@ -413,15 +449,17 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
 
 const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const { col_groups, rows, totals } = data;
-  const [expandedClients, setExpandedClients] = useState<number[]>([]);
+  const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
   const totalComponents = col_groups.reduce((s, cg) => s + cg.components.length, 0);
 
-  const toggleClient = (clientId: number) => {
+  const rowKey = (row: ClientRow) => row.row_key ?? String(row.client_id);
+
+  const toggleClient = (key: string) => {
     setExpandedClients((current) =>
-      current.includes(clientId)
-        ? current.filter((id) => id !== clientId)
-        : [...current, clientId],
+      current.includes(key)
+        ? current.filter((id) => id !== key)
+        : [...current, key],
     );
   };
 
@@ -431,8 +469,22 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     [col_groups],
   );
 
+  const emptySummaryGrams = useCallback(
+    () => col_groups.map((cg) => cg.components.map(() => "0")),
+    [col_groups],
+  );
+
+  const addGramValues = (target: string[][], source: string[] | undefined, groupIndex: number) => {
+    if (!source) return;
+    target[groupIndex] = target[groupIndex].map((current, componentIndex) => {
+      const currentValue = parseFloat(current || "0");
+      const nextValue = parseFloat(source[componentIndex] || "0");
+      return String((Number.isFinite(currentValue) ? currentValue : 0) + (Number.isFinite(nextValue) ? nextValue : 0));
+    });
+  };
+
   // One summary entry per col_group: count from count_summary, grams from totals[gi]
-  const perMenuSummary = useMemo(() => {
+  const totalPortionSummary = useMemo<PortionSummaryItem[]>(() => {
     const countMap = new Map<string, number>();
     for (const section of data.count_summary) {
       const key = `${section.meal}_${section.variant}_${section.diet_name ?? ""}`;
@@ -443,12 +495,44 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       );
     }
     return col_groups.map((cg, gi) => ({
-      label: cg.label,
+      label: colGroupDisplayLabel(cg),
       count: countMap.get(`${cg.meal}_${cg.variant}_${cg.diet_name ?? ""}`) ?? 0,
       // gram values only for this col_group's index; empty for all others
       col_grams: col_groups.map((_, i) => (i === gi ? (totals[i] ?? []) : [])),
     }));
   }, [col_groups, data.count_summary, totals]);
+
+  const buildPortionSummary = useCallback((summaryRows: ClientRow[]): PortionSummaryItem[] => {
+    const summaries = col_groups.map<PortionSummaryItem>((cg) => ({
+      label: colGroupDisplayLabel(cg),
+      count: 0,
+      col_grams: emptySummaryGrams(),
+    }));
+
+    for (const row of summaryRows) {
+      for (const subRow of row.sub_rows) {
+        const groupIndex = col_groups.findIndex((cg) =>
+          cg.meal === subRow.meal &&
+          (cg.variant || "") === (subRow.variant || "") &&
+          (cg.diet_name ?? "") === (subRow.type === "diet" ? subRow.label : "")
+        );
+        if (groupIndex < 0) continue;
+        summaries[groupIndex].count += subRow.count;
+        addGramValues(summaries[groupIndex].col_grams, subRow.col_grams[groupIndex], groupIndex);
+      }
+    }
+
+    return summaries;
+  }, [col_groups, emptySummaryGrams]);
+
+  const blockSummaries = useMemo(() => {
+    const summaryByBlock = new Map<number, PortionSummaryItem[]>();
+    for (const block of data.blocks ?? []) {
+      const blockRows = block.routes.flatMap((route) => route.rows);
+      summaryByBlock.set(block.id, buildPortionSummary(blockRows));
+    }
+    return summaryByBlock;
+  }, [buildPortionSummary, data.blocks]);
 
   const formatValue = (rawValue: string | undefined, component: Component) => {
     if (!rawValue) return null;
@@ -467,44 +551,136 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         const hue = colGroupHues[gi];
         return cg.components.map((component, ci) => {
           const formatted = formatValue(grams[ci], component);
+          const separatorClass = gi > 0 && ci === 0 ? " meal-sep" : "";
           return formatted ? (
-            <td key={`${gi}-${ci}`} className={`cell-num mh-${hue}-cell`}>{formatted}</td>
+            <td key={`${gi}-${ci}`} className={`cell-num mh-${hue}-cell${separatorClass}`}>{formatted}</td>
           ) : (
-            <td key={`${gi}-${ci}`} className="cell-empty">—</td>
+            <td key={`${gi}-${ci}`} className={`cell-empty${separatorClass}`}>—</td>
           );
         });
       })}
     </>
   );
 
-  const SummaryRow = ({ label, count, col_grams, kind }: {
-    label: string; count: number; col_grams: string[][]; kind: "std" | "diet";
+  const CountBadge = ({ count }: { count: number }) => (
+    <span className="count-badge">{count > 0 ? count : "—"}</span>
+  );
+
+  const SummaryRow = ({ label, count, col_grams, kind, color }: {
+    label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string;
   }) => (
-    <tr className={kind === "std" ? "summ-std" : "summ-diet"}>
-      <td>{label}</td>
-      <td className="cell-cnt" style={{ color: "inherit" }}>{count > 0 ? count : "—"}</td>
+    <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" && color ? { background: `${color}22` } : undefined}>
+      <td>
+        <span className="lbl-line">
+          <span>
+            {kind === "diet" && color && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: color, marginRight: 8 }} />}
+            {label}
+          </span>
+          <CountBadge count={count} />
+        </span>
+      </td>
       <GramCells col_grams={col_grams} />
     </tr>
   );
 
+  const renderPortionSummary = (title: string, summary: PortionSummaryItem[]) => (
+    <>
+      <tr className="portion-summary-band">
+        <td colSpan={1 + totalComponents}>{title}</td>
+      </tr>
+      {summary.map((item, gi) => (
+        <tr key={`${title}_${gi}`} className="portion-summary-row">
+          <td>
+            <span className="lbl-line">
+              <span>{item.label}</span>
+              <CountBadge count={item.count} />
+            </span>
+          </td>
+          <GramCells col_grams={item.col_grams} />
+        </tr>
+      ))}
+    </>
+  );
+
+  const renderClientRow = (row: ClientRow) => {
+    const key = rowKey(row);
+    const isExpanded = expandedClients.includes(key);
+    const dietTotal = row.diet_summary_rows.reduce((sum, diet) => sum + diet.count, 0);
+    return (
+      <React.Fragment key={key}>
+        <tr className="client-row">
+          <td colSpan={1 + totalComponents}>
+            <button type="button" className="client-toggle" onClick={() => toggleClient(key)}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
+                {row.client}
+                <span className="meta">
+                  štandard {row.standard_total_count}{dietTotal ? `, diéty ${dietTotal}` : ""}
+                </span>
+              </span>
+              <span className="meta">spolu porcií {row.total_count}</span>
+            </button>
+          </td>
+        </tr>
+
+        {isExpanded && row.sub_rows.map((sr, si) => (
+          <tr key={si} className={`sub-row${sr.type === "diet" ? " diet" : ""}`} style={sr.type === "diet" && sr.diet_color ? { background: `${sr.diet_color}1f` } : undefined}>
+            <td className="lbl">
+              <span className="lbl-line">
+                <span>
+                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 999, background: sr.diet_color, marginRight: 8 }} />}
+                  {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
+                </span>
+                <CountBadge count={sr.count} />
+              </span>
+            </td>
+            <GramCells col_grams={sr.col_grams} />
+          </tr>
+        ))}
+
+        {isExpanded && row.admin_order_note?.trim() && (
+          <tr>
+            <td colSpan={1 + totalComponents} style={{ background: "rgba(114,136,75,0.06)", color: "var(--green-800)", fontSize: 13, padding: "10px 20px" }}>
+              <strong style={{ fontFamily: "var(--font-display)" }}>Poznámka k objednávke:</strong>{" "}
+              <span style={{ whiteSpace: "pre-wrap" }}>{row.admin_order_note}</span>
+            </td>
+          </tr>
+        )}
+
+        {isExpanded && row.delivery_note?.trim() && (
+          <tr>
+            <td colSpan={1 + totalComponents} style={{ background: "rgba(255,201,92,0.14)", color: "var(--mustard-700)", fontSize: 13, padding: "10px 20px" }}>
+              <strong style={{ fontFamily: "var(--font-display)" }}>Rozvoz:</strong>{" "}
+              <span style={{ whiteSpace: "pre-wrap" }}>{row.delivery_note}</span>
+            </td>
+          </tr>
+        )}
+
+        <SummaryRow label="Súčet bez diét" count={row.standard_total_count} col_grams={row.standard_col_grams} kind="std" />
+        {row.diet_summary_rows.map((diet) => (
+          <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" color={diet.color || data.diet_colors?.[diet.name]} />
+        ))}
+      </React.Fragment>
+    );
+  };
+
   return (
     <Card style={{ overflow: "hidden" }}>
-      <div className="zpa-table-wrap">
+      <div className="zpa-table-wrap zpa-gram-wrap">
         <table className="zpa-gram">
           <thead>
             <tr>
               <th className="corner" rowSpan={2}>Prevádzka / Riadok</th>
-              <th className="cnt" rowSpan={2}>Počet</th>
               {col_groups.map((cg, gi) => (
-                <th key={cg.key} className={`grp mh-${colGroupHues[gi]}-1`} colSpan={cg.components.length}>
-                  {cg.label}<small>{cg.template_name}</small>
+                <th key={cg.key} className={`grp mh-${colGroupHues[gi]}-1${gi > 0 ? " meal-sep" : ""}`} colSpan={cg.components.length}>
+                  {colGroupDisplayLabel(cg)}<small>{cg.template_name}</small>
                 </th>
               ))}
             </tr>
             <tr>
               {col_groups.map((cg, gi) =>
                 cg.components.map((comp, ci) => (
-                  <th key={`${cg.key}-${ci}`} className={`comp mh-${colGroupHues[gi]}-2`}>
+                  <th key={`${cg.key}-${ci}`} className={`comp mh-${colGroupHues[gi]}-2${gi > 0 && ci === 0 ? " meal-sep" : ""}`}>
                     {comp.label}
                     <small>
                       {comp.is_exception
@@ -517,62 +693,51 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => {
-              const isExpanded = expandedClients.includes(row.client_id);
-              const dietTotal = row.diet_summary_rows.reduce((sum, diet) => sum + diet.count, 0);
-              return (
-                <React.Fragment key={row.client_id}>
-                  <tr className="client-row">
-                    <td colSpan={2 + totalComponents}>
-                      <button type="button" className="client-toggle" onClick={() => toggleClient(row.client_id)}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                          <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
-                          {row.client}
-                          <span className="meta">
-                            štandard {row.standard_total_count}{dietTotal ? `, diéty ${dietTotal}` : ""}
-                          </span>
-                        </span>
-                        <span className="meta">spolu porcií {row.total_count}</span>
-                      </button>
-                    </td>
-                  </tr>
-
-                  {isExpanded && row.sub_rows.map((sr, si) => (
-                    <tr key={si} className={`sub-row${sr.type === "diet" ? " diet" : ""}`}>
-                      <td className="lbl">{sr.type === "diet" ? `↳ ${sr.label}` : sr.label}</td>
-                      <td className="cell-cnt">{sr.count}</td>
-                      <GramCells col_grams={sr.col_grams} />
+            {data.blocks?.length ? (
+              <>
+                {data.blocks.map((block, blockIndex) => {
+                  const visibleRoutes = block.routes.filter((route) => route.rows.length > 0);
+                  return (
+                    <React.Fragment key={`block-${block.id}`}>
+                      <tr className="band">
+                        <td colSpan={1 + totalComponents}>{block.name}</td>
+                      </tr>
+                      {visibleRoutes.map((route) => (
+                        <React.Fragment key={`route-${route.id}`}>
+                          <tr className="route-row">
+                            <td colSpan={1 + totalComponents}>
+                              <span className="route-pill">
+                                <span>{route.name}</span>
+                                {[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).length > 0 && (
+                                  <small>{[route.departure_time?.slice(0, 5), route.driver].filter(Boolean).join(" / ")}</small>
+                                )}
+                              </span>
+                            </td>
+                          </tr>
+                          {route.rows.map(renderClientRow)}
+                        </React.Fragment>
+                      ))}
+                      {renderPortionSummary(`Súhrn porcií ${blockIndex + 1}`, blockSummaries.get(block.id) ?? [])}
+                    </React.Fragment>
+                  );
+                })}
+                {(data.unassigned_rows?.length ?? 0) > 0 && (
+                  <>
+                    <tr className="band">
+                      <td colSpan={1 + totalComponents}>Nepriradené prevádzky</td>
                     </tr>
-                  ))}
-
-                  {isExpanded && row.admin_order_note?.trim() && (
-                    <tr>
-                      <td colSpan={2 + totalComponents} style={{ background: "rgba(114,136,75,0.06)", color: "var(--green-800)", fontSize: 13, padding: "10px 20px" }}>
-                        <strong style={{ fontFamily: "var(--font-display)" }}>Poznámka k objednávke:</strong>{" "}
-                        <span style={{ whiteSpace: "pre-wrap" }}>{row.admin_order_note}</span>
-                      </td>
-                    </tr>
-                  )}
-
-                  <SummaryRow label="Súčet bez diét" count={row.standard_total_count} col_grams={row.standard_col_grams} kind="std" />
-                  {row.diet_summary_rows.map((diet) => (
-                    <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" />
-                  ))}
-                </React.Fragment>
-              );
-            })}
+                    {data.unassigned_rows?.map(renderClientRow)}
+                  </>
+                )}
+              </>
+            ) : (
+              rows.map(renderClientRow)
+            )}
           </tbody>
           <tfoot>
-            <tr className="band"><td colSpan={2 + totalComponents}>Súhrn porcií</td></tr>
-            {perMenuSummary.map((item, gi) => (
-              <tr key={`pm_${gi}`} style={{ background: "var(--bg-cream-warm)" }}>
-                <td style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-800)", paddingLeft: 20 }}>{item.label}</td>
-                <td className="cell-cnt">{item.count > 0 ? item.count : "—"}</td>
-                <GramCells col_grams={item.col_grams} />
-              </tr>
-            ))}
+            {renderPortionSummary("Porcie celkom", totalPortionSummary)}
             <tr className="total">
-              <td className="corner" colSpan={2} style={{ textAlign: "left" }}>CELKOM (g / ml)</td>
+              <td className="corner" style={{ textAlign: "left" }}>CELKOM (g / ml)</td>
               {col_groups.map((cg, gi) =>
                 cg.components.map((component, ci) => {
                   const value = parseFloat(totals[gi]?.[ci] ?? "");
@@ -582,7 +747,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
                         ? value.toLocaleString("sk-SK", { maximumFractionDigits: 2, minimumFractionDigits: 0 })
                         : Math.round(value).toString()
                       : "0";
-                  return <td key={`${gi}-${ci}`}>{formatted}</td>;
+                  return <td key={`${gi}-${ci}`} className={gi > 0 && ci === 0 ? "meal-sep" : undefined}>{formatted}</td>;
                 })
               )}
             </tr>
