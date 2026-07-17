@@ -462,6 +462,11 @@ class MealPlanService:
                     item.category == MealCategory.BREAKFAST_SNACK
                     and len(components) > 1
                 ):
+                    exception_components = [
+                        component
+                        for component in components
+                        if component.get("is_exception")
+                    ]
                     total_base = sum(
                         Decimal(str(component.get("base_grams") or "0"))
                         for component in components
@@ -472,7 +477,8 @@ class MealPlanService:
                             "label": "Raňajky-desiata spolu",
                             "base_grams": str(total_base),
                             "unit": "g",
-                        }
+                        },
+                        *exception_components,
                     ]
                 col_groups.append(
                     {
