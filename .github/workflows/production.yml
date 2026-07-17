@@ -1,4 +1,4 @@
-name: Build Production Images
+name: Build And Deploy Production Images
 
 on:
   push:
@@ -17,6 +17,7 @@ jobs:
   build-and-push:
     name: Build and Push Production Images
     runs-on: self-hosted
+    environment: production
 
     steps:
       - name: Checkout code
@@ -37,7 +38,6 @@ jobs:
           context: ./backend
           push: true
           tags: |
-            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-backend:prod-${{ github.sha }}
 
       - name: Build and push frontend image
@@ -48,10 +48,18 @@ jobs:
           build-args: |
             VITE_API_URL=${{ vars.PROD_VITE_API_URL || '/api' }}
           tags: |
-            ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod
             ${{ secrets.REGISTRY_USERNAME }}/zdravy-projekt-frontend:prod-${{ github.sha }}
 
       - name: Print rollback tags
         run: |
-          echo "Backend rollback tag: prod-${{ github.sha }}"
-          echo "Frontend rollback tag: prod-${{ github.sha }}"
+          echo "Production image tag: prod-${{ github.sha }}"
+          echo "GitHub Actions will set Dokploy PROD_IMAGE_TAG=prod-${{ github.sha }} before deploying compose/prod.yml"
+          echo "The production workflow intentionally does not push the mutable :prod tag."
+
+      - name: Deploy through Dokploy
+        env:
+          DOKPLOY_URL: ${{ vars.DOKPLOY_URL }}
+          DOKPLOY_API_KEY: ${{ secrets.DOKPLOY_API_KEY }}
+          DOKPLOY_COMPOSE_ID: ${{ vars.DOKPLOY_COMPOSE_ID }}
+          PROD_IMAGE_TAG: prod-${{ github.sha }}
+        run: scripts/deploy-production-dokploy.py
