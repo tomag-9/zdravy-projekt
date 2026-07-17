@@ -2,6 +2,7 @@ import datetime
 
 import pytest
 
+from api.exporters.prevadzka_overview_exporter import _status_label
 from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
 URL = "/api/admin/summary/prevadzka-overview/"
@@ -23,8 +24,17 @@ def _celok_with_prevadzka(nazov, is_edupage):
 @pytest.mark.django_db
 def test_overview_splits_edupage_and_app_and_flags(admin_client):
     _edu_celok, edu_prev, edu_user = _celok_with_prevadzka("EduŠkola", is_edupage=True)
-    _app_celok, app_prev, _app_user = _celok_with_prevadzka(
+    _app_celok, _app_prev, _app_user = _celok_with_prevadzka(
         "AppŠkola", is_edupage=False
+    )
+    _zero_celok, zero_prev, zero_user = _celok_with_prevadzka(
+        "Nulová App", is_edupage=False
+    )
+    _auto_celok, auto_prev, auto_user = _celok_with_prevadzka(
+        "Auto App", is_edupage=False
+    )
+    _manual_celok, manual_prev, manual_user = _celok_with_prevadzka(
+        "Manual App", is_edupage=False
     )
 
     # EduPage prevádzka dodala podklady s upozornením.
@@ -36,13 +46,39 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
         scrape_flags={"attention": ["A:KZ?"], "config_notes": []},
     )
     # App prevádzka nedodala nič (žiadny DailyOrder).
+    DailyOrder.objects.create(
+        user=zero_user,
+        prevadzka=zero_prev,
+        date=DATE,
+        data={},
+        is_auto=False,
+    )
+    DailyOrder.objects.create(
+        user=auto_user,
+        prevadzka=auto_prev,
+        date=DATE,
+        data={"lunch": {"Auto App": {"menuCounts": {"A": 5}}}},
+        is_auto=True,
+    )
+    DailyOrder.objects.create(
+        user=manual_user,
+        prevadzka=manual_prev,
+        date=DATE,
+        data={"lunch": {"Manual App": {"menuCounts": {"A": 7}}}},
+        is_auto=False,
+    )
 
     res = admin_client.get(URL, {"date": DATE.isoformat()})
     assert res.status_code == 200
     body = res.json()
 
     assert [r["nazov"] for r in body["edupage"]] == ["EduŠkola"]
-    assert [r["nazov"] for r in body["app"]] == ["AppŠkola"]
+    assert [r["nazov"] for r in body["app"]] == [
+        "AppŠkola",
+        "Auto App",
+        "Manual App",
+        "Nulová App",
+    ]
 
     edu = body["edupage"][0]
     assert edu["delivered"] is True
@@ -53,8 +89,18 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
 
     app = body["app"][0]
     assert app["delivered"] is False
+    assert app["delivery_status"] == "missing"
     assert app["counts"]["total"] == 0
     assert app["has_warning"] is False
+
+    app_by_name = {row["nazov"]: row for row in body["app"]}
+    assert app_by_name["Nulová App"]["delivered"] is True
+    assert app_by_name["Nulová App"]["delivery_status"] == "manual_zero"
+    assert app_by_name["Nulová App"]["counts"]["total"] == 0
+    assert app_by_name["Auto App"]["delivery_status"] == "auto"
+    assert app_by_name["Auto App"]["counts"]["total"] == 5
+    assert app_by_name["Manual App"]["delivery_status"] == "manual"
+    assert app_by_name["Manual App"]["counts"]["total"] == 7
 
 
 @pytest.mark.django_db
@@ -79,6 +125,28 @@ def test_overview_export(admin_client, fmt, ctype):
     assert res.status_code == 200
     assert ctype in res["Content-Type"]
     assert res["Content-Disposition"].endswith(f'.{fmt}"')
+
+
+def test_overview_export_status_labels_prioritize_warnings():
+    assert _status_label({"delivered": False, "has_warning": False}) == "NEDODANÉ"
+    assert (
+        _status_label(
+            {"delivered": True, "has_warning": True, "delivery_status": "manual"}
+        )
+        == "SKONTROLUJ"
+    )
+    assert (
+        _status_label(
+            {"delivered": True, "has_warning": False, "delivery_status": "manual_zero"}
+        )
+        == "NULA"
+    )
+    assert (
+        _status_label(
+            {"delivered": True, "has_warning": False, "delivery_status": "auto"}
+        )
+        == "AUTO KÓPIA"
+    )
 
 
 @pytest.mark.django_db

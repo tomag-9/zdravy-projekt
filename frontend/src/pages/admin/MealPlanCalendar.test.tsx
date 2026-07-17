@@ -75,25 +75,25 @@ describe("DayEditorPanel menu variant weights", () => {
     const user = userEvent.setup();
     renderEditor();
 
-    await screen.findByLabelText("Hlavný chod Menu A");
+    await screen.findByLabelText("Menu A");
 
-    await user.selectOptions(screen.getByLabelText("Hlavný chod Menu A"), "10");
+    await user.selectOptions(screen.getByLabelText("Menu A"), "10");
 
-    expect(screen.getByLabelText("Hlavný chod Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu B")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu V")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu B")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
 
-    await user.selectOptions(screen.getByLabelText("Hlavný chod Menu B"), "11");
-    expect(screen.getByLabelText("Hlavný chod Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu B")).toHaveValue("11");
-    expect(screen.getByLabelText("Hlavný chod Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu V")).toHaveValue("10");
+    await user.selectOptions(screen.getByLabelText("Menu B"), "11");
+    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu B")).toHaveValue("11");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
 
-    await user.selectOptions(screen.getByLabelText("Hlavný chod Menu A"), "11");
-    expect(screen.getByLabelText("Hlavný chod Menu B")).toHaveValue("11");
-    expect(screen.getByLabelText("Hlavný chod Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu V")).toHaveValue("10");
+    await user.selectOptions(screen.getByLabelText("Menu A"), "11");
+    expect(screen.getByLabelText("Menu B")).toHaveValue("11");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
 
     await user.click(screen.getByText("Uložiť"));
 
@@ -123,12 +123,12 @@ describe("DayEditorPanel menu variant weights", () => {
       },
     ]);
 
-    await screen.findByLabelText("Hlavný chod Menu A");
+    await screen.findByLabelText("Menu A");
 
-    expect(screen.getByLabelText("Hlavný chod Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu B")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Hlavný chod Menu V")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu B")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
 
     await user.click(screen.getByText("Uložiť"));
 

@@ -1,20 +1,19 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
+const devProxyTarget = process.env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000';
+const hmrPort = process.env.VITE_HMR_PORT ? Number(process.env.VITE_HMR_PORT) : undefined;
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
     port: 3000,
-    hmr: {
-      host: 'localhost',
-      port: 3000,
-      protocol: 'ws',
-    },
+    ...(hmrPort ? { hmr: { host: 'localhost', port: hmrPort, protocol: 'ws' } } : {}),
     proxy: {
       '/api': {
-        target: 'http://backend:8000',
+        target: devProxyTarget,
         changeOrigin: true,
       },
     },

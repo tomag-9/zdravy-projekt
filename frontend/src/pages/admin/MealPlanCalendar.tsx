@@ -242,8 +242,8 @@ export const DayEditorPanel: React.FC<{
                 </label>
                 {MAIN_COURSE_VARIANTS.map((variant) => (
                   <label key={variant} className="zpa-field">
-                    <span className="zpa-label">{CATEGORY_LABELS.main_course} Menu {variant}</span>
-                    {renderSelect(`main_course_${variant}`, "main_course", `${CATEGORY_LABELS.main_course} Menu ${variant}`)}
+                    <span className="zpa-label">Menu {variant}</span>
+                    {renderSelect(`main_course_${variant}`, "main_course", `Menu ${variant}`)}
                   </label>
                 ))}
               </div>
