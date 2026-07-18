@@ -57,6 +57,17 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
+# Fakturačné koeficienty, ktoré MUSIA prežiť každý reseed prevádzok. Historicky žili
+# len v jednorazovej data-migrácii (0045_edulienka_billing_coefficients); tá sa však
+# po opätovnom naseedovaní/rozdelení prevádzok neprejaví a koeficient ticho spadne na
+# {} → predškolák sa zrazu účtuje ako 1 namiesto 1,25. Preto ho tu nastavujeme
+# idempotentne pri každom behu, nezávisle od SPLITS. Kľúč je názov celku (obe
+# historické pomenovania), hodnota je `billing_portion_coefficients`.
+COEFFICIENTS: dict[str, dict[str, str]] = {
+    "MŠ Edulienka": {"Predškolák": "1.25"},
+    "Edulienka": {"Predškolák": "1.25"},
+}
+
 
 class Command(BaseCommand):
     help = "Vytvorí sub-prevádzky s edupage_match pre viac-prevádzkové celky."
@@ -133,6 +144,19 @@ class Command(BaseCommand):
                 if not dry_run:
                     stara.is_active = False
                     stara.save(update_fields=["is_active"])
+
+        # Fakturačné koeficienty — idempotentne, nezávisle od toho, či je celok
+        # rozdelený. Chráni pred tichým spadnutím na {} po reseede prevádzok.
+        for celok_nazov, coeffs in COEFFICIENTS.items():
+            qs = Prevadzka.objects.filter(celok__nazov=celok_nazov)
+            pocet = qs.count()
+            if not pocet:
+                continue
+            if not dry_run:
+                qs.update(billing_portion_coefficients=coeffs)
+            self.stdout.write(
+                f"  {celok_nazov}: koeficient {coeffs} → {pocet} prevádzok"
+            )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("dry-run — rollback"))

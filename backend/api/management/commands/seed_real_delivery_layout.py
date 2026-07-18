@@ -423,24 +423,48 @@ def _rows_by_route() -> dict[str, list[DeliverySeedRow]]:
 def _upsert_prevadzka(
     row: DeliverySeedRow, route: DeliveryRoute, sort_order: int
 ) -> Prevadzka:
+    existing = _find_existing_prevadzka(row)
+    if existing is not None:
+        # Prevádzka už existuje — možno ako sub-prevádzka multi-prevádzkového celku
+        # (napr. „Jolly 3" pod „Jolly Homeschool", „Les"/„Lúka" pod „Škôlka MS").
+        # NEPRESÚVAME ju do facility-pomenovaného celku ani ju nepremenúvame — inak
+        # by sme ju odtrhli od jej celku a narazili na unique(celok, nazov). Len
+        # doplníme rozvozové info. Zdroj EDUPAGE riešime na jej vlastnom celku.
+        if row.address:
+            existing.adresa = row.address
+        existing.delivery_route = route
+        existing.delivery_sort_order = sort_order
+        existing.report_alias = row.alias
+        existing.delivery_note = row.note
+        existing.is_active = True
+        existing.save()
+        if (
+            row.is_edupage
+            and existing.celok is not None
+            and existing.celok.zdroj_objednavok != Celok.ZdrojObjednavok.EDUPAGE
+        ):
+            existing.celok.zdroj_objednavok = Celok.ZdrojObjednavok.EDUPAGE
+            existing.celok.save(update_fields=["zdroj_objednavok"])
+        return existing
+
+    # Nová prevádzka → vlastný celok pomenovaný podľa facility (1 celok : 1 prevádzka).
     display_name = row.prevadzka_name
     celok, _ = Celok.objects.get_or_create(nazov=display_name)
     if row.is_edupage and celok.zdroj_objednavok != Celok.ZdrojObjednavok.EDUPAGE:
         celok.zdroj_objednavok = Celok.ZdrojObjednavok.EDUPAGE
         celok.save(update_fields=["zdroj_objednavok"])
-    existing = _find_existing_prevadzka(row)
-    if existing is None:
-        existing = Prevadzka(celok=celok, nazov=display_name)
-    existing.celok = celok
-    existing.nazov = display_name
-    existing.adresa = row.address or existing.adresa
-    existing.delivery_route = route
-    existing.delivery_sort_order = sort_order
-    existing.report_alias = row.alias
-    existing.delivery_note = row.note
-    existing.is_active = True
-    existing.save()
-    return existing
+    prevadzka = Prevadzka(
+        celok=celok,
+        nazov=display_name,
+        adresa=row.address or "",
+        delivery_route=route,
+        delivery_sort_order=sort_order,
+        report_alias=row.alias,
+        delivery_note=row.note,
+        is_active=True,
+    )
+    prevadzka.save()
+    return prevadzka
 
 
 def _find_existing_prevadzka(row: DeliverySeedRow) -> Prevadzka | None:

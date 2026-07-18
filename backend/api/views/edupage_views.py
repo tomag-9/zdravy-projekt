@@ -2,7 +2,6 @@ import datetime
 import logging
 
 from django.db import transaction
-from django.db.models import Count, Q
 from rest_framework import permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser
@@ -15,7 +14,7 @@ from ..edupage_scraper import (
     nest_order_data_by_category,
     prevadzky_without_match,
 )
-from ..models import DailyOrder, EdupageUpload, UserProfile
+from ..models import Celok, DailyOrder, EdupageUpload, UserProfile
 from ..utils import filter_order_data_for_prevadzka
 
 logger = logging.getLogger(__name__)
@@ -24,6 +23,102 @@ EDUPAGE_SCRAPE_ERROR = (
     "Edupage scraping failed. Check the configured URL and try again."
 )
 EDUPAGE_TEST_URL_ERROR = "URL could not be reached or parsed."
+
+
+def _system_scrape_user():
+    from django.contrib.auth.models import User
+
+    user, _ = User.objects.get_or_create(
+        username="edupage-scrape@system.local",
+        defaults={
+            "email": "edupage-scrape@system.local",
+            "is_active": False,
+            "is_staff": False,
+        },
+    )
+    return user
+
+
+def _edupage_operations(operation_id=None):
+    operations_by_url: dict[str, dict] = {}
+    celky = (
+        Celok.objects.filter(zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE)
+        .exclude(mealsguest_url="")
+        .prefetch_related(
+            "prevadzky",
+            "profily__user",
+            "profily__prevadzky",
+            "prevadzky__profily__user",
+            "prevadzky__profily__prevadzky",
+        )
+    )
+    if operation_id:
+        # operation_id môže ukazovať na ktorýkoľvek celok zdieľajúci EduPage URL
+        # (napr. Zdravé Brúško = 5 celkov na jednom URL). Zoskupíme podľa URL, nie
+        # podľa pk, inak by scrape jedného celku dostal objem celej školy bez
+        # prefixového rozdelenia → prepočítanie.
+        target = celky.filter(pk=operation_id).first()
+        if target is not None:
+            celky = celky.filter(mealsguest_url=target.mealsguest_url)
+        else:
+            celky = celky.none()
+
+    for celok in celky:
+        operation = operations_by_url.setdefault(
+            celok.mealsguest_url,
+            {
+                "operation_id": celok.pk,
+                "name": celok.nazov,
+                "url": celok.mealsguest_url,
+                "user": None,
+                "prevadzky": [],
+            },
+        )
+        operation["prevadzky"].extend([p for p in celok.prevadzky.all() if p.is_active])
+        if operation["user"] is None:
+            profile = celok.profily.select_related("user").first()
+            if profile is None:
+                for prevadzka in celok.prevadzky.all():
+                    profile = prevadzka.profily.select_related("user").first()
+                    if profile is not None:
+                        break
+            if profile is not None:
+                operation["user"] = profile.user
+
+    configured_urls = set(operations_by_url)
+    legacy_profiles = (
+        UserProfile.objects.filter(is_edupage=True)
+        .exclude(mealsguest_url="")
+        .select_related("user", "celok")
+        .prefetch_related("celok__prevadzky", "prevadzky")
+    )
+    if operation_id and not operations_by_url:
+        legacy_profiles = legacy_profiles.filter(pk=operation_id)
+    elif operation_id:
+        legacy_profiles = legacy_profiles.none()
+
+    for profile in legacy_profiles:
+        if profile.mealsguest_url in configured_urls:
+            continue
+        operations_by_url[profile.mealsguest_url] = {
+            "operation_id": profile.pk,
+            "name": str(profile),
+            "url": profile.mealsguest_url,
+            "user": profile.user,
+            "prevadzky": list(profile.dostupne_prevadzky()),
+        }
+
+    system_user = None
+    for operation in operations_by_url.values():
+        if operation["user"] is None:
+            if system_user is None:
+                system_user = _system_scrape_user()
+            operation["user"] = system_user
+        deduped = {}
+        for prevadzka in operation["prevadzky"]:
+            deduped[prevadzka.pk] = prevadzka
+        operation["prevadzky"] = list(deduped.values())
+    return list(operations_by_url.values())
 
 
 class EdupageUploadSerializer(serializers.ModelSerializer):
@@ -80,13 +175,37 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
         operation = None
         if operation_id:
-            try:
-                operation = UserProfile.objects.get(pk=operation_id, is_edupage=True)
-            except UserProfile.DoesNotExist:
-                return Response(
-                    {"error": f"Edupage operation {operation_id} not found"},
-                    status=status.HTTP_400_BAD_REQUEST,
+            celok = (
+                Celok.objects.filter(
+                    pk=operation_id,
+                    zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
                 )
+                .prefetch_related("profily__user", "prevadzky__profily__user")
+                .first()
+            )
+            if celok is not None:
+                operation = celok.profily.first()
+                if operation is None:
+                    for prevadzka in celok.prevadzky.all():
+                        operation = prevadzka.profily.first()
+                        if operation is not None:
+                            break
+                if operation is None and celok.mealsguest_url:
+                    operation = (
+                        UserProfile.objects.filter(mealsguest_url=celok.mealsguest_url)
+                        .select_related("user")
+                        .first()
+                    )
+            if operation is None and celok is None:
+                try:
+                    operation = UserProfile.objects.get(
+                        pk=operation_id, is_edupage=True
+                    )
+                except UserProfile.DoesNotExist:
+                    return Response(
+                        {"error": f"Edupage operation {operation_id} not found"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
 
         upload = EdupageUpload.objects.create(
             operation=operation,
@@ -110,19 +229,20 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "date is required"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        operations = UserProfile.objects.filter(is_edupage=True).annotate(
-            upload_count=Count("edupage_uploads", filter=Q(edupage_uploads__date=date))
-        )
-
-        result = [
-            {
-                "id": op.id,
-                "name": op.company_name or op.user.email,
-                "uploaded": op.upload_count > 0,
-                "upload_count": op.upload_count,
-            }
-            for op in operations
-        ]
+        result = []
+        for op in _edupage_operations():
+            upload_count = EdupageUpload.objects.filter(
+                date=date,
+                operation__mealsguest_url=op["url"],
+            ).count()
+            result.append(
+                {
+                    "id": op["operation_id"],
+                    "name": op["name"],
+                    "uploaded": upload_count > 0,
+                    "upload_count": upload_count,
+                }
+            )
 
         total = len(result)
         uploaded = sum(1 for op in result if op["uploaded"])
@@ -159,34 +279,22 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "date must be YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        if operation_id:
-            qs = UserProfile.objects.filter(pk=operation_id, is_edupage=True)
-        else:
-            qs = UserProfile.objects.filter(is_edupage=True).exclude(mealsguest_url="")
-
+        operations = _edupage_operations(operation_id=operation_id)
+        if operation_id and not operations:
+            return Response(
+                {"error": f"Edupage operation {operation_id} not found"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         results = []
         scraper = EdupageScraper()
 
-        for profile in qs.select_related("user", "celok").prefetch_related(
-            "celok__prevadzky", "prevadzky"
-        ):
-            if not profile.mealsguest_url:
-                results.append(
-                    {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
-                        "status": "skipped",
-                        "reason": "no mealsguest_url",
-                    }
-                )
-                continue
-
-            prevadzky = list(profile.dostupne_prevadzky())
+        for operation in operations:
+            prevadzky = list(operation["prevadzky"])
             if not prevadzky:
                 results.append(
                     {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
+                        "operation_id": operation["operation_id"],
+                        "name": operation["name"],
                         "status": "skipped",
                         "reason": "no active prevadzka",
                     }
@@ -199,8 +307,8 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if len(prevadzky) > 1 and bez_matchu:
                 results.append(
                     {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
+                        "operation_id": operation["operation_id"],
+                        "name": operation["name"],
                         "status": "skipped",
                         "reason": (
                             "multi-prevadzka operation is missing edupage_match: "
@@ -212,16 +320,18 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
             try:
                 result = scraper.scrape(
-                    profile.mealsguest_url,
+                    operation["url"],
                     target_date,
                     prevadzka_matches=matches if len(prevadzky) > 1 else None,
                 )
             except Exception:
-                logger.exception("Scrape failed for operation %s", profile.pk)
+                logger.exception(
+                    "Scrape failed for operation %s", operation["operation_id"]
+                )
                 results.append(
                     {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
+                        "operation_id": operation["operation_id"],
+                        "name": operation["name"],
                         "status": "error",
                         "error": EDUPAGE_SCRAPE_ERROR,
                     }
@@ -231,8 +341,8 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if not result.order_data:
                 results.append(
                     {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
+                        "operation_id": operation["operation_id"],
+                        "name": operation["name"],
                         "status": "empty",
                         "warnings": result.warnings,
                     }
@@ -242,8 +352,8 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if result.warnings or result.unmapped_letters:
                 results.append(
                     {
-                        "operation_id": profile.pk,
-                        "name": str(profile),
+                        "operation_id": operation["operation_id"],
+                        "name": operation["name"],
                         "status": "skipped",
                         "warnings": result.warnings,
                         "unmapped_letters": result.unmapped_letters,
@@ -267,7 +377,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                     order, created = DailyOrder.objects.update_or_create(
                         prevadzka=prevadzka,
                         date=target_date,
-                        defaults={"user": profile.user, "data": order_data},
+                        defaults={"user": operation["user"], "data": order_data},
                     )
                     written.append(
                         {
@@ -279,8 +389,8 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
             results.append(
                 {
-                    "operation_id": profile.pk,
-                    "name": str(profile),
+                    "operation_id": operation["operation_id"],
+                    "name": operation["name"],
                     "status": "updated",
                     "orders": written,
                     "warnings": result.warnings,

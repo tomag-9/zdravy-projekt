@@ -31,6 +31,9 @@ from .diet_views import DietViewSet
 # Edupage views
 from .edupage_views import AdminEdupageUploadViewSet
 
+# Facility (celok + prevadzka) admin views
+from .facility_views import AdminCelokViewSet, AdminFacilityPrevadzkaViewSet
+
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
@@ -89,6 +92,9 @@ __all__ = [
     # Settings
     "UserProfileViewSet",
     "GlobalSettingsViewSet",
+    # Facility (celok + prevadzka)
+    "AdminCelokViewSet",
+    "AdminFacilityPrevadzkaViewSet",
     # Diet
     "DietViewSet",
     # Delivery layout

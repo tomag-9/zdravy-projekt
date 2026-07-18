@@ -195,10 +195,8 @@ class PDFReportExporter:
 
         # Per-user data
         for order in self.orders:
-            user = order.user
             data = order.data if isinstance(order.data, dict) else {}
-            _settings = getattr(user, "settings", None)
-            visible_meals = getattr(_settings, "visible_meals", None) or [
+            visible_meals = getattr(order.prevadzka, "visible_meals", None) or [
                 "breakfast",
                 "lunch",
                 "olovrant",
