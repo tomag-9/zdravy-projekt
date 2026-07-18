@@ -50,6 +50,12 @@ variable "high_p95_latency_seconds" {
   default     = 3
 }
 
+variable "high_backend_cpu_cores" {
+  description = "Warning threshold for sustained backend container CPU usage, in CPU cores."
+  type        = number
+  default     = 0.9
+}
+
 variable "backend_recent_restart_seconds" {
   description = "How long after a backend container start to alert about a recent restart."
   type        = number
