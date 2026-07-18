@@ -18,6 +18,7 @@ from api.models import (
     Prevadzka,
     UserProfile,
 )
+from api.reference_data import DEFAULT_DIET_NAMES
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
 
 
@@ -35,6 +36,7 @@ def test_ensure_global_settings_creates_singleton_idempotently():
 def test_real_edupage_seed_creates_operations_and_links(settings):
     settings.DEBUG = False
 
+    management.call_command("init_reference_data")
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
@@ -56,6 +58,23 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
     dia = Diet.objects.get(name="DIA")
     krasnanko = User.objects.get(username="krasnanko@edupage.local")
     assert krasnanko.settings.visible_diets.filter(pk=dia.pk).exists()
+    assert (
+        krasnanko.profile.dostupne_prevadzky()
+        .get()
+        .visible_diets.filter(pk=dia.pk)
+        .exists()
+    )
+    for school in SCHOOLS:
+        prevadzky = User.objects.get(
+            username=f"{school['subdomain']}@edupage.local"
+        ).profile.dostupne_prevadzky()
+        assert prevadzky.exists()
+        for prevadzka in prevadzky:
+            assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
+            enabled_diets = set(prevadzka.visible_diets.values_list("name", flat=True))
+            assert set(DEFAULT_DIET_NAMES).issubset(enabled_diets)
+            if school["subdomain"] != "krasnanko":
+                assert "DIA" not in enabled_diets
     assert (
         not ClientSettings.objects.exclude(user=krasnanko)
         .filter(visible_diets=dia)
@@ -154,11 +173,16 @@ def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
     )
     UserProfile.objects.create(user=user)
     ClientSettings.objects.create(user=user, visible_meals=["lunch"])
+    prevadzka = user.profile.dostupne_prevadzky().get()
+    prevadzka.visible_meals = ["lunch"]
+    prevadzka.save(update_fields=["visible_meals"])
 
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
     user.refresh_from_db()
+    prevadzka.refresh_from_db()
     assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
+    assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
 
 
 @pytest.mark.django_db

@@ -22,6 +22,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
+from api.default_visibility import DEFAULT_VISIBLE_MEALS, ensure_default_visible_diets
 from api.models import Celok, DailyOrder, Prevadzka
 
 # celok.nazov -> [(nazov prevádzky, edupage_match)]
@@ -106,9 +107,12 @@ class Command(BaseCommand):
                         "edupage_match": match,
                         "sort_order": sort_order,
                         "is_active": True,
+                        "visible_meals": DEFAULT_VISIBLE_MEALS,
                         "billing_portion_coefficients": zdedeny_koeficient,
                     },
                 )
+                if not dry_run:
+                    ensure_default_visible_diets(obj.visible_diets)
                 verb = "vytvorená" if created else "aktualizovaná"
                 self.stdout.write(f"  {celok_nazov}: {nazov} ({match}) — {verb}")
 

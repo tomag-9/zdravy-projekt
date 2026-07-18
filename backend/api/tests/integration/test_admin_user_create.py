@@ -141,6 +141,10 @@ class TestAdminUserCreate:
         assert set(settings.visible_diets.values_list("name", flat=True)) == set(
             DEFAULT_DIET_NAMES
         )
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        assert set(prevadzka.visible_diets.values_list("name", flat=True)) == set(
+            DEFAULT_DIET_NAMES
+        )
 
     def test_update_ignores_login_level_edupage_fields(self, admin_client):
         """PATCH cez /admin/users/ už neprijíma is_edupage/api_identifier

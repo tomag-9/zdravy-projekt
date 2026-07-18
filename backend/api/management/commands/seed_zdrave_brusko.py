@@ -26,6 +26,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from api.default_visibility import DEFAULT_VISIBLE_MEALS, ensure_default_visible_diets
 from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
 EMAIL = "zdravebrusko@edupage.local"
@@ -91,8 +92,11 @@ class Command(BaseCommand):
                     "edupage_match": match,
                     "sort_order": sort_order,
                     "is_active": True,
+                    "visible_meals": DEFAULT_VISIBLE_MEALS,
                 },
             )
+            if not dry_run:
+                ensure_default_visible_diets(prevadzka.visible_diets)
             prevadzky.append(prevadzka)
             verb = "vytvorený" if celok_created else "aktualizovaný"
             self.stdout.write(f"  {nazov} ({match}) — celok {verb}")
