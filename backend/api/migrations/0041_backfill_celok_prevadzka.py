@@ -77,6 +77,8 @@ def backwards(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
+
     dependencies = [("api", "0040_celok_alter_dailyorder_unique_together_and_more")]
 
     operations = [
