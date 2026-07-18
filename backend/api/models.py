@@ -107,7 +107,7 @@ def _default_all_meals() -> List[str]:
 
 
 def _default_visible_menus() -> List[str]:
-    return ["A"]
+    return ["A", "B", "C", "V"]
 
 
 class ClientSettings(models.Model):

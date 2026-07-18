@@ -506,8 +506,15 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
     """Apply default diets for new settings and invalidate ClientSettings cache."""
     try:
         if created and instance.visible_diets.count() == 0:
-            from api.default_visibility import ensure_default_visible_diets
+            from api.default_visibility import (
+                DEFAULT_VISIBLE_MEALS,
+                DEFAULT_VISIBLE_MENUS,
+                ensure_default_visible_diets,
+            )
 
+            instance.visible_menus = DEFAULT_VISIBLE_MENUS
+            instance.visible_meals = DEFAULT_VISIBLE_MEALS
+            instance.save(update_fields=["visible_menus", "visible_meals"])
             ensure_default_visible_diets(instance.visible_diets)
 
         from api.cache_service import clear_client_settings_cache
@@ -525,8 +532,15 @@ def on_prevadzka_saved(sender, instance, created=False, **kwargs):
     if not created:
         return
     try:
-        from api.default_visibility import ensure_default_visible_diets
+        from api.default_visibility import (
+            DEFAULT_VISIBLE_MEALS,
+            DEFAULT_VISIBLE_MENUS,
+            ensure_default_visible_diets,
+        )
 
+        instance.visible_menus = DEFAULT_VISIBLE_MENUS
+        instance.visible_meals = DEFAULT_VISIBLE_MEALS
+        instance.save(update_fields=["visible_menus", "visible_meals"])
         ensure_default_visible_diets(instance.visible_diets)
     except Exception as exc:
         logger.exception("Error applying default diets for Prevadzka: %s", exc)

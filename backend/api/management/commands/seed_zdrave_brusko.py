@@ -26,7 +26,11 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from api.default_visibility import DEFAULT_VISIBLE_MEALS, ensure_default_visible_diets
+from api.default_visibility import (
+    DEFAULT_VISIBLE_MEALS,
+    DEFAULT_VISIBLE_MENUS,
+    ensure_default_visible_diets,
+)
 from api.models import Celok, DailyOrder, Prevadzka, UserProfile
 
 EMAIL = "zdravebrusko@edupage.local"
@@ -92,6 +96,7 @@ class Command(BaseCommand):
                     "edupage_match": match,
                     "sort_order": sort_order,
                     "is_active": True,
+                    "visible_menus": DEFAULT_VISIBLE_MENUS,
                     "visible_meals": DEFAULT_VISIBLE_MEALS,
                 },
             )

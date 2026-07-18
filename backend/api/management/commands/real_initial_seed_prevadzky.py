@@ -15,7 +15,9 @@ from django.core.management.base import BaseCommand
 
 from api.default_visibility import (
     DEFAULT_VISIBLE_MEALS,
+    DEFAULT_VISIBLE_MENUS,
     ensure_all_visible_meals_for_prevadzky,
+    ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets,
 )
 from api.models import ClientSettings, Diet, UserProfile
@@ -170,13 +172,20 @@ class Command(BaseCommand):
 
             client_settings, settings_created = ClientSettings.objects.get_or_create(
                 user=user,
-                defaults={"visible_meals": EDUPAGE_VISIBLE_MEALS},
+                defaults={
+                    "visible_menus": DEFAULT_VISIBLE_MENUS,
+                    "visible_meals": EDUPAGE_VISIBLE_MEALS,
+                },
             )
+            if client_settings.visible_menus != DEFAULT_VISIBLE_MENUS:
+                client_settings.visible_menus = DEFAULT_VISIBLE_MENUS
+                client_settings.save(update_fields=["visible_menus"])
             if client_settings.visible_meals != EDUPAGE_VISIBLE_MEALS:
                 client_settings.visible_meals = EDUPAGE_VISIBLE_MEALS
                 client_settings.save(update_fields=["visible_meals"])
             ensure_default_visible_diets(client_settings.visible_diets)
             prevadzky = profile.dostupne_prevadzky()
+            ensure_all_visible_menus_for_prevadzky(prevadzky)
             ensure_all_visible_meals_for_prevadzky(prevadzky)
             for prevadzka in prevadzky:
                 ensure_default_visible_diets(prevadzka.visible_diets)

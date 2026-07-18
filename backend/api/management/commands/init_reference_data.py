@@ -19,6 +19,8 @@ from django.core.management.base import BaseCommand
 from api.default_visibility import (
     ensure_all_visible_meals_for_client_settings,
     ensure_all_visible_meals_for_prevadzky,
+    ensure_all_visible_menus_for_client_settings,
+    ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets_for_empty_prevadzky,
 )
 from api.models import ClientSettings, Diet, PortionType
@@ -72,6 +74,8 @@ class Command(BaseCommand):
         settings_updated_count = 0
         settings_created_count = 0
         prevadzky_updated_count = 0
+        settings_menus_updated_count = 0
+        prevadzky_menus_updated_count = 0
         settings_meals_updated_count = 0
         prevadzky_meals_updated_count = 0
         if default_diets:
@@ -93,6 +97,10 @@ class Command(BaseCommand):
                 settings.visible_diets.set(default_diets)
                 settings_updated_count += 1
             prevadzky_updated_count = ensure_default_visible_diets_for_empty_prevadzky()
+            settings_menus_updated_count = (
+                ensure_all_visible_menus_for_client_settings()
+            )
+            prevadzky_menus_updated_count = ensure_all_visible_menus_for_prevadzky()
             settings_meals_updated_count = (
                 ensure_all_visible_meals_for_client_settings()
             )
@@ -104,6 +112,8 @@ class Command(BaseCommand):
             or settings_created_count
             or settings_updated_count
             or prevadzky_updated_count
+            or settings_menus_updated_count
+            or prevadzky_menus_updated_count
             or settings_meals_updated_count
             or prevadzky_meals_updated_count
         ):
@@ -114,6 +124,8 @@ class Command(BaseCommand):
                     f"created settings for {settings_created_count} clients; "
                     f"default diets enabled for {settings_updated_count} clients "
                     f"and {prevadzky_updated_count} prevadzky; "
+                    f"all menus enabled for {settings_menus_updated_count} clients "
+                    f"and {prevadzky_menus_updated_count} prevadzky; "
                     f"all meals enabled for {settings_meals_updated_count} clients "
                     f"and {prevadzky_meals_updated_count} prevadzky."
                 )

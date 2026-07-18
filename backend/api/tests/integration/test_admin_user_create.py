@@ -15,6 +15,7 @@ import pytest
 from django.contrib.auth.models import User
 from rest_framework import status
 
+from api.default_visibility import DEFAULT_VISIBLE_MEALS, DEFAULT_VISIBLE_MENUS
 from api.models import ClientSettings, Diet, PasswordResetToken, UserProfile
 from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
 
@@ -138,10 +139,14 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="defaultdiets@example.com")
         settings = ClientSettings.objects.get(user=user)
+        assert settings.visible_menus == DEFAULT_VISIBLE_MENUS
+        assert settings.visible_meals == DEFAULT_VISIBLE_MEALS
         assert set(settings.visible_diets.values_list("name", flat=True)) == set(
             DEFAULT_DIET_NAMES
         )
         prevadzka = user.profile.dostupne_prevadzky().get()
+        assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
+        assert prevadzka.visible_meals == DEFAULT_VISIBLE_MEALS
         assert set(prevadzka.visible_diets.values_list("name", flat=True)) == set(
             DEFAULT_DIET_NAMES
         )

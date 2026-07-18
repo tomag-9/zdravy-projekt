@@ -9,6 +9,7 @@ from .order_data import MEAL_KEYS
 from .reference_data import DEFAULT_DIET_NAMES
 
 DEFAULT_VISIBLE_MEALS = list(MEAL_KEYS)
+DEFAULT_VISIBLE_MENUS = ["A", "B", "C", "V"]
 
 
 def default_visible_diets() -> list[Diet]:
@@ -51,6 +52,16 @@ def ensure_all_visible_meals_for_client_settings() -> int:
     return updated_count
 
 
+def ensure_all_visible_menus_for_client_settings() -> int:
+    updated_count = 0
+    for settings in ClientSettings.objects.all():
+        if settings.visible_menus != DEFAULT_VISIBLE_MENUS:
+            settings.visible_menus = DEFAULT_VISIBLE_MENUS
+            settings.save(update_fields=["visible_menus"])
+            updated_count += 1
+    return updated_count
+
+
 def ensure_all_visible_meals_for_prevadzky(
     prevadzky: QuerySet[Prevadzka] | None = None,
 ) -> int:
@@ -60,5 +71,18 @@ def ensure_all_visible_meals_for_prevadzky(
         if prevadzka.visible_meals != DEFAULT_VISIBLE_MEALS:
             prevadzka.visible_meals = DEFAULT_VISIBLE_MEALS
             prevadzka.save(update_fields=["visible_meals"])
+            updated_count += 1
+    return updated_count
+
+
+def ensure_all_visible_menus_for_prevadzky(
+    prevadzky: QuerySet[Prevadzka] | None = None,
+) -> int:
+    qs = Prevadzka.objects.all() if prevadzky is None else prevadzky
+    updated_count = 0
+    for prevadzka in qs:
+        if prevadzka.visible_menus != DEFAULT_VISIBLE_MENUS:
+            prevadzka.visible_menus = DEFAULT_VISIBLE_MENUS
+            prevadzka.save(update_fields=["visible_menus"])
             updated_count += 1
     return updated_count

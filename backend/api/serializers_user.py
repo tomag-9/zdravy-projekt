@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import serializers
 
+from .default_visibility import DEFAULT_VISIBLE_MENUS
 from .models import Celok, ClientSettings, Diet, Prevadzka, UserProfile
 from .reference_data import DEFAULT_DIET_NAMES
 
@@ -182,7 +183,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             is_active=True,
         )
         return {
-            "visible_menus": ["A"],
+            "visible_menus": DEFAULT_VISIBLE_MENUS,
             "visible_meals": ["breakfast", "lunch", "olovrant"],
             "visible_diets": DietSerializer(default_diets, many=True).data,
             "admin_order_note": "",

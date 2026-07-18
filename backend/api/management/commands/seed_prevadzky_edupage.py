@@ -22,7 +22,11 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from api.default_visibility import DEFAULT_VISIBLE_MEALS, ensure_default_visible_diets
+from api.default_visibility import (
+    DEFAULT_VISIBLE_MEALS,
+    DEFAULT_VISIBLE_MENUS,
+    ensure_default_visible_diets,
+)
 from api.models import Celok, DailyOrder, Prevadzka
 
 # celok.nazov -> [(nazov prevádzky, edupage_match)]
@@ -107,6 +111,7 @@ class Command(BaseCommand):
                         "edupage_match": match,
                         "sort_order": sort_order,
                         "is_active": True,
+                        "visible_menus": DEFAULT_VISIBLE_MENUS,
                         "visible_meals": DEFAULT_VISIBLE_MEALS,
                         "billing_portion_coefficients": zdedeny_koeficient,
                     },

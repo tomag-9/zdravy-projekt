@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.core import management
 from django_celery_beat.models import PeriodicTask
 
+from api.default_visibility import DEFAULT_VISIBLE_MENUS
 from api.management.commands.real_initial_seed_prevadzky import (
     EDUPAGE_VISIBLE_MEALS,
     SCHOOLS,
@@ -53,6 +54,7 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         assert profile.billing_name == school["company_name"]
         assert profile.is_edupage is True
         assert profile.mealsguest_url == school["mealsguest_url"]
+        assert user.settings.visible_menus == DEFAULT_VISIBLE_MENUS
         assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
 
     dia = Diet.objects.get(name="DIA")
@@ -70,6 +72,7 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         ).profile.dostupne_prevadzky()
         assert prevadzky.exists()
         for prevadzka in prevadzky:
+            assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
             assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
             enabled_diets = set(prevadzka.visible_diets.values_list("name", flat=True))
             assert set(DEFAULT_DIET_NAMES).issubset(enabled_diets)
@@ -172,16 +175,21 @@ def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
         email=f"{school['subdomain']}@edupage.local",
     )
     UserProfile.objects.create(user=user)
-    ClientSettings.objects.create(user=user, visible_meals=["lunch"])
+    ClientSettings.objects.create(
+        user=user, visible_menus=["A"], visible_meals=["lunch"]
+    )
     prevadzka = user.profile.dostupne_prevadzky().get()
+    prevadzka.visible_menus = ["A"]
     prevadzka.visible_meals = ["lunch"]
-    prevadzka.save(update_fields=["visible_meals"])
+    prevadzka.save(update_fields=["visible_menus", "visible_meals"])
 
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
     user.refresh_from_db()
     prevadzka.refresh_from_db()
+    assert user.settings.visible_menus == DEFAULT_VISIBLE_MENUS
     assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
+    assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
     assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
 
 

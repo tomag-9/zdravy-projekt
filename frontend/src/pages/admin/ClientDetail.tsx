@@ -102,7 +102,7 @@ const ClientDetail: React.FC = () => {
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
   const applyFacilitySettings = useCallback((data: FacilityDetail) => {
-    setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ["A"]));
+    setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ALL_MENUS));
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
     setAdminOrderNote(data.admin_order_note || "");
