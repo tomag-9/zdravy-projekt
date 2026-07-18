@@ -512,9 +512,15 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
                 ensure_default_visible_diets,
             )
 
-            instance.visible_menus = DEFAULT_VISIBLE_MENUS
-            instance.visible_meals = DEFAULT_VISIBLE_MEALS
-            instance.save(update_fields=["visible_menus", "visible_meals"])
+            update_fields = []
+            if not instance.visible_menus:
+                instance.visible_menus = DEFAULT_VISIBLE_MENUS
+                update_fields.append("visible_menus")
+            if not instance.visible_meals:
+                instance.visible_meals = DEFAULT_VISIBLE_MEALS
+                update_fields.append("visible_meals")
+            if update_fields:
+                instance.save(update_fields=update_fields)
             ensure_default_visible_diets(instance.visible_diets)
 
         from api.cache_service import clear_client_settings_cache
