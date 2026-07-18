@@ -53,6 +53,7 @@ const ALL_DIETS = [
 
 const BASE_PROPS = {
     clientId: '42',
+    prevadzkaId: '99',
     visibleMenus: ['A', 'B'],
     visibleMeals: ['breakfast', 'lunch', 'olovrant'],
     visibleDiets: [1],
@@ -105,7 +106,7 @@ describe('AdminOrderEditorModal', () => {
         expect(BASE_PROPS.onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('POSTs to /orders/?user_id=42 when creating a new order', async () => {
+    it('POSTs with prevadzka when creating a new order', async () => {
         mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 10, date: '2099-05-01', data: {} }, true));
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
@@ -115,7 +116,10 @@ describe('AdminOrderEditorModal', () => {
         await waitFor(() => {
             expect(mockApiFetch).toHaveBeenCalledWith(
                 expect.stringContaining('/orders/?user_id=42'),
-                expect.objectContaining({ method: 'POST' }),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: expect.stringContaining('"prevadzka":"99"'),
+                }),
             );
         });
 
@@ -123,7 +127,29 @@ describe('AdminOrderEditorModal', () => {
         expect(BASE_PROPS.onSaved).toHaveBeenCalledTimes(1);
     });
 
-    it('PATCHes to /orders/7/?user_id=42 when editing an existing order', async () => {
+    it('POSTs with prevadzka without user_id when facility has no login', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 11, date: '2099-05-02', data: {} }, true));
+
+        render(<AdminOrderEditorModal {...BASE_PROPS} clientId={null} />);
+
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith(
+                expect.stringContaining('/orders/'),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: expect.stringContaining('"prevadzka":"99"'),
+                }),
+            );
+        });
+
+        expect(mockApiFetch.mock.calls[0][0]).not.toContain('user_id=');
+        expect(mockToastSuccess).toHaveBeenCalledWith('Objednávka bola vytvorená.');
+        expect(BASE_PROPS.onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('PATCHes through prevadzka when editing an existing order', async () => {
         mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
 
         render(
@@ -137,8 +163,11 @@ describe('AdminOrderEditorModal', () => {
 
         await waitFor(() => {
             expect(mockApiFetch).toHaveBeenCalledWith(
-                expect.stringContaining('/orders/7/?user_id=42'),
-                expect.objectContaining({ method: 'PATCH' }),
+                expect.stringContaining('/orders/7/?prevadzka=99'),
+                expect.objectContaining({
+                    method: 'PATCH',
+                    body: expect.stringContaining('"prevadzka":"99"'),
+                }),
             );
         });
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/auth";
@@ -13,13 +13,6 @@ interface Diet {
   name: string;
 }
 
-interface UserSettings {
-  visible_menus: string[];
-  visible_meals: string[];
-  visible_diets: number[]; // IDs
-  admin_order_note?: string;
-}
-
 interface UserProfile {
   is_edupage: boolean;
   api_identifier: string;
@@ -32,8 +25,22 @@ interface AdminUser {
   email: string;
   is_active: boolean;
   is_staff: boolean;
-  settings: UserSettings | null;
   profile: UserProfile | null;
+}
+
+interface FacilityDetail {
+  id: number;
+  celok: number;
+  celok_nazov: string;
+  nazov: string;
+  adresa: string;
+  edupage_match: string;
+  celok_zdroj_objednavok: string;
+  visible_menus: string[];
+  visible_meals: string[];
+  visible_diets: number[];
+  admin_order_note: string;
+  client_user_id: number | null;
 }
 
 interface OrderData {
@@ -59,11 +66,12 @@ const MEAL_LABELS: Record<string, string> = {
 };
 
 const ClientDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
+  const { id: facilityId } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { apiFetch } = useAuth();
   const { success, error: toastError, warning: toastWarning } = useToast();
 
+  const [facility, setFacility] = useState<FacilityDetail | null>(null);
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,27 +95,60 @@ const ClientDetail: React.FC = () => {
   const [editOrderTarget, setEditOrderTarget] = useState<DailyOrder | null>(null);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderActionLoading, setOrderActionLoading] = useState(false);
+  const facilityRequestSeq = useRef(0);
 
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
 
-  const fetchUser = useCallback(async () => {
+  const applyFacilitySettings = useCallback((data: FacilityDetail) => {
+    setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ["A"]));
+    setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
+    setUserDiets(new Set(data.visible_diets || []));
+    setAdminOrderNote(data.admin_order_note || "");
+  }, []);
+
+  const fetchUser = useCallback(async (userId: number): Promise<AdminUser | null> => {
     try {
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${id}/`);
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${userId}/`);
       if (res.ok) {
         const data = await res.json();
-        setUser(data);
-        const settings = data.settings || {};
-        setMenus(new Set(settings.visible_menus || ["A"]));
-        setMeals(new Set(settings.visible_meals?.length ? settings.visible_meals : ["breakfast", "lunch", "olovrant"]));
-        setUserDiets(new Set(settings.visible_diets || []));
-        setAdminOrderNote(settings.admin_order_note || "");
+        return data;
       }
     } catch (e) {
       logger.error(e);
     }
-  }, [apiFetch, id]);
+    return null;
+  }, [apiFetch]);
+
+  const fetchFacility = useCallback(async () => {
+    if (!facilityId) return null;
+    const requestSeq = ++facilityRequestSeq.current;
+    try {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facilityId}/`);
+      if (res.ok) {
+        const data = await res.json();
+        if (requestSeq !== facilityRequestSeq.current) return null;
+        setFacility(data);
+        applyFacilitySettings(data);
+        setUser(null);
+        if (data.client_user_id) {
+          const userData = await fetchUser(data.client_user_id);
+          if (requestSeq !== facilityRequestSeq.current) return null;
+          setUser(userData);
+        }
+        return data as FacilityDetail;
+      }
+      if (requestSeq !== facilityRequestSeq.current) return null;
+      setFacility(null);
+      return null;
+    } catch (e) {
+      logger.error(e);
+      if (requestSeq !== facilityRequestSeq.current) return null;
+      setFacility(null);
+      return null;
+    }
+  }, [apiFetch, facilityId, fetchUser, applyFacilitySettings]);
 
   const fetchDiets = useCallback(async () => {
     try {
@@ -122,10 +163,10 @@ const ClientDetail: React.FC = () => {
   }, [apiFetch]);
 
   const fetchOrders = useCallback(async () => {
-    if (!id) return;
+    if (!facilityId) return;
     setOrdersLoading(true);
     try {
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/orders/?user_id=${id}`);
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}`);
       if (res.ok) {
         const data = await res.json();
         const list = Array.isArray(data) ? data : data.results || [];
@@ -137,7 +178,7 @@ const ClientDetail: React.FC = () => {
     } finally {
       setOrdersLoading(false);
     }
-  }, [apiFetch, id]);
+  }, [apiFetch, facilityId]);
 
   const handleSendPasswordReset = async () => {
     if (!user) return;
@@ -162,11 +203,11 @@ const ClientDetail: React.FC = () => {
   };
 
   const handleDeleteOrder = async () => {
-    if (!deleteOrderTarget || !id) return;
+    if (!deleteOrderTarget || !facilityId) return;
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/?user_id=${encodeURIComponent(id)}`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${deleteOrderTarget.id}/?prevadzka=${encodeURIComponent(facilityId)}`,
         { method: "DELETE" },
       );
       if (res.ok || res.status === 204) {
@@ -185,11 +226,11 @@ const ClientDetail: React.FC = () => {
   };
 
   const handleResetOrder = async () => {
-    if (!resetOrderTarget || !id) return;
+    if (!resetOrderTarget || !facilityId) return;
     setOrderActionLoading(true);
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/?user_id=${encodeURIComponent(id)}`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/${resetOrderTarget.id}/?prevadzka=${encodeURIComponent(facilityId)}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -212,8 +253,14 @@ const ClientDetail: React.FC = () => {
   };
 
   useEffect(() => {
-    Promise.all([fetchUser(), fetchDiets()]).finally(() => setLoading(false));
-  }, [fetchUser, fetchDiets]);
+    setLoading(true);
+    setFacility(null);
+    setUser(null);
+    setRecentOrders([]);
+    setExpandedOrderId(null);
+    setActiveTab("dashboard");
+    Promise.all([fetchFacility(), fetchDiets()]).finally(() => setLoading(false));
+  }, [fetchFacility, fetchDiets]);
 
   useEffect(() => {
     if (activeTab === "dashboard") {
@@ -222,29 +269,30 @@ const ClientDetail: React.FC = () => {
   }, [activeTab, fetchOrders]);
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!facility) return;
     setSaving(true);
     try {
       const payload = {
-        email: user.email,
-        is_staff: user.is_staff,
-        settings: {
-          visible_menus: Array.from(menus),
-          visible_meals: Array.from(meals),
-          visible_diets: Array.from(userDiets),
-          admin_order_note: adminOrderNote,
-        },
+        visible_menus: Array.from(menus),
+        visible_meals: Array.from(meals),
+        visible_diets: Array.from(userDiets),
+        admin_order_note: adminOrderNote,
       };
 
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${user.id}/`, {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facility.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data) {
+          setFacility(data);
+          applyFacilitySettings(data);
+        }
         success("Nastavenia boli uložené.");
-        navigate("/admin/clients");
+        navigate("/admin/facilities");
       } else {
         toastError("Nepodarilo sa uložiť nastavenia.");
       }
@@ -264,14 +312,13 @@ const ClientDetail: React.FC = () => {
   };
 
   if (loading) return <div className="zpa-empty">Načítavam…</div>;
-  if (!user) return <div className="zpa-empty" style={{ color: "var(--coral-600)" }}>Prevádzka nenájdená</div>;
+  if (!facility) return <div className="zpa-empty" style={{ color: "var(--coral-600)" }}>Prevádzka nenájdená</div>;
 
-  const isEdupageClient = user.profile?.is_edupage === true;
-
-  // If the current tab is not valid for this client type, reset to dashboard.
-  if (isEdupageClient && activeTab !== "dashboard") {
-    setActiveTab("dashboard");
-  }
+  const isEdupageClient = facility.celok_zdroj_objednavok === "edupage" || user?.profile?.is_edupage === true;
+  const canResetPassword = Boolean(user && !user.profile?.is_edupage);
+  const orderEditorMenus = Array.from(menus);
+  const orderEditorMeals = Array.from(meals);
+  const orderEditorDiets = Array.from(userDiets);
 
   const mealCount = (data: unknown): number => {
     let count = 0;
@@ -290,43 +337,39 @@ const ClientDetail: React.FC = () => {
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: "dashboard", label: "Prehľad objednávok" },
-    ...(!isEdupageClient
-      ? ([
-          { key: "settings", label: "Nastavenia" },
-          { key: "order_note", label: "Poznámka k objednávke" },
-        ] as { key: typeof activeTab; label: string }[])
-      : []),
+    { key: "settings", label: "Nastavenia" },
+    { key: "order_note", label: "Poznámka k objednávke" },
   ];
 
   return (
     <>
       <div style={{ maxWidth: 1040, margin: "0 auto", display: "flex", flexDirection: "column", gap: 24 }}>
         <div>
-          <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" onClick={() => navigate("/admin/clients")} style={{ marginBottom: 16, paddingLeft: 0 }}>
-            <ChevronLeft /> Späť na zoznam prevádzok
+          <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" onClick={() => navigate("/admin/facilities")} style={{ marginBottom: 16, paddingLeft: 0 }}>
+            <ChevronLeft /> Späť na správu prevádzok
           </button>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <span className="zpa-avatar-sm" style={{ width: 60, height: 60, fontSize: 24 }}>{user.email.charAt(0).toUpperCase()}</span>
+              <span className="zpa-avatar-sm" style={{ width: 60, height: 60, fontSize: 24 }}>{facility.nazov.charAt(0).toUpperCase()}</span>
               <div>
                 <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, color: "var(--green-900)", margin: 0 }}>
-                  {user.profile?.company_name || user.email}
+                  {facility.nazov}
                 </h1>
-                <p style={{ color: "var(--ink-3)", margin: "4px 0 0" }}>{user.email}</p>
-                {user.profile?.billing_name && (
-                  <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "2px 0 0" }}>Fakturácia: {user.profile.billing_name}</p>
+                <p style={{ color: "var(--ink-3)", margin: "4px 0 0" }}>{facility.celok_nazov}</p>
+                {facility.adresa && (
+                  <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "2px 0 0" }}>{facility.adresa}</p>
                 )}
                 {isEdupageClient && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
                     <Badge tone="teal">Edupage prevádzka</Badge>
-                    {user.profile?.api_identifier && (
+                    {user?.profile?.api_identifier && (
                       <span style={{ fontSize: 13, color: "var(--ink-3)", fontFamily: "ui-monospace, monospace" }}>ID: {user.profile.api_identifier}</span>
                     )}
                   </div>
                 )}
               </div>
             </div>
-            {!isEdupageClient && (
+            {canResetPassword && (
               <Button variant="secondary" onClick={() => setShowResetConfirmation(true)} disabled={sendingReset} title="Odoslať reset hesla na email">
                 <KeyRound /> {sendingReset ? "Odosielam…" : "Reset hesla"}
               </Button>
@@ -347,11 +390,9 @@ const ClientDetail: React.FC = () => {
           <Card style={{ overflow: "hidden" }}>
             <div className="zpa-card-head" style={{ padding: "16px 24px", borderBottom: "1px solid var(--line-soft)" }}>
               <h3>História objednávok</h3>
-              {!isEdupageClient && (
-                <Button sm onClick={() => setShowNewOrderModal(true)}>
-                  <Plus /> Nová objednávka
-                </Button>
-              )}
+              <Button sm onClick={() => setShowNewOrderModal(true)}>
+                <Plus /> Nová objednávka
+              </Button>
             </div>
             {ordersLoading ? (
               <Empty>Načítavam objednávky…</Empty>
@@ -456,7 +497,7 @@ const ClientDetail: React.FC = () => {
           </Card>
         )}
 
-        {activeTab === "settings" && !isEdupageClient && (
+        {activeTab === "settings" && (
           <div className="zpa-stack">
             <div className="zpa-grid-2">
               <Card pad>
@@ -522,7 +563,7 @@ const ClientDetail: React.FC = () => {
           </div>
         )}
 
-        {activeTab === "order_note" && !isEdupageClient && (
+        {activeTab === "order_note" && (
           <div className="zpa-stack">
             <Card pad>
               <CardHead title="Poznámka k objednávke" desc="Táto poznámka sa zobrazuje iba v admin dashboarde po rozkliknutí prevádzky, nad súhrnnými číslami." />
@@ -538,6 +579,7 @@ const ClientDetail: React.FC = () => {
       </div>
 
       {/* ── Password reset confirmation ── */}
+      {user && (
       <ConfirmationModal
         isOpen={showResetConfirmation}
         onClose={() => setShowResetConfirmation(false)}
@@ -548,6 +590,7 @@ const ClientDetail: React.FC = () => {
         cancelText="Zrušiť"
         variant="warning"
       />
+      )}
 
       {/* ── Delete order confirmation modal ── */}
       {deleteOrderTarget && (
@@ -570,12 +613,13 @@ const ClientDetail: React.FC = () => {
       )}
 
       {/* ── Create / Edit order modal ── */}
-      {(showNewOrderModal || editOrderTarget) && id && (
+      {(showNewOrderModal || editOrderTarget) && facilityId && (
         <AdminOrderEditorModal
-          clientId={id}
-          visibleMenus={Array.from(menus)}
-          visibleMeals={Array.from(meals)}
-          visibleDiets={Array.from(userDiets)}
+          clientId={user?.id ?? null}
+          prevadzkaId={facility.id}
+          visibleMenus={orderEditorMenus}
+          visibleMeals={orderEditorMeals}
+          visibleDiets={orderEditorDiets}
           allDiets={allDiets}
           existingOrder={editOrderTarget ?? null}
           onClose={() => {

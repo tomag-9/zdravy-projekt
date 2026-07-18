@@ -612,10 +612,10 @@
     font-size: 13px;
 }
 .zpa-gram th,
-.zpa-gram td { min-width: 76px; }
+.zpa-gram td { min-width: 70px; }
 .zpa-gram th:first-child,
-.zpa-gram td:first-child { min-width: 216px; max-width: 300px; }
-.zpa-gram th, .zpa-gram td { padding: 7px 9px; box-sizing: border-box; }
+.zpa-gram td:first-child { min-width: 188px; max-width: 260px; }
+.zpa-gram th, .zpa-gram td { padding: 7px 8px; box-sizing: border-box; }
 .zpa-gram thead {
     position: sticky;
     top: 0;
@@ -705,13 +705,13 @@
 .zpa-gram .sub-row .lbl { font-weight: 600; color: var(--ink-1); }
 .zpa-gram .sub-row.diet { background: rgba(255,201,92,0.10); }
 .zpa-gram .sub-row.diet .lbl { color: var(--mustard-700); font-style: italic; font-size: 12px; padding-left: 24px; }
-.zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; }
+.zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .zpa-gram .lbl-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zpa-gram .count-badge {
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
-    min-width: 30px; height: 22px; padding: 0 8px; border-radius: var(--radius-pill);
+    min-width: 24px; height: 19px; padding: 0 6px; border-radius: var(--radius-pill);
     background: rgba(26,77,46,0.10); color: var(--green-900);
-    font-family: var(--font-display); font-size: 12px; font-weight: 700;
+    font-family: var(--font-display); font-size: 11px; font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
 .zpa-gram .cell-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--green-900); }
@@ -885,3 +885,28 @@
     .zpa-content { padding: 20px 16px 48px; }
     .zpa-content--wide { max-width: none; }
 }
+
+/* ── Celok → prevádzky (rozbaliteľný zoznam v Správe prevádzok) ── */
+.zpa-celok-list { display: flex; flex-direction: column; }
+.zpa-celok { border-bottom: 1px solid var(--line); }
+.zpa-celok:last-child { border-bottom: none; }
+.zpa-celok-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px 8px 18px;
+}
+.zpa-celok-row:hover { background: var(--bg-cream); }
+.zpa-celok-row.open { background: var(--bg-cream); }
+.zpa-celok-toggle {
+    display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
+    padding: 6px 0; background: none; border: none; cursor: pointer;
+    text-align: left; font: inherit; color: inherit;
+}
+.zpa-celok-toggle .chev { color: var(--green-600); }
+.zpa-celok-actions { display: inline-flex; gap: 4px; flex-shrink: 0; }
+.zpa-celok-body {
+    background: var(--bg-cream);
+    border-top: 1px solid var(--line);
+    padding: 4px 8px 8px;
+    overflow-x: auto;
+}
+.zpa-celok-body .zpa-table { background: transparent; }

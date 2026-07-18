@@ -5,12 +5,9 @@ import { PageHead, Card, Button, Field, Input, Select, Badge, Empty } from './ui
 
 interface EdupageOperation {
     id: number;
-    email: string;
-    profile: {
-        company_name: string;
-        is_edupage: boolean;
-        api_identifier: string;
-    } | null;
+    nazov: string;
+    zdroj_objednavok: string;
+    mealsguest_url: string;
 }
 
 interface OperationStatus {
@@ -59,12 +56,11 @@ export default function EdupageUpload() {
     const [loadingStatus, setLoadingStatus] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const operationName = (op: EdupageOperation) =>
-        op.profile?.company_name || op.email;
+    const operationName = (op: EdupageOperation) => op.nazov;
 
     const loadOperations = useCallback(async () => {
-        const data = await apiClient.get<EdupageOperation[]>('/admin/users/?is_edupage=true');
-        setOperations(data);
+        const data = await apiClient.get<EdupageOperation[]>('/admin/celky/');
+        setOperations(data.filter((op) => op.zdroj_objednavok === 'edupage' && Boolean(op.mealsguest_url)));
     }, []);
 
     const loadStatusAndUploads = useCallback(async (d: string) => {
