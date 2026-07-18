@@ -32,6 +32,7 @@ def request_json(
     data = None
     headers = {
         "accept": "application/json",
+        "User-Agent": "zdravy-projekt-github-actions/1.0",
         "x-api-key": api_key,
     }
     if payload is not None:
