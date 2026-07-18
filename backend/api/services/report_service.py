@@ -32,9 +32,7 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related(
-                "user", "user__profile", "user__settings", "prevadzka__celok"
-            )
+            .select_related("user", "user__profile", "prevadzka__celok")
             .prefetch_related("prevadzka__celok__prevadzky")
             .order_by("user__email")
         )
@@ -55,8 +53,7 @@ class ReportService:
             ol = build_user_meal_row(data, "olovrant")
             row_total = bf["total"] + lu["total"] + ol["total"]
 
-            _settings = getattr(user, "settings", None)
-            visible_meals = getattr(_settings, "visible_meals", None) or [
+            visible_meals = getattr(order.prevadzka, "visible_meals", None) or [
                 "breakfast",
                 "lunch",
                 "olovrant",
@@ -95,9 +92,7 @@ class ReportService:
         """
         orders = (
             DailyOrder.objects.filter(date=target_date)
-            .select_related(
-                "user", "user__profile", "user__settings", "prevadzka__celok"
-            )
+            .select_related("user", "user__profile", "prevadzka__celok")
             .prefetch_related("prevadzka__celok__prevadzky")
             .order_by("user__email")
         )
@@ -113,9 +108,7 @@ class ReportService:
                     "name": order_row_label(order),
                     "data": data,
                     "visible_meals": (
-                        getattr(
-                            getattr(order.user, "settings", None), "visible_meals", None
-                        )
+                        getattr(order.prevadzka, "visible_meals", None)
                         or list(ReportService.MEAL_KEYS)
                     ),
                 }

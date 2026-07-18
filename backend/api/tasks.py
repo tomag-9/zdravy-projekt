@@ -41,7 +41,7 @@ def generate_report_pdf_task(self, date_str: str):
     target_date = datetime.date.fromisoformat(date_str)
     orders = (
         DailyOrder.objects.filter(date=target_date)
-        .select_related("user", "user__profile", "user__settings")
+        .select_related("user", "user__profile", "prevadzka")
         .order_by("user__email")
     )
     pdf_bytes = PDFReportExporter(orders, date_str).generate()
@@ -408,7 +408,7 @@ def scrape_edupage_orders_task(
             nest_order_data_by_category,
             prevadzky_without_match,
         )
-        from api.models import DailyOrder, GlobalSettings, UserProfile
+        from api.models import Celok, DailyOrder, GlobalSettings, UserProfile
         from api.services import _next_workday
         from api.utils import filter_order_data_for_prevadzka
 
@@ -466,21 +466,96 @@ def scrape_edupage_orders_task(
                     assert target_meals is not None
                     target_meals.append(meal_type)
 
-        profiles = (
-            UserProfile.objects.filter(is_edupage=True)
-            .exclude(mealsguest_url="")
-            .select_related("user")
-        )
+        def _system_scrape_user():
+            from django.contrib.auth.models import User
+
+            user, _ = User.objects.get_or_create(
+                username="edupage-scrape@system.local",
+                defaults={
+                    "email": "edupage-scrape@system.local",
+                    "is_active": False,
+                    "is_staff": False,
+                },
+            )
+            return user
+
+        def _edupage_operations():
+            operations_by_url: dict[str, dict] = {}
+            configured_celky = (
+                Celok.objects.filter(zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE)
+                .exclude(mealsguest_url="")
+                .prefetch_related(
+                    "prevadzky",
+                    "profily__user",
+                    "profily__prevadzky",
+                    "prevadzky__profily__user",
+                    "prevadzky__profily__prevadzky",
+                )
+            )
+
+            for celok in configured_celky:
+                operation = operations_by_url.setdefault(
+                    celok.mealsguest_url,
+                    {
+                        "operation_id": celok.pk,
+                        "name": celok.nazov,
+                        "url": celok.mealsguest_url,
+                        "user": None,
+                        "prevadzky": [],
+                    },
+                )
+                operation["prevadzky"].extend(
+                    [p for p in celok.prevadzky.all() if p.is_active]
+                )
+                if operation["user"] is None:
+                    profile = celok.profily.select_related("user").first()
+                    if profile is None:
+                        for prevadzka in celok.prevadzky.all():
+                            profile = prevadzka.profily.select_related("user").first()
+                            if profile is not None:
+                                break
+                    if profile is not None:
+                        operation["user"] = profile.user
+
+            configured_urls = set(operations_by_url)
+            legacy_profiles = (
+                UserProfile.objects.filter(is_edupage=True)
+                .exclude(mealsguest_url="")
+                .select_related("user", "celok")
+                .prefetch_related("celok__prevadzky", "prevadzky")
+            )
+            for profile in legacy_profiles:
+                if profile.mealsguest_url in configured_urls:
+                    continue
+                operations_by_url[profile.mealsguest_url] = {
+                    "operation_id": profile.pk,
+                    "name": str(profile),
+                    "url": profile.mealsguest_url,
+                    "user": profile.user,
+                    "prevadzky": list(profile.dostupne_prevadzky()),
+                }
+
+            system_user = None
+            for operation in operations_by_url.values():
+                if operation["user"] is None:
+                    if system_user is None:
+                        system_user = _system_scrape_user()
+                    operation["user"] = system_user
+                deduped = {}
+                for prevadzka in operation["prevadzky"]:
+                    deduped[prevadzka.pk] = prevadzka
+                operation["prevadzky"] = list(deduped.values())
+            return list(operations_by_url.values())
 
         scraper = EdupageScraper()
         scraped = errors = skipped = 0
 
-        for profile in profiles:
-            prevadzky = list(profile.dostupne_prevadzky())
+        for operation in _edupage_operations():
+            prevadzky = list(operation["prevadzky"])
             if not prevadzky:
                 logger.warning(
                     "scrape_edupage_orders_task: %s nemá žiadnu prevádzku — preskakujem",
-                    profile.company_name,
+                    operation["name"],
                 )
                 skipped += 1
                 continue
@@ -494,7 +569,7 @@ def scrape_edupage_orders_task(
                 logger.error(
                     "scrape_edupage_orders_task: %s má %d prevádzok, ale %s nemá "
                     "edupage_match — preskakujem, aby sa objem nezapísal nesprávne",
-                    profile.company_name,
+                    operation["name"],
                     len(prevadzky),
                     ", ".join(bez_matchu),
                 )
@@ -504,14 +579,14 @@ def scrape_edupage_orders_task(
             for target_date, requested_meals in date_to_meals.items():
                 try:
                     result = scraper.scrape(
-                        profile.mealsguest_url,
+                        operation["url"],
                         target_date,
                         prevadzka_matches=matches if len(prevadzky) > 1 else None,
                     )
                 except Exception:
                     logger.exception(
                         "scrape_edupage_orders_task: failed for %s",
-                        profile.mealsguest_url,
+                        operation["url"],
                     )
                     errors += 1
                     continue
@@ -519,14 +594,14 @@ def scrape_edupage_orders_task(
                 if result.config_notes:
                     logger.warning(
                         "scrape_edupage_orders_task: config drift for %s on %s: %s",
-                        profile.company_name,
+                        operation["name"],
                         target_date,
                         result.config_notes,
                     )
                 if result.attention:
                     logger.info(
                         "scrape_edupage_orders_task: manual check for %s on %s: %s",
-                        profile.company_name,
+                        operation["name"],
                         target_date,
                         result.attention,
                     )
@@ -566,7 +641,7 @@ def scrape_edupage_orders_task(
                         logger.info(
                             "scrape_edupage_orders_task: empty result for %s/%s on %s "
                             "meals=%s (warnings=%s, unmapped=%s)",
-                            profile.company_name,
+                            operation["name"],
                             nazov,
                             target_date,
                             result.warnings,
@@ -583,7 +658,7 @@ def scrape_edupage_orders_task(
                         order, _ = DailyOrder.objects.select_for_update().get_or_create(
                             prevadzka=prevadzka,
                             date=target_date,
-                            defaults={"user": profile.user, "data": {}},
+                            defaults={"user": operation["user"], "data": {}},
                         )
                         order.data = _apply_scrape(
                             order.data, imported_data, requested_meals

@@ -13,9 +13,16 @@ from django.contrib.auth.models import User
 from django.core import management
 from django.core.management.base import BaseCommand
 
+from api.default_visibility import (
+    DEFAULT_VISIBLE_MEALS,
+    DEFAULT_VISIBLE_MENUS,
+    ensure_all_visible_meals_for_prevadzky,
+    ensure_all_visible_menus_for_prevadzky,
+    ensure_default_visible_diets,
+)
 from api.models import ClientSettings, Diet, UserProfile
 
-EDUPAGE_VISIBLE_MEALS = ["breakfast", "lunch", "olovrant"]
+EDUPAGE_VISIBLE_MEALS = DEFAULT_VISIBLE_MEALS
 OPERATION_SPECIFIC_VISIBLE_DIETS = {
     "krasnanko": ["DIA"],
 }
@@ -165,11 +172,23 @@ class Command(BaseCommand):
 
             client_settings, settings_created = ClientSettings.objects.get_or_create(
                 user=user,
-                defaults={"visible_meals": EDUPAGE_VISIBLE_MEALS},
+                defaults={
+                    "visible_menus": DEFAULT_VISIBLE_MENUS,
+                    "visible_meals": EDUPAGE_VISIBLE_MEALS,
+                },
             )
-            if not settings_created and client_settings.visible_meals == ["lunch"]:
+            if client_settings.visible_menus != DEFAULT_VISIBLE_MENUS:
+                client_settings.visible_menus = DEFAULT_VISIBLE_MENUS
+                client_settings.save(update_fields=["visible_menus"])
+            if client_settings.visible_meals != EDUPAGE_VISIBLE_MEALS:
                 client_settings.visible_meals = EDUPAGE_VISIBLE_MEALS
                 client_settings.save(update_fields=["visible_meals"])
+            ensure_default_visible_diets(client_settings.visible_diets)
+            prevadzky = profile.dostupne_prevadzky()
+            ensure_all_visible_menus_for_prevadzky(prevadzky)
+            ensure_all_visible_meals_for_prevadzky(prevadzky)
+            for prevadzka in prevadzky:
+                ensure_default_visible_diets(prevadzka.visible_diets)
 
             extra_diet_names = OPERATION_SPECIFIC_VISIBLE_DIETS.get(
                 school["subdomain"], []
@@ -183,6 +202,8 @@ class Command(BaseCommand):
                     },
                 )
                 client_settings.visible_diets.add(diet)
+                for prevadzka in profile.dostupne_prevadzky():
+                    prevadzka.visible_diets.add(diet)
 
             if user_created or profile_created:
                 created_count += 1

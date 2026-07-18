@@ -8,7 +8,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from api.models import (
-    ClientSettings,
     DailyMealPlan,
     DailyOrder,
     Diet,
@@ -21,6 +20,21 @@ from api.models import (
 pytestmark = pytest.mark.integration
 
 
+def _client_user(**kwargs):
+    """Klient + UserProfile → signál mu dá celok a default prevádzku.
+
+    Objednávky sa vedú per prevádzka (`DailyOrder.prevadzka` je NOT NULL), takže
+    klient bez profilu by nemal kam objednávať. `DailyOrder.save()` prevádzku
+    doplní z profilu automaticky, keď je jednoznačná.
+    """
+    from api.models import UserProfile
+
+    kwargs.setdefault("is_staff", False)
+    user = User.objects.create_user(**kwargs)
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
+    return user
+
+
 class AdminSummaryTest(APITestCase):
     def setUp(self):
         # Create Admin
@@ -31,7 +45,7 @@ class AdminSummaryTest(APITestCase):
             is_staff=True,
         )
         # Create Client
-        self.client_user = User.objects.create_user(
+        self.client_user = _client_user(
             username="client@example.com",
             password="password",
             email="client@example.com",
@@ -61,7 +75,7 @@ class AdminSummaryTest(APITestCase):
         )
 
         # Create second client/order
-        self.client2 = User.objects.create_user(
+        self.client2 = _client_user(
             username="client2@example.com",
             password="password",
             email="client2@example.com",
@@ -380,7 +394,7 @@ class AdminDailyReportTest(APITestCase):
             email="admin2@example.com",
             is_staff=True,
         )
-        self.client_user = User.objects.create_user(
+        self.client_user = _client_user(
             username="anna@test.sk",
             password="password",
             first_name="Anna",
@@ -482,7 +496,7 @@ class AdminDailyReportTest(APITestCase):
 
     def test_daily_report_flat_shape(self):
         """Flat meal shape {menuCounts, diets} must be aggregated correctly."""
-        flat_user = User.objects.create_user(
+        flat_user = _client_user(
             username="flatclient@example.com",
             password="password",
             email="flatclient@example.com",
@@ -512,7 +526,7 @@ class AdminDailyReportTest(APITestCase):
 
     def test_daily_report_xlsx_flat_shape(self):
         """XLSX export must include columns for flat-shape meal data."""
-        flat_user = User.objects.create_user(
+        flat_user = _client_user(
             username="flatclient2@example.com",
             password="password",
             email="flatclient2@example.com",
@@ -655,7 +669,7 @@ class AdminMealPlanApiTest(APITestCase):
             email="mealplan-admin2@example.com",
             is_staff=True,
         )
-        self.client_user = User.objects.create_user(
+        self.client_user = _client_user(
             username="mealplan-client@example.com",
             password="password",
             email="mealplan-client@example.com",
@@ -849,9 +863,9 @@ class AdminMealPlanApiTest(APITestCase):
 
     def test_diet_summary_and_gramage_dashboard_return_expected_contract(self):
         self._create_plan()
-        settings, _ = ClientSettings.objects.get_or_create(user=self.client_user)
-        settings.admin_order_note = "Bez cibule v pondelok"
-        settings.save(update_fields=["admin_order_note"])
+        prevadzka = self.client_user.profile.dostupne_prevadzky().first()
+        prevadzka.admin_order_note = "Bez cibule v pondelok"
+        prevadzka.save(update_fields=["admin_order_note"])
         DailyOrder.objects.create(
             user=self.client_user,
             date="2026-03-16",

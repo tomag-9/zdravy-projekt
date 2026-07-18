@@ -13,6 +13,7 @@ from api.models import (
     MealPlanItem,
     MealTemplate,
     PortionType,
+    UserProfile,
 )
 from api.services.meal_plan_service import MealPlanService
 
@@ -137,6 +138,7 @@ def test_gramage_dashboard_pools_all_order_variants_for_variant_less_main_course
     )
 
     user = User.objects.create_user(username="client@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -181,6 +183,7 @@ def test_menu_b_uses_real_xlsx_component_split_when_main_course_is_unvarianted()
         menu_variant="",
     )
     user = User.objects.create_user(username="menu-b@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -221,6 +224,7 @@ def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_cou
     )
 
     user = User.objects.create_user(username="client2@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -257,6 +261,7 @@ def test_gramage_dashboard_shows_ml_soup_columns():
     )
 
     user = User.objects.create_user(username="client3@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -294,6 +299,7 @@ def test_gramage_dashboard_shows_unit_exception_as_its_own_column():
     )
 
     user = User.objects.create_user(username="client4@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -344,6 +350,7 @@ def test_gramage_dashboard_keeps_fractional_egg_piece_counts():
     )
 
     user = User.objects.create_user(username="client5@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,
@@ -397,6 +404,7 @@ def test_gramage_dashboard_maps_operation_portion_names_for_piece_counts():
     )
 
     user = User.objects.create_user(username="fantasticka@example.com", password="x")
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date=plan.date,

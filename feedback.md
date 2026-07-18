@@ -184,3 +184,56 @@ nerozdelí `C` na dve menu v EduPage konfigu. Toto je vedomý dočasný stav, ni
 
 **Poznámka:** veterinárna sa tohto netýka — `sšv*` má vlastné skratky vo všetkých
 troch chodoch.
+
+---
+
+## 🔁 Reconcile 17.7.2026 — čo sa zmenilo oproti predošlému behu
+
+**1. Edulienka predškolák 1,25 — regresia (opravené).**
+Koeficient *predškolák = 1,25* žil len v jednorazovej migrácii `0045_edulienka_billing_coefficients`.
+Dnešný **reseed/rozdelenie prevádzok** ho ticho prepísal na `{}`, takže sa predškolák
+zrazu účtoval ako 1 (obed aj olovrant vychádzali 10 namiesto 10,5). Preto „minule to šlo,
+teraz nie". Opravené: koeficient je odteraz **idempotentne** nastavovaný v
+`seed_prevadzky_edupage` (nová mapa `COEFFICIENTS`), takže prežije každý reseed.
+Bonus: seed hľadal celok `"Edulienka"`, ale volá sa `"MŠ Edulienka"` — kvôli tomuto
+mismatchu sa koeficient nikdy neobnovil.
+
+**2. Škôlka MS – Les/Lúka mali 0 objednaných (opravené).**
+Profil `Škôlka MS` ukazoval na celok `Škôlka MS`, ktorý mal len neaktívnu placeholder
+prevádzku (M2M profilu prázdne), a skutočné Les/Lúka viseli pod osamotenými celkami
+`Les`/`Lúka` bez napojenia na profil. Scrape preto celý profil preskočil
+(`Škôlka MS nemá žiadnu prevádzku`). Opravené: Les/Lúka naseedované pod celok `Škôlka MS`
+cez `seed_prevadzky_edupage`, orphan celky `Les`/`Lúka` (0 objednávok) zmazané. Po oprave
+scrape 17.7: `skipped=0` (predtým 2), Les obed 11/11 ✓, Lúka obed 10/10 ✓. To isté
+odblokovalo aj Jolly Homeschool (predtým tiež skipnutý).
+
+**3. Olovrant (snack) — EduPage ≠ realita (na potvrdenie klientom).**
+Appka počíta olovrant správne — sčíta presne to, čo je objednané v EduPage. Klient si však
+v reálnom hárku počty olovrantov ručne upravuje, preto nesedia. Za 17.7.2026:
+
+| Prevádzka | App (EduPage) | Reál | Δ |
+|-----------|--------------:|-----:|--:|
+| Filipa Nériho | 13 | 15 | +2 |
+| Krásnanko | 15 | 16 | +1 |
+| Libellus | 9 | 10 | +1 |
+| Les | 11 | 10 | −1 |
+| Lúka | 6 | 10 | +4 |
+| Pramienok | 27 | 25 | −2 |
+
+Nie je to výpočtová chyba — je to data mismatch EduPage ↔ hárok. Treba rozhodnutie:
+má sa olovrant brať z EduPage (ako teraz), alebo ho odvodzovať z obeda / iného pravidla?
+
+**4. Ranajky + menu B/C/V sa vôbec neporovnávajú (slepé miesto).**
+`import_real_gram_distributions` z princípu číta len riadok `KLASIK` (obed: polievka +
+hlavný chod + olovrant). Do denného plánu sa teda nedostane `breakfast_snack` ani varianty
+B/C/V — na ranajky (`_rano.pdf`) ani na menu varianty neexistuje importér. Dôsledok:
+reálne objednané ranajky (Edulienka 10, Filipa 16, Krásnanko 19, Rozmanitá 24…) sú v
+reconcile neviditeľné a riadky „breakfast 0 vs 0 OK" sú slepé miesto, nie zhoda.
+
+**5. Alias mapa aktualizovaná na „nový update" pomenovaní.**
+Reál premenoval prevádzky s prefixom `ms ` (napr. `ms edulienka`, `ms krasnanko`,
+`skolka ms – les`) a appka zhodila prefix `MŠ` (emituje `Edulienka`, `Krasňanko`, `Les`).
+Staré `MŠ …` kľúče prestali sadať a navyše aktívne rozbíjali párovanie. `facility_aliases.json`
+prepísaný na aktuálne app labely s list-hodnotami nesúcimi staré aj nové pravopisy.
+
+**Fantastická +1** (obed aj olovrant 8→9) je pre tento týždeň **akceptované** (potvrdené klientom).

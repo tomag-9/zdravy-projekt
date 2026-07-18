@@ -6,7 +6,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from rest_framework import serializers
 
-from .models import ClientSettings, Diet, UserProfile
+from .default_visibility import DEFAULT_VISIBLE_MENUS
+from .models import Celok, ClientSettings, Diet, Prevadzka, UserProfile
 from .reference_data import DEFAULT_DIET_NAMES
 
 
@@ -182,7 +183,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             is_active=True,
         )
         return {
-            "visible_menus": ["A"],
+            "visible_menus": DEFAULT_VISIBLE_MENUS,
             "visible_meals": ["breakfast", "lunch", "olovrant"],
             "visible_diets": DietSerializer(default_diets, many=True).data,
             "admin_order_note": "",
@@ -238,38 +239,24 @@ class AdminUserSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
     email = serializers.EmailField(required=True)
-    is_edupage = serializers.BooleanField(
-        required=False,
-        write_only=True,
-    )
-    api_identifier = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True,
-    )
-    mealsguest_url = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        write_only=True,
-    )
     company_name = serializers.CharField(
         required=False,
         allow_blank=True,
         write_only=True,
     )
-    billing_name = serializers.CharField(
+    # Voliteľné napojenie nového loginu: na existujúci celok, prípadne obmedzené len
+    # na vybrané prevádzky (login „na prevádzku"). Bez `celok` sa správa ako doteraz —
+    # signál profilu vytvorí vlastný celok podľa company_name.
+    celok = serializers.PrimaryKeyRelatedField(
+        queryset=Celok.objects.all(),
         required=False,
-        allow_blank=True,
+        allow_null=True,
         write_only=True,
     )
-    ico = serializers.CharField(
+    prevadzky = serializers.PrimaryKeyRelatedField(
+        queryset=Prevadzka.objects.all(),
+        many=True,
         required=False,
-        allow_blank=True,
-        write_only=True,
-    )
-    dic = serializers.CharField(
-        required=False,
-        allow_blank=True,
         write_only=True,
     )
 
@@ -284,13 +271,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_staff",
             "settings",
             "profile",
-            "is_edupage",
-            "api_identifier",
-            "mealsguest_url",
             "company_name",
-            "billing_name",
-            "ico",
-            "dic",
+            "celok",
+            "prevadzky",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -305,13 +288,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         return normalized_email
 
     def create(self, validated_data: Dict[str, Any]) -> User:
-        is_edupage = validated_data.pop("is_edupage", False)
-        api_identifier = validated_data.pop("api_identifier", "")
-        mealsguest_url = validated_data.pop("mealsguest_url", "")
         company_name = validated_data.pop("company_name", "") or ""
-        billing_name = validated_data.pop("billing_name", "") or ""
-        ico = validated_data.pop("ico", "") or ""
-        dic = validated_data.pop("dic", "") or ""
+        celok = validated_data.pop("celok", None)
+        prevadzky = validated_data.pop("prevadzky", None)
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -327,16 +306,23 @@ class AdminUserSerializer(serializers.ModelSerializer):
         user.set_unusable_password()
         user.save()
 
-        UserProfile.objects.create(
+        # Ak je zadaný celok, nastavíme ho hneď pri vytvorení — tým sa vypne
+        # auto-vytvorenie vlastného celku v `on_user_profile_saved` signáli.
+        profile = UserProfile.objects.create(
             user=user,
-            is_edupage=is_edupage,
-            api_identifier=api_identifier,
-            mealsguest_url=mealsguest_url,
             company_name=company_name,
-            billing_name=billing_name,
-            ico=ico,
-            dic=dic,
+            celok=celok,
         )
+        # Login „na prevádzku": obmedz rozsah na vybrané prevádzky (M2M). Prázdne =
+        # celý celok. Validujeme, že prevádzky patria zadanému celku.
+        if prevadzky:
+            if celok is not None:
+                cudzie = [p for p in prevadzky if p.celok_id != celok.id]
+                if cudzie:
+                    raise serializers.ValidationError(
+                        {"prevadzky": "Prevádzky musia patriť zadanému celku."}
+                    )
+            profile.prevadzky.set(prevadzky)
         ClientSettings.objects.get_or_create(user=user)
 
         return user
@@ -363,13 +349,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         being applied.
         """
         settings_data = self.initial_data.get("settings", None)
-        is_edupage = validated_data.pop("is_edupage", serializers.empty)
-        api_identifier = validated_data.pop("api_identifier", serializers.empty)
-        mealsguest_url = validated_data.pop("mealsguest_url", serializers.empty)
         company_name = validated_data.pop("company_name", serializers.empty)
-        billing_name = validated_data.pop("billing_name", serializers.empty)
-        ico = validated_data.pop("ico", serializers.empty)
-        dic = validated_data.pop("dic", serializers.empty)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
@@ -390,34 +370,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
-        profile_needs_update = any(
-            v is not serializers.empty
-            for v in (
-                is_edupage,
-                api_identifier,
-                mealsguest_url,
-                company_name,
-                billing_name,
-                ico,
-                dic,
-            )
-        )
+        profile_needs_update = company_name is not serializers.empty
         if profile_needs_update:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
-            if is_edupage is not serializers.empty:
-                profile.is_edupage = is_edupage
-            if api_identifier is not serializers.empty:
-                profile.api_identifier = api_identifier
-            if mealsguest_url is not serializers.empty:
-                profile.mealsguest_url = mealsguest_url or ""
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
-            if billing_name is not serializers.empty:
-                profile.billing_name = billing_name or ""
-            if ico is not serializers.empty:
-                profile.ico = ico or ""
-            if dic is not serializers.empty:
-                profile.dic = dic or ""
             profile.save()
 
         if settings_data is not None:

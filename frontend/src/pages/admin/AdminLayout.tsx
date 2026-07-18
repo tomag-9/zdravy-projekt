@@ -43,7 +43,7 @@ const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays },
     { kind: 'item', to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: BookOpen },
     { kind: 'section', label: 'Prevádzky', icon: Building },
-    { kind: 'item', to: '/admin/clients', label: 'Správa prevádzok', icon: Building },
+    { kind: 'item', to: '/admin/facilities', label: 'Správa prevádzok', icon: Building },
     { kind: 'section', label: 'Import', icon: Upload },
     { kind: 'item', to: '/admin/edupage', label: 'Objednávky (Edupage)', icon: Upload },
     { kind: 'section', label: 'Nastavenia', icon: Sliders },

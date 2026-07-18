@@ -33,6 +33,12 @@ class TestOrderPermissions:
 
     def test_user_isolation(self, authenticated_client, api_client, user, other_user):
         """User cannot see other user's orders"""
+        from api.models import UserProfile
+
+        # other_user má profil → jednoznačná prevádzka, kam objednávku doplniť
+        UserProfile.objects.get_or_create(
+            user=other_user, defaults={"company_name": other_user.email}
+        )
         # Create order for other user
         DailyOrder.objects.create(
             user=other_user, date=date.today(), data={"lunch": {"menuCounts": {"A": 1}}}
@@ -199,6 +205,11 @@ class TestOrderCRUD:
     def test_monthly_summary_counts_user_orders(
         self, authenticated_client, user, other_user
     ):
+        from api.models import UserProfile
+
+        UserProfile.objects.get_or_create(
+            user=other_user, defaults={"company_name": other_user.email}
+        )
         DailyOrder.objects.create(
             user=user,
             date=date(2099, 1, 2),

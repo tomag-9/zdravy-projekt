@@ -94,9 +94,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         )
         return {"created": [], "skipped": 0}
 
-    clients = list(
-        User.objects.filter(is_staff=False, is_active=True).select_related("settings")
-    )
+    clients = list(User.objects.filter(is_staff=False, is_active=True))
     client_ids = [c.id for c in clients]
 
     # Auto-objednávky sa vedú per prevádzka, nie per login: celok s tromi
@@ -109,11 +107,15 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
 
     # Preload: best (latest non-empty) template per prevádzka (1 query, no N+1)
     templates_by_prevadzka: Dict[int, DailyOrder] = {}
-    for order in DailyOrder.objects.filter(
-        user_id__in=client_ids,
-        date__lt=target_date,
-        prevadzka__isnull=False,
-    ).order_by("prevadzka_id", "-date"):
+    for order in (
+        DailyOrder.objects.filter(
+            user_id__in=client_ids,
+            date__lt=target_date,
+            prevadzka__isnull=False,
+        )
+        .select_related("prevadzka")
+        .order_by("prevadzka_id", "-date")
+    ):
         if order.prevadzka_id in templates_by_prevadzka:
             continue
         if not _is_order_empty(order.data or {}):
@@ -134,10 +136,9 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             skipped += 1
             continue
 
-        # Respect visible_meals from ClientSettings
-        visible_meals: List[str] = []
-        if hasattr(client, "settings") and client.settings is not None:
-            visible_meals = client.settings.visible_meals or []
+        visible_meals: List[str] = list(
+            getattr(template.prevadzka, "visible_meals", []) or []
+        )
 
         auto_data = _build_auto_data(template, visible_meals)
 

@@ -55,6 +55,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         queryset = DailyOrder.objects.all()
         user = self.request.user
 
+        prevadzka_id = self.request.query_params.get("prevadzka")
         if user.is_staff:
             user_id = self.request.query_params.get("user_id")
             if user_id:
@@ -63,6 +64,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 except (TypeError, ValueError):
                     raise ValidationError({"user_id": "Must be an integer."})
                 queryset = queryset.filter(user_id=user_id_int)
+            elif prevadzka_id:
+                # Admin detail prevádzky je identifikovaný prevádzkou, nie loginom.
+                # Bez tohto by sa najprv filtrovalo na objednávky admin usera a
+                # detail prevádzky bez loginu by vždy vyzeral prázdny.
+                pass
             else:
                 # If no user_id is provided, return only the staff user's own orders
                 # to prevent returning ALL orders by default (which breaks by_date logic).
@@ -72,7 +78,6 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             # Viac loginov pod jedným celkom má vidieť rovnakú objednávku prevádzky.
             queryset = queryset.filter(prevadzka__in=dostupne_prevadzky(user))
 
-        prevadzka_id = self.request.query_params.get("prevadzka")
         if prevadzka_id:
             try:
                 prevadzka_id_int = int(prevadzka_id)
@@ -105,6 +110,9 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         if self.request.user.is_staff:
             user_id = self.request.query_params.get("user_id")
             if not user_id:
+                if "prevadzka" in serializer.validated_data:
+                    serializer.save(user=self.request.user)
+                    return
                 raise ClientOnlyError()
             try:
                 user_id_int = int(user_id)

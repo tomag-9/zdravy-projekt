@@ -71,7 +71,7 @@ def build_xlsx_bytes(
 
     orders = (
         DailyOrder.objects.filter(date=target_date)
-        .select_related("user", "user__settings")
+        .select_related("user", "prevadzka")
         .order_by("user__email")
     )
 
@@ -79,10 +79,7 @@ def build_xlsx_bytes(
         {
             "user": o.user,
             "data": o.data or {},
-            "visible_meals": (
-                getattr(getattr(o.user, "settings", None), "visible_meals", None)
-                or _MEAL_KEYS
-            ),
+            "visible_meals": getattr(o.prevadzka, "visible_meals", None) or _MEAL_KEYS,
         }
         for o in orders
     ]

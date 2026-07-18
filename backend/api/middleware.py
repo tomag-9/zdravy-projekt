@@ -55,7 +55,7 @@ class UnauthorizedAccessRedirectMiddleware:
             return self.get_response(request)
 
         # Block only the Django admin root in production (/admin/ and /admin)
-        # Do NOT block frontend admin routes like /admin/settings, /admin/clients, etc.
+        # Do NOT block frontend admin routes like /admin/settings, /admin/facilities, etc.
         if not settings.DEBUG and request.path in ("/admin/", "/admin"):
             frontend_url = self.get_frontend_url()
             # Use proper HTTP redirect instead of JSON error

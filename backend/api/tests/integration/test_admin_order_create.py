@@ -263,7 +263,14 @@ class TestAdminOrderQueryset:
     ):
         """Staff gets their own orders (not client orders) when user_id is omitted."""
         DailyOrder.objects.create(user=client_a, date=FUTURE_DATE, data={})
-        DailyOrder.objects.create(user=admin_user, date=FUTURE_DATE, data={})
+        # admin_user je staff bez profilu → prevádzku (NOT NULL) musíme určiť ručne.
+        from api.models import Celok, Prevadzka
+
+        celok = Celok.objects.create(nazov="Admin celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Admin prevádzka")
+        DailyOrder.objects.create(
+            user=admin_user, date=FUTURE_DATE, data={}, prevadzka=prevadzka
+        )
 
         response = admin_client.get(reverse("dailyorder-list"))
 
