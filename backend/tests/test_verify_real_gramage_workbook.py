@@ -11,6 +11,7 @@ from api.models import (
     MealPlanItem,
     MealTemplate,
     PortionType,
+    UserProfile,
 )
 
 pytestmark = pytest.mark.django_db
@@ -22,6 +23,7 @@ def _create_dashboard_data(target_date="2026-07-08"):
         email="client@example.com",
         password="password",
     )
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
     plan = DailyMealPlan.objects.create(date=target_date)
     soup = MealTemplate.objects.create(

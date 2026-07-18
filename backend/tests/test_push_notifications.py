@@ -286,8 +286,12 @@ class TestSendPushDeadlineReminderTask:
         user_with_order = _make_user_with_subscription("has-order")
         user_without_order = _make_user_with_subscription("no-order")
 
-        from api.models import DailyOrder
+        from api.models import DailyOrder, UserProfile
 
+        UserProfile.objects.get_or_create(
+            user=user_with_order,
+            defaults={"company_name": user_with_order.email},
+        )
         DailyOrder.objects.create(
             user=user_with_order,
             date=FUTURE_TUESDAY,

@@ -17,7 +17,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
-from api.models import ClientSettings, DailyOrder
+from api.models import DailyOrder
 from api.services import (
     _is_order_empty,
     _last_non_empty_order,
@@ -247,9 +247,14 @@ class TestApplyAutoOrders:
 
     def test_staff_user_excluded(self, admin_user):
         """Staff/admin clients never receive auto orders."""
+        from api.models import Celok, Prevadzka
+
+        celok = Celok.objects.create(nazov="Staff celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Staff prevádzka")
         DailyOrder.objects.create(
             user=admin_user,
             date=MONDAY,
+            prevadzka=prevadzka,
             status="submitted",
             data=NON_EMPTY_DATA,
         )
@@ -288,8 +293,10 @@ class TestApplyAutoOrders:
         assert not DailyOrder.objects.filter(user=client_user, date=SATURDAY).exists()
 
     def test_visible_meals_respected(self, client_user):
-        """If ClientSettings.visible_meals = ['lunch'], only lunch is copied."""
-        ClientSettings.objects.create(user=client_user, visible_meals=["lunch"])
+        """If prevádzka.visible_meals = ['lunch'], only lunch is copied."""
+        prevadzka = client_user.profile.dostupne_prevadzky().first()
+        prevadzka.visible_meals = ["lunch"]
+        prevadzka.save()
         DailyOrder.objects.create(
             user=client_user,
             date=MONDAY,

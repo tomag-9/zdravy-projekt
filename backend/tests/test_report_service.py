@@ -5,8 +5,14 @@ import datetime
 import pytest
 from django.contrib.auth.models import User
 
-from api.models import DailyOrder
+from api.models import DailyOrder, UserProfile
 from api.services import ReportService
+
+
+def _with_profile(user):
+    """Klient bez profilu nemá prevádzku; profil signálom založí default prevádzku."""
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
+    return user
 
 
 @pytest.mark.django_db
@@ -25,7 +31,9 @@ class TestReportService:
     def test_generate_daily_report_with_orders(self):
         """Test report generation with actual orders."""
         # Create test user and order
-        user = User.objects.create_user(username="testuser", email="test@example.com")
+        user = _with_profile(
+            User.objects.create_user(username="testuser", email="test@example.com")
+        )
         target_date = datetime.date(2024, 1, 1)
         order_data = {
             "breakfast": {"Jasle": {"menuCounts": {"Menu A": 1}, "diets": {}}},
@@ -46,8 +54,12 @@ class TestReportService:
 
     def test_generate_daily_report_multiple_orders(self):
         """Test report aggregation with multiple users."""
-        user1 = User.objects.create_user(username="user1", email="user1@example.com")
-        user2 = User.objects.create_user(username="user2", email="user2@example.com")
+        user1 = _with_profile(
+            User.objects.create_user(username="user1", email="user1@example.com")
+        )
+        user2 = _with_profile(
+            User.objects.create_user(username="user2", email="user2@example.com")
+        )
         target_date = datetime.date(2024, 1, 1)
 
         DailyOrder.objects.create(
@@ -71,7 +83,9 @@ class TestReportService:
 
     def test_get_orders_for_export(self):
         """Test getting orders in export format."""
-        user = User.objects.create_user(username="testuser", email="test@example.com")
+        user = _with_profile(
+            User.objects.create_user(username="testuser", email="test@example.com")
+        )
         target_date = datetime.date(2024, 1, 1)
         order_data = {
             "breakfast": {"Jasle": {"menuCounts": {"Menu A": 1}, "diets": {}}}

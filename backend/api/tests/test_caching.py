@@ -32,7 +32,14 @@ from api.cache_service import (
     set_cached,
 )
 from api.cached_settings_service import get_client_settings, get_global_settings
-from api.models import ClientSettings, DailyOrder, Diet, GlobalSettings, User
+from api.models import (
+    ClientSettings,
+    DailyOrder,
+    Diet,
+    GlobalSettings,
+    User,
+    UserProfile,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -343,6 +350,11 @@ class TestDailyStatsCaching:
         test_date = date(2026, 3, 6)
 
         user = User.objects.create(username="user", email="user@example.com")
+        # Objednávky sa vedú per prevádzka (NOT NULL); profil dá userovi celok
+        # + jednu prevádzku, ktorú DailyOrder.save() doplní automaticky.
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
         order = DailyOrder.objects.create(
             user=user,
             date=test_date,
@@ -369,6 +381,9 @@ class TestDailyStatsCaching:
     def test_daily_stats_cache_different_dates_separate_cache(self):
         """Test that different dates have separate cache entries."""
         user = User.objects.create(username="user", email="user@example.com")
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": user.email}
+        )
 
         date1 = date(2026, 3, 6)
         date2 = date(2026, 3, 7)

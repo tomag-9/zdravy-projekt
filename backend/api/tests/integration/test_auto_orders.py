@@ -278,7 +278,13 @@ class TestApplyAutoOrders:
 
     def test_staff_never_get_auto_orders(self, admin_user):
         """Staff users are excluded from auto-order generation."""
-        DailyOrder.objects.create(user=admin_user, date=MONDAY, data=NON_EMPTY_DATA)
+        from api.models import Celok, Prevadzka
+
+        celok = Celok.objects.create(nazov="Staff celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Staff prevádzka")
+        DailyOrder.objects.create(
+            user=admin_user, date=MONDAY, prevadzka=prevadzka, data=NON_EMPTY_DATA
+        )
 
         result = apply_auto_orders(target_date=TUESDAY)
 
@@ -298,8 +304,10 @@ class TestApplyAutoOrders:
         assert not DailyOrder.objects.filter(user=user, date=SUNDAY).exists()
 
     def test_visible_meals_respected(self, user):
-        """Auto order respects ClientSettings.visible_meals filter."""
-        ClientSettings.objects.create(user=user, visible_meals=["lunch"])
+        """Auto order respects the prevádzka's visible_meals filter."""
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        prevadzka.visible_meals = ["lunch"]
+        prevadzka.save()
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
 
         apply_auto_orders(target_date=TUESDAY)
@@ -538,6 +546,7 @@ class TestAutoOrderEdgeCases:
 
     def test_various_visible_meals_combinations(self, user):
         """Test all combinations of visible_meals."""
+        prevadzka = user.profile.dostupne_prevadzky().first()
         for combo in [
             ["breakfast"],
             ["lunch"],
@@ -547,8 +556,8 @@ class TestAutoOrderEdgeCases:
             ["lunch", "olovrant"],
             ["breakfast", "lunch", "olovrant"],
         ]:
-            ClientSettings.objects.all().delete()
-            ClientSettings.objects.create(user=user, visible_meals=combo)
+            prevadzka.visible_meals = combo
+            prevadzka.save()
             DailyOrder.objects.filter(user=user).delete()
             DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
 

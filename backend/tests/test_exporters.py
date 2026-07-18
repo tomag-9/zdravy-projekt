@@ -11,11 +11,13 @@ from openpyxl import load_workbook
 from api.exporters import PDFReportExporter, XLSXReportExporter
 from api.exporters.gramage_dashboard_xlsx_exporter import GramageDashboardXLSXExporter
 from api.models import (
+    Celok,
     DailyMealPlan,
     DailyOrder,
     MealPlanItem,
     MealTemplate,
     PortionType,
+    Prevadzka,
 )
 from api.services.meal_plan_service import MealPlanService
 
@@ -48,7 +50,11 @@ class TestPDFReportExporter:
             "lunch": {},
             "olovrant": {},
         }
-        order = DailyOrder.objects.create(user=user, date=target_date, data=order_data)
+        celok = Celok.objects.create(nazov="PDF celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="PDF prevádzka")
+        order = DailyOrder.objects.create(
+            user=user, date=target_date, prevadzka=prevadzka, data=order_data
+        )
 
         exporter = PDFReportExporter([order], "2024-01-01")
         pdf_bytes = exporter.generate()
@@ -145,9 +151,12 @@ class TestGramageDashboardExports:
         )
         plan.enrolled_counts.create(portion_type=portion_type, count=1)
 
+        celok = Celok.objects.create(nazov="Dashboard celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Dashboard prevádzka")
         DailyOrder.objects.create(
             user=user,
             date=plan.date,
+            prevadzka=prevadzka,
             data={
                 "breakfast": {
                     "Škôlka": {"menuCounts": {"A": 4}, "diets": {"Vegan": 1}}

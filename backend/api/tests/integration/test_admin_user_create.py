@@ -69,8 +69,10 @@ class TestAdminUserCreate:
         assert token is not None
         assert token.is_valid
 
-    def test_create_edupage_operation_skips_setup_email(self, admin_client):
-        """Creating an Edupage operation does NOT send a setup email."""
+    def test_create_ignores_login_level_edupage_fields(self, admin_client):
+        """EduPage nastavenie sa presunulo na Celok — /admin/users/ tieto polia
+        (is_edupage, api_identifier) už neprijíma. Ak ich klient pošle, sú
+        ignorované: login vznikne ako bežný app login a setup email SA pošle."""
         with patch(_SETUP_EMAIL) as mock_email:
             res = admin_client.post(
                 API_URL,
@@ -84,10 +86,10 @@ class TestAdminUserCreate:
             )
 
         assert res.status_code == status.HTTP_201_CREATED
-        mock_email.assert_not_called()
+        mock_email.assert_called_once()
         user = User.objects.get(email="skolaeduplast@example.com")
-        assert user.profile.is_edupage
-        assert user.profile.api_identifier == "EXT-001"
+        assert not user.profile.is_edupage
+        assert user.profile.api_identifier == ""
         assert not user.has_usable_password()
 
     def test_email_failure_does_not_break_user_creation(self, admin_client):
@@ -140,8 +142,9 @@ class TestAdminUserCreate:
             DEFAULT_DIET_NAMES
         )
 
-    def test_update_user_propagates_is_edupage(self, admin_client):
-        """PATCH on existing user updates is_edupage on UserProfile."""
+    def test_update_ignores_login_level_edupage_fields(self, admin_client):
+        """PATCH cez /admin/users/ už neprijíma is_edupage/api_identifier
+        (presunuté na Celok) — poslané hodnoty sú ignorované, profil ostáva."""
         user = User.objects.create_user(
             username="updateme@example.com",
             email="updateme@example.com",
@@ -157,11 +160,12 @@ class TestAdminUserCreate:
 
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
-        assert user.profile.is_edupage
-        assert user.profile.api_identifier == "NEW-ID"
+        assert not user.profile.is_edupage
+        assert user.profile.api_identifier == ""
 
-    def test_create_user_persists_company_profile_fields(self, admin_client):
-        """Creating a user with company_name/ico/dic persists them to UserProfile."""
+    def test_create_user_persists_company_name(self, admin_client):
+        """company_name ostáva na logine (UserProfile); ico/dic sa presunuli na
+        Celok a /admin/users/ ich už neprijíma — poslané sú ignorované."""
         with patch(_SETUP_EMAIL):
             res = admin_client.post(
                 API_URL,
@@ -178,8 +182,9 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="company@example.com")
         assert user.profile.company_name == "Acme s.r.o."
-        assert user.profile.ico == "12345678"
-        assert user.profile.dic == "2012345678"
+        # ico/dic už login-level serializer neprijíma → ostávajú prázdne.
+        assert user.profile.ico == ""
+        assert user.profile.dic == ""
 
     def test_create_user_without_company_fields_defaults_to_empty(self, admin_client):
         """Creating a user without ico/dic stores empty strings, not NULL."""
@@ -199,8 +204,9 @@ class TestAdminUserCreate:
         assert user.profile.ico == ""
         assert user.profile.dic == ""
 
-    def test_update_user_propagates_company_profile_fields(self, admin_client):
-        """PATCH on existing user updates company_name/ico/dic on UserProfile."""
+    def test_update_user_propagates_company_name(self, admin_client):
+        """PATCH aktualizuje company_name na UserProfile; ico/dic (teraz na Celku)
+        sú ignorované a ostávajú nezmenené."""
         user = User.objects.create_user(
             username="updatecompany@example.com",
             email="updatecompany@example.com",
@@ -222,11 +228,12 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
         assert user.profile.company_name == "New Name s.r.o."
-        assert user.profile.ico == "99999999"
-        assert user.profile.dic == "SK99999999"
+        # ico/dic login-level serializer neprijíma → ostávajú pôvodné hodnoty.
+        assert user.profile.ico == "00000000"
+        assert user.profile.dic == ""
 
-    def test_update_user_clears_company_fields_when_empty(self, admin_client):
-        """PATCH with empty strings clears company_name/ico/dic (no NULL stored)."""
+    def test_update_user_clears_company_name_when_empty(self, admin_client):
+        """PATCH s prázdnym company_name ho vyčistí (uloží prázdny reťazec, nie NULL)."""
         user = User.objects.create_user(
             username="clearfields@example.com",
             email="clearfields@example.com",
@@ -241,12 +248,10 @@ class TestAdminUserCreate:
 
         res = admin_client.patch(
             f"{API_URL}{user.pk}/",
-            {"company_name": "", "ico": "", "dic": ""},
+            {"company_name": ""},
             format="json",
         )
 
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
         assert user.profile.company_name == ""
-        assert user.profile.ico == ""
-        assert user.profile.dic == ""
