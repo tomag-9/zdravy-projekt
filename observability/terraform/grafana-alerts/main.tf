@@ -66,6 +66,16 @@ locals {
       description     = "Database connection errors appeared in ${var.environment}. Check Postgres availability, max connections, and backend logs."
     }
 
+    high_backend_cpu = {
+      name            = "High backend CPU"
+      expr            = "sum(rate(container_cpu_usage_seconds_total{environment=\"${var.environment}\",job=\"cadvisor\",name=~\".*backend.*\",image!=\"\"}[5m]))"
+      math_expression = "$B > ${var.high_backend_cpu_cores}"
+      for             = "10m"
+      severity        = "warning"
+      summary         = "Backend container CPU is above ${var.high_backend_cpu_cores} cores"
+      description     = "Sustained high CPU on backend containers in ${var.environment}. Check traffic, slow endpoints, DB load, and Celery jobs. Replaces the unmanaged Grafana Cloud \"Django - High CPU\" preset alert."
+    }
+
     backend_oom_killed = {
       name            = "Backend OOM killed"
       expr            = "sum(increase(container_oom_events_total{environment=\"${var.environment}\",job=\"cadvisor\",name=~\".*backend.*\"}[5m]))"
