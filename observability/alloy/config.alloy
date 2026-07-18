@@ -50,6 +50,11 @@ loki.source.docker "containers" {
 }
 
 loki.process "labels" {
+	stage.drop {
+		older_than          = "120h"
+		drop_counter_reason = "too_old_for_loki"
+	}
+
 	stage.static_labels {
 		values = {
 			environment = sys.env("ALLOY_ENVIRONMENT"),
@@ -114,12 +119,9 @@ prometheus.relabel "cadvisor" {
 		replacement  = sys.env("ALLOY_ENVIRONMENT")
 	}
 
-	// Keep this app's containers only to limit Grafana Cloud cardinality/cost.
-	rule {
-		source_labels = ["name"]
-		regex         = ".+zdravy-projekt.+"
-		action        = "keep"
-	}
+	// Keep all cAdvisor series and let dashboards/alerts filter by container
+	// labels. An earlier keep rule accidentally dropped every cAdvisor sample in
+	// Alloy, which made CPU/memory panels and alerts show No Data.
 }
 
 prometheus.remote_write "grafana" {
