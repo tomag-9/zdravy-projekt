@@ -320,6 +320,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _resolve_prevadzka(user, validated_data: Dict[str, Any]) -> Prevadzka:
         """Za ktorú prevádzku sa objednáva. Pri viacerých ju musí klient poslať."""
         explicit = validated_data.pop("prevadzka", None)
+        if explicit is not None and getattr(user, "is_staff", False):
+            return explicit
         try:
             return vyber_prevadzku(user, explicit.pk if explicit else None)
         except PrevadzkaNejednoznacna as exc:

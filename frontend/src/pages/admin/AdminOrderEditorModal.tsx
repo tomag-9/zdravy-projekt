@@ -22,7 +22,8 @@ interface ExistingOrder {
 }
 
 interface Props {
-    clientId: string | number;
+    clientId?: string | number | null;
+    prevadzkaId: string | number;
     visibleMenus: string[];
     visibleMeals: string[];
     visibleDiets: number[];
@@ -59,6 +60,7 @@ function buildInitialOrder(existingOrder?: ExistingOrder | null): DailyOrder {
 
 const AdminOrderEditorModal: React.FC<Props> = ({
     clientId,
+    prevadzkaId,
     visibleMenus,
     visibleMeals,
     visibleDiets,
@@ -128,19 +130,21 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                 olovrant: activeMeals.olovrant ? snapshot.olovrant : OrderService.createEmptyMeal(),
             };
 
+            const query = clientId ? `?user_id=${encodeURIComponent(String(clientId))}` : '';
+
             if (existingOrder) {
-                const res = await apiFetch(`${API_URL}/orders/${existingOrder.id}/?user_id=${clientId}`, {
+                const res = await apiFetch(`${API_URL}/orders/${existingOrder.id}/?prevadzka=${encodeURIComponent(String(prevadzkaId))}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ data: payloadData }),
+                    body: JSON.stringify({ data: payloadData, prevadzka: prevadzkaId }),
                 });
                 if (!res.ok) throw new Error('save failed');
                 toast.success('Objednávka bola uložená.');
             } else {
-                const res = await apiFetch(`${API_URL}/orders/?user_id=${clientId}`, {
+                const res = await apiFetch(`${API_URL}/orders/${query}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ date, data: payloadData }),
+                    body: JSON.stringify({ date, data: payloadData, prevadzka: prevadzkaId }),
                 });
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));

@@ -506,15 +506,16 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
     """Apply default diets for new settings and invalidate ClientSettings cache."""
     try:
         if created and instance.visible_diets.count() == 0:
-            from api.models import Diet
-            from api.reference_data import DEFAULT_DIET_NAMES
-
-            default_diets = Diet.objects.filter(
-                name__in=DEFAULT_DIET_NAMES,
-                is_active=True,
+            from api.default_visibility import (
+                DEFAULT_VISIBLE_MEALS,
+                DEFAULT_VISIBLE_MENUS,
+                ensure_default_visible_diets,
             )
-            if default_diets.exists():
-                instance.visible_diets.set(default_diets)
+
+            instance.visible_menus = DEFAULT_VISIBLE_MENUS
+            instance.visible_meals = DEFAULT_VISIBLE_MEALS
+            instance.save(update_fields=["visible_menus", "visible_meals"])
+            ensure_default_visible_diets(instance.visible_diets)
 
         from api.cache_service import clear_client_settings_cache
 
@@ -523,6 +524,27 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
     except Exception as exc:
         logger.exception("Error clearing ClientSettings cache: %s", exc)
         _capture_signal_failure(exc, "client_settings_saved")
+
+
+@receiver(post_save, sender="api.Prevadzka")
+def on_prevadzka_saved(sender, instance, created=False, **kwargs):
+    """Apply default diets for newly created prevadzky."""
+    if not created:
+        return
+    try:
+        from api.default_visibility import (
+            DEFAULT_VISIBLE_MEALS,
+            DEFAULT_VISIBLE_MENUS,
+            ensure_default_visible_diets,
+        )
+
+        instance.visible_menus = DEFAULT_VISIBLE_MENUS
+        instance.visible_meals = DEFAULT_VISIBLE_MEALS
+        instance.save(update_fields=["visible_menus", "visible_meals"])
+        ensure_default_visible_diets(instance.visible_diets)
+    except Exception as exc:
+        logger.exception("Error applying default diets for Prevadzka: %s", exc)
+        _capture_signal_failure(exc, "prevadzka_saved")
 
 
 @receiver(post_save, sender="api.Diet")

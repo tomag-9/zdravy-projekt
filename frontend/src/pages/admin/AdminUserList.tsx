@@ -4,7 +4,7 @@ import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
-import { PageHead, Card, Button, IconButton, SearchBox, TableWrap, Modal, Field, Input, Checkbox } from "./ui";
+import { PageHead, Card, Button, IconButton, SearchBox, TableWrap, Modal, Field, Input } from "./ui";
 
 interface AdUser {
   id: number;
@@ -21,26 +21,10 @@ interface AdminCreateForm {
   last_name: string;
 }
 
-interface ClientCreateForm {
-  email: string;
-  company_name: string;
-  billing_name: string;
-  is_edupage: boolean;
-  api_identifier: string;
-}
-
 const EMPTY_ADMIN_FORM: AdminCreateForm = {
   email: "",
   first_name: "",
   last_name: "",
-};
-
-const EMPTY_CLIENT_FORM: ClientCreateForm = {
-  email: "",
-  company_name: "",
-  billing_name: "",
-  is_edupage: false,
-  api_identifier: "",
 };
 
 const AdminUserList: React.FC = () => {
@@ -51,9 +35,8 @@ const AdminUserList: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
 
   // Create modals
-  const [createMode, setCreateMode] = useState<"admin" | "client" | null>(null);
+  const [createMode, setCreateMode] = useState<"admin" | null>(null);
   const [adminForm, setAdminForm] = useState<AdminCreateForm>(EMPTY_ADMIN_FORM);
-  const [clientForm, setClientForm] = useState<ClientCreateForm>(EMPTY_CLIENT_FORM);
   const [creating, setCreating] = useState(false);
 
   // Delete confirmation
@@ -103,39 +86,6 @@ const AdminUserList: React.FC = () => {
         success("Admin účet bol úspešne vytvorený.");
         setCreateMode(null);
         setAdminForm(EMPTY_ADMIN_FORM);
-        fetchUsers();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        toastError(data?.error?.details?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť účet.");
-      }
-    } catch (e) {
-      logger.error(e);
-      toastError("Chyba pri vytváraní účtu.");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const handleCreateClient = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!clientForm.email.trim()) {
-      toastError("Email je povinný.");
-      return;
-    }
-    setCreating(true);
-    try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...clientForm, is_staff: false, is_active: true }),
-        },
-      );
-      if (res.ok) {
-        success("Prevádzka bola úspešne vytvorená.");
-        setCreateMode(null);
-        setClientForm(EMPTY_CLIENT_FORM);
         fetchUsers();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -274,42 +224,6 @@ const AdminUserList: React.FC = () => {
             <p style={{ fontSize: 12.5, color: "var(--ink-mute)", margin: 0 }}>
               Admin dostane email s odkazom na nastavenie hesla.
             </p>
-          </form>
-        </Modal>
-      )}
-
-      {/* ── Create operation modal ── */}
-      {createMode === "client" && (
-        <Modal
-          title="Pridať prevádzku"
-          onClose={() => setCreateMode(null)}
-          foot={
-            <>
-              <Button variant="ghost" onClick={() => setCreateMode(null)}>Zrušiť</Button>
-              <Button type="submit" form="create-client-form" disabled={creating}>
-                {creating ? "Vytváram…" : "Vytvoriť"}
-              </Button>
-            </>
-          }
-        >
-          <form id="create-client-form" onSubmit={handleCreateClient} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <Field label="Názov prevádzky" req hint="(interný)">
-              <Input type="text" required value={clientForm.company_name} onChange={(e) => setClientForm((f) => ({ ...f, company_name: e.target.value }))} />
-            </Field>
-            <Field label="Názov spoločnosti" hint="(fakturácia)">
-              <Input value={clientForm.billing_name} onChange={(e) => setClientForm((f) => ({ ...f, billing_name: e.target.value }))} />
-            </Field>
-            <Field label="Email" req>
-              <Input type="email" required value={clientForm.email} onChange={(e) => setClientForm((f) => ({ ...f, email: e.target.value }))} />
-            </Field>
-            <Checkbox on={clientForm.is_edupage} onChange={(v) => setClientForm((f) => ({ ...f, is_edupage: v, api_identifier: "" }))}>
-              Edupage prevádzka
-            </Checkbox>
-            {clientForm.is_edupage && (
-              <Field label="Edupage identifikátor">
-                <Input placeholder="Identifikátor pre párovanie v Edupage súboroch" value={clientForm.api_identifier} onChange={(e) => setClientForm((f) => ({ ...f, api_identifier: e.target.value }))} />
-              </Field>
-            )}
           </form>
         </Modal>
       )}

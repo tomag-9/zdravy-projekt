@@ -673,7 +673,6 @@ class MealPlanService:
             .select_related(
                 "user",
                 "user__profile",
-                "user__settings",
                 "prevadzka__celok",
                 "prevadzka__delivery_route__block",
             )
@@ -890,9 +889,8 @@ class MealPlanService:
                 sub_rows = _merge_billed_sub_rows(sub_rows)
 
             if sub_rows:
-                settings = getattr(order.user, "settings", None)
                 admin_order_note = str(
-                    getattr(settings, "admin_order_note", "") or ""
+                    getattr(prevadzka, "admin_order_note", "") or ""
                 ).strip()
                 delivery_route = (
                     getattr(prevadzka, "delivery_route", None)

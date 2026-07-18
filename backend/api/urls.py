@@ -4,7 +4,9 @@ from rest_framework.routers import DefaultRouter
 from .health import health_check
 from .views import (
     AdminAutoOrderViewSet,
+    AdminCelokViewSet,
     AdminEdupageUploadViewSet,
+    AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
     AdminPrevadzkaDeliveryViewSet,
@@ -42,6 +44,12 @@ router.register(r"orders", DailyOrderViewSet, basename="dailyorder")
 router.register(r"prevadzky", PrevadzkaViewSet, basename="prevadzka")
 router.register(r"user", UserProfileViewSet, basename="user")
 router.register(r"diets", DietViewSet, basename="diet")
+router.register(r"admin/celky", AdminCelokViewSet, basename="admin-celok")
+router.register(
+    r"admin/facility-prevadzky",
+    AdminFacilityPrevadzkaViewSet,
+    basename="admin-facility-prevadzka",
+)
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
 router.register(

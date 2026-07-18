@@ -28,7 +28,7 @@ def generate_pdf_report(request):
 
     orders = (
         DailyOrder.objects.filter(date=target_date)
-        .select_related("user", "user__profile", "user__settings")
+        .select_related("user", "user__profile", "prevadzka")
         .order_by("user__email")
     )
 

@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
-from api.models import DailyOrder
+from api.models import DailyOrder, UserProfile
 
 pytestmark = pytest.mark.integration
 
@@ -127,6 +127,11 @@ class TestOrderUpdate:
         other_user = User.objects.create_user(
             username="other@example.com", email="other@example.com", password="pass123"
         )
+        # Objednávky sú per prevádzka (NOT NULL); profil dá klientovi celok
+        # a jednu prevádzku, ktorú DailyOrder.save() doplní automaticky.
+        UserProfile.objects.get_or_create(
+            user=other_user, defaults={"company_name": other_user.email}
+        )
         order = DailyOrder.objects.create(user=other_user, date=MONDAY, data=EMPTY_DATA)
 
         # Try to update other user's order
@@ -165,6 +170,11 @@ class TestOrderRetrieval:
         """User can only see their own orders in list."""
         other_user = User.objects.create_user(
             username="other@example.com", email="other@example.com", password="pass123"
+        )
+        # Objednávky sú per prevádzka (NOT NULL); profil dá klientovi celok
+        # a jednu prevádzku, ktorú DailyOrder.save() doplní automaticky.
+        UserProfile.objects.get_or_create(
+            user=other_user, defaults={"company_name": other_user.email}
         )
         user_order = DailyOrder.objects.create(
             user=user, date=MONDAY, data=NON_EMPTY_DATA
@@ -348,6 +358,11 @@ class TestOrderDeletion:
         """User cannot delete another user's order."""
         other_user = User.objects.create_user(
             username="other@example.com", email="other@example.com", password="pass123"
+        )
+        # Objednávky sú per prevádzka (NOT NULL); profil dá klientovi celok
+        # a jednu prevádzku, ktorú DailyOrder.save() doplní automaticky.
+        UserProfile.objects.get_or_create(
+            user=other_user, defaults={"company_name": other_user.email}
         )
         order = DailyOrder.objects.create(
             user=other_user, date=MONDAY, data=NON_EMPTY_DATA

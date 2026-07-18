@@ -116,6 +116,9 @@ class TestAdminSummaryViewSetQueries:
                 password="test123",
             )
             ClientSettings.objects.create(user=user)
+            UserProfile.objects.get_or_create(
+                user=user, defaults={"company_name": user.email}
+            )
             DailyOrder.objects.create(
                 user=user,
                 date=target_date,

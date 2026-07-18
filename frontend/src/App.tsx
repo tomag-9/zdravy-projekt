@@ -34,8 +34,8 @@ import ResetPasswordPage from "./pages/ResetPasswordPage";
 import SetPasswordPage from "./pages/SetPasswordPage";
 import AdminLayout from "./pages/admin/AdminLayout";
 import DietManager from "./pages/admin/DietManager";
-import ClientList from "./pages/admin/ClientList";
 import ClientDetail from "./pages/admin/ClientDetail";
+import FacilityManager from "./pages/admin/FacilityManager";
 import AdminUserList from "./pages/admin/AdminUserList";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -184,8 +184,8 @@ export default function App() {
                 <Route path="dashboard" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
                 <Route path="prevadzka-overview" element={<ErrorBoundary><PrevadzkaOverview /></ErrorBoundary>} />
                 <Route path="delivery-layout" element={<ErrorBoundary><DeliveryLayoutAdmin /></ErrorBoundary>} />
-                <Route path="clients" element={<ErrorBoundary><ClientList /></ErrorBoundary>} />
-                <Route path="clients/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
+                <Route path="facilities" element={<ErrorBoundary><FacilityManager /></ErrorBoundary>} />
+                <Route path="facilities/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
                 <Route path="roles" element={<ErrorBoundary><AdminUserList /></ErrorBoundary>} />
                 <Route path="roles/:id" element={<ErrorBoundary><AdminUserDetail /></ErrorBoundary>} />
                 <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />

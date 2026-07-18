@@ -67,6 +67,7 @@ def test_apply_order_count_corrections_can_replace_existing_portion(tmp_path):
         email="client@example.com",
         password="password",
     )
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date="2026-07-08",
@@ -135,6 +136,7 @@ def test_apply_order_count_corrections_adds_component_gram_adjustment(tmp_path):
         email="skolicka@example.com",
         password="password",
     )
+    UserProfile.objects.get_or_create(user=user, defaults={"company_name": user.email})
     DailyOrder.objects.create(
         user=user,
         date="2026-07-08",

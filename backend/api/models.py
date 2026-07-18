@@ -20,8 +20,6 @@ class DailyOrder(models.Model):
         "Prevadzka",
         on_delete=models.CASCADE,
         related_name="orders",
-        null=True,
-        blank=True,
     )
     date = models.DateField(db_index=True)
     data = models.JSONField(default=dict)
@@ -109,7 +107,7 @@ def _default_all_meals() -> List[str]:
 
 
 def _default_visible_menus() -> List[str]:
-    return ["A"]
+    return ["A", "B", "C", "V"]
 
 
 class ClientSettings(models.Model):
@@ -296,6 +294,19 @@ class Celok(models.Model):
             "(klient v appke). Určuje zaradenie v admin prehľade dodania podkladov."
         ),
     )
+    edupage_api_identifier = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Voliteľný identifikátor celku pre ručný EduPage import.",
+    )
+    mealsguest_url = models.CharField(
+        max_length=500,
+        blank=True,
+        help_text=(
+            "EduPage mealsGuest URL pre scrape objednávok, napr. "
+            "https://school.edupage.org/menu/mealsGuest?id=TOKEN"
+        ),
+    )
 
     class Meta:
         ordering = ["nazov"]
@@ -381,6 +392,27 @@ class Prevadzka(models.Model):
             "{PortionType.name: koeficient} pre počet fakturovaných porcií. "
             "Chýbajúci typ = 1.0, teda prázdne {} = beží po hlavách ako doteraz."
         ),
+    )
+    visible_menus = models.JSONField(
+        default=_default_visible_menus,
+        blank=True,
+        help_text="Menu typy dostupné pre objednávky tejto prevádzky.",
+    )
+    visible_meals = models.JSONField(
+        default=_default_all_meals,
+        blank=True,
+        help_text="Chody dostupné pre objednávky tejto prevádzky.",
+    )
+    visible_diets = models.ManyToManyField(
+        Diet,
+        blank=True,
+        related_name="visible_for_prevadzky",
+        help_text="Diéty dostupné pre objednávky tejto prevádzky.",
+    )
+    admin_order_note = models.TextField(
+        blank=True,
+        default="",
+        help_text="Interná poznámka k objednávkam prevádzky v admin prehľadoch.",
     )
 
     class Meta:

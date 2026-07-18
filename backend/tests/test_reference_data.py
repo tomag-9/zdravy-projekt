@@ -2,7 +2,8 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 
-from api.models import ClientSettings, Diet, PortionType
+from api.default_visibility import DEFAULT_VISIBLE_MEALS, DEFAULT_VISIBLE_MENUS
+from api.models import Celok, ClientSettings, Diet, PortionType, Prevadzka
 
 
 @pytest.mark.django_db
@@ -93,3 +94,59 @@ def test_init_reference_data_creates_missing_client_settings_with_default_diets(
     settings = ClientSettings.objects.get(user=user)
     assert settings.visible_diets.filter(name="NO MILK").exists()
     assert settings.visible_diets.filter(name="NO ZELER").exists()
+
+
+@pytest.mark.django_db
+def test_init_reference_data_enables_default_diets_for_empty_prevadzky():
+    call_command("init_reference_data")
+    celok = Celok.objects.create(nazov="Prázdna prevádzka")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prázdna prevádzka")
+    prevadzka.visible_diets.clear()
+
+    call_command("init_reference_data")
+    call_command("init_reference_data")
+
+    enabled_diets = set(prevadzka.visible_diets.values_list("name", flat=True))
+    assert enabled_diets == {
+        "NO MILK",
+        "NO GLUTEN",
+        "NO MILK/NO GLUTEN",
+        "VEGGIE",
+        "HISTAMIN",
+        "NONONO",
+        "NO ORECH",
+        "NO PARADAJKA",
+        "NO FISH",
+        "NO EGG",
+        "NO ZEMIAK",
+        "NO SOJA",
+        "NO ZELER",
+    }
+    assert "DIA" not in enabled_diets
+
+
+@pytest.mark.django_db
+def test_init_reference_data_enables_all_menus_and_meals_for_everyone():
+    user = User.objects.create_user(
+        username="legacy-meals@example.com",
+        email="legacy-meals@example.com",
+    )
+    settings, _ = ClientSettings.objects.get_or_create(user=user)
+    settings.visible_menus = ["A"]
+    settings.visible_meals = ["lunch"]
+    settings.save(update_fields=["visible_menus", "visible_meals"])
+    celok = Celok.objects.create(nazov="Legacy chody")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Legacy chody")
+    prevadzka.visible_menus = ["A"]
+    prevadzka.visible_meals = ["lunch"]
+    prevadzka.save(update_fields=["visible_menus", "visible_meals"])
+
+    call_command("init_reference_data")
+    call_command("init_reference_data")
+
+    settings.refresh_from_db()
+    prevadzka.refresh_from_db()
+    assert settings.visible_menus == DEFAULT_VISIBLE_MENUS
+    assert settings.visible_meals == DEFAULT_VISIBLE_MEALS
+    assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
+    assert prevadzka.visible_meals == DEFAULT_VISIBLE_MEALS

@@ -101,7 +101,11 @@ MONDAY = datetime.date(2025, 1, 6)
 @pytest.mark.django_db
 class TestGetPlannedOrders:
     def _make_user(self, email="plan@example.com"):
-        return User.objects.create_user(username=email, email=email, password="pw")
+        from api.models import UserProfile
+
+        user = User.objects.create_user(username=email, email=email, password="pw")
+        UserProfile.objects.get_or_create(user=user, defaults={"company_name": email})
+        return user
 
     def _make_order(self, user, date, data):
         return DailyOrder.objects.create(
@@ -198,9 +202,13 @@ class TestAggregateDailyStats:
         assert result["status_breakdown"]["submitted"] == 0
 
     def test_single_order_counted(self):
+        from api.models import UserProfile
         from api.services import ReportService
 
         user = User.objects.create_user(username="s@example.com", email="s@example.com")
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": "s@example.com"}
+        )
         target = datetime.date(2025, 1, 6)
         DailyOrder.objects.create(
             user=user,
@@ -212,9 +220,13 @@ class TestAggregateDailyStats:
         assert result["meals"]["lunch"]["Dospelý"]["total"] == 2
 
     def test_flat_shape_aggregated(self):
+        from api.models import UserProfile
         from api.services import ReportService
 
         user = User.objects.create_user(username="f@example.com", email="f@example.com")
+        UserProfile.objects.get_or_create(
+            user=user, defaults={"company_name": "f@example.com"}
+        )
         target = datetime.date(2025, 1, 7)
         DailyOrder.objects.create(
             user=user,
