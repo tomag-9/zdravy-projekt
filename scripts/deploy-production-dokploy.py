@@ -11,8 +11,12 @@ import urllib.parse
 import urllib.request
 
 
-def require_env(name: str) -> str:
-    value = os.environ.get(name, "").strip()
+def require_env(name: str, *, collapse_whitespace: bool = False) -> str:
+    value = os.environ.get(name, "")
+    if collapse_whitespace:
+        value = "".join(value.split())
+    else:
+        value = value.strip()
     if not value:
         raise SystemExit(f"Missing required environment variable: {name}")
     return value
@@ -77,7 +81,7 @@ def set_env_value(env_text: str, key: str, value: str) -> str:
 
 def main() -> int:
     base_url = require_env("DOKPLOY_URL")
-    api_key = require_env("DOKPLOY_API_KEY")
+    api_key = require_env("DOKPLOY_API_KEY", collapse_whitespace=True)
     compose_id = require_env("DOKPLOY_COMPOSE_ID")
     image_tag = require_env("PROD_IMAGE_TAG")
 
