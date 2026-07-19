@@ -72,3 +72,48 @@ jobs:
         run: |
           echo "Skipping terraform plan because Grafana secrets are not configured."
           echo "Required secrets: GRAFANA_URL, GRAFANA_AUTH, GRAFANA_PROMETHEUS_DS_UID."
+
+  apply:
+    name: Apply Grafana alerts
+    # Only reconcile Grafana on pushes to main (or a manual run), never on PRs.
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    needs: validate-and-plan
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Guard against missing secrets
+        id: secrets
+        run: |
+          if [ -z "${TF_VAR_grafana_url}" ] || [ -z "${TF_VAR_grafana_auth}" ] || [ -z "${TF_VAR_prometheus_datasource_uid}" ]; then
+            echo "Skipping terraform apply because Grafana secrets are not configured."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare persistent state directory
+        if: ${{ steps.secrets.outputs.ready == 'true' }}
+        # State lives outside the runner workspace so it survives between runs.
+        # NOTE: this assumes a single, stable self-hosted runner. Multiple
+        # runners would each keep their own state and could drift.
+        run: mkdir -p "${HOME}/grafana-alerts-tfstate"
+
+      - name: Apply Grafana alert changes
+        if: ${{ steps.secrets.outputs.ready == 'true' }}
+        run: |
+          docker run --rm \
+            -v "$PWD/${TF_DIR}:/work" \
+            -v "${HOME}/grafana-alerts-tfstate:/state" \
+            -w /work \
+            -e TF_IN_AUTOMATION \
+            -e TF_INPUT \
+            -e TF_VAR_grafana_url \
+            -e TF_VAR_grafana_auth \
+            -e TF_VAR_prometheus_datasource_uid \
+            -e TF_VAR_environment \
+            -e TF_DATA_DIR=/tmp/terraform-data \
+            --entrypoint sh \
+            "$TF_IMAGE" -c "terraform init -backend-config=path=/state/terraform.tfstate -lockfile=readonly && terraform plan -no-color -out=tfplan && terraform apply -no-color -auto-approve tfplan"
