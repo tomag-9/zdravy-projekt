@@ -65,7 +65,7 @@ jobs:
             -e TF_VAR_environment \
             -e TF_DATA_DIR=/tmp/terraform-data \
             --entrypoint sh \
-            "$TF_IMAGE" -c "terraform init -backend=false -lockfile=readonly && terraform plan -no-color"
+            "$TF_IMAGE" -c "terraform init -backend-config=path=/tmp/plan-state.tfstate -lockfile=readonly && terraform plan -no-color"
 
       - name: Explain skipped plan
         if: ${{ env.TF_VAR_grafana_url == '' || env.TF_VAR_grafana_auth == '' || env.TF_VAR_prometheus_datasource_uid == '' }}
