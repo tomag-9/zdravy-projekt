@@ -1237,6 +1237,20 @@ select {
     color: var(--green-900);
     font-variant-numeric: tabular-nums;
 }
+.zp-counter .zp-counter-input {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    outline: none;
+    appearance: textfield;
+}
+.zp-counter .zp-counter-input::-webkit-outer-spin-button,
+.zp-counter .zp-counter-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
 .zp-counter .count.zero { color: var(--ink-mute); }
 
 /* Order summary docked at bottom */

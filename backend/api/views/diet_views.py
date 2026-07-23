@@ -28,7 +28,7 @@ class DietViewSet(viewsets.ModelViewSet):
     via signal handlers.
     """
 
-    queryset = Diet.objects.all().order_by("-id")
+    queryset = Diet.objects.all()
     serializer_class = DietSerializer
     permission_classes = [permissions.IsAuthenticated]
 

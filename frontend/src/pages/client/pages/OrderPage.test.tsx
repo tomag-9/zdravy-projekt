@@ -60,32 +60,30 @@ vi.mock("../../../context/OnboardingContext", () => ({
 vi.mock("../services/OrderService", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("../services/OrderService")>();
-
-  // We need to fix context issues since "this" might be lost in spread
   const originalDefault = actual.default;
+
+  // Statické metódy triedy sú non-enumerable, takže spread by ich nepreniesol,
+  // a ručný zoznam sa rozbije vždy, keď v OrderService pribudne interná metóda
+  // volaná cez `this` (napr. withClampedPackSeparately). Preto ich prenesieme
+  // všetky a naviažeme na originál — mockujeme len to, čo naozaj treba.
+  const bound: Record<string, unknown> = {};
+  let proto: unknown = originalDefault;
+  while (proto && proto !== Function.prototype && proto !== Object.prototype) {
+    for (const key of Object.getOwnPropertyNames(proto)) {
+      if (key in bound) continue;
+      const value = (originalDefault as unknown as Record<string, unknown>)[key];
+      bound[key] = typeof value === "function"
+        ? (value as (...args: unknown[]) => unknown).bind(originalDefault)
+        : value;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
 
   return {
     default: {
-      ...originalDefault,
+      ...bound,
       checkDeadline: vi.fn(),
       getAvailableDiets: vi.fn().mockReturnValue(["Bezlepková", "Diabetická"]),
-
-      // Re-implement or wrapper to ensure 'this' isn't vital or is bound
-      createEmptyMeal: () => {
-        // Manually replicate logic or call original bound
-        return originalDefault.createEmptyMeal.call(originalDefault);
-      },
-
-      updateMenuCount: originalDefault.updateMenuCount,
-      updateDiet: originalDefault.updateDiet,
-      enforceStructure: originalDefault.enforceStructure,
-      calculatePrevDayLunches: originalDefault.calculatePrevDayLunches,
-      getServerNow: originalDefault.getServerNow,
-      toLocalDateString: originalDefault.toLocalDateString,
-      isMealEmpty: originalDefault.isMealEmpty,
-      findLastNonZeroDay: originalDefault.findLastNonZeroDay,
-      mergeOrders: originalDefault.mergeOrders,
-      fastCopy: originalDefault.fastCopy,
     },
   };
 });
@@ -177,6 +175,54 @@ describe("OrderPage Logic & Triggers", () => {
     return data ? JSON.parse(data) : null;
   };
 
+  const getMealCard = (title: string) => {
+    // Text „Raňajky“ sa vyskytuje aj mimo karty, takže sa nedá brať prvý zásah —
+    // hľadáme kartu, ktorej vlastný .zp-meal-title sedí.
+    const cards = Array.from(document.querySelectorAll<HTMLElement>(".zp-meal"));
+    const card = cards.find(
+      (c) => c.querySelector(".zp-meal-title")?.textContent?.trim() === title,
+    );
+    if (!card) throw new Error(`Meal card "${title}" not found`);
+    return card;
+  };
+
+  const getCategoryRow = (card: HTMLElement, category: string) => {
+    const rows = Array.from(card.querySelectorAll<HTMLElement>(".zp-cat"));
+    const row = rows.find(
+      (r) => r.querySelector(".zp-cat-head")?.textContent?.trim() === category,
+    );
+    if (!row) throw new Error(`Category "${category}" not found in card`);
+    return row;
+  };
+
+  /**
+   * Prevádzku vracia len test, ktorý ju naozaj potrebuje. Keby ju vracal
+   * zdieľaný mock, `scopedKey` by localStorage kľúče začal scopovať podľa
+   * prevádzky a všetky ostatné testy by si prestali nájsť nasadené dáta.
+   */
+  const mockPrevadzkaWithPerMealMenus = () => {
+    const original = mockApiFetch.getMockImplementation()!;
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/prevadzky/")) {
+        return Promise.resolve(
+          makeMockResponse([
+            {
+              id: 11,
+              nazov: "Test prevádzka",
+              adresa: "",
+              celok: "Test celok",
+              visible_menus: ["A", "B", "C", "V"],
+              visible_menus_per_meal: { breakfast: ["A"], olovrant: ["A"] },
+              visible_meals: ["breakfast", "lunch", "olovrant"],
+              pack_separately_enabled: false,
+            },
+          ]),
+        );
+      }
+      return original(url, init);
+    });
+  };
+
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {
     const date = localDateStr();
     // 1. Seed existing order with Lunch data using VALID category keys (e.g. Škôlka)
@@ -244,6 +290,99 @@ describe("OrderPage Logic & Triggers", () => {
       const updated = getOrderData(date);
       expect(updated.lunch["Škôlka"].menuCounts["A"]).toBe(8);
     });
+  });
+
+  it("typed menu input selects value and empty blur commits 0", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 2 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: false, olovrant: false }),
+    );
+
+    renderPage();
+
+    const breakfastCard = getMealCard("Raňajky");
+    // Menu A má každá kategória, tak sa zúžime na tú, ktorú test nasadil.
+    const skolkaRow = getCategoryRow(breakfastCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+
+    fireEvent.focus(input);
+    expect((input as HTMLInputElement).selectionStart).toBe(0);
+    expect((input as HTMLInputElement).selectionEnd).toBe(String((input as HTMLInputElement).value).length);
+
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(getOrderData(date).breakfast["Škôlka"].menuCounts.A).toBe(0);
+    });
+  });
+
+  it("typed diet input uses the same cap as the +/- path", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 2 }, diets: { "Bez lepku": 1 } } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    // Názov diéty musí byť z konštanty DIETS — inak ho `enforceStructure`
+    // pri načítaní objednávky zahodí a počet diét vyjde 0.
+    (OrderService.getAvailableDiets as Mock).mockReturnValue(["Bez lepku"]);
+
+    renderPage();
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    fireEvent.click(await within(skolkaRow).findByText("1 diét"));
+
+    const dietInput = await screen.findByLabelText("Počet diéty Bez lepku");
+    // Cap je menuCounts.A = 2, takže napísaná 5 sa nesmie uložiť — rovnako ako
+    // by ju neprepustilo klikanie na +.
+    fireEvent.change(dietInput, { target: { value: "5" } });
+    fireEvent.blur(dietInput);
+
+    await waitFor(() => {
+      expect(getOrderData(date).lunch["Škôlka"].diets["Bez lepku"]).toBe(1);
+    });
+  });
+
+  it("hides breakfast and olovrant menu choices configured to only menu A", async () => {
+    mockPrevadzkaWithPerMealMenus();
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: true }),
+    );
+
+    renderPage();
+
+    // „Škôlka“ má v GROUP_CONFIG len menu A, takže rozdiel medzi chodmi vidno
+    // len na kategórii, ktorá menu B vôbec ponúka.
+    const row = (meal: string) => getCategoryRow(getMealCard(meal), "ZŠ 1.stupeň");
+
+    await waitFor(() => {
+      expect(within(row("Obed")).getByText("Menu B")).toBeInTheDocument();
+    });
+    expect(within(row("Raňajky")).queryByText("Menu B")).not.toBeInTheDocument();
+    expect(within(row("Olovrant")).queryByText("Menu B")).not.toBeInTheDocument();
   });
 
   it("Copy Breakfast: Copies from Previous Day Lunch", async () => {

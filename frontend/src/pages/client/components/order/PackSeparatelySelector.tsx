@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
+import NumericCountInput from './NumericCountInput';
 
 // 'fullDay' je celodenná objednávka — drží dáta mimo currentOrder, ale UI je rovnaké.
 type MealKey = 'breakfast' | 'lunch' | 'olovrant' | 'fullDay';
@@ -90,7 +91,14 @@ const PackSeparatelySelector = ({
                                             >
                                                 <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
                                             </button>
-                                            <span className={`count${item.count <= 0 ? ' zero' : ''}`}>{item.count}</span>
+                                            <NumericCountInput
+                                                value={item.count}
+                                                onCommit={(value) =>
+                                                    onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, value)
+                                                }
+                                                disabled={false}
+                                                ariaLabel={`Počet balení zvlášť pre ${item.keyName}`}
+                                            />
                                             <button
                                                 className="plus"
                                                 disabled={item.count >= item.orderedCount}
