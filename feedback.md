@@ -9,6 +9,31 @@ Stav: 🔴 čaká na odpoveď · 🟢 vyriešené · ⚪ info (netreba akciu)
 
 ---
 
+## 🔴 Reconcile 20.–22.7.2026 — Tier2 gramáž: 3 konkrétne nálezy (nie chyby appky)
+
+Prešiel som všetkých 58 gram diffov (16+23+19). Žiadny nie je výpočtová chyba appky —
+rozkladajú sa na: (a) count drift zo scrapu (±1 obed → celý gram blok posunutý, lebo
+scrape ťahá aktuálny EduPage stav), (b) 3 nálezy nižšie.
+
+**1. Filipa Nériho — typo v pečive (20.7).** Sub-riadok „bez orechov EPIPEN" (2 osoby)
+má v stĺpci *Grahamové pečivo* hodnotu **100** namiesto **2** (ostatné stĺpce sedia na
+2 porcie: 400/180/220/50). Reconcile preto číta pečivo 18+1+100 = **119** vs app **20**.
+→ Klient nech opraví bunku (100 → 2). Ak fakturuje pečivo z tabuľky, je o 98 ks vyššie.
+
+**2. Školička lúka — šalát 1,25× base (20.7 aj 22.7).** *Uhorkový/Ľadový šalát* má u
+Lúky **31,25 g/porcia** (156,25/5 aj 187,5/6; nomilk 31,25/62,5 → 31,25/os), kým polievka
+a hlavný chod sú base ×1,0 a Školička **les** má šalát **25 g**. Appka počíta 25 g
+(katalóg). → Otázka: je 31,25 g šalátu pre Lúku zámer (väčšia porcia), alebo chyba
+tabuľky? Ak zámer, appka to dnes nevie vyjadriť (per-prevádzka per-zložka gramáž).
+
+**3. Libellus — appka a tabuľka si odporujú (22.7).** EduPage má Libellus **obed** (4
+porcie), ktorý v tabuľke chýba (obed 0); tabuľka má **olovrant** (bublanina 675 = 9
+porcií), ktorý v EduPage nie je (scrape hlásil config drift). Libellus sa nahadzuje
+ručne. → Klient nech potvrdí: má sa Libellus obed z EduPage (4) fakturovať/doplniť do
+tabuľky? A odkiaľ berie olovrant, keď v EduPage nie je?
+
+---
+
 ## 🟢 Edulienka — zlomkové počty porcií (.25) vo vyúčtovaní
 
 Vyúčtovanie Edulienky uvádza **počty porcií v štvrtinách**, kým appka počíta celé objednané porcie.
@@ -57,6 +82,24 @@ deň prirátať **+1 porciu** navyše. Vyúčtuje sa im to na základe tabuľky.
 
 **Dôsledok:** Očakávaný rozdiel, dočasný (len tento týždeň), rieši sa mimo appky.
 Netreba opravovať.
+
+---
+
+## ⚪ Krásňanko KZ — zamestnanec: zdvojenie SKÚSENÉ a ZRUŠENÉ (22.7.)
+
+**Odpoveď klienta (21.7.):** *„KZ je klasik zamestnanec — počítame ho z dvojitú
+detskú porciu v našej tabuľke a pripočítavame k detským olovrantom."*
+
+**Skúsené 21.7.:** `KZ → 2 detské porcie` (nové pole `LetterRule.qty=2`), na obed aj
+olovrant. **Reconcile 20.–22.7 to vyvrátil pri obede:** appka +2/+2/+3 nad reál
+(30/24/31 vs 28/22/28) — reál ráta KZ pri obede ako **1**. Bez zdvojenia obed sedí
+presne (28/28, 22/22).
+
+**Zrušené 22.7.:** KZ späť na 1 dospelú porciu, `qty` mechanizmus odstránený.
+Dôsledok: olovrant Krásňanka je teraz −1 (reál 24/18 > app 23/17) = presne ten 1 KZ
+zamestnanec, ktorého klient **ručne** pridáva k detským olovrantom. Necháme mimo appky
+(rovnaká kategória ako ostatné ručné olovrant úpravy). Keby sa to niekedy chcelo
+dorovnať, muselo by to byť pravidlo **len na olovrant**, nikdy nie na obed.
 
 ---
 
@@ -220,8 +263,20 @@ v reálnom hárku počty olovrantov ručne upravuje, preto nesedia. Za 17.7.2026
 | Lúka | 6 | 10 | +4 |
 | Pramienok | 27 | 25 | −2 |
 
-Nie je to výpočtová chyba — je to data mismatch EduPage ↔ hárok. Treba rozhodnutie:
-má sa olovrant brať z EduPage (ako teraz), alebo ho odvodzovať z obeda / iného pravidla?
+Nie je to výpočtová chyba — je to data mismatch EduPage ↔ hárok.
+
+**Rozhodnuté (21.7.) — odpovede klienta:**
+- **Filipa Nériho:** *„kvôli ušetreniu času neriešime pár porcií olovrantu, hlavne im
+  nemôže prísť menej."* → ručná úprava klienta, appka počíta z EduPage správne. ⚪
+- **Krásňanko (±1):** KZ zamestnanec = 2 detské olovranty. Zdvojenie skúsené a
+  **zrušené** (rozbíjalo obed) — teraz olovrant −1, ručná úprava klienta ostáva mimo
+  appky (viď vyššie „Krásňanko KZ"). ⚪
+- **Libellus (+1):** *„nahadzujeme manuálne, ak tam je chyba tak je moja."* → ľudská
+  chyba klienta, nie appka. ⚪
+- **Pramienok (−2):** *„celodenka, počíta sa automaticky."* → appka odvodzuje olovrant
+  z obeda (`ODVODIT_Z_OBEDU`); **spevnené 21.7.**: olovrant sa teraz VŽDY vynúti = obed,
+  aj keď EduPage nesie vlastný olovrant. 🟢
+- Les/Lúka: ostávajú z EduPage (obed 11/11, 10/10 sedia); olovrant delta je real-side.
 
 **4. Ranajky + menu B/C/V sa vôbec neporovnávajú (slepé miesto).**
 `import_real_gram_distributions` z princípu číta len riadok `KLASIK` (obed: polievka +
