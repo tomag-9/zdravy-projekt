@@ -96,29 +96,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
     const packSeparatelyEnabled = prevadzky.find((item) => item.id === activePrevadzkaId)?.pack_separately_enabled ?? false;
 
-    const [settings] = useState(() => {
-        const defaultSettings = {
-            copyBreakfastFromPrevLunch: false,
-            copyOlovrantFromLunch: false,
-            applyDefaultLunch: false
-        };
-        const loaded = safeParse('appSettings', defaultSettings);
-        // Migrate legacy auto-copy flags: no longer user-configurable, force to false.
-        const migrated = {
-            ...loaded,
-            copyBreakfastFromPrevLunch: false,
-            copyOlovrantFromLunch: false
-        };
-        if (loaded.copyBreakfastFromPrevLunch || loaded.copyOlovrantFromLunch) {
-            try {
-                localStorage.setItem('appSettings', JSON.stringify(migrated));
-            } catch {
-                // Ignore persistence errors; settings will still be correct in memory.
-            }
-        }
-        return migrated;
-    });
-
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
 
     // State
@@ -183,7 +160,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // selectedDateRef ensures we always write under the correct (new) date key
     // without the race condition where the new selectedDate fires the effect with
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
-    useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => {
         if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
         localStorage.setItem(scopedKey('order', selectedDateRef.current), JSON.stringify(currentOrder));
@@ -475,50 +451,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // To be safe against "React Hook useEffect has missing dependencies", we include them.
     }, [activeMeals, selectedDate, currentOrder, touchedMeals, scopedKey]);
 
-    // Copy Logic - Olovrant from Lunch
-    useEffect(() => {
-        if (settings.copyOlovrantFromLunch && activeMeals.olovrant && !touchedMeals.has('olovrant')) {
-            // Only auto-copy if user hasn't touched olovrant explicitly
-            setCurrentOrder((prev) => ({
-                ...prev,
-                olovrant: JSON.parse(JSON.stringify(prev.lunch))
-            }));
-            // Mark olovrant as touched so it won't be auto-overwritten later
-            setTouchedMeals(prev => {
-                const next = new Set(prev);
-                next.add('olovrant');
-                return next;
-            });
-        }
-    }, [currentOrder.lunch, settings.copyOlovrantFromLunch, activeMeals.olovrant, touchedMeals]);
-
-    // Copy Logic - Breakfast from Prev Lunch
-    useEffect(() => {
-        if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast && !touchedMeals.has('breakfast')) {
-            // Only auto-copy if user hasn't touched breakfast
-            const prevDate = parseDate(selectedDate);
-            prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = OrderService.toLocalDateString(prevDate);
-            const prevOrderSaved = localStorage.getItem(scopedKey('order', prevDateStr));
-            if (prevOrderSaved) {
-                try {
-                    const prevOrder = JSON.parse(prevOrderSaved);
-                    if (prevOrder.lunch) {
-                        setCurrentOrder((prev) => ({
-                            ...prev,
-                            breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
-                        }));
-                        // Mark as touched
-                        setTouchedMeals(prev => {
-                            const n = new Set(prev);
-                            n.add('breakfast');
-                            return n;
-                        });
-                    }
-                } catch (e) { logger.error(e); }
-            }
-        }
-    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals, scopedKey]);
+    // Kopírovanie medzi chodmi je výhradne akcia používateľa (tlačidlá „Načítať z…“).
+    // Automatické kopírovanie na pozadí tu kedysi bolo, ale keďže sa spúšťalo len kým
+    // bol cieľový chod „nedotknutý“, raz zabralo a inokedy nie — presne tá nestabilita,
+    // ktorú klient hlásil. Jednorazová akcia je predvídateľná a hodnoty ostávajú
+    // ručne editovateľné.
 
     // Actions
 
@@ -818,6 +755,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return false;
     };
 
+    /** Immediately copy today’s current breakfast into lunch. Returns true if breakfast had data. */
+    const copyLunchFromCurrentBreakfast = (): boolean => {
+        if (OrderService.isMealEmpty(currentOrder.breakfast)) return false;
+        setCurrentOrder((prev) => ({
+            ...prev,
+            lunch: JSON.parse(JSON.stringify(prev.breakfast)),
+            status: 'draft',
+        }));
+        setActiveMeals(prev => ({ ...prev, lunch: true }));
+        setTouchedMeals(prev => { const n = new Set(prev); n.add('lunch'); return n; });
+        return true;
+    };
+
     /** Immediately copy today’s current lunch into olovrant. Returns true if lunch had data. */
     const copyOlovrantFromCurrentLunch = (): boolean => {
         if (OrderService.isMealEmpty(currentOrder.lunch)) return false;
@@ -848,6 +798,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         prevDayLunches,
         clearMeal,
         loadBreakfastFromPrevLunch,
+        copyLunchFromCurrentBreakfast,
         copyOlovrantFromCurrentLunch,
         submitOrder, deleteOrder,
         adminVisibleMenus,

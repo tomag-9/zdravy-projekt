@@ -215,6 +215,37 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
+  it("Copy Lunch: Copies data from Breakfast when triggered", async () => {
+    const date = localDateStr();
+    const mockOrder = {
+      status: "draft",
+      breakfast: { Škôlka: { menuCounts: { A: 8 }, diets: {} } },
+      lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+    };
+    localStorageMock.setItem(`order_${date}`, JSON.stringify(mockOrder));
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    const lunchTitle = screen.getAllByText("Obed")[0];
+    const lunchCard = lunchTitle.closest(".zp-meal");
+    expect(lunchCard).toBeInTheDocument();
+
+    const copyBtn = await within(lunchCard as HTMLElement).findByText(
+      /Načítať z raňajok/i,
+    );
+    fireEvent.click(copyBtn);
+
+    await waitFor(() => {
+      const updated = getOrderData(date);
+      expect(updated.lunch["Škôlka"].menuCounts["A"]).toBe(8);
+    });
+  });
+
   it("Copy Breakfast: Copies from Previous Day Lunch", async () => {
     const today = localDateStr();
     const prevDay = new Date();

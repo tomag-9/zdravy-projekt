@@ -52,6 +52,7 @@ const OrderPage = () => {
     adminVisibleMenus,
     globalDeadlines,
     loadBreakfastFromPrevLunch,
+    copyLunchFromCurrentBreakfast,
     copyOlovrantFromCurrentLunch,
     holidays,
     mealPlanAvailability,
@@ -355,16 +356,32 @@ const OrderPage = () => {
     }
     if (mealKey === "lunch") {
       return (
-        <button
-          className="zp-btn zp-btn--danger zp-btn--sm"
-          style={{ flex: 1 }}
-          onClick={() => {
-            clearMeal("lunch");
-            resetMealData("lunch");
-          }}
-        >
-          <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
-        </button>
+        <>
+          <button
+            className="zp-btn zp-btn--secondary zp-btn--sm"
+            style={{ flex: 1 }}
+            onClick={() => {
+              const copied = copyLunchFromCurrentBreakfast();
+              if (copied) {
+                toast.success("Obed načítaný z raňajok.");
+              } else {
+                toast.info("Raňajky sú prázdne, nie je čo kopírovať.");
+              }
+              resetMealData("lunch");
+            }}
+          >
+            <Copy style={{ width: 12, height: 12 }} /> Načítať z raňajok
+          </button>
+          <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
+            onClick={() => {
+              clearMeal("lunch");
+              resetMealData("lunch");
+            }}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+          </button>
+        </>
       );
     }
     if (mealKey === "olovrant") {
