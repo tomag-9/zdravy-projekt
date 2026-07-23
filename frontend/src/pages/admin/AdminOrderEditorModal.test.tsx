@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import { ReactNode } from 'react';
 import AdminOrderEditorModal from './AdminOrderEditorModal';
@@ -57,10 +57,33 @@ const BASE_PROPS = {
     visibleMenus: ['A', 'B'],
     visibleMeals: ['breakfast', 'lunch', 'olovrant'],
     visibleDiets: [1],
+    portionTypeNames: ['Jasle', 'Škôlka', 'ZŠ 1.stupeň', 'ZŠ 2.stupeň', 'Dospelý (SŠ)'],
+    packSeparatelyEnabled: false,
     allDiets: ALL_DIETS,
     existingOrder: null,
     onClose: vi.fn(),
     onSaved: vi.fn(),
+};
+
+const getRequestBody = () => {
+    const saveCall = mockApiFetch.mock.calls.find(([, options]) =>
+        options?.method === 'PATCH' || options?.method === 'POST',
+    );
+    expect(saveCall).toBeTruthy();
+    return JSON.parse(String(saveCall?.[1]?.body));
+};
+
+const getCategoryCard = (label: string) => {
+    const title = screen.getByText(label);
+    const card = title.closest('.zp-cat');
+    expect(card).toBeTruthy();
+    return card as HTMLElement;
+};
+
+const clickFirstPlus = (label: string) => {
+    const card = getCategoryCard(label);
+    const buttons = within(card).getAllByRole('button', { name: '+' });
+    fireEvent.click(buttons[0]);
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -259,5 +282,166 @@ describe('AdminOrderEditorModal', () => {
         expect(screen.queryByText('Raňajky')).not.toBeInTheDocument();
         expect(screen.getByText('Obed')).toBeInTheDocument();
         expect(screen.queryByText('Olovrant')).not.toBeInTheDocument();
+    });
+
+    it('renders a category present in the order but absent from the hardcoded list and preserves it in the PATCH payload', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{
+                    id: 7,
+                    date: '2026-07-30',
+                    data: {
+                        lunch: {
+                            Predškolák: {
+                                menuCounts: { A: 2 },
+                                diets: { 'Bez lepku': 0, 'Špeciálna': 0 },
+                            },
+                        },
+                    },
+                }}
+            />,
+        );
+
+        expect(screen.getByText('Predškolák')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            expect(body.data.lunch.Predškolák.menuCounts.A).toBe(2);
+        });
+    });
+
+    it('preserves special_diet_note in the PATCH payload when saving without editing it', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{
+                    id: 7,
+                    date: '2026-07-30',
+                    data: {
+                        lunch: {
+                            Škôlka: {
+                                menuCounts: { A: 1 },
+                                diets: { 'Bez lepku': 0, 'Špeciálna': 0 },
+                            },
+                        },
+                        special_diet_note: 'Bez paradajok',
+                    },
+                }}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            expect(body.data.special_diet_note).toBe('Bez paradajok');
+        });
+    });
+
+    it('updates special_diet_note in the saved payload when the textarea is edited', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{ id: 7, date: '2026-07-30', data: {} }}
+            />,
+        );
+
+        fireEvent.change(screen.getByLabelText(/poznámka k špeciálnej diéte/i), {
+            target: { value: 'Bez mlieka a vajec' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            expect(body.data.special_diet_note).toBe('Bez mlieka a vajec');
+        });
+    });
+
+    it('renders pack-separately UI only when enabled and saves changes under packSeparately', async () => {
+        mockApiFetch.mockResolvedValue(makeMockResponse({ id: 7 }, true));
+
+        const existingOrder = {
+            id: 7,
+            date: '2026-07-30',
+            data: {
+                lunch: {
+                    Škôlka: {
+                        menuCounts: { A: 2, B: 0 },
+                        diets: { 'Bez lepku': 1, 'Špeciálna': 0 },
+                    },
+                },
+            },
+        };
+
+        const { rerender } = render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                packSeparatelyEnabled={false}
+                existingOrder={existingOrder}
+            />,
+        );
+
+        expect(screen.queryByText('Zabaliť zvlášť')).not.toBeInTheDocument();
+
+        rerender(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                packSeparatelyEnabled={true}
+                existingOrder={existingOrder}
+            />,
+        );
+
+        expect(screen.getByText('Zabaliť zvlášť')).toBeInTheDocument();
+
+        // Karta je zbalená, kým nie je nič označené, takže tlačidlo „Pridať výnimku“
+        // ešte neexistuje — selector sa otvára prepínačom v hlavičke karty (rovnako
+        // ako na klientskej strane).
+        fireEvent.click(screen.getByRole('switch', { name: /Zabaliť zvlášť - prepnúť/i }));
+
+        // „+“ je aj v riadkoch kategórií, tak sa držíme vnútra otvoreného selectora.
+        const sheet = screen.getByRole('heading', { name: 'Pridať výnimku' }).closest('.zp-sheet') as HTMLElement;
+        const row = within(sheet).getByText(/Škôlka · Menu A/i).closest('.zp-diet-row') as HTMLElement;
+        fireEvent.click(within(row).getByLabelText('+'));
+        fireEvent.click(within(sheet).getByLabelText('Zavrieť'));
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            // `cleanupPackSeparately` zahodí celý objekt až keď sú prázdne obe vetvy,
+            // takže prázdne `diets` tu zostáva.
+            expect(body.data.lunch.Škôlka.packSeparately).toEqual({ menus: { A: 1 }, diets: {} });
+        });
+    });
+
+    it('replicates the single full-day MealData into every visible meal in the saved payload', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                visibleMeals={['breakfast', 'olovrant']}
+                existingOrder={{ id: 7, date: '2026-07-30', data: {} }}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /celý deň rovnaký/i }));
+        clickFirstPlus('Škôlka');
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            expect(body.data.breakfast.Škôlka.menuCounts.A).toBe(1);
+            expect(body.data.olovrant.Škôlka.menuCounts.A).toBe(1);
+            expect(body.data.lunch.Škôlka.menuCounts.A).toBe(0);
+        });
     });
 });
