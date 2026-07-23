@@ -13,6 +13,12 @@ interface Diet {
   name: string;
 }
 
+interface PortionType {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
 interface UserProfile {
   is_edupage: boolean;
   api_identifier: string;
@@ -49,6 +55,7 @@ interface OrderData {
   soup?: string;
   breakfast?: unknown;
   olovrant?: unknown;
+  special_diet_note?: unknown;
 }
 
 interface DailyOrder {
@@ -75,6 +82,7 @@ const ClientDetail: React.FC = () => {
   const [facility, setFacility] = useState<FacilityDetail | null>(null);
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
+  const [portionTypeNames, setPortionTypeNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "order_note">("dashboard");
@@ -162,6 +170,22 @@ const ClientDetail: React.FC = () => {
       }
     } catch (e) {
       logger.error(e);
+    }
+  }, [apiFetch]);
+
+  const fetchPortionTypes = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/portion-types/`);
+      if (res.ok) {
+        const data = await res.json();
+        const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
+        setPortionTypeNames(items.filter((item) => item.is_active).map((item) => item.name));
+      } else {
+        setPortionTypeNames([]);
+      }
+    } catch (e) {
+      logger.error(e);
+      setPortionTypeNames([]);
     }
   }, [apiFetch]);
 
@@ -262,8 +286,8 @@ const ClientDetail: React.FC = () => {
     setRecentOrders([]);
     setExpandedOrderId(null);
     setActiveTab("dashboard");
-    Promise.all([fetchFacility(), fetchDiets()]).finally(() => setLoading(false));
-  }, [fetchFacility, fetchDiets]);
+    Promise.all([fetchFacility(), fetchDiets(), fetchPortionTypes()]).finally(() => setLoading(false));
+  }, [fetchFacility, fetchDiets, fetchPortionTypes]);
 
   useEffect(() => {
     if (activeTab === "dashboard") {
@@ -424,6 +448,10 @@ const ClientDetail: React.FC = () => {
                       if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
                       const summaryText = summaries.length > 0 ? summaries.join(", ") : "-";
                       const isExpanded = expandedOrderId === order.id;
+                      const specialDietNote =
+                        typeof order.data.special_diet_note === "string"
+                          ? order.data.special_diet_note.trim()
+                          : "";
 
                       return (
                         <React.Fragment key={order.id}>
@@ -486,6 +514,12 @@ const ClientDetail: React.FC = () => {
                                   <div style={{ marginTop: 16, paddingTop: 8, borderTop: "1px solid var(--line-soft)" }}>
                                     <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", marginRight: 8 }}>Polievka:</span>
                                     <span>{order.data.soup}</span>
+                                  </div>
+                                )}
+                                {specialDietNote && (
+                                  <div style={{ marginTop: 16, paddingTop: 8, borderTop: "1px solid var(--line-soft)" }}>
+                                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", marginRight: 8 }}>Špeciálna diéta:</span>
+                                    <span>{specialDietNote}</span>
                                   </div>
                                 )}
                               </td>
@@ -638,6 +672,8 @@ const ClientDetail: React.FC = () => {
           visibleMenus={orderEditorMenus}
           visibleMeals={orderEditorMeals}
           visibleDiets={orderEditorDiets}
+          portionTypeNames={portionTypeNames}
+          packSeparatelyEnabled={packSeparatelyEnabled}
           allDiets={allDiets}
           existingOrder={editOrderTarget ?? null}
           onClose={() => {
