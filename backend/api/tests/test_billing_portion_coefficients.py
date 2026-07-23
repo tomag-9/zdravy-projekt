@@ -149,6 +149,30 @@ def test_merge_keeps_distinct_rows_apart():
     assert len(_merge_billed_sub_rows(rows)) == 3
 
 
+def test_merge_keeps_zvlast_rows_apart():
+    rows = [
+        {
+            "type": "zvlast",
+            "meal": "main_course",
+            "variant": "A",
+            "portion_name": "Škôlka",
+            "label": "Škôlka - Menu A - zvlášť",
+            "count": 1,
+            "col_grams": [["200.00"]],
+        },
+        {
+            "type": "standard",
+            "meal": "main_course",
+            "variant": "A",
+            "portion_name": "Škôlka",
+            "label": "Škôlka - Obed Menu A",
+            "count": 3,
+            "col_grams": [["600.00"]],
+        },
+    ]
+    assert len(_merge_billed_sub_rows(rows)) == 2
+
+
 def test_merge_handles_empty_gram_groups():
     """Riadok prispieva gramami len do svojej stĺpcovej skupiny, inde má []."""
     merged = _merge_billed_sub_rows(
@@ -272,6 +296,53 @@ def test_dashboard_keeps_predskolak_separate_without_coefficient():
     assert by_label["Škôlka - Hlavný chod"]["count"] == 7
     assert by_label["Predškolák - Hlavný chod"]["count"] == 1
     assert by_label["Predškolák - Hlavný chod"]["col_grams"] == [["250.00"]]
+
+
+@pytest.mark.django_db
+def test_dashboard_emits_zvlast_row_without_inflating_standard_total():
+    call_command("init_reference_data")
+
+    template = MealTemplate.objects.create(
+        name="Obed 200g",
+        category="main_course",
+        components=[{"label": "Hlavné jedlo", "grams": "200", "unit": "g"}],
+        base_weight_grams="200",
+    )
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 14))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=template, category="main_course", menu_variant="A"
+    )
+
+    celok = Celok.objects.create(nazov="Pack zvlášť")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Pack zvlášť")
+    user = User.objects.create_user(username="pack@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=plan.date,
+        data={
+            "lunch": {
+                "Škôlka": {
+                    "menuCounts": {"A": 5},
+                    "diets": {"NO MILK": 2},
+                    "packSeparately": {"menus": {"A": 2}, "diets": {"NO MILK": 1}},
+                }
+            }
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+
+    assert row["standard_total_count"] == 3
+    assert row["total_count"] == 5
+
+    zvlast_rows = [sr for sr in row["sub_rows"] if sr["type"] == "zvlast"]
+    assert [sr["label"] for sr in zvlast_rows] == [
+        "Škôlka - Menu A - zvlášť",
+        "Škôlka - NO MILK - zvlášť",
+    ]
+    assert [sr["count"] for sr in zvlast_rows] == [2, 1]
 
 
 # ── Formát počtu ──────────────────────────────────────────────────────────────

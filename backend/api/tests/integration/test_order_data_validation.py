@@ -71,6 +71,24 @@ class TestOrderDataValidation:
         )
         assert response.status_code == status.HTTP_201_CREATED
 
+    def test_pack_separately_subset_accepted(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 3},
+                        "diets": {"Bez lepku": 2},
+                        "packSeparately": {
+                            "menus": {"A": 2},
+                            "diets": {"Bez lepku": 1},
+                        },
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
     # ------------------------------------------------------------------ #
     # Unknown top-level keys
     # ------------------------------------------------------------------ #
@@ -140,6 +158,38 @@ class TestOrderDataValidation:
             },
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_pack_separately_menu_exceeding_base_rejected(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 1},
+                        "diets": {},
+                        "packSeparately": {"menus": {"A": 2}},
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "nemôže byť väčšie" in str(response.data)
+
+    def test_pack_separately_diet_exceeding_base_rejected(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 2},
+                        "diets": {"Bez lepku": 1},
+                        "packSeparately": {"diets": {"Bez lepku": 2}},
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "nemôže byť väčšie" in str(response.data)
 
     # ------------------------------------------------------------------ #
     # Non-integer counts

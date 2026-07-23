@@ -6,10 +6,11 @@ import DaySelector from "../components/order/DaySelector";
 import MealCard from "../components/order/MealCard";
 import CategoryRow from "../components/order/CategoryRow";
 import DietSelector from "../components/order/DietSelector";
+import PackSeparatelySelector from "../components/order/PackSeparatelySelector";
 import OrderSummary from "../components/order/OrderSummary";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, CalendarDays } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, CalendarDays, PackagePlus, Minus, Plus } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
+import OrderService, { CategoryData, DailyOrder, MealData } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
@@ -35,12 +36,14 @@ const OrderPage = () => {
     fullDayData,
     updateFullDayMenuCount,
     updateFullDayDiet,
+    updateFullDayPackSeparately,
     clearFullDay,
     specialDietNote,
     setSpecialDietNote,
     currentOrder,
     updateMenuCount,
     updateDiet,
+    updatePackSeparately,
     enabledCategories,
     clearMeal,
     getAvailableDiets,
@@ -57,6 +60,7 @@ const OrderPage = () => {
     chosenPrevadzka,
     setChosenPrevadzka,
     activePrevadzka,
+    packSeparatelyEnabled,
   } = useApp();
 
   const getOccupiedMenus = (mealKey: string): Set<string> => {
@@ -72,6 +76,7 @@ const OrderPage = () => {
     meal: "breakfast" | "lunch" | "olovrant" | "fullDay";
     category: string;
   } | null>(null);
+  const [activePackSeparatelyModal, setActivePackSeparatelyModal] = useState<{ scope: "order" } | null>(null);
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
   const [showZeroModal, setShowZeroModal] = useState(false);
@@ -194,6 +199,68 @@ const OrderPage = () => {
     });
     return total;
   };
+
+  const buildPackSeparatelyItems = (mealData?: MealData) =>
+    CATEGORIES.filter(category => enabledCategories.includes(category)).flatMap((category) => {
+      const categoryData = mealData?.[category];
+      if (!categoryData) return [];
+
+      const menuItems = Object.entries(categoryData.menuCounts || {})
+        .filter(([, orderedCount]) => orderedCount > 0)
+        .map(([menuKey, orderedCount]) => ({
+          category,
+          kind: "menus" as const,
+          keyName: menuKey,
+          orderedCount,
+          count: categoryData.packSeparately?.menus?.[menuKey] || 0,
+        }));
+
+      const dietItems = Object.entries(categoryData.diets || {})
+        .filter(([, orderedCount]) => orderedCount > 0)
+        .map(([dietKey, orderedCount]) => ({
+          category,
+          kind: "diets" as const,
+          keyName: dietKey,
+          orderedCount,
+          count: categoryData.packSeparately?.diets?.[dietKey] || 0,
+        }));
+
+      return [...menuItems, ...dietItems];
+    });
+
+  // Celodenka drží porcie v `fullDayData` mimo `currentOrder` — bez tejto vetvy by
+  // blok „zabaliť zvlášť“ pri zapnutej celodenke nemal z čoho postaviť položky.
+  const packSeparatelySections = (
+    fullDayOrder
+      ? [{ meal: "fullDay" as const, mealLabel: "Celý deň", items: buildPackSeparatelyItems(fullDayData) }]
+      : visibleMealsList.map(({ key, label }) => ({
+          meal: key as MealKey,
+          mealLabel: label,
+          items: buildPackSeparatelyItems(currentOrder[key as MealKey]),
+        }))
+  ).filter((section) => section.items.length > 0);
+
+  const handleUpdatePackSeparately = (
+    meal: MealKey | "fullDay",
+    category: string,
+    kind: "menus" | "diets",
+    key: string,
+    count: number
+  ) => {
+    if (meal === "fullDay") {
+      updateFullDayPackSeparately(category, kind, key, count);
+      return;
+    }
+    updatePackSeparately(meal, category, kind, key, count);
+  };
+
+  const activePackSeparatelyItems = packSeparatelySections
+    .map((section) => ({
+      meal: section.meal,
+      mealLabel: section.mealLabel,
+      items: section.items.filter((item) => item.count > 0)
+    }))
+    .filter((section) => section.items.length > 0);
 
   const hasSpecialDietOrdered = (): boolean => {
     const checkMeal = (meal: Record<string, CategoryData>) =>
@@ -494,6 +561,74 @@ const OrderPage = () => {
     </div>
   );
 
+  const packSeparatelyContent = packSeparatelyEnabled && (
+    <MealCard
+      title="Zabaliť zvlášť"
+      icon={PackagePlus}
+      isActive={activePackSeparatelyItems.length > 0}
+      onToggle={() => setActivePackSeparatelyModal({ scope: "order" })}
+      copyAction={
+        <button
+          className="zp-btn zp-btn--secondary zp-btn--sm"
+          style={{ flex: 1 }}
+          onClick={() => setActivePackSeparatelyModal({ scope: "order" })}
+        >
+          <PackagePlus style={{ width: 12, height: 12 }} /> Pridať výnimku
+        </button>
+      }
+      statusMessage={null}
+    >
+      <div>
+        {activePackSeparatelyItems.length === 0 ? (
+          <div className="zp-empty" style={{ margin: "8px 0 0" }}>
+            <p>Zatiaľ nemáte nič označené na balenie zvlášť.</p>
+          </div>
+        ) : (
+          activePackSeparatelyItems.map((section) => (
+            <div key={section.meal} style={{ marginBottom: 12 }}>
+              {activePackSeparatelyItems.length > 1 && (
+                <div className="zp-cat-head" style={{ marginBottom: 8 }}>{section.mealLabel}</div>
+              )}
+              {section.items.map((item) => (
+                <div
+                  key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}`}
+                  className={`zp-diet-row${item.count > 0 ? " active" : ""}`}
+                >
+                  <div>
+                    <span className="zp-diet-label">
+                      {item.category} · {item.kind === "menus" ? `Menu ${item.keyName}` : item.keyName}
+                    </span>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
+                      Limit objednávky: {item.orderedCount}
+                    </div>
+                  </div>
+                  <div className="zp-counter">
+                    <button
+                      disabled={item.count <= 0}
+                      aria-label="−"
+                      onClick={() => handleUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count - 1)}
+                    >
+                      <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
+                    </button>
+                    <span className={`count${item.count <= 0 ? " zero" : ""}`}>{item.count}</span>
+                    <button
+                      className="plus"
+                      disabled={item.count >= item.orderedCount}
+                      aria-label="+"
+                      onClick={() => handleUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count + 1)}
+                    >
+                      <Plus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+      </div>
+    </MealCard>
+  );
+
   const modals = (
     <>
       {activeDietModal && (() => {
@@ -518,6 +653,17 @@ const OrderPage = () => {
           />
         );
       })()}
+
+      {activePackSeparatelyModal && (
+        <PackSeparatelySelector
+          isOpen={true}
+          onClose={() => setActivePackSeparatelyModal(null)}
+          sections={packSeparatelySections}
+          onUpdatePackSeparately={(meal, category, kind, key, count) =>
+            handleUpdatePackSeparately(meal, category, kind, key, count)
+          }
+        />
+      )}
 
       <ConfirmationModal
         isOpen={showZeroModal}
@@ -571,6 +717,7 @@ const OrderPage = () => {
         <div className="pc-order-grid">
           <div>
             {mealCardsContent}
+            {packSeparatelyContent}
             {specialDietNoteContent}
             <p className="zp-thanks">
               Ďakujeme za Vašu objednávku
@@ -687,6 +834,7 @@ const OrderPage = () => {
         )}
 
         {mealCardsContent}
+        {packSeparatelyContent}
 
         {specialDietNoteContent}
 

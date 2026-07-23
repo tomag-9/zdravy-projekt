@@ -34,6 +34,24 @@ NON_EMPTY_DATA = {
     "olovrant": {},
 }
 
+NON_EMPTY_DATA_WITH_PACK_SEPARATELY = {
+    "breakfast": {
+        "Dospelý": {
+            "menuCounts": {"A": 1},
+            "diets": {},
+            "packSeparately": {"menus": {"A": 1}},
+        }
+    },
+    "lunch": {
+        "Dospelý": {
+            "menuCounts": {"B": 2},
+            "diets": {"Bez lepku": 1},
+            "packSeparately": {"menus": {"B": 1}, "diets": {"Bez lepku": 1}},
+        }
+    },
+    "olovrant": {},
+}
+
 EMPTY_DATA = {
     "breakfast": {"Dospelý": {"menuCounts": {"A": 0}, "diets": {}}},
     "lunch": {},
@@ -232,6 +250,16 @@ class TestBuildAutoData:
         assert auto_data["breakfast"] == {}
         assert auto_data["lunch"] == {}
 
+    def test_pack_separately_is_carried_forward(self):
+        auto_data = _build_auto_data(
+            DailyOrder(data=NON_EMPTY_DATA_WITH_PACK_SEPARATELY), visible_meals=[]
+        )
+
+        assert (
+            auto_data["lunch"]["Dospelý"]["packSeparately"]
+            == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
+        )
+
 
 @pytest.mark.django_db
 class TestApplyAutoOrders:
@@ -317,6 +345,23 @@ class TestApplyAutoOrders:
         # Other meals must be empty
         assert auto.data.get("breakfast") == {}
         assert auto.data.get("olovrant") == {}
+
+    def test_apply_auto_orders_carries_pack_separately_forward(self, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=MONDAY,
+            data=NON_EMPTY_DATA_WITH_PACK_SEPARATELY,
+        )
+
+        apply_auto_orders(target_date=TUESDAY)
+
+        auto = DailyOrder.objects.get(user=user, prevadzka=prevadzka, date=TUESDAY)
+        assert (
+            auto.data["lunch"]["Dospelý"]["packSeparately"]
+            == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
+        )
 
     def test_idempotency_no_duplicates(self, user):
         """Running apply_auto_orders twice must not create duplicate orders."""

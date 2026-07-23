@@ -31,7 +31,8 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
     const activePrevadzka = prevadzkaState.single ?? chosenPrevadzka;
     const orderState = useOrder(
         activePrevadzka?.id,
-        prevadzkaState.needsChoice && !chosenPrevadzka
+        prevadzkaState.needsChoice && !chosenPrevadzka,
+        prevadzkaState.prevadzky
     );
     const { logout } = useAuth();
 

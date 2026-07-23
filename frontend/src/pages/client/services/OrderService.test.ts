@@ -17,6 +17,7 @@ describe('OrderService', () => {
                 expect(meal).toHaveProperty(category);
                 expect(meal[category]).toHaveProperty('menuCounts');
                 expect(meal[category]).toHaveProperty('diets');
+                expect(meal[category]).toHaveProperty('packSeparately');
             });
         });
     });
@@ -102,6 +103,47 @@ describe('OrderService', () => {
 
             const updatedOrder = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
             expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(0); // Should remain 0
+        });
+
+        it('should reduce pack separately diets when diet count drops', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 4);
+            order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
+            order = OrderService.updatePackSeparately(order, 'lunch', 'Škôlka', 'diets', 'Bez lepku', 3);
+
+            const updatedOrder = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 1);
+            expect(updatedOrder.lunch['Škôlka'].packSeparately?.diets['Bez lepku']).toBe(1);
+        });
+    });
+
+    describe('updatePackSeparately', () => {
+        it('should clamp pack separately menu count to ordered count', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 2);
+
+            const updatedOrder = OrderService.updatePackSeparately(order, 'lunch', 'Škôlka', 'menus', 'A', 5);
+            expect(updatedOrder.lunch['Škôlka'].packSeparately?.menus.A).toBe(2);
+        });
+
+        it('should reduce pack separately menu count when ordered menu count drops', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 4);
+            order = OrderService.updatePackSeparately(order, 'lunch', 'Škôlka', 'menus', 'A', 4);
+
+            const updatedOrder = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 1);
+            expect(updatedOrder.lunch['Škôlka'].packSeparately?.menus.A).toBe(1);
         });
     });
 

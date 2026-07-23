@@ -175,6 +175,40 @@ describe('AdminOrderEditorModal', () => {
         expect(BASE_PROPS.onSaved).toHaveBeenCalledTimes(1);
     });
 
+    it('preserves packSeparately data when editing an existing order', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{
+                    id: 7,
+                    date: '2099-03-01',
+                    data: {
+                        lunch: {
+                            Škôlka: {
+                                menuCounts: { A: 2, B: 0 },
+                                diets: { 'Bez lepku': 0 },
+                                packSeparately: { menus: { A: 1 }, diets: {} },
+                            },
+                        },
+                    },
+                }}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+
+        await waitFor(() => {
+            const patchCall = mockApiFetch.mock.calls.find(([url, options]) =>
+                String(url).includes('/orders/7/') && options?.method === 'PATCH',
+            );
+            expect(patchCall).toBeTruthy();
+            const body = JSON.parse(String(patchCall?.[1]?.body));
+            expect(body.data.lunch.Škôlka.packSeparately).toEqual({ menus: { A: 1 }, diets: {} });
+        });
+    });
+
     it('shows error toast and does not call onSaved when API fails', async () => {
         mockApiFetch.mockRejectedValueOnce(new Error('network error'));
 

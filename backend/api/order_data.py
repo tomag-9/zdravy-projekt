@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Mapping
 
 MEAL_KEYS = ("breakfast", "lunch", "olovrant")
@@ -25,6 +25,7 @@ class MealCategory:
     name: str  # názov porcie (Škôlka, ZŠ 1.stupeň…) — gramáž ho mapuje na PortionType
     menu_counts: Mapping[str, Any]
     diets: Mapping[str, Any]
+    pack_separately: Mapping[str, Any] = field(default_factory=dict)
     prevadzka: str | None = None  # None = záznam bez úrovne prevádzky (legacy)
 
     @property
@@ -35,6 +36,10 @@ class MealCategory:
 def _is_leaf(value: Any) -> bool:
     """Leaf = {"menuCounts": ..., "diets": ...} — najhlbšia úroveň dát."""
     return isinstance(value, Mapping) and ("menuCounts" in value or "diets" in value)
+
+
+def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 class OrderData:
@@ -101,8 +106,9 @@ class OrderData:
         return MealCategory(
             meal=meal,
             name=category_name,
-            menu_counts=menu_counts if isinstance(menu_counts, Mapping) else {},
-            diets=diets if isinstance(diets, Mapping) else {},
+            menu_counts=_mapping_or_empty(menu_counts),
+            diets=_mapping_or_empty(diets),
+            pack_separately=_mapping_or_empty(details.get("packSeparately")),
             prevadzka=prevadzka,
         )
 

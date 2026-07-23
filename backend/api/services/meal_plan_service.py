@@ -83,6 +83,23 @@ def _merge_billed_sub_rows(sub_rows: list[dict]) -> list[dict]:
     return [merged[key] for key in order]
 
 
+def _extract_pack_counts(raw_value: Any) -> dict[str, int]:
+    if not isinstance(raw_value, dict):
+        return {}
+    return {
+        str(key): count
+        for key, value in raw_value.items()
+        if (
+            count := (
+                max(int(value), 0)
+                if isinstance(value, int) and not isinstance(value, bool)
+                else 0
+            )
+        )
+        > 0
+    }
+
+
 def _sum_col_grams(left: list, right: list) -> list:
     """Sčíta dve serializované gramážové mriežky (list skupín × komponentov)."""
     result = []
@@ -751,6 +768,11 @@ class MealPlanService:
                         )
                         menu_counts = category.menu_counts
                         diets = category.diets
+                        pack_separately = (
+                            category.pack_separately
+                            if isinstance(category.pack_separately, dict)
+                            else {}
+                        )
 
                         total_diet_count = sum(
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()
@@ -866,6 +888,59 @@ class MealPlanService:
                             )
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += billed_diet_count
+
+                        pack_menu_counts = _extract_pack_counts(
+                            pack_separately.get("menus")
+                        )
+                        for variant, pack_count in sorted(
+                            pack_menu_counts.items(),
+                            key=lambda kv: (
+                                VARIANT_ORDER.index(_normalize_variant(kv[0]))
+                                if _normalize_variant(kv[0]) in VARIANT_ORDER
+                                else 99
+                            ),
+                        ):
+                            pack_grams = _col_grams(
+                                meal, variant, coeff, pack_count, portion_name
+                            )
+                            sub_rows.append(
+                                {
+                                    "type": "zvlast",
+                                    "meal": meal,
+                                    "variant": variant,
+                                    "portion_name": display_portion_name,
+                                    "label": (
+                                        f"{display_portion_name} - "
+                                        f"{'Menu ' + variant if variant else MEAL_LABELS[meal]} - zvlášť"
+                                    ),
+                                    "count": _billed_count(pack_count, billing_coeff),
+                                    "col_grams": pack_grams,
+                                }
+                            )
+
+                        pack_diet_counts = _extract_pack_counts(
+                            pack_separately.get("diets")
+                        )
+                        for diet_name, pack_count in sorted(pack_diet_counts.items()):
+                            pack_diet_grams = _col_grams_diet(
+                                meal, diet_name, coeff, pack_count, portion_name
+                            )
+                            sub_rows.append(
+                                {
+                                    "type": "zvlast",
+                                    "meal": meal,
+                                    "portion_name": display_portion_name,
+                                    "diet_name": diet_name,
+                                    "label": (
+                                        f"{display_portion_name} - {diet_name} - zvlášť"
+                                    ),
+                                    "diet_color": diet_color_map.get(
+                                        diet_name, "#FDE68A"
+                                    ),
+                                    "count": _billed_count(pack_count, billing_coeff),
+                                    "col_grams": pack_diet_grams,
+                                }
+                            )
 
             for correction in order_data.get("__gram_corrections__", []):
                 if not isinstance(correction, dict):

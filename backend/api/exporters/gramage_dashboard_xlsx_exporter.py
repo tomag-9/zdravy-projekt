@@ -186,7 +186,7 @@ class GramageDashboardXLSXExporter:
             for sr in row["sub_rows"]:
                 f = (
                     diet_row_fill(sr)
-                    if sr["type"] == "diet"
+                    if sr["type"] in {"diet", "zvlast"}
                     else menu_variant_fill(sr["label"])
                 )
                 write_row(
@@ -194,7 +194,7 @@ class GramageDashboardXLSXExporter:
                     sr["count"],
                     sr["col_grams"],
                     fill=f,
-                    indent=1 if sr["type"] == "diet" else 0,
+                    indent=1 if sr["type"] in {"diet", "zvlast"} else 0,
                 )
 
             write_summary_row(

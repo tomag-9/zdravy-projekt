@@ -76,6 +76,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "pack_separately_enabled",
             "admin_order_note",
             "orders_count",
             "client_user_id",
