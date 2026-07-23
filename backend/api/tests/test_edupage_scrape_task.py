@@ -1,12 +1,19 @@
 import datetime
+import json
 
 import pytest
 from django.contrib.auth.models import User
 from django.core import management
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 
 from api.edupage_scraper import ScrapeResult
 from api.models import DailyOrder, GlobalSettings, UserProfile
+from api.signals import (
+    EDUPAGE_MORNING_SCRAPE_HOUR,
+    EDUPAGE_SCRAPE_TASK_PREFIX,
+    _sync_edupage_scrape_schedule,
+)
 from api.tasks import scrape_edupage_orders_task
 
 
@@ -260,6 +267,34 @@ def test_edupage_scrape_skips_without_recording_on_real_scrape_failure(
     assert not DailyOrder.objects.filter(user=edupage_user, date=target_date).exists()
     assert result["scraped"] == 0
     assert result["skipped"] == 1
+
+
+@pytest.mark.django_db
+def test_sync_edupage_scrape_schedule_creates_and_keeps_morning_task():
+    settings_instance = GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(21, 0),
+        deadline_olovrant=datetime.time(10, 0),
+        edupage_auto_scrape_enabled=True,
+    )
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    morning_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
+    morning_task = PeriodicTask.objects.get(name=morning_name)
+    assert morning_task.task == "api.tasks.scrape_edupage_orders_task"
+    assert json.loads(morning_task.kwargs) == {}
+    assert morning_task.enabled is True
+    assert morning_task.crontab.minute == "0"
+    assert morning_task.crontab.hour == str(EDUPAGE_MORNING_SCRAPE_HOUR)
+    assert morning_task.crontab.day_of_week == "1-5"
+    assert morning_task.crontab.day_of_month == "*"
+    assert morning_task.crontab.month_of_year == "*"
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    assert PeriodicTask.objects.filter(name=morning_name).count() == 1
 
 
 @pytest.mark.django_db

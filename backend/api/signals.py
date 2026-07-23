@@ -29,6 +29,7 @@ WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
 EDUPAGE_SCRAPE_OFFSET_MINUTES = 30
+EDUPAGE_MORNING_SCRAPE_HOUR = 8
 
 
 def _capture_signal_failure(exc: Exception, area: str) -> None:
@@ -361,6 +362,37 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
             groups.setdefault((deadline, is_day_before), []).append(meal_type)
 
         new_task_names: set[str] = set()
+
+        morning_task_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
+        new_task_names.add(morning_task_name)
+        morning_schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute=0,
+            hour=EDUPAGE_MORNING_SCRAPE_HOUR,
+            day_of_week="1-5",
+            day_of_month="*",
+            month_of_year="*",
+            timezone=settings.TIME_ZONE,
+        )
+        PeriodicTask.objects.update_or_create(
+            name=morning_task_name,
+            defaults={
+                "task": "api.tasks.scrape_edupage_orders_task",
+                "crontab": morning_schedule,
+                "args": json.dumps([]),
+                "kwargs": json.dumps({}),
+                "enabled": True,
+                "description": (
+                    "Edupage scrape: morning refresh of today's counts for all meals."
+                ),
+            },
+        )
+        logger.info(
+            "Edupage scrape task synced: %s → %02d:%02d Mon–Fri (tz: %s)",
+            morning_task_name,
+            EDUPAGE_MORNING_SCRAPE_HOUR,
+            0,
+            settings.TIME_ZONE,
+        )
 
         for (deadline, is_day_before), meal_types_group in groups.items():
             dt = datetime.datetime.combine(datetime.date.today(), deadline)
