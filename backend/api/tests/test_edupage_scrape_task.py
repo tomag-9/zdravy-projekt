@@ -9,11 +9,7 @@ from django_celery_beat.models import PeriodicTask
 
 from api.edupage_scraper import ScrapeResult
 from api.models import DailyOrder, GlobalSettings, UserProfile
-from api.signals import (
-    EDUPAGE_MORNING_SCRAPE_HOUR,
-    EDUPAGE_SCRAPE_TASK_PREFIX,
-    _sync_edupage_scrape_schedule,
-)
+from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX, _sync_edupage_scrape_schedule
 from api.tasks import scrape_edupage_orders_task
 
 
@@ -270,97 +266,6 @@ def test_edupage_scrape_skips_without_recording_on_real_scrape_failure(
 
 
 @pytest.mark.django_db
-def test_sync_edupage_scrape_schedule_creates_and_keeps_morning_task():
-    settings_instance = GlobalSettings.objects.create(
-        pk=1,
-        deadline_breakfast=datetime.time(18, 0),
-        deadline_lunch=datetime.time(21, 0),
-        deadline_olovrant=datetime.time(10, 0),
-        edupage_auto_scrape_enabled=True,
-    )
-
-    _sync_edupage_scrape_schedule(settings_instance)
-
-    morning_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
-    morning_task = PeriodicTask.objects.get(name=morning_name)
-    assert morning_task.task == "api.tasks.scrape_edupage_orders_task"
-    # Olovrant má uzávierku 10:00 > 08:00, raňajky/obed 18:00/21:00 — všetky stíhame.
-    assert json.loads(morning_task.kwargs) == {
-        "meal_types": ["breakfast", "lunch", "olovrant"]
-    }
-    assert morning_task.enabled is True
-    assert morning_task.crontab.minute == "0"
-    assert morning_task.crontab.hour == str(EDUPAGE_MORNING_SCRAPE_HOUR)
-    assert morning_task.crontab.day_of_week == "1-5"
-    assert morning_task.crontab.day_of_month == "*"
-    assert morning_task.crontab.month_of_year == "*"
-
-    _sync_edupage_scrape_schedule(settings_instance)
-
-    assert PeriodicTask.objects.filter(name=morning_name).count() == 1
-
-
-@pytest.mark.django_db
-def test_morning_scrape_only_covers_meals_whose_deadline_has_not_passed():
-    """Chod s uzávierkou pred ranným behom sa scrapovať nesmie."""
-    settings_instance = GlobalSettings.objects.create(
-        pk=1,
-        # 07:00 je pred ranným behom (08:00) → raňajky vypadnú
-        deadline_breakfast=datetime.time(7, 0),
-        deadline_lunch=datetime.time(21, 0),
-        # deň vopred → objednávka na dnešok sa zavrela už včera → vypadne
-        deadline_olovrant=datetime.time(21, 0),
-        deadline_olovrant_is_day_before=True,
-        edupage_auto_scrape_enabled=True,
-    )
-
-    _sync_edupage_scrape_schedule(settings_instance)
-
-    morning_task = PeriodicTask.objects.get(name=f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning")
-    assert json.loads(morning_task.kwargs) == {"meal_types": ["lunch"]}
-
-
-@pytest.mark.django_db
-def test_morning_scrape_task_not_created_when_all_deadlines_are_earlier():
-    """Ak žiadny chod nestíha, ranný task nesmie vôbec vzniknúť."""
-    settings_instance = GlobalSettings.objects.create(
-        pk=1,
-        deadline_breakfast=datetime.time(6, 0),
-        deadline_lunch=datetime.time(7, 30),
-        deadline_olovrant=datetime.time(8, 0),  # presne 08:00 = už neskoro
-        edupage_auto_scrape_enabled=True,
-    )
-
-    _sync_edupage_scrape_schedule(settings_instance)
-
-    assert not PeriodicTask.objects.filter(
-        name=f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
-    ).exists()
-
-
-@pytest.mark.django_db
-def test_morning_scrape_task_is_removed_when_deadline_moves_earlier():
-    """Existujúci ranný task musí zmiznúť, keď sa uzávierka posunie pred 08:00."""
-    settings_instance = GlobalSettings.objects.create(
-        pk=1,
-        deadline_breakfast=datetime.time(10, 0),
-        deadline_lunch=datetime.time(10, 0),
-        deadline_olovrant=datetime.time(10, 0),
-        edupage_auto_scrape_enabled=True,
-    )
-    _sync_edupage_scrape_schedule(settings_instance)
-    morning_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
-    assert PeriodicTask.objects.filter(name=morning_name).exists()
-
-    settings_instance.deadline_breakfast = datetime.time(6, 0)
-    settings_instance.deadline_lunch = datetime.time(6, 0)
-    settings_instance.deadline_olovrant = datetime.time(6, 0)
-    _sync_edupage_scrape_schedule(settings_instance)
-
-    assert not PeriodicTask.objects.filter(name=morning_name).exists()
-
-
-@pytest.mark.django_db
 def test_edupage_scrape_skips_without_recording_on_unmapped_letters(
     edupage_user, monkeypatch
 ):
@@ -523,3 +428,37 @@ class TestApplyScrapeIdempotency:
         existing = {"breakfast": {"Škôlka": {"menuCounts": {"A": 9}}}}
         out = _apply_scrape(existing, {}, None)
         assert out == {}
+
+
+@pytest.mark.django_db
+def test_only_deadline_derived_scrape_tasks_are_scheduled():
+    """Automatický je len uzávierkový scrape — žiadny ranný ani iný beh navyše.
+
+    Ranné načítanie sa robí ručne tlačidlom v admin nastaveniach, aby scrape
+    nikdy nebežal po uzávierke bez vedomia obsluhy.
+    """
+    settings_instance = GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(21, 0),
+        deadline_olovrant=datetime.time(10, 0),
+        edupage_auto_scrape_enabled=True,
+    )
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    names = set(
+        PeriodicTask.objects.filter(
+            name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+        ).values_list("name", flat=True)
+    )
+    # 18:00 → 17:30, 21:00 → 20:30, 10:00 → 09:30
+    assert names == {
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}breakfast",
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}lunch",
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}olovrant",
+    }
+    for task in PeriodicTask.objects.filter(
+        name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+    ):
+        assert json.loads(task.kwargs)["meal_types"]
