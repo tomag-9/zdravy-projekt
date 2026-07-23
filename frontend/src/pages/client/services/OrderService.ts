@@ -64,6 +64,10 @@ class OrderService {
         return CATEGORIES.reduce((acc, cat) => ({ ...acc, [cat]: this.createEmptyCategory(cat) }), {} as MealData);
     }
 
+    static createEmptyMealFor(categories: string[]): MealData {
+        return categories.reduce((acc, cat) => ({ ...acc, [cat]: this.createEmptyCategory(cat) }), {} as MealData);
+    }
+
     static createEmptyOrder(): DailyOrder {
         return {
             status: 'draft',
