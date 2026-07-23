@@ -1,4 +1,4 @@
-"""Testy OrderData — jediné čítacie hrdlo pre DailyOrder.data.
+"""Testy OrderData - jediné čítacie hrdlo pre DailyOrder.data.
 
 Musí zvládnuť tri tvary naraz: flat (legacy), v1 (porcia) a v2 (prevádzka → porcia).
 """
@@ -9,6 +9,11 @@ from api.order_data import OrderData, safe_count
 
 LEAF = {"menuCounts": {"A": 3}, "diets": {"NO MILK": 1}}
 LEAF2 = {"menuCounts": {"A": 5}, "diets": {}}
+LEAF_WITH_PACK_SEPARATELY = {
+    "menuCounts": {"A": 3},
+    "diets": {"NO MILK": 1},
+    "packSeparately": {"menus": {"A": 2}, "diets": {"NO MILK": 1}},
+}
 
 
 class TestSafeCount(unittest.TestCase):
@@ -122,6 +127,30 @@ class TestMixedAndMalformed(unittest.TestCase):
 
     def test_empty_dict_under_meal_yields_nothing(self):
         self.assertEqual(list(OrderData({"lunch": {}}).iter_categories()), [])
+
+
+class TestPackSeparately(unittest.TestCase):
+    def test_normalise_meal_preserves_pack_separately(self):
+        meal = {"menuCounts": {"A": 3}, "packSeparately": {"menus": {"A": 2}}}
+        self.assertEqual(
+            OrderData.normalise_meal(meal),
+            {
+                "default": {
+                    "menuCounts": {"A": 3},
+                    "packSeparately": {"menus": {"A": 2}},
+                }
+            },
+        )
+
+    def test_category_populates_pack_separately(self):
+        cats = list(
+            OrderData(
+                {"lunch": {"Škôlka": LEAF_WITH_PACK_SEPARATELY}}
+            ).iter_categories()
+        )
+        self.assertEqual(
+            cats[0].pack_separately, LEAF_WITH_PACK_SEPARATELY["packSeparately"]
+        )
 
 
 class TestHasContent(unittest.TestCase):

@@ -11,6 +11,10 @@ export interface MenuCounts {
 export interface CategoryData {
     menuCounts: MenuCounts;
     diets: DietCounts;
+    packSeparately?: {
+        menus: Record<string, number>;
+        diets: Record<string, number>;
+    };
 }
 
 export interface MealData {
@@ -25,6 +29,13 @@ export interface DailyOrder {
 }
 
 class OrderService {
+    static createEmptyPackSeparately(): { menus: Record<string, number>; diets: Record<string, number> } {
+        return {
+            menus: {},
+            diets: {}
+        };
+    }
+
     static toLocalDateString(date: Date): string {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -44,7 +55,8 @@ class OrderService {
 
         return {
             menuCounts,
-            diets: DIETS.reduce((acc, diet) => ({ ...acc, [diet]: 0 }), {} as DietCounts)
+            diets: DIETS.reduce((acc, diet) => ({ ...acc, [diet]: 0 }), {} as DietCounts),
+            packSeparately: this.createEmptyPackSeparately()
         };
     }
 
@@ -96,11 +108,17 @@ class OrderService {
             }
         }
 
+        const nextCategoryData = this.withClampedPackSeparately({
+            ...categoryData,
+            menuCounts: newMenuCounts,
+            diets: newDiets
+        });
+
         return {
             ...currentOrder,
             [mealKey]: {
                 ...currentOrder[mealKey],
-                [category]: { ...categoryData, menuCounts: newMenuCounts, diets: newDiets }
+                [category]: nextCategoryData
             }
         };
     }
@@ -116,16 +134,110 @@ class OrderService {
 
         if (totalOtherDiets + newCount > menuACount) return currentOrder;
 
+        const nextCategoryData = this.withClampedPackSeparately({
+            ...categoryData,
+            diets: { ...categoryData.diets, [diet]: newCount }
+        });
+
+        return {
+            ...currentOrder,
+            [mealKey]: {
+                ...currentOrder[mealKey],
+                [category]: nextCategoryData
+            }
+        };
+    }
+
+    static updatePackSeparately(
+        currentOrder: DailyOrder,
+        mealKey: 'breakfast' | 'lunch' | 'olovrant',
+        category: string,
+        kind: 'menus' | 'diets',
+        key: string,
+        count: number
+    ): DailyOrder {
+        const categoryData = currentOrder[mealKey][category];
+        const maxAllowed = kind === 'menus'
+            ? categoryData.menuCounts?.[key] || 0
+            : categoryData.diets?.[key] || 0;
+        const nextCount = Math.min(Math.max(0, count), maxAllowed);
+        const currentPackSeparately = categoryData.packSeparately || this.createEmptyPackSeparately();
+        const nextKindCounts = { ...(currentPackSeparately[kind] || {}) };
+
+        if (nextCount <= 0) {
+            delete nextKindCounts[key];
+        } else {
+            nextKindCounts[key] = nextCount;
+        }
+
         return {
             ...currentOrder,
             [mealKey]: {
                 ...currentOrder[mealKey],
                 [category]: {
                     ...categoryData,
-                    diets: { ...categoryData.diets, [diet]: newCount }
+                    packSeparately: this.cleanupPackSeparately({
+                        ...currentPackSeparately,
+                        [kind]: nextKindCounts
+                    })
                 }
             }
         };
+    }
+
+    static getPackSeparatelyAdjustments(before: CategoryData, after: CategoryData) {
+        const adjustments: { kind: 'menus' | 'diets'; key: string; count: number }[] = [];
+        const previous = before.packSeparately || this.createEmptyPackSeparately();
+        const next = after.packSeparately || this.createEmptyPackSeparately();
+
+        (['menus', 'diets'] as const).forEach((kind) => {
+            const keys = new Set([
+                ...Object.keys(previous[kind] || {}),
+                ...Object.keys(next[kind] || {})
+            ]);
+
+            keys.forEach((key) => {
+                const prevCount = previous[kind]?.[key] || 0;
+                const nextCount = next[kind]?.[key] || 0;
+                if (nextCount < prevCount) {
+                    adjustments.push({ kind, key, count: nextCount });
+                }
+            });
+        });
+
+        return adjustments;
+    }
+
+    private static withClampedPackSeparately(categoryData: CategoryData): CategoryData {
+        const currentPackSeparately = categoryData.packSeparately || this.createEmptyPackSeparately();
+        const nextMenus = Object.entries(currentPackSeparately.menus || {}).reduce((acc, [key, value]) => {
+            const maxAllowed = categoryData.menuCounts?.[key] || 0;
+            const nextValue = Math.min(Math.max(0, value), maxAllowed);
+            if (nextValue > 0) acc[key] = nextValue;
+            return acc;
+        }, {} as Record<string, number>);
+
+        const nextDiets = Object.entries(currentPackSeparately.diets || {}).reduce((acc, [key, value]) => {
+            const maxAllowed = categoryData.diets?.[key] || 0;
+            const nextValue = Math.min(Math.max(0, value), maxAllowed);
+            if (nextValue > 0) acc[key] = nextValue;
+            return acc;
+        }, {} as Record<string, number>);
+
+        return {
+            ...categoryData,
+            packSeparately: this.cleanupPackSeparately({
+                menus: nextMenus,
+                diets: nextDiets
+            })
+        };
+    }
+
+    private static cleanupPackSeparately(packSeparately: { menus: Record<string, number>; diets: Record<string, number> }) {
+        if (Object.keys(packSeparately.menus).length === 0 && Object.keys(packSeparately.diets).length === 0) {
+            return undefined;
+        }
+        return packSeparately;
     }
 
     static calculatePrevDayLunches(prevOrder: DailyOrder | null): number {
@@ -153,6 +265,9 @@ class OrderService {
 
         const dataRecord = data as Record<string, unknown>;
         const schemaRecord = schema as Record<string, unknown>;
+        if (Object.keys(schemaRecord).length === 0) {
+            return dataRecord as T;
+        }
         const result: Record<string, unknown> = { ...schemaRecord };
 
         Object.keys(schemaRecord).forEach(key => {

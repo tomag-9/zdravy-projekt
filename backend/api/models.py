@@ -409,6 +409,7 @@ class Prevadzka(models.Model):
         related_name="visible_for_prevadzky",
         help_text="Diéty dostupné pre objednávky tejto prevádzky.",
     )
+    pack_separately_enabled = models.BooleanField(default=False)
     admin_order_note = models.TextField(
         blank=True,
         default="",

@@ -133,7 +133,7 @@ class GramageDashboardPDFExporter:
             ]
 
             for sr in row["sub_rows"]:
-                is_diet = sr["type"] == "diet"
+                is_diet = sr["type"] in {"diet", "zvlast"}
                 cells = make_cells(sr["label"], sr["count"], sr["col_grams"], is_diet)
                 sr_idx = len(table_data)
                 table_data.append(cells)

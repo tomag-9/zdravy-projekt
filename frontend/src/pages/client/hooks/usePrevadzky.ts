@@ -9,6 +9,7 @@ export interface Prevadzka {
     nazov: string;
     adresa: string;
     celok: string;
+    pack_separately_enabled: boolean;
 }
 
 /**

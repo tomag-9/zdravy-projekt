@@ -6,7 +6,7 @@ import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
-import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty } from "./ui";
+import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
 
 interface Diet {
   id: number;
@@ -41,6 +41,7 @@ interface FacilityDetail {
   visible_diets: number[];
   admin_order_note: string;
   client_user_id: number | null;
+  pack_separately_enabled: boolean;
 }
 
 interface OrderData {
@@ -83,6 +84,7 @@ const ClientDetail: React.FC = () => {
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
   const [adminOrderNote, setAdminOrderNote] = useState("");
+  const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
 
   // Dashboard State
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
@@ -106,6 +108,7 @@ const ClientDetail: React.FC = () => {
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
     setAdminOrderNote(data.admin_order_note || "");
+    setPackSeparatelyEnabled(!!data.pack_separately_enabled);
   }, []);
 
   const fetchUser = useCallback(async (userId: number): Promise<AdminUser | null> => {
@@ -277,6 +280,7 @@ const ClientDetail: React.FC = () => {
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
         admin_order_note: adminOrderNote,
+        pack_separately_enabled: packSeparatelyEnabled,
       };
 
       const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facility.id}/`, {
@@ -529,6 +533,20 @@ const ClientDetail: React.FC = () => {
                       {MEAL_LABELS[meal] ?? meal}
                     </Checkbox>
                   ))}
+                </div>
+              </Card>
+
+              <Card pad>
+                <CardHead title="Zabaliť zvlášť" desc="Keď je vypnuté, klient v objednávke neuvidí blok pre balenie zvlášť." />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
+                  <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
+                    Povoliť klientovi označiť vybrané položky na balenie zvlášť.
+                  </div>
+                  <Toggle
+                    on={packSeparatelyEnabled}
+                    onChange={setPackSeparatelyEnabled}
+                    ariaLabel="Povoliť zabaliť zvlášť"
+                  />
                 </div>
               </Card>
             </div>
