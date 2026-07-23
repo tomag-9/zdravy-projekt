@@ -470,5 +470,14 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
         model = Prevadzka
         # `pack_separately_enabled` sem patrí, aby klient čítal príznak z toho istého
         # miesta, kam ho admin zapisuje (Prevadzka) — nie z legacy ClientSettings.
-        fields = ["id", "nazov", "adresa", "celok", "pack_separately_enabled"]
+        fields = [
+            "id",
+            "nazov",
+            "adresa",
+            "celok",
+            "visible_menus",
+            "visible_menus_per_meal",
+            "visible_meals",
+            "pack_separately_enabled",
+        ]
         read_only_fields = fields

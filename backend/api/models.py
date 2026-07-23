@@ -89,6 +89,7 @@ class DailyOrder(models.Model):
 
 class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=0, db_index=True)
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
     color = models.CharField(
@@ -97,6 +98,9 @@ class Diet(models.Model):
         default="",
         help_text="Voliteľná HEX farba pre admin prehľady, napr. #F97316.",
     )
+
+    class Meta:
+        ordering = ["sort_order", "name"]
 
     def __str__(self) -> str:
         return self.name
@@ -398,6 +402,15 @@ class Prevadzka(models.Model):
         blank=True,
         help_text="Menu typy dostupné pre objednávky tejto prevádzky.",
     )
+    visible_menus_per_meal = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Voliteľné menu typy per chod, napr. "
+            "{'breakfast': ['A'], 'olovrant': ['A']}. Chýbajúci chod = fallback "
+            "na visible_menus."
+        ),
+    )
     visible_meals = models.JSONField(
         default=_default_all_meals,
         blank=True,
@@ -442,6 +455,12 @@ class Prevadzka(models.Model):
 
     def __str__(self) -> str:
         return self.nazov
+
+    def resolved_visible_menus_for_meal(self, meal: str) -> list[str]:
+        configured = (self.visible_menus_per_meal or {}).get(meal)
+        if configured is None:
+            return list(self.visible_menus or [])
+        return list(configured)
 
 
 class DeliveryBlock(models.Model):

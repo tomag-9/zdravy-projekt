@@ -50,6 +50,7 @@ const OrderPage = () => {
     submitOrder,
     adminVisibleMeals,
     adminVisibleMenus,
+    getVisibleMenusForMeal,
     globalDeadlines,
     loadBreakfastFromPrevLunch,
     copyOlovrantFromCurrentLunch,
@@ -67,7 +68,7 @@ const OrderPage = () => {
     if (!mealPlanAvailability) return new Set();
     const available = mealPlanAvailability[mealKey];
     if (!available) return new Set();
-    return new Set(adminVisibleMenus.filter((m: string) => !available.has(m)));
+    return new Set(getVisibleMenusForMeal(mealKey as MealKey).filter((m: string) => !available.has(m)));
   };
 
   const { isTourActive, currentStep } = useOnboarding();
@@ -143,6 +144,16 @@ const OrderPage = () => {
       ? meals.filter((m) => adminVisibleMeals.includes(m.key))
       : meals;
   const firstVisibleMealKey = visibleMealsList[0]?.key as MealKey | undefined;
+
+  // Celodenka zadáva jeden set porcií pre všetky chody, takže smie ponúknuť len
+  // menu, ktoré sú viditeľné vo VŠETKÝCH viditeľných chodoch — prienik. Inak by
+  // sa dalo cez celodenku objednať menu B na olovrant, ktorý má povolené len A.
+  const fullDayVisibleMenus =
+    visibleMealsList.reduce<string[] | null>((acc, meal) => {
+      const mealMenus = getVisibleMenusForMeal(meal.key as MealKey);
+      if (acc === null) return mealMenus;
+      return acc.filter((menu) => mealMenus.includes(menu));
+    }, null) ?? adminVisibleMenus;
   const isFullDayDeadlineOpen = firstVisibleMealKey
     ? OrderService.checkDeadline(selectedDate, firstVisibleMealKey, globalDeadlines)
     : false;
@@ -457,7 +468,7 @@ const OrderPage = () => {
                 dietCount={dietCount}
                 onOpenDiets={() => setActiveDietModal({ meal: "fullDay", category })}
                 disabled={false}
-                visibleMenus={adminVisibleMenus}
+                visibleMenus={fullDayVisibleMenus}
               />
             );
           })}
@@ -509,7 +520,7 @@ const OrderPage = () => {
                       isEditable && !isHoliday && setActiveDietModal({ meal: key, category })
                     }
                     disabled={!isEditable || !!isHoliday}
-                    visibleMenus={adminVisibleMenus}
+                    visibleMenus={getVisibleMenusForMeal(key)}
                     occupiedMenus={getOccupiedMenus(key)}
                     tourId={mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}
                   />

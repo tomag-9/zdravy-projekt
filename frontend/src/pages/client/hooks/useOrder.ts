@@ -39,6 +39,7 @@ interface DietDetail {
     name: string;
     description?: string | null;
     is_active?: boolean;
+    sort_order?: number;
 }
 
 type ApiErrorPayload = {
@@ -747,19 +748,30 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // Admin Constraints
     // Fall back to defaults only when the setting is null/undefined;
     // an explicitly empty array means "show none".
-    const adminVisibleMenusSetting = user?.settings?.visible_menus;
+    const prevadzkaSettings = prevadzky.find((item) => item.id === activePrevadzkaId);
+
+    const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus ?? user?.settings?.visible_menus;
     const adminVisibleMenus = adminVisibleMenusSetting == null
         ? ['A', 'B', 'C', 'V']
         : adminVisibleMenusSetting;
 
-    const adminVisibleMealsSetting = user?.settings?.visible_meals;
+    const adminVisibleMenusPerMeal = prevadzkaSettings?.visible_menus_per_meal ?? user?.settings?.visible_menus_per_meal ?? {};
+
+    const getVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
+        const perMealMenus = adminVisibleMenusPerMeal[mealKey];
+        return perMealMenus == null ? adminVisibleMenus : perMealMenus;
+    };
+
+    const adminVisibleMealsSetting = prevadzkaSettings?.visible_meals ?? user?.settings?.visible_meals;
     const adminVisibleMeals = adminVisibleMealsSetting == null
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
     const visibleDietDetails: DietDetail[] =
         user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
-        ? (user.settings.visible_diets as DietDetail[])
+        ? [...(user.settings.visible_diets as DietDetail[])].sort(
+            (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'sk')
+        )
         : [];
     const adminVisibleDiets = visibleDietDetails.length > 0
         ? visibleDietDetails.map(d => d.name)
@@ -851,6 +863,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         copyOlovrantFromCurrentLunch,
         submitOrder, deleteOrder,
         adminVisibleMenus,
+        adminVisibleMenusPerMeal,
+        getVisibleMenusForMeal,
         adminVisibleMeals,
         globalDeadlines,
         clientContactInfo,

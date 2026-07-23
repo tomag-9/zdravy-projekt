@@ -9,6 +9,9 @@ export interface Prevadzka {
     nazov: string;
     adresa: string;
     celok: string;
+    visible_menus: string[];
+    visible_menus_per_meal: Record<string, string[]>;
+    visible_meals: string[];
     pack_separately_enabled: boolean;
 }
 
