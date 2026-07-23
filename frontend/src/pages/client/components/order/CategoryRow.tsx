@@ -1,4 +1,5 @@
 import { Minus, Plus, Utensils } from 'lucide-react';
+import NumericCountInput from './NumericCountInput';
 
 interface MenuCounterProps {
     type: string;
@@ -39,7 +40,12 @@ const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled, 
                 >
                     <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
                 </button>
-                <span className={`count${count <= 0 ? " zero" : ""}`}>{count}</span>
+                <NumericCountInput
+                    value={count}
+                    onCommit={onChange}
+                    disabled={disabled}
+                    ariaLabel={`Počet porcií pre menu ${type}`}
+                />
                 <button
                     className="plus"
                     disabled={disabled}

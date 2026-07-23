@@ -8,6 +8,7 @@ import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empt
 interface Diet {
   id: number;
   name: string;
+  sort_order: number;
   is_active: boolean;
   description: string;
   color?: string;
@@ -22,6 +23,7 @@ interface RenameModal {
   id: number;
   currentName: string;
   newName: string;
+  sortOrder: number;
   description: string;
   color: string;
 }
@@ -31,6 +33,7 @@ const DietManager: React.FC = () => {
   const { success, error } = useToast();
   const [diets, setDiets] = useState<Diet[]>([]);
   const [newDietName, setNewDietName] = useState("");
+  const [newDietSortOrder, setNewDietSortOrder] = useState(0);
   const [newDietDescription, setNewDietDescription] = useState("");
   const [newDietColor, setNewDietColor] = useState("#FDE68A");
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
@@ -67,6 +70,7 @@ const DietManager: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: newDietName.trim(),
+            sort_order: newDietSortOrder,
             description: newDietDescription.trim(),
             color: newDietColor,
             is_active: true,
@@ -80,6 +84,7 @@ const DietManager: React.FC = () => {
           return [created, ...prev];
         });
         setNewDietName("");
+        setNewDietSortOrder(0);
         setNewDietDescription("");
         setNewDietColor("#FDE68A");
         fetchDiets();
@@ -125,6 +130,7 @@ const DietManager: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: renameModal.newName.trim(),
+            sort_order: renameModal.sortOrder,
             description: renameModal.description.trim(),
             color: renameModal.color,
           }),
@@ -170,6 +176,14 @@ const DietManager: React.FC = () => {
                 placeholder="Popis diéty pre prevádzku"
               />
             </Field>
+            <Field label="Poradie">
+              <Input
+                type="number"
+                inputMode="numeric"
+                value={newDietSortOrder}
+                onChange={(e) => setNewDietSortOrder(Number(e.target.value) || 0)}
+              />
+            </Field>
             <Field label="Farba">
               <Input
                 type="color"
@@ -206,6 +220,7 @@ const DietManager: React.FC = () => {
                   />
                   <div>
                     <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
+                    <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {diet.sort_order}</p>
                   {diet.description && (
                     <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
                   )}
@@ -219,6 +234,7 @@ const DietManager: React.FC = () => {
                         id: diet.id,
                         currentName: diet.name,
                         newName: diet.name,
+                        sortOrder: diet.sort_order ?? 0,
                         description: diet.description || "",
                         color: diet.color || "#FDE68A",
                       })
@@ -271,6 +287,7 @@ const DietManager: React.FC = () => {
                   renaming ||
                   !renameModal.newName.trim() ||
                   (renameModal.newName.trim() === renameModal.currentName &&
+                    renameModal.sortOrder === (diets.find((diet) => diet.id === renameModal.id)?.sort_order || 0) &&
                     renameModal.description.trim() ===
                       (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim() &&
                     renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#FDE68A"))
@@ -293,6 +310,14 @@ const DietManager: React.FC = () => {
               }}
               placeholder="Nový názov diéty"
               autoFocus
+            />
+          </Field>
+          <Field label="Poradie">
+            <Input
+              type="number"
+              inputMode="numeric"
+              value={renameModal.sortOrder}
+              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, sortOrder: Number(e.target.value) || 0 } : prev))}
             />
           </Field>
           <Field label="Popis">
