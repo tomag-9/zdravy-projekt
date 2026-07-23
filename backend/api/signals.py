@@ -29,7 +29,6 @@ WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
 EDUPAGE_SCRAPE_OFFSET_MINUTES = 30
-EDUPAGE_MORNING_SCRAPE_HOUR = 8
 
 
 def _capture_signal_failure(exc: Exception, area: str) -> None:
@@ -362,62 +361,6 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
             groups.setdefault((deadline, is_day_before), []).append(meal_type)
 
         new_task_names: set[str] = set()
-
-        # Ranný refresh dnešných počtov. Smie sa týkať len tých chodov, ktorým
-        # uzávierka o EDUPAGE_MORNING_SCRAPE_HOUR ešte NEuplynula — scrapovať po
-        # uzávierke by prepísalo počty, s ktorými už kuchyňa počíta.
-        #   • is_day_before=True  → objednávka na dnešok sa zavrela včera → vždy neskoro
-        #   • is_day_before=False → stíhame, len ak je uzávierka po tejto hodine
-        morning_time = datetime.time(EDUPAGE_MORNING_SCRAPE_HOUR, 0)
-        morning_meal_types = sorted(
-            meal_type
-            for meal_type in all_meal_types
-            if not getattr(
-                settings_instance, f"deadline_{meal_type}_is_day_before", False
-            )
-            and getattr(settings_instance, f"deadline_{meal_type}") > morning_time
-        )
-
-        morning_task_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}morning"
-        if morning_meal_types:
-            new_task_names.add(morning_task_name)
-            morning_schedule, _ = CrontabSchedule.objects.get_or_create(
-                minute=0,
-                hour=EDUPAGE_MORNING_SCRAPE_HOUR,
-                day_of_week="1-5",
-                day_of_month="*",
-                month_of_year="*",
-                timezone=settings.TIME_ZONE,
-            )
-            PeriodicTask.objects.update_or_create(
-                name=morning_task_name,
-                defaults={
-                    "task": "api.tasks.scrape_edupage_orders_task",
-                    "crontab": morning_schedule,
-                    "args": json.dumps([]),
-                    "kwargs": json.dumps({"meal_types": morning_meal_types}),
-                    "enabled": True,
-                    "description": (
-                        "Edupage scrape: ranný refresh dnešných počtov pre "
-                        f"{'/'.join(morning_meal_types)} "
-                        f"(beží o {EDUPAGE_MORNING_SCRAPE_HOUR:02d}:00, pred uzávierkou)."
-                    ),
-                },
-            )
-            logger.info(
-                "Edupage scrape task synced: %s → %02d:00 Mon–Fri for %s (tz: %s)",
-                morning_task_name,
-                EDUPAGE_MORNING_SCRAPE_HOUR,
-                morning_meal_types,
-                settings.TIME_ZONE,
-            )
-        else:
-            # Všetky uzávierky sú skôr ako ranný beh → task nesmie existovať.
-            # Nepridávame ho do new_task_names, takže ho zmaže orphan-cleanup nižšie.
-            logger.info(
-                "Edupage morning scrape skipped: every deadline is at or before %02d:00",
-                EDUPAGE_MORNING_SCRAPE_HOUR,
-            )
 
         for (deadline, is_day_before), meal_types_group in groups.items():
             dt = datetime.datetime.combine(datetime.date.today(), deadline)

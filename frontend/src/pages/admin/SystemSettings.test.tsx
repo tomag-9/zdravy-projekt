@@ -161,3 +161,86 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         });
     });
 });
+
+describe('SystemSettings - manuálny EduPage scrape', () => {
+    const mockSettings = {
+        deadline_breakfast: '10:00',
+        deadline_breakfast_is_day_before: false,
+        deadline_lunch: '10:00',
+        deadline_lunch_is_day_before: false,
+        deadline_olovrant: '10:00',
+        deadline_olovrant_is_day_before: false,
+        edupage_auto_scrape_enabled: true,
+        report_email_recipients: [],
+        client_contact_name: '',
+        client_contact_role: '',
+        client_contact_email: '',
+        client_contact_phone: '',
+    };
+
+    beforeEach(() => {
+        mockApiFetch.mockClear();
+        mockSuccess.mockClear();
+        mockError.mockClear();
+    });
+
+    it('zavolá scrape endpoint a ohlási počty', async () => {
+        const user = userEvent.setup();
+        mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
+            if (url.includes('/edupage-uploads/scrape/')) {
+                return Promise.resolve({
+                    ok: true,
+                    json: async () => ({
+                        date: '2026-07-23',
+                        results: [
+                            { status: 'updated', orders: [{ order_id: 1 }, { order_id: 2 }] },
+                            { status: 'skipped' },
+                        ],
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => (options?.method === 'POST' ? {} : mockSettings),
+            });
+        });
+
+        render(<SystemSettings />);
+        const btn = await screen.findByRole('button', { name: /Načítať z EduPage/i });
+        await user.click(btn);
+
+        await waitFor(() => {
+            const call = mockApiFetch.mock.calls.find((c) =>
+                String(c[0]).includes('/edupage-uploads/scrape/'),
+            );
+            expect(call).toBeTruthy();
+            expect(call?.[1]?.method).toBe('POST');
+        });
+        await waitFor(() => {
+            expect(mockSuccess).toHaveBeenCalledWith(
+                expect.stringContaining('1 prevádzok, 2 objednávok'),
+            );
+        });
+    });
+
+    it('ohlási chybu, keď sa nenačíta žiadna prevádzka', async () => {
+        const user = userEvent.setup();
+        mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
+            if (url.includes('/edupage-uploads/scrape/')) {
+                return Promise.resolve({ ok: true, json: async () => ({ results: [] }) });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => (options?.method === 'POST' ? {} : mockSettings),
+            });
+        });
+
+        render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: /Načítať z EduPage/i }));
+
+        await waitFor(() => {
+            expect(mockError).toHaveBeenCalledWith(expect.stringContaining('žiadna prevádzka'));
+        });
+        expect(mockSuccess).not.toHaveBeenCalled();
+    });
+});
