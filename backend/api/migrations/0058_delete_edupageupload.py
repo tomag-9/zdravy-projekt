@@ -3,13 +3,6 @@
 from django.db import migrations
 
 
-def delete_uploaded_files(apps, schema_editor):
-    EdupageUpload = apps.get_model("api", "EdupageUpload")
-    for upload in EdupageUpload.objects.only("file").iterator():
-        if upload.file:
-            upload.file.delete(save=False)
-
-
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -17,8 +10,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(delete_uploaded_files, migrations.RunPython.noop),
-        migrations.DeleteModel(
-            name="EdupageUpload",
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.DeleteModel(
+                    name="EdupageUpload",
+                ),
+            ],
         ),
     ]
