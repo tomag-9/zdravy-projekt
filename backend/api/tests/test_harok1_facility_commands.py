@@ -185,10 +185,11 @@ def test_seed_zdrave_brusko_deletes_fake_aggregate_school():
 
     call_command("seed_zdrave_brusko")
 
-    assert not Celok.objects.filter(pk=stary.pk).exists()
-    assert not Prevadzka.objects.filter(pk=stara_prevadzka.pk).exists()
-    assert not DailyOrder.objects.filter(pk=historicka.pk).exists()
-    assert not DailyOrder.objects.filter(pk=duplicitna.pk).exists()
+    stara_prevadzka.refresh_from_db()
+    assert Celok.objects.filter(pk=stary.pk).exists()
+    assert not stara_prevadzka.is_active
+    assert DailyOrder.objects.filter(pk=historicka.pk).exists()
+    assert DailyOrder.objects.filter(pk=duplicitna.pk).exists()
     assert set(user.profile.prevadzky.values_list("nazov", flat=True)) == {
         "Deutsche schule",
         "SŠ VETERINÁRNA",
