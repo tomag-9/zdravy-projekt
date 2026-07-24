@@ -154,12 +154,11 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
+        cleanup_sql = """
+            DROP TABLE IF EXISTS api_edupageupload CASCADE;
+            DROP TABLE IF EXISTS api_clientsettings_visible_diets CASCADE;
+            DROP TABLE IF EXISTS api_clientsettings CASCADE;
+            DROP TABLE IF EXISTS api_userprofile_prevadzky CASCADE;
+        """
         with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                DROP TABLE IF EXISTS api_edupageupload CASCADE;
-                DROP TABLE IF EXISTS api_clientsettings_visible_diets CASCADE;
-                DROP TABLE IF EXISTS api_clientsettings CASCADE;
-                DROP TABLE IF EXISTS api_userprofile_prevadzky CASCADE;
-                """
-            )
+            cursor.execute(cleanup_sql)
