@@ -5,9 +5,9 @@ from django.db.migrations.executor import MigrationExecutor
 
 @pytest.mark.migration
 @pytest.mark.django_db(transaction=True)
-def test_contract_migration_preserves_latest_legacy_facility_data():
+def test_contract_migration_preserves_data_and_allows_current_model_deletes():
     migrate_from = [("api", "0056_explicit_profile_access")]
-    migrate_to = [("api", "0058_delete_edupageupload")]
+    migrate_to = [("api", "0059_fix_legacy_contract_delete_constraints")]
     executor = MigrationExecutor(connection)
 
     try:
@@ -17,6 +17,7 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         Celok = old_apps.get_model("api", "Celok")
         ClientSettings = old_apps.get_model("api", "ClientSettings")
         Diet = old_apps.get_model("api", "Diet")
+        EdupageConnection = old_apps.get_model("api", "EdupageConnection")
         EdupageUpload = old_apps.get_model("api", "EdupageUpload")
         Prevadzka = old_apps.get_model("api", "Prevadzka")
         UserProfile = old_apps.get_model("api", "UserProfile")
@@ -52,11 +53,17 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
             admin_order_note="Fresh note",
         )
         settings.visible_diets.add(diet)
+        edupage_connection = EdupageConnection.objects.create(
+            name="Legacy connection",
+            mealsguest_url="https://legacy.edupage.org/menu/mealsGuest?id=test",
+        )
         EdupageUpload.objects.create(
             date="2026-07-24",
             filename="legacy.xlsx",
             file="edupage_uploads/legacy.xlsx",
             uploaded_by=user,
+            operation=profile,
+            connection=edupage_connection,
         )
 
         executor = MigrationExecutor(connection)
@@ -151,6 +158,59 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         assert "operation_id" in upload_columns
         assert profile_legacy_values == ("", "", "", "", False, "")
         assert celok_legacy_values == ("", "")
+
+        migrated_prevadzka.delete()
+        migrated_celok.delete()
+        new_apps.get_model("api", "Diet").objects.get(pk=diet.pk).delete()
+        new_apps.get_model("api", "EdupageConnection").objects.get(
+            pk=edupage_connection.pk
+        ).delete()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT celok_id FROM api_userprofile WHERE id = %s",
+                [profile.pk],
+            )
+            assert cursor.fetchone() == (None,)
+            cursor.execute(
+                "SELECT operation_id, connection_id "
+                "FROM api_edupageupload "
+                "WHERE filename = 'legacy.xlsx'"
+            )
+            assert cursor.fetchone() == (profile.pk, None)
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM api_userprofile_prevadzky
+                WHERE userprofile_id = %s
+                """,
+                [profile.pk],
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                """
+                SELECT COUNT(*)
+                FROM api_clientsettings_visible_diets
+                WHERE clientsettings_id = %s
+                """,
+                [settings.pk],
+            )
+            assert cursor.fetchone() == (0,)
+
+        new_apps.get_model("auth", "User").objects.get(pk=user.pk).delete()
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM api_clientsettings WHERE id = %s",
+                [settings.pk],
+            )
+            assert cursor.fetchone() == (0,)
+            cursor.execute(
+                "SELECT operation_id, uploaded_by_id "
+                "FROM api_edupageupload "
+                "WHERE filename = 'legacy.xlsx'"
+            )
+            assert cursor.fetchone() == (None, None)
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
