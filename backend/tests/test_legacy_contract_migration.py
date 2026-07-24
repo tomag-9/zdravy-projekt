@@ -66,6 +66,17 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         migrated_prevadzka = new_apps.get_model("api", "Prevadzka").objects.get(
             pk=prevadzka.pk
         )
+        migrated_user = new_apps.get_model("auth", "User").objects.create(
+            username="post-contract",
+            email="post-contract@example.com",
+        )
+        migrated_profile = new_apps.get_model("api", "UserProfile").objects.create(
+            user=migrated_user,
+            company_name="Post-contract login",
+        )
+        post_contract_celok = new_apps.get_model("api", "Celok").objects.create(
+            nazov="Post-contract celok",
+        )
 
         assert migrated_celok.billing_name == "Fresh billing"
         assert migrated_celok.ico == "12345678"
@@ -76,6 +87,8 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         assert list(
             migrated_prevadzka.visible_diets.values_list("name", flat=True)
         ) == ["Legacy diet"]
+        assert migrated_profile.pk is not None
+        assert post_contract_celok.pk is not None
         with pytest.raises(LookupError):
             new_apps.get_model("api", "EdupageUpload")
 
@@ -105,6 +118,25 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
                     "api_edupageupload",
                 )
             }
+            cursor.execute(
+                """
+                SELECT api_identifier, billing_name, dic, ico, is_edupage,
+                       mealsguest_url
+                FROM api_userprofile
+                WHERE id = %s
+                """,
+                [migrated_profile.pk],
+            )
+            profile_legacy_values = cursor.fetchone()
+            cursor.execute(
+                """
+                SELECT edupage_api_identifier, mealsguest_url
+                FROM api_celok
+                WHERE id = %s
+                """,
+                [post_contract_celok.pk],
+            )
+            celok_legacy_values = cursor.fetchone()
 
         assert {
             "api_identifier",
@@ -117,6 +149,8 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         } <= profile_columns
         assert {"edupage_api_identifier", "mealsguest_url"} <= celok_columns
         assert "operation_id" in upload_columns
+        assert profile_legacy_values == ("", "", "", "", False, "")
+        assert celok_legacy_values == ("", "")
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
