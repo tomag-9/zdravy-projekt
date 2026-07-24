@@ -14,7 +14,7 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from api.models import ClientSettings, UserProfile
+from api.models import ClientSettings, DailyOrder, UserProfile
 
 PROD_CONFIRMATION = "LOAD_TEST_PROD"
 CLEANUP_CONFIRMATION = "DELETE_LOAD_TEST_USERS"
@@ -195,10 +195,11 @@ class Command(BaseCommand):
         emails = [spec.email for spec in specs]
         queryset = User.objects.filter(username__in=emails, email__in=emails)
         count = queryset.count()
+        deleted_orders, _ = DailyOrder.objects.filter(user__in=queryset).delete()
         queryset.delete()
         self.stdout.write(
             self.style.WARNING(
-                f"Deleted {count} load-test users. DailyOrder rows for those users "
-                "were removed by cascade."
+                f"Deleted {count} load-test users and {deleted_orders} generated "
+                "order rows."
             )
         )
