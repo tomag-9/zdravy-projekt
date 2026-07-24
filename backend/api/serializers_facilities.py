@@ -36,11 +36,15 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     )
 
     def _detail_profile(self, obj):
-        scoped_accesses = getattr(obj, "_prefetched_objects_cache", {}).get(
-            "profile_accesses"
-        )
+        scoped_accesses = getattr(obj, "_admin_profile_accesses", None)
         if scoped_accesses is None:
-            scoped_accesses = list(obj.profile_accesses.select_related("profile__user"))
+            scoped_accesses = getattr(obj, "_prefetched_objects_cache", {}).get(
+                "profile_accesses"
+            )
+            if scoped_accesses is None:
+                scoped_accesses = list(
+                    obj.profile_accesses.select_related("profile__user")
+                )
         if scoped_accesses:
             return scoped_accesses[0].profile
 
@@ -128,17 +132,34 @@ class AdminCelokSerializer(serializers.ModelSerializer):
             "logins",
         ]
 
+    @staticmethod
+    def _prevadzky(obj):
+        prefetched = getattr(obj, "_admin_prevadzky", None)
+        if prefetched is not None:
+            return prefetched
+        return sorted(obj.prevadzky.all(), key=lambda p: (p.sort_order, p.nazov))
+
+    @staticmethod
+    def _celok_accesses(obj):
+        prefetched = getattr(obj, "_admin_profile_accesses", None)
+        return (
+            prefetched if prefetched is not None else list(obj.profile_accesses.all())
+        )
+
     def get_logins(self, obj):
         profiles_by_user_id = {}
-        for access in obj.profile_accesses.all():
+        for access in self._celok_accesses(obj):
             profile = access.profile
             profiles_by_user_id[profile.user_id] = {
                 "profile": profile,
                 "whole_celok": True,
                 "prevadzka_ids": set(),
             }
-        for prevadzka in obj.prevadzky.all():
-            for access in prevadzka.profile_accesses.all():
+        for prevadzka in self._prevadzky(obj):
+            accesses = getattr(prevadzka, "_admin_profile_accesses", None)
+            if accesses is None:
+                accesses = prevadzka.profile_accesses.all()
+            for access in accesses:
                 profile = access.profile
                 current = profiles_by_user_id.setdefault(
                     profile.user_id,
@@ -162,18 +183,17 @@ class AdminCelokSerializer(serializers.ModelSerializer):
         ]
 
     def get_prevadzky(self, obj):
-        prevadzky = sorted(obj.prevadzky.all(), key=lambda p: (p.sort_order, p.nazov))
         return AdminPrevadzkaSerializer(
-            prevadzky,
+            self._prevadzky(obj),
             many=True,
             context={
                 **self.context,
                 "celok": obj,
-                "celok_accesses": list(obj.profile_accesses.all()),
+                "celok_accesses": self._celok_accesses(obj),
             },
         ).data
 
     def get_prevadzky_count(self, obj):
         # Počítame len aktívne — deaktivované (napr. retirovaný default po splite)
         # sa v zozname ukážu, ale do počtu „(N prevádzok)" nepatria.
-        return sum(1 for p in obj.prevadzky.all() if p.is_active)
+        return sum(1 for p in self._prevadzky(obj) if p.is_active)

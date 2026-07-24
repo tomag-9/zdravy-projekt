@@ -23,7 +23,14 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 
-from api.models import Celok, DailyOrder, ProfileCelokAccess, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 
 
 @pytest.mark.django_db
@@ -91,6 +98,63 @@ class TestAdminUserViewSetQueries:
         assert listed_user["profile"]["billing_name"] == ""
         assert listed_user["profile"]["ico"] == ""
         assert listed_user["profile"]["dic"] == ""
+
+
+@pytest.mark.django_db
+class TestAdminCelokViewSetQueries:
+    def test_list_celky_uses_bounded_prefetches(self, admin_authenticated_client):
+        from django.contrib.auth.models import User
+
+        expected_whole_user_ids = {}
+        expected_scoped_user_ids = {}
+        for index in range(5):
+            celok = Celok.objects.create(nazov=f"Celok {index}")
+            first = Prevadzka.objects.create(celok=celok, nazov=f"Prvá {index}")
+            Prevadzka.objects.create(celok=celok, nazov=f"Druhá {index}")
+
+            whole_user = User.objects.create_user(
+                username=f"whole-{index}@example.com",
+                email=f"whole-{index}@example.com",
+            )
+            whole_profile = UserProfile(user=whole_user)
+            whole_profile._skip_default_facility = True
+            whole_profile.save()
+            ProfileCelokAccess.objects.create(
+                profile=whole_profile,
+                celok=celok,
+            )
+            expected_whole_user_ids[f"Druhá {index}"] = whole_user.pk
+
+            scoped_user = User.objects.create_user(
+                username=f"scoped-{index}@example.com",
+                email=f"scoped-{index}@example.com",
+            )
+            scoped_profile = UserProfile(user=scoped_user)
+            scoped_profile._skip_default_facility = True
+            scoped_profile.save()
+            ProfilePrevadzkaAccess.objects.create(
+                profile=scoped_profile,
+                prevadzka=first,
+            )
+            expected_scoped_user_ids[first.nazov] = scoped_user.pk
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = admin_authenticated_client.get("/api/admin/celky/")
+            assert response.status_code == status.HTTP_200_OK
+            payload = response.json()
+            assert len(payload) == 5
+
+        query_count = len(ctx.captured_queries)
+        assert query_count <= 5, f"Expected <= 5 queries, got {query_count}."
+        prevadzky = {
+            prevadzka["nazov"]: prevadzka
+            for celok_payload in payload
+            for prevadzka in celok_payload["prevadzky"]
+        }
+        for nazov, user_id in expected_whole_user_ids.items():
+            assert prevadzky[nazov]["client_user_id"] == user_id
+        for nazov, user_id in expected_scoped_user_ids.items():
+            assert prevadzky[nazov]["client_user_id"] == user_id
 
 
 @pytest.mark.django_db
