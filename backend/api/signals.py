@@ -577,25 +577,89 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
     """
     from api.models import Celok, Prevadzka, UserProfile
 
-    zdroj = (
-        Celok.ZdrojObjednavok.EDUPAGE
-        if instance.is_edupage
-        else Celok.ZdrojObjednavok.APP
-    )
+    def sync_edupage_config(celok):
+        """Keep legacy profile-level EduPage settings visible on Celok."""
+        profile_configured_as_edupage = bool(
+            instance.is_edupage or instance.mealsguest_url or instance.api_identifier
+        )
+        celok_configured_as_edupage = bool(
+            celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+            or celok.mealsguest_url
+            or celok.edupage_api_identifier
+        )
+        if not profile_configured_as_edupage and celok_configured_as_edupage:
+            return
+        zdroj = (
+            Celok.ZdrojObjednavok.EDUPAGE
+            if profile_configured_as_edupage
+            else Celok.ZdrojObjednavok.APP
+        )
+        changed = []
+        if celok.zdroj_objednavok != zdroj:
+            celok.zdroj_objednavok = zdroj
+            changed.append("zdroj_objednavok")
+        if profile_configured_as_edupage:
+            if (
+                instance.api_identifier
+                and celok.edupage_api_identifier != instance.api_identifier
+            ):
+                celok.edupage_api_identifier = instance.api_identifier
+                changed.append("edupage_api_identifier")
+            if (
+                instance.mealsguest_url
+                and celok.mealsguest_url != instance.mealsguest_url
+            ):
+                celok.mealsguest_url = instance.mealsguest_url
+                changed.append("mealsguest_url")
+        if changed:
+            celok.save(update_fields=changed)
+            logger.info(
+                "Celok %s EduPage config synced from profile %s (%s)",
+                celok.pk,
+                instance.pk,
+                ", ".join(changed),
+            )
+
+    def unique_celok_name(base_name: str, celok_id: int | None) -> str:
+        """Return a unique Celok name without merging unrelated profiles."""
+        candidate = base_name
+        if Celok.objects.filter(nazov=candidate).exclude(pk=celok_id).exists():
+            candidate = f"{base_name} ({instance.user.email})"
+        if Celok.objects.filter(nazov=candidate).exclude(pk=celok_id).exists():
+            candidate = f"{base_name} (#{instance.pk})"
+        return candidate
+
+    def sync_profile_config(celok):
+        """Fill Celok fields that were historically kept on UserProfile."""
+        changed = []
+        nazov = (instance.company_name or "").strip()
+        auto_names = {instance.user.email, f"{instance.user.email} (#{instance.pk})"}
+        if nazov and celok.nazov in auto_names:
+            next_name = unique_celok_name(nazov, celok.pk)
+            if celok.nazov != next_name:
+                celok.nazov = next_name
+                changed.append("nazov")
+        for field in ("billing_name", "ico", "dic"):
+            value = getattr(instance, field, "")
+            if value and not getattr(celok, field, ""):
+                setattr(celok, field, value)
+                changed.append(field)
+        if changed:
+            celok.save(update_fields=changed)
+            logger.info(
+                "Celok %s profile config synced from profile %s (%s)",
+                celok.pk,
+                instance.pk,
+                ", ".join(changed),
+            )
 
     # Existujúci profil: udrž zdroj celku v súlade s is_edupage (napr. keď admin
     # prepne prevádzku na EduPage). Meníme len keď treba, nech nespúšťame zápis
     # zbytočne.
     if not created or instance.celok_id is not None:
-        if instance.celok_id is not None and Celok.objects.filter(
-            pk=instance.celok_id
-        ).exclude(zdroj_objednavok=zdroj).update(zdroj_objednavok=zdroj):
-            logger.info(
-                "Celok %s zdroj_objednavok → %s (profil %s)",
-                instance.celok_id,
-                zdroj,
-                instance.pk,
-            )
+        if instance.celok_id is not None:
+            sync_profile_config(instance.celok)
+            sync_edupage_config(instance.celok)
         return
     try:
 
@@ -606,18 +670,23 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
         # nesmieme dva rovnako pomenované (ale nesúvisiace) profily ticho zlúčiť,
         # inak by ich prevádzky a objednávky kolidovali. `Celok.nazov` je unique,
         # tak pri zhode odlíšime názov emailom, resp. pk.
-        celok_nazov = nazov
-        if Celok.objects.filter(nazov=celok_nazov).exists():
-            celok_nazov = f"{nazov} ({instance.user.email})"
-        if Celok.objects.filter(nazov=celok_nazov).exists():
-            celok_nazov = f"{nazov} (#{instance.pk})"
+        celok_nazov = unique_celok_name(nazov, None)
 
+        configured_as_edupage = bool(
+            instance.is_edupage or instance.mealsguest_url or instance.api_identifier
+        )
         celok = Celok.objects.create(
             nazov=celok_nazov,
             billing_name=instance.billing_name,
             ico=instance.ico,
             dic=instance.dic,
-            zdroj_objednavok=zdroj,
+            zdroj_objednavok=(
+                Celok.ZdrojObjednavok.EDUPAGE
+                if configured_as_edupage
+                else Celok.ZdrojObjednavok.APP
+            ),
+            edupage_api_identifier=instance.api_identifier,
+            mealsguest_url=instance.mealsguest_url,
         )
         Prevadzka.objects.create(celok=celok, nazov=nazov)
         # update() namiesto save(), aby sa signál nezavolal rekurzívne.

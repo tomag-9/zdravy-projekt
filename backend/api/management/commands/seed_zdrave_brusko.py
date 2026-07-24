@@ -81,12 +81,22 @@ class Command(BaseCommand):
         for sort_order, (nazov, adresa, match) in enumerate(SKOLY, start=1):
             celok, celok_created = Celok.objects.get_or_create(
                 nazov=nazov,
-                defaults={"billing_name": nazov, "zdroj_objednavok": "edupage"},
+                defaults={
+                    "billing_name": nazov,
+                    "zdroj_objednavok": "edupage",
+                    "mealsguest_url": MEALSGUEST_URL,
+                },
             )
+            celok_updates = []
             if not celok_created and celok.zdroj_objednavok != "edupage":
                 # Roster ich vedie ako `app`, lebo si dosiaľ objednávali priamo.
                 celok.zdroj_objednavok = "edupage"
-                celok.save(update_fields=["zdroj_objednavok"])
+                celok_updates.append("zdroj_objednavok")
+            if celok.mealsguest_url != MEALSGUEST_URL:
+                celok.mealsguest_url = MEALSGUEST_URL
+                celok_updates.append("mealsguest_url")
+            if celok_updates and not dry_run:
+                celok.save(update_fields=celok_updates)
 
             prevadzka, _ = Prevadzka.objects.update_or_create(
                 celok=celok,

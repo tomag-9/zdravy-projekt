@@ -277,6 +277,19 @@ class Command(BaseCommand):
         # ----------------------------------------------------------------
         client_group, _ = Group.objects.get_or_create(name="Client")
 
+        def apply_seed_settings(profile, seed):
+            diet_list = [diet_objects[d] for d in seed["diets"] if d in diet_objects]
+            cs, _ = ClientSettings.objects.get_or_create(user=profile.user)
+            cs.visible_menus = seed["menus"]
+            cs.visible_meals = seed["meals"]
+            cs.save()
+            cs.visible_diets.set(diet_list)
+            for prevadzka in profile.dostupne_prevadzky():
+                prevadzka.visible_menus = seed["menus"]
+                prevadzka.visible_meals = seed["meals"]
+                prevadzka.save(update_fields=["visible_menus", "visible_meals"])
+                prevadzka.visible_diets.set(diet_list)
+
         # ----------------------------------------------------------------
         # 4. Users + ClientSettings
         # ----------------------------------------------------------------
@@ -310,13 +323,7 @@ class Command(BaseCommand):
             profile.save(update_fields=["company_name", "billing_name"])
 
             # ClientSettings
-            cs, _ = ClientSettings.objects.get_or_create(user=user)
-            cs.visible_menus = seed["menus"]
-            cs.visible_meals = seed["meals"]
-            cs.visible_diets.set(
-                [diet_objects[d] for d in seed["diets"] if d in diet_objects]
-            )
-            cs.save()
+            apply_seed_settings(profile, seed)
 
             # ----------------------------------------------------------------
             # 5. Orders
@@ -376,6 +383,9 @@ class Command(BaseCommand):
         # 7. Reference data (portion types) + meal plan templates/plans
         # ----------------------------------------------------------------
         call_command("init_reference_data", verbosity=options.get("verbosity", 1))
+        for seed in SEED_USERS:
+            profile = UserProfile.objects.get(user__username=seed["username"])
+            apply_seed_settings(profile, seed)
         mp_templates, mp_plans = self._seed_meal_plan_data(days, flush)
 
         # ----------------------------------------------------------------
