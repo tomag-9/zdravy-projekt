@@ -256,22 +256,14 @@ class UserProfile(models.Model):
         return self.company_name or self.user.email
 
     def dostupne_prevadzky(self):
-        """Prevádzky, ktoré toto prihlásenie smie objednávať.
-
-        Prázdny M2M znamená „celý celok", nie „nič" — inak by každý nový login
-        stratil prístup, kým mu ho niekto ručne nenaklikal.
-
-        Vyplnený M2M platí aj bez celku a smie siahať naprieč celkami: jeden EduPage
-        môže zastrešovať viac samostatných subjektov (Zdravé Brúsko vedie pod jedným
-        loginom päť škôl, ktoré fakturujú každá zvlášť). Spoločný EduPage teda nie je
-        príznak celku, preto sa tu na celok neviažeme.
-        """
-        vybrane = self.prevadzky.filter(is_active=True)
-        if vybrane.exists():
-            return vybrane
-        if self.celok_id is None:
-            return Prevadzka.objects.none()
-        return self.celok.prevadzky.filter(is_active=True)
+        """Aktívne prevádzky z explicitných celok/prevádzka access záznamov."""
+        celok_ids = self.celok_accesses.values_list("celok_id", flat=True)
+        prevadzka_ids = self.prevadzka_accesses.values_list("prevadzka_id", flat=True)
+        return (
+            Prevadzka.objects.filter(is_active=True)
+            .filter(models.Q(celok_id__in=celok_ids) | models.Q(pk__in=prevadzka_ids))
+            .distinct()
+        )
 
 
 class EdupageConnection(models.Model):
@@ -476,6 +468,52 @@ class Prevadzka(models.Model):
 
     def __str__(self) -> str:
         return self.nazov
+
+
+class ProfileCelokAccess(models.Model):
+    """Login má prístup ku všetkým súčasným aj budúcim prevádzkam celku."""
+
+    profile = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="celok_accesses",
+    )
+    celok = models.ForeignKey(
+        Celok,
+        on_delete=models.CASCADE,
+        related_name="profile_accesses",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "celok"],
+                name="unique_profile_celok_access",
+            )
+        ]
+
+
+class ProfilePrevadzkaAccess(models.Model):
+    """Login má prístup iba ku konkrétnej prevádzke."""
+
+    profile = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="prevadzka_accesses",
+    )
+    prevadzka = models.ForeignKey(
+        Prevadzka,
+        on_delete=models.CASCADE,
+        related_name="profile_accesses",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "prevadzka"],
+                name="unique_profile_prevadzka_access",
+            )
+        ]
 
 
 class DeliveryBlock(models.Model):
