@@ -187,7 +187,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
     it('zavolá scrape endpoint a ohlási počty', async () => {
         const user = userEvent.setup();
         mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
-            if (url.includes('/edupage-uploads/scrape/')) {
+            if (url.includes('/edupage-connections/scrape/')) {
                 return Promise.resolve({
                     ok: true,
                     json: async () => ({
@@ -211,7 +211,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
 
         await waitFor(() => {
             const call = mockApiFetch.mock.calls.find((c) =>
-                String(c[0]).includes('/edupage-uploads/scrape/'),
+                String(c[0]).includes('/edupage-connections/scrape/'),
             );
             expect(call).toBeTruthy();
             expect(call?.[1]?.method).toBe('POST');
@@ -226,7 +226,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
     it('ohlási chybu, keď sa nenačíta žiadna prevádzka', async () => {
         const user = userEvent.setup();
         mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
-            if (url.includes('/edupage-uploads/scrape/')) {
+            if (url.includes('/edupage-connections/scrape/')) {
                 return Promise.resolve({ ok: true, json: async () => ({ results: [] }) });
             }
             return Promise.resolve({

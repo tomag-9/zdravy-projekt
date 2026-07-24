@@ -36,8 +36,6 @@ def _operation_user(prevadzky: list[Prevadzka]) -> User:
 
 def edupage_operations(
     connection_id: int | str | None = None,
-    *,
-    include_user: bool = True,
 ) -> list[dict]:
     prevadzky = (
         Prevadzka.objects.filter(is_active=True)
@@ -62,9 +60,7 @@ def edupage_operations(
                 "connection_id": connection.pk,
                 "name": connection.name,
                 "url": connection.mealsguest_url,
-                "user": (
-                    _operation_user(connection_prevadzky) if include_user else None
-                ),
+                "user": _operation_user(connection_prevadzky),
                 "prevadzky": connection_prevadzky,
                 "connection": connection,
             }
