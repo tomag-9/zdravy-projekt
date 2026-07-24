@@ -14,7 +14,8 @@ from ..edupage_scraper import (
     nest_order_data_by_category,
     prevadzky_without_match,
 )
-from ..models import Celok, DailyOrder, EdupageUpload, UserProfile
+from ..models import DailyOrder, EdupageConnection, EdupageUpload
+from ..services.edupage_connection_service import edupage_operations
 from ..utils import filter_order_data_for_prevadzka
 
 logger = logging.getLogger(__name__)
@@ -25,112 +26,33 @@ EDUPAGE_SCRAPE_ERROR = (
 EDUPAGE_TEST_URL_ERROR = "URL could not be reached or parsed."
 
 
-def _system_scrape_user():
-    from django.contrib.auth.models import User
-
-    user, _ = User.objects.get_or_create(
-        username="edupage-scrape@system.local",
-        defaults={
-            "email": "edupage-scrape@system.local",
-            "is_active": False,
-            "is_staff": False,
-        },
-    )
-    return user
+class EdupageConnectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EdupageConnection
+        fields = ["id", "name", "mealsguest_url", "api_identifier", "is_active"]
 
 
-def _edupage_operations(operation_id=None):
-    operations_by_url: dict[str, dict] = {}
-    celky = (
-        Celok.objects.filter(zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE)
-        .exclude(mealsguest_url="")
-        .prefetch_related(
-            "prevadzky",
-            "profily__user",
-            "profily__prevadzky",
-            "prevadzky__profily__user",
-            "prevadzky__profily__prevadzky",
-        )
-    )
-    if operation_id:
-        # operation_id môže ukazovať na ktorýkoľvek celok zdieľajúci EduPage URL
-        # (napr. Zdravé Brúško = 5 celkov na jednom URL). Zoskupíme podľa URL, nie
-        # podľa pk, inak by scrape jedného celku dostal objem celej školy bez
-        # prefixového rozdelenia → prepočítanie.
-        target = celky.filter(pk=operation_id).first()
-        if target is not None:
-            celky = celky.filter(mealsguest_url=target.mealsguest_url)
-        else:
-            celky = celky.none()
-
-    for celok in celky:
-        operation = operations_by_url.setdefault(
-            celok.mealsguest_url,
-            {
-                "operation_id": celok.pk,
-                "name": celok.nazov,
-                "url": celok.mealsguest_url,
-                "user": None,
-                "prevadzky": [],
-            },
-        )
-        operation["prevadzky"].extend([p for p in celok.prevadzky.all() if p.is_active])
-        if operation["user"] is None:
-            profile = celok.profily.select_related("user").first()
-            if profile is None:
-                for prevadzka in celok.prevadzky.all():
-                    profile = prevadzka.profily.select_related("user").first()
-                    if profile is not None:
-                        break
-            if profile is not None:
-                operation["user"] = profile.user
-
-    configured_urls = set(operations_by_url)
-    legacy_profiles = (
-        UserProfile.objects.filter(is_edupage=True)
-        .exclude(mealsguest_url="")
-        .select_related("user", "celok")
-        .prefetch_related("celok__prevadzky", "prevadzky")
-    )
-    if operation_id and not operations_by_url:
-        legacy_profiles = legacy_profiles.filter(pk=operation_id)
-    elif operation_id:
-        legacy_profiles = legacy_profiles.none()
-
-    for profile in legacy_profiles:
-        if profile.mealsguest_url in configured_urls:
-            continue
-        operations_by_url[profile.mealsguest_url] = {
-            "operation_id": profile.pk,
-            "name": str(profile),
-            "url": profile.mealsguest_url,
-            "user": profile.user,
-            "prevadzky": list(profile.dostupne_prevadzky()),
-        }
-
-    system_user = None
-    for operation in operations_by_url.values():
-        if operation["user"] is None:
-            if system_user is None:
-                system_user = _system_scrape_user()
-            operation["user"] = system_user
-        deduped = {}
-        for prevadzka in operation["prevadzky"]:
-            deduped[prevadzka.pk] = prevadzka
-        operation["prevadzky"] = list(deduped.values())
-    return list(operations_by_url.values())
+class AdminEdupageConnectionViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = EdupageConnection.objects.filter(is_active=True).order_by("name", "pk")
+    serializer_class = EdupageConnectionSerializer
+    permission_classes = [permissions.IsAdminUser]
+    pagination_class = None
 
 
 class EdupageUploadSerializer(serializers.ModelSerializer):
-    operation_name = serializers.CharField(
-        source="operation.company_name", read_only=True, allow_null=True
-    )
+    operation_name = serializers.SerializerMethodField()
+
+    def get_operation_name(self, obj):
+        if obj.connection_id:
+            return obj.connection.name
+        return obj.operation.company_name if obj.operation_id else None
 
     class Meta:
         model = EdupageUpload
         fields = [
             "id",
             "operation",
+            "connection",
             "operation_name",
             "date",
             "filename",
@@ -138,11 +60,21 @@ class EdupageUploadSerializer(serializers.ModelSerializer):
             "error_message",
             "uploaded_at",
         ]
-        read_only_fields = ["id", "filename", "status", "error_message", "uploaded_at"]
+        read_only_fields = [
+            "id",
+            "operation",
+            "connection",
+            "filename",
+            "status",
+            "error_message",
+            "uploaded_at",
+        ]
 
 
 class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = EdupageUpload.objects.select_related("operation", "uploaded_by").all()
+    queryset = EdupageUpload.objects.select_related(
+        "connection", "operation", "uploaded_by"
+    ).all()
     serializer_class = EdupageUploadSerializer
     permission_classes = [permissions.IsAdminUser]
 
@@ -156,7 +88,9 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
     def upload(self, request: Request) -> Response:
         date = request.data.get("date")
-        operation_id = request.data.get("operation_id")
+        connection_id = request.data.get("connection_id") or request.data.get(
+            "operation_id"
+        )
         file = request.FILES.get("file")
 
         if not date or not file:
@@ -173,42 +107,20 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        operation = None
-        if operation_id:
-            celok = (
-                Celok.objects.filter(
-                    pk=operation_id,
-                    zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+        connection = None
+        if connection_id:
+            connection = EdupageConnection.objects.filter(
+                pk=connection_id,
+                is_active=True,
+            ).first()
+            if connection is None:
+                return Response(
+                    {"error": f"Edupage connection {connection_id} not found"},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-                .prefetch_related("profily__user", "prevadzky__profily__user")
-                .first()
-            )
-            if celok is not None:
-                operation = celok.profily.first()
-                if operation is None:
-                    for prevadzka in celok.prevadzky.all():
-                        operation = prevadzka.profily.first()
-                        if operation is not None:
-                            break
-                if operation is None and celok.mealsguest_url:
-                    operation = (
-                        UserProfile.objects.filter(mealsguest_url=celok.mealsguest_url)
-                        .select_related("user")
-                        .first()
-                    )
-            if operation is None and celok is None:
-                try:
-                    operation = UserProfile.objects.get(
-                        pk=operation_id, is_edupage=True
-                    )
-                except UserProfile.DoesNotExist:
-                    return Response(
-                        {"error": f"Edupage operation {operation_id} not found"},
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
 
         upload = EdupageUpload.objects.create(
-            operation=operation,
+            connection=connection,
             date=parsed_date,
             filename=file.name,
             file=file,
@@ -230,14 +142,14 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         result = []
-        for op in _edupage_operations():
+        for op in edupage_operations(include_user=False):
             upload_count = EdupageUpload.objects.filter(
                 date=date,
-                operation__mealsguest_url=op["url"],
+                connection_id=op["connection_id"],
             ).count()
             result.append(
                 {
-                    "id": op["operation_id"],
+                    "id": op["connection_id"],
                     "name": op["name"],
                     "uploaded": upload_count > 0,
                     "upload_count": upload_count,
@@ -262,11 +174,13 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
         Scrape mealsGuest HTML for one or all Edupage operations for a given date
         and upsert the result as DailyOrder records.
 
-        Body: { "date": "YYYY-MM-DD", "operation_id": <int> (optional) }
-        When operation_id is omitted, all is_edupage operations with a mealsguest_url are scraped.
+        Body: { "date": "YYYY-MM-DD", "connection_id": <int> (optional) }
+        When connection_id is omitted, all active EduPage connections are scraped.
         """
         date_str = request.data.get("date")
-        operation_id = request.data.get("operation_id")
+        connection_id = request.data.get("connection_id") or request.data.get(
+            "operation_id"
+        )
 
         if not date_str:
             return Response(
@@ -279,10 +193,10 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "date must be YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        operations = _edupage_operations(operation_id=operation_id)
-        if operation_id and not operations:
+        operations = edupage_operations(connection_id=connection_id)
+        if connection_id and not operations:
             return Response(
-                {"error": f"Edupage operation {operation_id} not found"},
+                {"error": f"Edupage connection {connection_id} not found"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         results = []
@@ -293,7 +207,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if not prevadzky:
                 results.append(
                     {
-                        "operation_id": operation["operation_id"],
+                        "connection_id": operation["connection_id"],
                         "name": operation["name"],
                         "status": "skipped",
                         "reason": "no active prevadzka",
@@ -307,7 +221,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if len(prevadzky) > 1 and bez_matchu:
                 results.append(
                     {
-                        "operation_id": operation["operation_id"],
+                        "connection_id": operation["connection_id"],
                         "name": operation["name"],
                         "status": "skipped",
                         "reason": (
@@ -326,11 +240,11 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             except Exception:
                 logger.exception(
-                    "Scrape failed for operation %s", operation["operation_id"]
+                    "Scrape failed for connection %s", operation["connection_id"]
                 )
                 results.append(
                     {
-                        "operation_id": operation["operation_id"],
+                        "connection_id": operation["connection_id"],
                         "name": operation["name"],
                         "status": "error",
                         "error": EDUPAGE_SCRAPE_ERROR,
@@ -341,7 +255,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if not result.order_data:
                 results.append(
                     {
-                        "operation_id": operation["operation_id"],
+                        "connection_id": operation["connection_id"],
                         "name": operation["name"],
                         "status": "empty",
                         "warnings": result.warnings,
@@ -352,7 +266,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
             if result.warnings or result.unmapped_letters:
                 results.append(
                     {
-                        "operation_id": operation["operation_id"],
+                        "connection_id": operation["connection_id"],
                         "name": operation["name"],
                         "status": "skipped",
                         "warnings": result.warnings,
@@ -389,7 +303,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
 
             results.append(
                 {
-                    "operation_id": operation["operation_id"],
+                    "connection_id": operation["connection_id"],
                     "name": operation["name"],
                     "status": "updated",
                     "orders": written,

@@ -5,9 +5,10 @@ import { PageHead, Card, Button, Field, Input, Select, Badge, Empty } from './ui
 
 interface EdupageOperation {
     id: number;
-    nazov: string;
-    zdroj_objednavok: string;
+    name: string;
     mealsguest_url: string;
+    api_identifier: string;
+    is_active: boolean;
 }
 
 interface OperationStatus {
@@ -27,6 +28,7 @@ interface StatusByDate {
 interface Upload {
     id: number;
     operation: number | null;
+    connection: number | null;
     operation_name: string | null;
     date: string;
     filename: string;
@@ -38,7 +40,7 @@ interface Upload {
 interface QueuedFile {
     id: string;
     file: File;
-    operationId: string;
+    connectionId: string;
     uploading: boolean;
     done: boolean;
     error: string | null;
@@ -56,11 +58,11 @@ export default function EdupageUpload() {
     const [loadingStatus, setLoadingStatus] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const operationName = (op: EdupageOperation) => op.nazov;
+    const operationName = (op: EdupageOperation) => op.name;
 
     const loadOperations = useCallback(async () => {
-        const data = await apiClient.get<EdupageOperation[]>('/admin/celky/');
-        setOperations(data.filter((op) => op.zdroj_objednavok === 'edupage' && Boolean(op.mealsguest_url)));
+        const data = await apiClient.get<EdupageOperation[]>('/admin/edupage-connections/');
+        setOperations(data);
     }, []);
 
     const loadStatusAndUploads = useCallback(async (d: string) => {
@@ -89,7 +91,7 @@ export default function EdupageUpload() {
         const newItems: QueuedFile[] = Array.from(files).map((f) => ({
             id: `${f.name}-${Date.now()}-${Math.random()}`,
             file: f,
-            operationId: '',
+            connectionId: '',
             uploading: false,
             done: false,
             error: null,
@@ -109,7 +111,7 @@ export default function EdupageUpload() {
             const form = new FormData();
             form.append('date', date);
             form.append('file', item.file);
-            if (item.operationId) form.append('operation_id', item.operationId);
+            if (item.connectionId) form.append('connection_id', item.connectionId);
 
             await apiClient.postForm('/admin/edupage-uploads/upload/', form);
             setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, uploading: false, done: true } : q)));
@@ -241,9 +243,9 @@ export default function EdupageUpload() {
                                     </div>
                                     {!item.done && (
                                         <Select
-                                            value={item.operationId}
+                                            value={item.connectionId}
                                             onChange={(e) =>
-                                                setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, operationId: e.target.value } : q)))
+                                                setQueue((prev) => prev.map((q) => (q.id === item.id ? { ...q, connectionId: e.target.value } : q)))
                                             }
                                             disabled={item.uploading}
                                             style={{ width: 'auto' }}

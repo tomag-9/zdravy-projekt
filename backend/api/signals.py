@@ -534,23 +534,40 @@ def on_client_settings_saved(sender, instance, created=False, **kwargs):
 
 @receiver(post_save, sender="api.Prevadzka")
 def on_prevadzka_saved(sender, instance, created=False, **kwargs):
-    """Apply default diets for newly created prevadzky."""
-    if not created:
-        return
+    """Apply defaults and keep the temporary EduPage mirror current."""
     try:
-        from api.default_visibility import (
-            DEFAULT_VISIBLE_MEALS,
-            DEFAULT_VISIBLE_MENUS,
-            ensure_default_visible_diets,
+        if created:
+            from api.default_visibility import (
+                DEFAULT_VISIBLE_MEALS,
+                DEFAULT_VISIBLE_MENUS,
+                ensure_default_visible_diets,
+            )
+
+            instance.visible_menus = DEFAULT_VISIBLE_MENUS
+            instance.visible_meals = DEFAULT_VISIBLE_MEALS
+            instance.save(update_fields=["visible_menus", "visible_meals"])
+            ensure_default_visible_diets(instance.visible_diets)
+
+        from api.services.edupage_connection_service import (
+            sync_connection_for_prevadzka,
         )
 
-        instance.visible_menus = DEFAULT_VISIBLE_MENUS
-        instance.visible_meals = DEFAULT_VISIBLE_MEALS
-        instance.save(update_fields=["visible_menus", "visible_meals"])
-        ensure_default_visible_diets(instance.visible_diets)
+        sync_connection_for_prevadzka(instance)
     except Exception as exc:
-        logger.exception("Error applying default diets for Prevadzka: %s", exc)
+        logger.exception("Error initializing Prevadzka: %s", exc)
         _capture_signal_failure(exc, "prevadzka_saved")
+
+
+@receiver(post_save, sender="api.Celok")
+def on_celok_saved(sender, instance, **kwargs):
+    """Temporary mirror until EdupageConnection becomes the only write model."""
+    try:
+        from api.services.edupage_connection_service import sync_connection_for_celok
+
+        sync_connection_for_celok(instance)
+    except Exception as exc:
+        logger.exception("Error syncing EduPage connection for Celok: %s", exc)
+        _capture_signal_failure(exc, "celok_saved")
 
 
 @receiver(post_save, sender="api.Diet")
