@@ -32,8 +32,8 @@ class EdupageConnectionSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "mealsguest_url", "api_identifier", "is_active"]
 
 
-class AdminEdupageConnectionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = EdupageConnection.objects.filter(is_active=True).order_by("name", "pk")
+class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
+    queryset = EdupageConnection.objects.all().order_by("name", "pk")
     serializer_class = EdupageConnectionSerializer
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None

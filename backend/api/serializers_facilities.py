@@ -26,6 +26,9 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     celok_zdroj_objednavok = serializers.CharField(
         source="celok.zdroj_objednavok", read_only=True
     )
+    edupage_connection_name = serializers.CharField(
+        source="edupage_connection.name", read_only=True
+    )
     orders_count = serializers.SerializerMethodField()
     client_user_id = serializers.SerializerMethodField()
     visible_diets = serializers.PrimaryKeyRelatedField(
@@ -66,6 +69,8 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "celok_zdroj_objednavok",
             "nazov",
             "adresa",
+            "edupage_connection",
+            "edupage_connection_name",
             "edupage_match",
             "report_alias",
             "delivery_note",

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FolderOpen, Check, Square, FileText, X, Loader2, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { FolderOpen, Check, Square, FileText, X, Loader2, CheckCircle, XCircle, Trash2, Plus, Pencil } from 'lucide-react';
 import { apiClient } from '../../api/client';
-import { PageHead, Card, Button, Field, Input, Select, Badge, Empty } from './ui';
+import { PageHead, Card, Button, Field, Input, Select, Badge, Empty, IconButton, Modal, Toggle } from './ui';
 
 interface EdupageOperation {
     id: number;
@@ -46,6 +46,15 @@ interface QueuedFile {
     error: string | null;
 }
 
+type ConnectionForm = Omit<EdupageOperation, 'id'>;
+
+const EMPTY_CONNECTION: ConnectionForm = {
+    name: '',
+    mealsguest_url: '',
+    api_identifier: '',
+    is_active: true,
+};
+
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function EdupageUpload() {
@@ -54,11 +63,15 @@ export default function EdupageUpload() {
     const [uploads, setUploads] = useState<Upload[]>([]);
     const [queue, setQueue] = useState<QueuedFile[]>([]);
     const [operations, setOperations] = useState<EdupageOperation[]>([]);
+    const [connectionTarget, setConnectionTarget] = useState<EdupageOperation | null | undefined>(undefined);
+    const [connectionForm, setConnectionForm] = useState<ConnectionForm>(EMPTY_CONNECTION);
+    const [savingConnection, setSavingConnection] = useState(false);
     const [isDragging, setIsDragging] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const operationName = (op: EdupageOperation) => op.name;
+    const activeOperations = operations.filter((op) => op.is_active);
 
     const loadOperations = useCallback(async () => {
         const data = await apiClient.get<EdupageOperation[]>('/admin/edupage-connections/');
@@ -141,6 +154,34 @@ export default function EdupageUpload() {
         }
     };
 
+    const openConnection = (connection: EdupageOperation | null) => {
+        setConnectionTarget(connection);
+        setConnectionForm(connection ? {
+            name: connection.name,
+            mealsguest_url: connection.mealsguest_url,
+            api_identifier: connection.api_identifier,
+            is_active: connection.is_active,
+        } : { ...EMPTY_CONNECTION });
+    };
+
+    const saveConnection = async (event: React.FormEvent) => {
+        event.preventDefault();
+        setSavingConnection(true);
+        try {
+            if (connectionTarget) {
+                await apiClient.put(`/admin/edupage-connections/${connectionTarget.id}/`, connectionForm);
+            } else {
+                await apiClient.post('/admin/edupage-connections/', connectionForm);
+            }
+            setConnectionTarget(undefined);
+            await Promise.all([loadOperations(), loadStatusAndUploads(date)]);
+        } catch (e) {
+            alert(e instanceof Error ? e.message : 'Nepodarilo sa uložiť EduPage spojenie');
+        } finally {
+            setSavingConnection(false);
+        }
+    };
+
     const pendingCount = queue.filter((q) => !q.done && !q.uploading).length;
     const doneCount = queue.filter((q) => q.done).length;
 
@@ -169,6 +210,30 @@ export default function EdupageUpload() {
             />
 
             <div className="zpa-stack">
+                <Card style={{ overflow: 'hidden' }}>
+                    <div className="zpa-card-head" style={{ padding: '16px 24px', borderBottom: '1px solid var(--line-soft)' }}>
+                        <div>
+                            <h3>EduPage spojenia</h3>
+                            <p>Zdrojové URL používané importom a priradené prevádzkam</p>
+                        </div>
+                        <Button sm onClick={() => openConnection(null)}><Plus /> Pridať</Button>
+                    </div>
+                    {operations.length === 0 ? (
+                        <Empty>Žiadne EduPage spojenia</Empty>
+                    ) : operations.map((op) => (
+                        <div key={op.id} className="zpa-listrow">
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                                <div className="lr-ttl" style={{ textTransform: 'none' }}>{op.name}</div>
+                                <div className="lr-sub" style={{ overflowWrap: 'anywhere' }}>{op.mealsguest_url}</div>
+                            </div>
+                            <Badge tone={op.is_active ? 'green' : 'gray'}>{op.is_active ? 'Aktívne' : 'Neaktívne'}</Badge>
+                            <IconButton onClick={() => openConnection(op)} title="Upraviť spojenie" aria-label="Upraviť spojenie">
+                                <Pencil />
+                            </IconButton>
+                        </div>
+                    ))}
+                </Card>
+
                 {/* Status summary */}
                 {statusData && !loadingStatus && (
                     <Card pad>
@@ -251,7 +316,7 @@ export default function EdupageUpload() {
                                             style={{ width: 'auto' }}
                                         >
                                             <option value="">-- prevádzka --</option>
-                                            {operations.map((op) => (
+                                            {activeOperations.map((op) => (
                                                 <option key={op.id} value={String(op.id)}>{operationName(op)}</option>
                                             ))}
                                         </Select>
@@ -301,6 +366,34 @@ export default function EdupageUpload() {
                     </Card>
                 )}
             </div>
+
+            {connectionTarget !== undefined && (
+                <Modal
+                    title={connectionTarget ? 'Upraviť EduPage spojenie' : 'Pridať EduPage spojenie'}
+                    onClose={() => setConnectionTarget(undefined)}
+                    foot={<>
+                        <Button variant="ghost" onClick={() => setConnectionTarget(undefined)}>Zrušiť</Button>
+                        <Button type="submit" form="edupage-connection-form" disabled={savingConnection}>
+                            {savingConnection ? 'Ukladám…' : 'Uložiť'}
+                        </Button>
+                    </>}
+                >
+                    <form id="edupage-connection-form" onSubmit={saveConnection} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        <Field label="Názov" req>
+                            <Input required value={connectionForm.name} onChange={(e) => setConnectionForm((form) => ({ ...form, name: e.target.value }))} />
+                        </Field>
+                        <Field label="mealsGuest URL" req>
+                            <Input required type="url" value={connectionForm.mealsguest_url} onChange={(e) => setConnectionForm((form) => ({ ...form, mealsguest_url: e.target.value }))} />
+                        </Field>
+                        <Field label="API identifikátor">
+                            <Input value={connectionForm.api_identifier} onChange={(e) => setConnectionForm((form) => ({ ...form, api_identifier: e.target.value }))} />
+                        </Field>
+                        <Field label="Aktívne">
+                            <Toggle on={connectionForm.is_active} onChange={(value) => setConnectionForm((form) => ({ ...form, is_active: value }))} ariaLabel="Aktívne EduPage spojenie" />
+                        </Field>
+                    </form>
+                </Modal>
+            )}
         </>
     );
 }

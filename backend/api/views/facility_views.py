@@ -28,6 +28,7 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet:
         qs = Celok.objects.prefetch_related(
             "prevadzky",
+            "prevadzky__edupage_connection",
             "prevadzky__visible_diets",
             "prevadzky__profile_accesses__profile__user",
             "profile_accesses__profile__user",
@@ -51,7 +52,7 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet:
         return (
-            Prevadzka.objects.select_related("celok")
+            Prevadzka.objects.select_related("celok", "edupage_connection")
             .prefetch_related(
                 "visible_diets",
                 "profile_accesses__profile__user",

@@ -23,7 +23,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 
-from api.models import DailyOrder, UserProfile
+from api.models import Celok, DailyOrder, ProfileCelokAccess, UserProfile
 
 
 @pytest.mark.django_db
@@ -54,6 +54,43 @@ class TestAdminUserViewSetQueries:
         assert (
             query_count <= 5
         ), f"Expected <= 5 queries (was ~16 before optimizations), got {query_count}. Possible N+1 issue."
+
+    def test_list_does_not_guess_billing_for_user_with_multiple_celky(
+        self, admin_authenticated_client
+    ):
+        from django.contrib.auth.models import User
+
+        user = User.objects.create_user(
+            username="multi-billing@example.com",
+            email="multi-billing@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        first = Celok.objects.create(
+            nazov="Billing first",
+            billing_name="First billing",
+            ico="11111111",
+            dic="1111111111",
+        )
+        second = Celok.objects.create(
+            nazov="Billing second",
+            billing_name="Second billing",
+            ico="22222222",
+            dic="2222222222",
+        )
+        ProfileCelokAccess.objects.create(profile=profile, celok=first)
+        ProfileCelokAccess.objects.create(profile=profile, celok=second)
+
+        response = admin_authenticated_client.get("/api/admin/users/")
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        users = payload.get("results", payload)
+        listed_user = next(item for item in users if item["id"] == user.pk)
+        assert listed_user["profile"]["billing_name"] == ""
+        assert listed_user["profile"]["ico"] == ""
+        assert listed_user["profile"]["dic"] == ""
 
 
 @pytest.mark.django_db
