@@ -696,7 +696,7 @@
     {
       "id": 11,
       "type": "table",
-      "title": "Slowest endpoints (p95 latency, last 5m)",
+      "title": "Slowest endpoints (p95 latency, selected range)",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -715,7 +715,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "topk(15, histogram_quantile(0.95, sum by (view, le) (rate(django_http_requests_latency_seconds_by_view_method_bucket{environment=~\"$environment\",view!~\"health_check|prometheus-django-metrics\"}[5m]))))",
+          "expr": "topk(15, histogram_quantile(0.95, sum by (view, le) (increase(django_http_requests_latency_seconds_by_view_method_bucket{environment=~\"$environment\",view!~\"health_check|prometheus-django-metrics\"}[$__range]))) and on (view) sum by (view) (increase(django_http_requests_latency_seconds_by_view_method_count{environment=~\"$environment\",view!~\"health_check|prometheus-django-metrics\"}[$__range])) > 0)",
           "format": "table",
           "instant": true
         }
@@ -776,7 +776,7 @@
     {
       "id": 12,
       "type": "table",
-      "title": "Busiest endpoints (request rate, last 5m)",
+      "title": "Busiest endpoints (request rate, selected range)",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -795,7 +795,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "topk(15, sum by (view) (rate(django_http_requests_total_by_view_transport_method_total{environment=~\"$environment\",view!~\"health_check|prometheus-django-metrics\"}[5m])))",
+          "expr": "topk(15, sum by (view) (increase(django_http_requests_total_by_view_transport_method_total{environment=~\"$environment\",view!~\"health_check|prometheus-django-metrics\"}[$__range])) / $__range_s)",
           "format": "table",
           "instant": true
         }
