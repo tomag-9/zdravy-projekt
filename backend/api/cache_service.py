@@ -2,7 +2,7 @@
 Cache service for managing application-level caching.
 
 Provides centralized cache key management and TTL configuration
-for frequently accessed data: GlobalSettings, ClientSettings, Diet, and daily stats.
+for frequently accessed data: GlobalSettings, Diet, and daily stats.
 
 Includes fallback handling for Redis timeouts/connection failures to prevent
 cache errors from crashing the application.
@@ -17,13 +17,11 @@ logger = logging.getLogger(__name__)
 
 # Cache key constants
 GLOBAL_SETTINGS_CACHE_KEY = "global_settings"
-CLIENT_SETTINGS_CACHE_KEY_PREFIX = "client_settings"
 DIET_LIST_CACHE_KEY = "diet_list"
 DAILY_STATS_CACHE_KEY_PREFIX = "daily_stats"
 
 # Cache timeout (TTL) constants in seconds
 GLOBAL_SETTINGS_TIMEOUT = 3600  # 1 hour
-CLIENT_SETTINGS_TIMEOUT = 3600  # 1 hour
 DIET_LIST_TIMEOUT = 86400  # 24 hours (static data)
 DAILY_STATS_TIMEOUT = 300  # 5 minutes
 
@@ -31,11 +29,6 @@ DAILY_STATS_TIMEOUT = 300  # 5 minutes
 def get_global_settings_cache_key() -> str:
     """Return the cache key for GlobalSettings."""
     return GLOBAL_SETTINGS_CACHE_KEY
-
-
-def get_client_settings_cache_key(user_id: int) -> str:
-    """Return the cache key for ClientSettings by user ID."""
-    return f"{CLIENT_SETTINGS_CACHE_KEY_PREFIX}:{user_id}"
 
 
 def get_diet_list_cache_key() -> str:
@@ -123,16 +116,6 @@ def delete_cached(key: str) -> None:
 def clear_global_settings_cache() -> None:
     """Clear the GlobalSettings cache."""
     delete_cached(get_global_settings_cache_key())
-
-
-def clear_client_settings_cache(user_id: int) -> None:
-    """
-    Clear the ClientSettings cache for a specific user.
-
-    Args:
-        user_id: The user ID.
-    """
-    delete_cached(get_client_settings_cache_key(user_id))
 
 
 def clear_diet_list_cache() -> None:

@@ -3,7 +3,7 @@ import os
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
-from api.models import ClientSettings, UserProfile
+from api.models import UserProfile
 
 DEMO_ADMIN_EMAIL = "admin@example.com"
 DEMO_ADMIN_PASSWORD = "admin"
@@ -90,10 +90,15 @@ class Command(BaseCommand):
         profile, _ = UserProfile.objects.get_or_create(user=operation_user)
         if not profile.company_name:
             profile.company_name = "Demo prevádzka"
-        if not profile.billing_name:
-            profile.billing_name = "Demo prevádzka, s.r.o."
         profile.save()
-        ClientSettings.objects.get_or_create(user=operation_user)
+        celok = profile.primary_celok()
+        if celok:
+            celok.nazov = "Demo prevádzka"
+            if not celok.billing_name:
+                celok.billing_name = "Demo prevádzka, s.r.o."
+            celok.save(update_fields=["nazov", "billing_name"])
+            if profile.dostupne_prevadzky().count() == 1:
+                profile.dostupne_prevadzky().update(nazov="Demo prevádzka")
 
         if created:
             self.stdout.write(self.style.SUCCESS('Created operation user "prevadzka"'))

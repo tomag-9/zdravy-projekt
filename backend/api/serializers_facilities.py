@@ -33,22 +33,21 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     )
 
     def _detail_profile(self, obj):
-        scoped_profiles = getattr(obj, "_prefetched_objects_cache", {}).get("profily")
-        if scoped_profiles is None:
-            scoped_profiles = list(obj.profily.select_related("user").all())
-        if scoped_profiles:
-            return scoped_profiles[0]
+        scoped_accesses = getattr(obj, "_prefetched_objects_cache", {}).get(
+            "profile_accesses"
+        )
+        if scoped_accesses is None:
+            scoped_accesses = list(obj.profile_accesses.select_related("profile__user"))
+        if scoped_accesses:
+            return scoped_accesses[0].profile
 
-        celok_profiles = self.context.get("celok_profiles")
-        if celok_profiles is None:
+        celok_accesses = self.context.get("celok_accesses")
+        if celok_accesses is None:
             celok = self.context.get("celok") or obj.celok
-            celok_profiles = list(
-                celok.profily.select_related("user").prefetch_related("prevadzky")
+            celok_accesses = list(
+                celok.profile_accesses.select_related("profile__user")
             )
-        for profile in celok_profiles:
-            if not profile.prevadzky.exists():
-                return profile
-        return celok_profiles[0] if celok_profiles else None
+        return celok_accesses[0].profile if celok_accesses else None
 
     def get_orders_count(self, obj):
         # Anotované vo viewsete; v inom kontexte (napr. po vytvorení) môže chýbať.
@@ -119,31 +118,42 @@ class AdminCelokSerializer(serializers.ModelSerializer):
             "ico",
             "dic",
             "zdroj_objednavok",
-            "edupage_api_identifier",
-            "mealsguest_url",
             "prevadzky_count",
             "prevadzky",
             "logins",
         ]
 
     def get_logins(self, obj):
-        # Priame loginy celku + M2M-only loginy pripnuté na prevádzky tohto celku.
         profiles_by_user_id = {}
-        for profile in obj.profily.select_related("user").prefetch_related("prevadzky"):
-            profiles_by_user_id[profile.user_id] = profile
+        for access in obj.profile_accesses.all():
+            profile = access.profile
+            profiles_by_user_id[profile.user_id] = {
+                "profile": profile,
+                "whole_celok": True,
+                "prevadzka_ids": set(),
+            }
         for prevadzka in obj.prevadzky.all():
-            for profile in prevadzka.profily.all():
-                profiles_by_user_id.setdefault(profile.user_id, profile)
+            for access in prevadzka.profile_accesses.all():
+                profile = access.profile
+                current = profiles_by_user_id.setdefault(
+                    profile.user_id,
+                    {
+                        "profile": profile,
+                        "whole_celok": False,
+                        "prevadzka_ids": set(),
+                    },
+                )
+                if not current["whole_celok"]:
+                    current["prevadzka_ids"].add(prevadzka.id)
         return [
             {
-                "user_id": p.user_id,
-                "email": p.user.email,
-                "company_name": p.company_name,
-                "is_edupage": p.is_edupage,
-                # Prázdne = login pokrýva celý celok; inak je obmedzený na tieto prevádzky.
-                "prevadzka_ids": list(p.prevadzky.values_list("id", flat=True)),
+                "user_id": entry["profile"].user_id,
+                "email": entry["profile"].user.email,
+                "company_name": entry["profile"].company_name,
+                "is_edupage": (obj.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE),
+                "prevadzka_ids": sorted(entry["prevadzka_ids"]),
             }
-            for p in profiles_by_user_id.values()
+            for entry in profiles_by_user_id.values()
         ]
 
     def get_prevadzky(self, obj):
@@ -154,7 +164,7 @@ class AdminCelokSerializer(serializers.ModelSerializer):
             context={
                 **self.context,
                 "celok": obj,
-                "celok_profiles": list(obj.profily.all()),
+                "celok_accesses": list(obj.profile_accesses.all()),
             },
         ).data
 

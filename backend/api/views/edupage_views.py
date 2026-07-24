@@ -43,15 +43,12 @@ class EdupageUploadSerializer(serializers.ModelSerializer):
     operation_name = serializers.SerializerMethodField()
 
     def get_operation_name(self, obj):
-        if obj.connection_id:
-            return obj.connection.name
-        return obj.operation.company_name if obj.operation_id else None
+        return obj.connection.name if obj.connection_id else None
 
     class Meta:
         model = EdupageUpload
         fields = [
             "id",
-            "operation",
             "connection",
             "operation_name",
             "date",
@@ -62,7 +59,6 @@ class EdupageUploadSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "operation",
             "connection",
             "filename",
             "status",
@@ -72,9 +68,7 @@ class EdupageUploadSerializer(serializers.ModelSerializer):
 
 
 class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = EdupageUpload.objects.select_related(
-        "connection", "operation", "uploaded_by"
-    ).all()
+    queryset = EdupageUpload.objects.select_related("connection", "uploaded_by").all()
     serializer_class = EdupageUploadSerializer
     permission_classes = [permissions.IsAdminUser]
 
@@ -88,9 +82,7 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"], parser_classes=[MultiPartParser])
     def upload(self, request: Request) -> Response:
         date = request.data.get("date")
-        connection_id = request.data.get("connection_id") or request.data.get(
-            "operation_id"
-        )
+        connection_id = request.data.get("connection_id")
         file = request.FILES.get("file")
 
         if not date or not file:
@@ -171,16 +163,14 @@ class AdminEdupageUploadViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["post"], url_path="scrape")
     def scrape(self, request: Request) -> Response:
         """
-        Scrape mealsGuest HTML for one or all Edupage operations for a given date
+        Scrape mealsGuest HTML for one or all EduPage connections for a given date
         and upsert the result as DailyOrder records.
 
         Body: { "date": "YYYY-MM-DD", "connection_id": <int> (optional) }
         When connection_id is omitted, all active EduPage connections are scraped.
         """
         date_str = request.data.get("date")
-        connection_id = request.data.get("connection_id") or request.data.get(
-            "operation_id"
-        )
+        connection_id = request.data.get("connection_id")
 
         if not date_str:
             return Response(

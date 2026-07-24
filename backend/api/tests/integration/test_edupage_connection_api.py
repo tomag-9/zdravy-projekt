@@ -20,20 +20,25 @@ def test_shared_url_creates_one_connection_for_multiple_celky():
     first = Celok.objects.create(
         nazov="First school",
         zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
-        mealsguest_url=url,
     )
     second = Celok.objects.create(
         nazov="Second school",
         zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+    )
+    connection = EdupageConnection.objects.create(
+        name="Shared EduPage",
         mealsguest_url=url,
     )
-
-    first_prevadzka = Prevadzka.objects.create(celok=first, nazov="First")
-    second_prevadzka = Prevadzka.objects.create(celok=second, nazov="Second")
-
-    connection = EdupageConnection.objects.get(mealsguest_url=url)
-    first_prevadzka.refresh_from_db()
-    second_prevadzka.refresh_from_db()
+    first_prevadzka = Prevadzka.objects.create(
+        celok=first,
+        nazov="First",
+        edupage_connection=connection,
+    )
+    second_prevadzka = Prevadzka.objects.create(
+        celok=second,
+        nazov="Second",
+        edupage_connection=connection,
+    )
     assert first_prevadzka.edupage_connection_id == connection.pk
     assert second_prevadzka.edupage_connection_id == connection.pk
 
@@ -48,10 +53,16 @@ def test_admin_upload_and_status_use_connection(
     celok = Celok.objects.create(
         nazov="Upload school",
         zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+    )
+    connection = EdupageConnection.objects.create(
+        name="Upload school",
         mealsguest_url="https://upload.edupage.org/menu/mealsGuest?id=token",
     )
-    Prevadzka.objects.create(celok=celok, nazov="Upload school")
-    connection = EdupageConnection.objects.get(mealsguest_url=celok.mealsguest_url)
+    Prevadzka.objects.create(
+        celok=celok,
+        nazov="Upload school",
+        edupage_connection=connection,
+    )
 
     list_response = admin_client.get(CONNECTIONS_URL)
 
@@ -80,7 +91,6 @@ def test_admin_upload_and_status_use_connection(
     assert upload_response.status_code == status.HTTP_201_CREATED
     upload = EdupageUpload.objects.get()
     assert upload.connection_id == connection.pk
-    assert upload.operation_id is None
     assert upload_response.json()["operation_name"] == connection.name
 
     status_response = admin_client.get(

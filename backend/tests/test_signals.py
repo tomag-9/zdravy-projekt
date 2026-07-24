@@ -77,105 +77,34 @@ class TestAutoOrderScheduleSync:
 
 
 @pytest.mark.django_db
-class TestCelokZdrojObjednavok:
-    """UserProfile signál drží Celok.zdroj_objednavok v súlade s is_edupage."""
-
-    def _profile(self, is_edupage):
+class TestDefaultProfileFacility:
+    def _profile(self, email="profile@x.sk", company_name="Test prevádzka"):
         from django.contrib.auth.models import User
 
         from api.models import UserProfile
 
-        user = User.objects.create_user(
-            username=f"zdroj-{is_edupage}@x.sk", email=f"zdroj-{is_edupage}@x.sk"
-        )
-        # Auto-vytvorí celok cez signál.
-        return UserProfile.objects.create(
-            user=user, company_name="Zdroj Test", is_edupage=is_edupage
-        )
+        user = User.objects.create_user(username=email, email=email)
+        return UserProfile.objects.create(user=user, company_name=company_name)
 
-    def test_edupage_profile_marks_celok_as_edupage(self):
-        from api.models import Celok
+    def test_new_profile_gets_own_celok_prevadzka_and_access(self):
+        profile = self._profile()
+        celok = profile.primary_celok()
 
-        profile = self._profile(is_edupage=True)
-        profile.refresh_from_db()
-        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
-
-    def test_app_profile_marks_celok_as_app(self):
-        from api.models import Celok
-
-        profile = self._profile(is_edupage=False)
-        profile.refresh_from_db()
-        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
-
-    def test_toggling_is_edupage_updates_celok(self):
-        from api.models import Celok
-
-        profile = self._profile(is_edupage=False)
-        profile.refresh_from_db()
-        celok = profile.celok
-        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
-
-        profile.is_edupage = True
-        profile.save()
-
-        celok.refresh_from_db()
-        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
-
-    def test_app_login_save_does_not_downgrade_edupage_celok(self):
-        from django.contrib.auth.models import User
-
-        from api.models import Celok, Prevadzka, UserProfile
-
-        celok = Celok.objects.create(
-            nazov="Edu celok",
-            zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
-            mealsguest_url="https://school.edupage.org/menu/mealsGuest?id=T",
-        )
-        Prevadzka.objects.create(celok=celok, nazov="Edu prevádzka")
-        user = User.objects.create_user(
-            username="app-login@x.sk", email="app-login@x.sk"
-        )
-        profile = UserProfile.objects.create(
-            user=user, company_name="App login", celok=celok
-        )
-
-        profile.company_name = "App login renamed"
-        profile.save(update_fields=["company_name"])
-
-        celok.refresh_from_db()
-        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
-        assert celok.mealsguest_url == "https://school.edupage.org/menu/mealsGuest?id=T"
-
-    def test_filling_blank_profile_updates_auto_created_celok_metadata(self):
-        from django.contrib.auth.models import User
-
-        from api.models import UserProfile
-
-        user = User.objects.create_user(username="blank@x.sk", email="blank@x.sk")
-        profile = UserProfile.objects.create(user=user)
-        profile.refresh_from_db()
-        assert profile.celok.nazov == "blank@x.sk"
-
-        profile.company_name = "Nový názov školy"
-        profile.billing_name = "Fakturačný názov školy"
-        profile.ico = "12345678"
-        profile.dic = "2012345678"
-        profile.save()
-
-        profile.celok.refresh_from_db()
-        assert profile.celok.nazov == "Nový názov školy"
-        assert profile.celok.billing_name == "Fakturačný názov školy"
-        assert profile.celok.ico == "12345678"
-        assert profile.celok.dic == "2012345678"
+        assert celok is not None
+        assert celok.nazov == "Test prevádzka"
+        assert list(profile.dostupne_prevadzky().values_list("nazov", flat=True)) == [
+            "Test prevádzka"
+        ]
+        assert profile.celok_accesses.filter(celok=celok).exists()
 
     def test_profile_update_does_not_rename_manually_named_celok(self):
-        profile = self._profile(is_edupage=False)
-        profile.refresh_from_db()
-        profile.celok.nazov = "Ručne pomenovaný celok"
-        profile.celok.save(update_fields=["nazov"])
+        profile = self._profile()
+        celok = profile.primary_celok()
+        celok.nazov = "Ručne pomenovaný celok"
+        celok.save(update_fields=["nazov"])
 
         profile.company_name = "Nový login názov"
         profile.save(update_fields=["company_name"])
 
-        profile.celok.refresh_from_db()
-        assert profile.celok.nazov == "Ručne pomenovaný celok"
+        celok.refresh_from_db()
+        assert celok.nazov == "Ručne pomenovaný celok"

@@ -107,7 +107,7 @@ class OrderService:
 
     @staticmethod
     def get_planned_orders(
-        user: User, visible_meals: List[str]
+        user: User, visible_meals: Optional[List[str]] = None
     ) -> List[Dict[str, Any]]:
         """
         Return data for the 5 upcoming workdays for *user*.
@@ -173,7 +173,12 @@ class OrderService:
             else:
                 tmpl = _template_for_day(day)
                 if tmpl:
-                    predicted_data = _build_auto_data(tmpl, visible_meals)
+                    allowed_meals = visible_meals
+                    if allowed_meals is None:
+                        allowed_meals = list(
+                            getattr(tmpl.prevadzka, "visible_meals", []) or []
+                        )
+                    predicted_data = _build_auto_data(tmpl, allowed_meals)
                     predicted_total, predicted_meal_count = OrderService.order_total(
                         predicted_data
                     )

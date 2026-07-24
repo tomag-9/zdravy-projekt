@@ -21,7 +21,7 @@ def _order():
         date=datetime.date(2026, 7, 24),
         data={"lunch": {"default": {"menuCounts": {"A": 1}, "diets": {}}}},
     )
-    return user, profile.celok, prevadzka, order
+    return user, profile.primary_celok(), prevadzka, order
 
 
 @pytest.mark.django_db

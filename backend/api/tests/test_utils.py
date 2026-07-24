@@ -3,15 +3,24 @@ import datetime
 import pytest
 from django.contrib.auth.models import User
 
-from api.models import Celok, DailyOrder, Prevadzka, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 from api.utils import filter_order_data_for_prevadzka, order_row_label
 
 
 def _user_with_profile(email: str, company_name: str, celok=None):
     user = User.objects.create_user(username=email, email=email)
-    profile = UserProfile.objects.create(user=user, company_name=company_name)
-    profile.celok = celok
-    profile.save(update_fields=["celok"])
+    profile = UserProfile(user=user, company_name=company_name)
+    profile._skip_default_facility = True
+    profile.save()
+    if celok is not None:
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
     return user, profile
 
 
@@ -38,7 +47,7 @@ class TestOrderRowLabel:
         user, profile = _user_with_profile(
             "zdravebrusko@edupage.local", "MŠ Zdravé Bruško", celok=None
         )
-        profile.prevadzky.add(prevadzka)
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=prevadzka)
         order = DailyOrder.objects.create(
             user=user,
             prevadzka=prevadzka,
@@ -55,7 +64,7 @@ class TestOrderRowLabel:
         user, profile = _user_with_profile(
             "shared@example.com", "Spoločný EduPage", celok=None
         )
-        profile.prevadzky.add(jolly_1)
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=jolly_1)
         order = DailyOrder.objects.create(
             user=user,
             prevadzka=jolly_1,

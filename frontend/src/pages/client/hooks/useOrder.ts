@@ -692,7 +692,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // an explicitly empty array means "show none".
     const prevadzkaSettings = prevadzky.find((item) => item.id === activePrevadzkaId);
 
-    const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus ?? user?.settings?.visible_menus;
+    const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus;
     const adminVisibleMenus = adminVisibleMenusSetting == null
         ? ['A', 'B', 'C', 'V']
         : adminVisibleMenusSetting;
@@ -700,14 +700,14 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const resolvedVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') =>
         getVisibleMenusForMeal(mealKey, adminVisibleMenus);
 
-    const adminVisibleMealsSetting = prevadzkaSettings?.visible_meals ?? user?.settings?.visible_meals;
+    const adminVisibleMealsSetting = prevadzkaSettings?.visible_meals;
     const adminVisibleMeals = adminVisibleMealsSetting == null
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
-    const visibleDietSetting = (
-        prevadzkaSettings?.visible_diets ?? user?.settings?.visible_diets
-    ) as DietDetail[] | undefined;
+    const visibleDietSetting = prevadzkaSettings?.visible_diets as
+        | DietDetail[]
+        | undefined;
     const visibleDietDetails: DietDetail[] =
         visibleDietSetting && visibleDietSetting.length > 0
         ? [...visibleDietSetting].sort(

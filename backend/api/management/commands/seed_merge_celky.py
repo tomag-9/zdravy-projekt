@@ -3,8 +3,8 @@
 Niektoré školy vznikli (najmä cez `seed_real_delivery_layout`) ako viacero samostatných
 celkov 1:1 s prevádzkou (napr. Bystrá 1/2/Jasle/Krasňany/Skypark). Patria však pod jednu
 školu → jeden fakturačný celok s viacerými prevádzkami. Tento príkaz to idempotentne
-konsoliduje: prevádzky presunie pod cieľový celok, prípadné loginy (UserProfile) presunie
-tiež a **pripne ich M2M na ich pôvodné prevádzky**, aby sa scrape rozsah nezmenil (dôležité
+konsoliduje: prevádzky presunie pod cieľový celok a celok access loginov zmení
+na konkrétne prevádzka access záznamy, aby sa rozsah nezmenil (dôležité
 pri Rozmanitej — edupage škôlka + app škola pod jedným celkom; login smie scrapovať len
 škôlku). Prázdne zdrojové celky zmaže.
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from api.models import Celok, Prevadzka, UserProfile
+from api.models import Celok, Prevadzka, ProfilePrevadzkaAccess
 
 # cieľový názov celku -> zoznam názvov zdrojových celkov (== názvy ich prevádzok)
 MERGES: dict[str, list[str]] = {
@@ -89,14 +89,12 @@ class Command(BaseCommand):
                         target.save(update_fields=["zdroj_objednavok"])
 
                 # Ak cieľ vznikol ako nový/prázdny, nenecháme pri zmazaní zdroja
-                # zmiznúť fakturačné ani EduPage konfiguračné údaje.
+                # zmiznúť fakturačné údaje.
                 copy_fields = [
                     "billing_name",
                     "adresa",
                     "ico",
                     "dic",
-                    "edupage_api_identifier",
-                    "mealsguest_url",
                 ]
                 changed_fields = []
                 for field in copy_fields:
@@ -109,23 +107,29 @@ class Command(BaseCommand):
                 source_prevadzka_ids = list(
                     source.prevadzky.values_list("id", flat=True)
                 )
-                profily = list(UserProfile.objects.filter(celok=source))
+                celok_accesses = list(source.profile_accesses.all())
 
                 self.stdout.write(
                     f"  {target_nazov} ← {member}: "
                     f"{len(source_prevadzka_ids)} prevádzok"
-                    + (f", {len(profily)} loginov" if profily else "")
+                    + (f", {len(celok_accesses)} loginov" if celok_accesses else "")
                 )
 
                 if dry_run:
                     continue
 
-                # Loginy presunieme na cieľ a pripneme M2M na ich pôvodné prevádzky,
-                # aby login scrapoval len svoj rozsah (nie novo-zlúčené súrodence).
-                for profil in profily:
-                    profil.celok = target
-                    profil.save(update_fields=["celok"])
-                    profil.prevadzky.set(source_prevadzka_ids)
+                for access in celok_accesses:
+                    ProfilePrevadzkaAccess.objects.bulk_create(
+                        [
+                            ProfilePrevadzkaAccess(
+                                profile_id=access.profile_id,
+                                prevadzka_id=prevadzka_id,
+                            )
+                            for prevadzka_id in source_prevadzka_ids
+                        ],
+                        ignore_conflicts=True,
+                    )
+                    access.delete()
 
                 # Prevádzky presunieme pod cieľový celok. Názvy sú unikátne v rámci
                 # skupiny, takže unique(celok, nazov) nekoliduje.

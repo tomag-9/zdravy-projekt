@@ -13,10 +13,8 @@ GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
 import json
 import logging
 
-from django.db.models.signals import m2m_changed, post_delete, post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
-
-from api.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -503,40 +501,9 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _capture_signal_failure(exc, "global_settings_saved")
 
 
-@receiver(post_save, sender="api.ClientSettings")
-def on_client_settings_saved(sender, instance, created=False, **kwargs):
-    """Apply default diets for new settings and invalidate ClientSettings cache."""
-    try:
-        if created and instance.visible_diets.count() == 0:
-            from api.default_visibility import (
-                DEFAULT_VISIBLE_MEALS,
-                DEFAULT_VISIBLE_MENUS,
-                ensure_default_visible_diets,
-            )
-
-            update_fields = []
-            if not instance.visible_menus:
-                instance.visible_menus = DEFAULT_VISIBLE_MENUS
-                update_fields.append("visible_menus")
-            if not instance.visible_meals:
-                instance.visible_meals = DEFAULT_VISIBLE_MEALS
-                update_fields.append("visible_meals")
-            if update_fields:
-                instance.save(update_fields=update_fields)
-            ensure_default_visible_diets(instance.visible_diets)
-
-        from api.cache_service import clear_client_settings_cache
-
-        clear_client_settings_cache(instance.user_id)
-        logger.debug("ClientSettings cache cleared for user_id=%s", instance.user_id)
-    except Exception as exc:
-        logger.exception("Error clearing ClientSettings cache: %s", exc)
-        _capture_signal_failure(exc, "client_settings_saved")
-
-
 @receiver(post_save, sender="api.Prevadzka")
 def on_prevadzka_saved(sender, instance, created=False, **kwargs):
-    """Apply defaults and keep the temporary EduPage mirror current."""
+    """Apply canonical visibility defaults to newly created Prevádzka."""
     try:
         if created:
             from api.default_visibility import (
@@ -550,26 +517,9 @@ def on_prevadzka_saved(sender, instance, created=False, **kwargs):
             instance.save(update_fields=["visible_menus", "visible_meals"])
             ensure_default_visible_diets(instance.visible_diets)
 
-        from api.services.edupage_connection_service import (
-            sync_connection_for_prevadzka,
-        )
-
-        sync_connection_for_prevadzka(instance)
     except Exception as exc:
         logger.exception("Error initializing Prevadzka: %s", exc)
         _capture_signal_failure(exc, "prevadzka_saved")
-
-
-@receiver(post_save, sender="api.Celok")
-def on_celok_saved(sender, instance, **kwargs):
-    """Temporary mirror until EdupageConnection becomes the only write model."""
-    try:
-        from api.services.edupage_connection_service import sync_connection_for_celok
-
-        sync_connection_for_celok(instance)
-    except Exception as exc:
-        logger.exception("Error syncing EduPage connection for Celok: %s", exc)
-        _capture_signal_failure(exc, "celok_saved")
 
 
 @receiver(post_save, sender="api.Diet")
@@ -588,56 +538,8 @@ def on_diet_changed(sender, instance, **kwargs):
 
 @receiver(post_save, sender="api.UserProfile")
 def on_user_profile_saved(sender, instance, created, **kwargs):
-    """Každý profil musí mať celok a aspoň jednu prevádzku.
-
-    Objednávky sa vedú per prevádzka, takže profil bez prevádzky by nemal kam
-    objednávať. Default: celok aj prevádzka sa volajú ako profil. Viac-prevádzkové
-    celky sa dokonfigurujú zvlášť.
-    """
-    from api.models import Celok, Prevadzka, UserProfile
-
-    def sync_edupage_config(celok):
-        """Keep legacy profile-level EduPage settings visible on Celok."""
-        profile_configured_as_edupage = bool(
-            instance.is_edupage or instance.mealsguest_url or instance.api_identifier
-        )
-        celok_configured_as_edupage = bool(
-            celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
-            or celok.mealsguest_url
-            or celok.edupage_api_identifier
-        )
-        if not profile_configured_as_edupage and celok_configured_as_edupage:
-            return
-        zdroj = (
-            Celok.ZdrojObjednavok.EDUPAGE
-            if profile_configured_as_edupage
-            else Celok.ZdrojObjednavok.APP
-        )
-        changed = []
-        if celok.zdroj_objednavok != zdroj:
-            celok.zdroj_objednavok = zdroj
-            changed.append("zdroj_objednavok")
-        if profile_configured_as_edupage:
-            if (
-                instance.api_identifier
-                and celok.edupage_api_identifier != instance.api_identifier
-            ):
-                celok.edupage_api_identifier = instance.api_identifier
-                changed.append("edupage_api_identifier")
-            if (
-                instance.mealsguest_url
-                and celok.mealsguest_url != instance.mealsguest_url
-            ):
-                celok.mealsguest_url = instance.mealsguest_url
-                changed.append("mealsguest_url")
-        if changed:
-            celok.save(update_fields=changed)
-            logger.info(
-                "Celok %s EduPage config synced from profile %s (%s)",
-                celok.pk,
-                instance.pk,
-                ", ".join(changed),
-            )
+    """Nový login bez explicitného scope dostane vlastný Celok a Prevádzku."""
+    from api.models import Celok, Prevadzka, ProfileCelokAccess
 
     def unique_celok_name(base_name: str, celok_id: int | None) -> str:
         """Return a unique Celok name without merging unrelated profiles."""
@@ -648,88 +550,16 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
             candidate = f"{base_name} (#{instance.pk})"
         return candidate
 
-    def sync_profile_config(celok):
-        """Fill Celok fields that were historically kept on UserProfile."""
-        changed = []
-        nazov = (instance.company_name or "").strip()
-        auto_names = {instance.user.email, f"{instance.user.email} (#{instance.pk})"}
-        if nazov and celok.nazov in auto_names:
-            next_name = unique_celok_name(nazov, celok.pk)
-            if celok.nazov != next_name:
-                celok.nazov = next_name
-                changed.append("nazov")
-        for field in ("billing_name", "ico", "dic"):
-            value = getattr(instance, field, "")
-            if value and not getattr(celok, field, ""):
-                setattr(celok, field, value)
-                changed.append(field)
-        if changed:
-            celok.save(update_fields=changed)
-            logger.info(
-                "Celok %s profile config synced from profile %s (%s)",
-                celok.pk,
-                instance.pk,
-                ", ".join(changed),
-            )
-
-    # Existujúci profil: udrž zdroj celku v súlade s is_edupage (napr. keď admin
-    # prepne prevádzku na EduPage). Meníme len keď treba, nech nespúšťame zápis
-    # zbytočne.
-    if not created or instance.celok_id is not None:
-        if instance.celok_id is not None:
-            sync_profile_config(instance.celok)
-            sync_edupage_config(instance.celok)
-        from api.services.profile_access_service import sync_profile_access
-
-        sync_profile_access(instance)
+    if not created or getattr(instance, "_skip_default_facility", False):
         return
     try:
-
         nazov = (instance.company_name or "").strip() or instance.user.email
-
-        # Každý auto-vytvorený profil dostane VLASTNÝ celok. Zdieľať jeden celok
-        # medzi viacerými loginmi je legitímne, ale to sa konfiguruje ručne — tu
-        # nesmieme dva rovnako pomenované (ale nesúvisiace) profily ticho zlúčiť,
-        # inak by ich prevádzky a objednávky kolidovali. `Celok.nazov` je unique,
-        # tak pri zhode odlíšime názov emailom, resp. pk.
         celok_nazov = unique_celok_name(nazov, None)
-
-        configured_as_edupage = bool(
-            instance.is_edupage or instance.mealsguest_url or instance.api_identifier
-        )
         celok = Celok.objects.create(
             nazov=celok_nazov,
-            billing_name=instance.billing_name,
-            ico=instance.ico,
-            dic=instance.dic,
-            zdroj_objednavok=(
-                Celok.ZdrojObjednavok.EDUPAGE
-                if configured_as_edupage
-                else Celok.ZdrojObjednavok.APP
-            ),
-            edupage_api_identifier=instance.api_identifier,
-            mealsguest_url=instance.mealsguest_url,
         )
         Prevadzka.objects.create(celok=celok, nazov=nazov)
-        # update() namiesto save(), aby sa signál nezavolal rekurzívne.
-        UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
-        instance.celok = celok
-        from api.services.profile_access_service import sync_profile_access
-
-        sync_profile_access(instance)
+        ProfileCelokAccess.objects.create(profile=instance, celok=celok)
     except Exception as exc:
         logger.exception("Error creating default Celok/Prevadzka: %s", exc)
         _capture_signal_failure(exc, "user_profile_saved")
-
-
-@receiver(m2m_changed, sender=UserProfile.prevadzky.through)
-def on_user_profile_prevadzky_changed(sender, instance, action, **kwargs):
-    if action not in {"post_add", "post_remove", "post_clear"}:
-        return
-    try:
-        from api.services.profile_access_service import sync_profile_access
-
-        sync_profile_access(instance)
-    except Exception as exc:
-        logger.exception("Error syncing explicit profile access: %s", exc)
-        _capture_signal_failure(exc, "user_profile_prevadzky_changed")

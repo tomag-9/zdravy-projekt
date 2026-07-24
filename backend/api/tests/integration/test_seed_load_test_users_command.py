@@ -3,7 +3,7 @@ from django.contrib.auth.models import Group, User
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
-from api.models import ClientSettings, DailyOrder, UserProfile
+from api.models import DailyOrder, UserProfile
 
 pytestmark = pytest.mark.django_db
 
@@ -34,8 +34,8 @@ def test_seed_load_test_users_creates_clients():
     assert all(user.check_password("LoadTestPassword123!") for user in users)
     assert all(not user.is_staff and user.is_active for user in users)
     assert Group.objects.get(name="Client").user_set.count() == 3
-    assert ClientSettings.objects.filter(user__in=users).count() == 3
     assert UserProfile.objects.filter(user__in=users).count() == 3
+    assert all(user.profile.dostupne_prevadzky().count() == 1 for user in users)
 
 
 def test_seed_load_test_users_cleanup_deletes_users_and_orders():

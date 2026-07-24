@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from ..models import Celok, DailyOrder, Prevadzka, UserProfile
+from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,14 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
     Drafts are never persisted via the normal API path, so every stored order
     is treated as submitted.
     """
-    orders = DailyOrder.objects.filter(
-        user=user,
-        date__lt=before_date,
-    ).order_by("-date")
+    orders = (
+        DailyOrder.objects.filter(
+            user=user,
+            date__lt=before_date,
+        )
+        .select_related("prevadzka")
+        .order_by("-date")
+    )
 
     for order in orders:
         if not _is_order_empty(order.data or {}):
@@ -82,14 +86,6 @@ def _edupage_prevadzka_ids() -> set[int]:
             celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
         ).values_list("id", flat=True)
     )
-
-    profiles = (
-        UserProfile.objects.filter(is_edupage=True)
-        .select_related("celok")
-        .prefetch_related("prevadzky", "celok__prevadzky")
-    )
-    for profile in profiles:
-        prevadzka_ids.update(profile.dostupne_prevadzky().values_list("id", flat=True))
 
     return prevadzka_ids
 

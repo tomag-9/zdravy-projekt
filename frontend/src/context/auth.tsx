@@ -31,15 +31,7 @@ interface User {
   onboarding_completed?: boolean;
   groups?: string[];
   is_staff?: boolean;
-  settings?: UserSettings;
   profile?: UserProfile;
-}
-
-export interface UserSettings {
-  visible_menus?: string[];
-  visible_meals?: string[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  visible_diets?: any[];
 }
 
 interface AuthContextType {

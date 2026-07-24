@@ -8,14 +8,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import (
-    ClientSettings,
-    DailyOrder,
-    Diet,
-    GlobalSettings,
-    PasswordResetToken,
-    UserProfile,
-)
+from .models import DailyOrder, Diet, GlobalSettings, PasswordResetToken, UserProfile
 
 
 class UserProfileInline(admin.StackedInline):
@@ -27,10 +20,7 @@ class UserProfileInline(admin.StackedInline):
     verbose_name_plural = "Company Profile"
     fields = (
         "company_name",
-        "ico",
-        "dic",
-        "is_edupage",
-        "api_identifier",
+        "onboarding_completed",
         "created_at",
     )
     readonly_fields = ("created_at",)
@@ -123,24 +113,23 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = (
         "company_name",
         "user_email",
-        "is_edupage",
+        "onboarding_completed",
         "created_at",
     )
-    list_filter = ("is_edupage", "created_at")
-    search_fields = ("company_name", "ico", "dic", "user__email", "api_identifier")
+    list_filter = ("onboarding_completed", "created_at")
+    search_fields = ("company_name", "user__email")
     readonly_fields = ("created_at",)
 
     fieldsets = (
         (
             "Company Information",
             {
-                "fields": ("user", "company_name", "ico", "dic"),
-            },
-        ),
-        (
-            "Edupage",
-            {
-                "fields": ("is_edupage", "api_identifier", "created_at"),
+                "fields": (
+                    "user",
+                    "company_name",
+                    "onboarding_completed",
+                    "created_at",
+                ),
             },
         ),
     )
@@ -198,27 +187,6 @@ class DietAdmin(admin.ModelAdmin):
     list_display = ("name", "is_active", "description")
     list_filter = ("is_active",)
     search_fields = ("name", "description")
-
-
-@admin.register(ClientSettings)
-class ClientSettingsAdmin(admin.ModelAdmin):
-    """Admin for ClientSettings model."""
-
-    list_display = ("user", "get_visible_menus", "get_visible_meals")
-    search_fields = ("user__email", "user__profile__company_name")
-    filter_horizontal = ("visible_diets",)
-
-    def get_visible_menus(self, obj):
-        """Display visible menus."""
-        return ", ".join(obj.visible_menus) if obj.visible_menus else "-"
-
-    get_visible_menus.short_description = "Visible Menus"
-
-    def get_visible_meals(self, obj):
-        """Display visible meals."""
-        return ", ".join(obj.visible_meals) if obj.visible_meals else "-"
-
-    get_visible_meals.short_description = "Visible Meals"
 
 
 @admin.register(GlobalSettings)

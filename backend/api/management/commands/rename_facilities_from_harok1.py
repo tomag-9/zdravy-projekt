@@ -66,11 +66,6 @@ def _find_celok(key: str) -> Celok | None:
     return next((c for c in Celok.objects.all() if _normalize(c.nazov) == key), None)
 
 
-def _profile_targets_prevadzka(profile, prevadzka) -> bool:
-    selected = list(profile.prevadzky.all())
-    return not selected or selected == [prevadzka]
-
-
 def _rename_1to1_celok(celok: Celok, target: str, dry_run: bool) -> tuple[bool, str]:
     """Rename a one-prevádzka celok, its sole prevádzka and matching login labels."""
     if not target:
@@ -94,9 +89,12 @@ def _rename_1to1_celok(celok: Celok, target: str, dry_run: bool) -> tuple[bool, 
     prevadzka.nazov = target
     prevadzka.save(update_fields=["nazov"])
 
-    for profile in celok.profily.all():
-        if not _profile_targets_prevadzka(profile, prevadzka):
-            continue
+    profiles = {
+        access.profile
+        for access in list(celok.profile_accesses.all())
+        + list(prevadzka.profile_accesses.all())
+    }
+    for profile in profiles:
         if profile.company_name in ("", old_celok, old_prevadzka):
             profile.company_name = target
             profile.save(update_fields=["company_name"])

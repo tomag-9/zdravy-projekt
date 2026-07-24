@@ -23,7 +23,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 
-from api.models import ClientSettings, DailyOrder, Diet, UserProfile
+from api.models import DailyOrder, UserProfile
 
 
 @pytest.mark.django_db
@@ -35,20 +35,13 @@ class TestAdminUserViewSetQueries:
         # Create 5 test users with their related objects
         from django.contrib.auth.models import User
 
-        # Create Diet objects for visible_diets M2M relationship
-        diets = [Diet.objects.create(name=f"Diet {i}") for i in range(1, 3)]
-
         for i in range(5):
             user = User.objects.create_user(
                 username=f"user{i}@example.com",
                 email=f"user{i}@example.com",
                 password="test123",
             )
-            # Create profile and settings for each
             UserProfile.objects.create(user=user, company_name=f"Company {i}")
-            settings = ClientSettings.objects.create(user=user)
-            # Add diets to exercise the settings__visible_diets prefetch path
-            settings.visible_diets.set(diets)
 
         # After optimization: typically ~2-3 queries (users + select_related/prefetch).
         # Baseline for 5 users without optimization: ~1 + 5 profiles + 5 settings + 5 settings M2M = ~16 queries.
@@ -115,7 +108,6 @@ class TestAdminSummaryViewSetQueries:
                 email=f"stat_user{i}@example.com",
                 password="test123",
             )
-            ClientSettings.objects.create(user=user)
             UserProfile.objects.get_or_create(
                 user=user, defaults={"company_name": user.email}
             )
@@ -153,10 +145,9 @@ class TestPlannedOrdersViewSetQueries:
         """PlannedOrdersViewSet.list should work with minimal queries."""
         from datetime import date, timedelta
 
-        # Ensure user has settings with visible_meals
-        settings, _ = ClientSettings.objects.get_or_create(user=user)
-        settings.visible_meals = ["breakfast", "lunch"]
-        settings.save()
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.visible_meals = ["breakfast", "lunch"]
+        prevadzka.save(update_fields=["visible_meals"])
 
         # Create some historical orders
         today = date.today()
@@ -169,7 +160,7 @@ class TestPlannedOrdersViewSetQueries:
             )
 
         # After query optimization, the overall query count should remain low
-        # Accessing user.settings.visible_meals should not introduce an N+1 query pattern
+        # Facility visibility lookup must not introduce an N+1 query pattern.
         with CaptureQueriesContext(connection) as ctx:
             response = authenticated_client.get("/api/orders/planned/")
             assert response.status_code == status.HTTP_200_OK
