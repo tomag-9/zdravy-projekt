@@ -13,8 +13,10 @@ GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
 import json
 import logging
 
-from django.db.models.signals import post_delete, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save
 from django.dispatch import receiver
+
+from api.models import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -677,6 +679,9 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
         if instance.celok_id is not None:
             sync_profile_config(instance.celok)
             sync_edupage_config(instance.celok)
+        from api.services.profile_access_service import sync_profile_access
+
+        sync_profile_access(instance)
         return
     try:
 
@@ -709,6 +714,22 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
         # update() namiesto save(), aby sa signál nezavolal rekurzívne.
         UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
         instance.celok = celok
+        from api.services.profile_access_service import sync_profile_access
+
+        sync_profile_access(instance)
     except Exception as exc:
         logger.exception("Error creating default Celok/Prevadzka: %s", exc)
         _capture_signal_failure(exc, "user_profile_saved")
+
+
+@receiver(m2m_changed, sender=UserProfile.prevadzky.through)
+def on_user_profile_prevadzky_changed(sender, instance, action, **kwargs):
+    if action not in {"post_add", "post_remove", "post_clear"}:
+        return
+    try:
+        from api.services.profile_access_service import sync_profile_access
+
+        sync_profile_access(instance)
+    except Exception as exc:
+        logger.exception("Error syncing explicit profile access: %s", exc)
+        _capture_signal_failure(exc, "user_profile_prevadzky_changed")
