@@ -45,7 +45,7 @@ interface HistoryOrder {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
-  data: Record<string, Record<string, { menuCounts: Record<string, number> }>>;
+  data: Record<string, Record<string, { menuCounts: Record<string, number>; diets?: Record<string, number> }>>;
 }
 
 interface MonthlySummary {
@@ -600,6 +600,17 @@ const HomePage = () => {
                   <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
                     Vybavená
                   </span>
+                  {(["breakfast", "lunch", "olovrant"] as const).flatMap((meal) =>
+                    Object.entries(order.data?.[meal] || {}).flatMap(([category, categoryData]) =>
+                      Object.entries(categoryData?.diets || {})
+                        .filter(([, count]) => count > 0)
+                        .map(([dietName, count]) => (
+                          <div key={`${order.date}-${meal}-${category}-${dietName}`} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>
+                            {category} · {dietName} · {count}x
+                          </div>
+                        ))
+                    )
+                  )}
                 </div>
               </div>
               <div className="zp-day-count" style={{ fontSize: 19 }}>

@@ -6,11 +6,17 @@ import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
-import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty } from "./ui";
+import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
 
 interface Diet {
   id: number;
   name: string;
+}
+
+interface PortionType {
+  id: number;
+  name: string;
+  is_active: boolean;
 }
 
 interface UserProfile {
@@ -41,6 +47,7 @@ interface FacilityDetail {
   visible_diets: number[];
   admin_order_note: string;
   client_user_id: number | null;
+  pack_separately_enabled: boolean;
 }
 
 interface OrderData {
@@ -48,6 +55,7 @@ interface OrderData {
   soup?: string;
   breakfast?: unknown;
   olovrant?: unknown;
+  special_diet_note?: unknown;
 }
 
 interface DailyOrder {
@@ -74,6 +82,7 @@ const ClientDetail: React.FC = () => {
   const [facility, setFacility] = useState<FacilityDetail | null>(null);
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
+  const [portionTypeNames, setPortionTypeNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "order_note">("dashboard");
@@ -83,6 +92,7 @@ const ClientDetail: React.FC = () => {
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
   const [adminOrderNote, setAdminOrderNote] = useState("");
+  const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
 
   // Dashboard State
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
@@ -106,6 +116,7 @@ const ClientDetail: React.FC = () => {
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
     setAdminOrderNote(data.admin_order_note || "");
+    setPackSeparatelyEnabled(!!data.pack_separately_enabled);
   }, []);
 
   const fetchUser = useCallback(async (userId: number): Promise<AdminUser | null> => {
@@ -159,6 +170,22 @@ const ClientDetail: React.FC = () => {
       }
     } catch (e) {
       logger.error(e);
+    }
+  }, [apiFetch]);
+
+  const fetchPortionTypes = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/portion-types/`);
+      if (res.ok) {
+        const data = await res.json();
+        const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
+        setPortionTypeNames(items.filter((item) => item.is_active).map((item) => item.name));
+      } else {
+        setPortionTypeNames([]);
+      }
+    } catch (e) {
+      logger.error(e);
+      setPortionTypeNames([]);
     }
   }, [apiFetch]);
 
@@ -259,8 +286,8 @@ const ClientDetail: React.FC = () => {
     setRecentOrders([]);
     setExpandedOrderId(null);
     setActiveTab("dashboard");
-    Promise.all([fetchFacility(), fetchDiets()]).finally(() => setLoading(false));
-  }, [fetchFacility, fetchDiets]);
+    Promise.all([fetchFacility(), fetchDiets(), fetchPortionTypes()]).finally(() => setLoading(false));
+  }, [fetchFacility, fetchDiets, fetchPortionTypes]);
 
   useEffect(() => {
     if (activeTab === "dashboard") {
@@ -277,6 +304,7 @@ const ClientDetail: React.FC = () => {
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
         admin_order_note: adminOrderNote,
+        pack_separately_enabled: packSeparatelyEnabled,
       };
 
       const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facility.id}/`, {
@@ -420,6 +448,10 @@ const ClientDetail: React.FC = () => {
                       if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
                       const summaryText = summaries.length > 0 ? summaries.join(", ") : "-";
                       const isExpanded = expandedOrderId === order.id;
+                      const specialDietNote =
+                        typeof order.data.special_diet_note === "string"
+                          ? order.data.special_diet_note.trim()
+                          : "";
 
                       return (
                         <React.Fragment key={order.id}>
@@ -484,6 +516,12 @@ const ClientDetail: React.FC = () => {
                                     <span>{order.data.soup}</span>
                                   </div>
                                 )}
+                                {specialDietNote && (
+                                  <div style={{ marginTop: 16, paddingTop: 8, borderTop: "1px solid var(--line-soft)" }}>
+                                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", marginRight: 8 }}>Špeciálna diéta:</span>
+                                    <span>{specialDietNote}</span>
+                                  </div>
+                                )}
                               </td>
                             </tr>
                           )}
@@ -501,7 +539,7 @@ const ClientDetail: React.FC = () => {
           <div className="zpa-stack">
             <div className="zpa-grid-2">
               <Card pad>
-                <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre túto prevádzku." />
+                <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre obed. Raňajky a olovrant majú vždy len menu A." />
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
                   {ALL_MENUS.map((menu) => (
                     <Checkbox key={menu} on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus)}>
@@ -529,6 +567,20 @@ const ClientDetail: React.FC = () => {
                       {MEAL_LABELS[meal] ?? meal}
                     </Checkbox>
                   ))}
+                </div>
+              </Card>
+
+              <Card pad>
+                <CardHead title="Zabaliť zvlášť" desc="Keď je vypnuté, klient v objednávke neuvidí blok pre balenie zvlášť." />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
+                  <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
+                    Povoliť klientovi označiť vybrané položky na balenie zvlášť.
+                  </div>
+                  <Toggle
+                    on={packSeparatelyEnabled}
+                    onChange={setPackSeparatelyEnabled}
+                    ariaLabel="Povoliť zabaliť zvlášť"
+                  />
                 </div>
               </Card>
             </div>
@@ -620,8 +672,11 @@ const ClientDetail: React.FC = () => {
           visibleMenus={orderEditorMenus}
           visibleMeals={orderEditorMeals}
           visibleDiets={orderEditorDiets}
+          portionTypeNames={portionTypeNames}
+          packSeparatelyEnabled={packSeparatelyEnabled}
           allDiets={allDiets}
           existingOrder={editOrderTarget ?? null}
+          knownOrders={recentOrders}
           onClose={() => {
             setShowNewOrderModal(false);
             setEditOrderTarget(null);

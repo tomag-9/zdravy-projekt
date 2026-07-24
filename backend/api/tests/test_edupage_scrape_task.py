@@ -1,12 +1,22 @@
 import datetime
+import json
 
 import pytest
 from django.contrib.auth.models import User
 from django.core import management
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 
 from api.edupage_scraper import ScrapeResult
-from api.models import DailyOrder, GlobalSettings, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    EdupageConnection,
+    GlobalSettings,
+    ProfileCelokAccess,
+    UserProfile,
+)
+from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX, _sync_edupage_scrape_schedule
 from api.tasks import scrape_edupage_orders_task
 
 
@@ -27,12 +37,15 @@ def edupage_user(db):
         username="edupage@example.com",
         email="edupage@example.com",
     )
-    UserProfile.objects.create(
-        user=user,
-        company_name="Edupage school",
-        is_edupage=True,
+    profile = UserProfile.objects.create(user=user, company_name="Edupage school")
+    celok = profile.primary_celok()
+    celok.zdroj_objednavok = Celok.ZdrojObjednavok.EDUPAGE
+    celok.save(update_fields=["zdroj_objednavok"])
+    connection = EdupageConnection.objects.create(
+        name="Edupage school",
         mealsguest_url="https://school.edupage.org/menu/mealsGuest?id=TOKEN",
     )
+    profile.dostupne_prevadzky().update(edupage_connection=connection)
     return user
 
 
@@ -127,19 +140,33 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
 def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
     """Pri rozdelenom celku dostane každá prevádzka len svoje flagy;
     config_notes sú zdieľané (celok-wide)."""
-    from api.models import Celok, Prevadzka
+    from api.models import Prevadzka
 
-    celok = Celok.objects.create(nazov="Jolly")
-    p1 = Prevadzka.objects.create(celok=celok, nazov="Jolly 1", edupage_match="J1")
-    p2 = Prevadzka.objects.create(celok=celok, nazov="Jolly 2", edupage_match="J2")
-    user = User.objects.create_user(username="jolly@x.sk", email="jolly@x.sk")
-    UserProfile.objects.create(
-        user=user,
-        company_name="Jolly",
-        is_edupage=True,
-        celok=celok,
+    celok = Celok.objects.create(
+        nazov="Jolly",
+        zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+    )
+    connection = EdupageConnection.objects.create(
+        name="Jolly",
         mealsguest_url="https://jolly.edupage.org/menu/mealsGuest?id=T",
     )
+    p1 = Prevadzka.objects.create(
+        celok=celok,
+        nazov="Jolly 1",
+        edupage_match="J1",
+        edupage_connection=connection,
+    )
+    p2 = Prevadzka.objects.create(
+        celok=celok,
+        nazov="Jolly 2",
+        edupage_match="J2",
+        edupage_connection=connection,
+    )
+    user = User.objects.create_user(username="jolly@x.sk", email="jolly@x.sk")
+    profile = UserProfile(user=user, company_name="Jolly")
+    profile._skip_default_facility = True
+    profile.save()
+    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
     GlobalSettings.objects.create(
         pk=1,
         deadline_breakfast=datetime.time(18, 0),
@@ -425,3 +452,37 @@ class TestApplyScrapeIdempotency:
         existing = {"breakfast": {"Škôlka": {"menuCounts": {"A": 9}}}}
         out = _apply_scrape(existing, {}, None)
         assert out == {}
+
+
+@pytest.mark.django_db
+def test_only_deadline_derived_scrape_tasks_are_scheduled():
+    """Automatický je len uzávierkový scrape — žiadny ranný ani iný beh navyše.
+
+    Ranné načítanie sa robí ručne tlačidlom v admin nastaveniach, aby scrape
+    nikdy nebežal po uzávierke bez vedomia obsluhy.
+    """
+    settings_instance = GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(21, 0),
+        deadline_olovrant=datetime.time(10, 0),
+        edupage_auto_scrape_enabled=True,
+    )
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    names = set(
+        PeriodicTask.objects.filter(
+            name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+        ).values_list("name", flat=True)
+    )
+    # 18:00 → 17:30, 21:00 → 20:30, 10:00 → 09:30
+    assert names == {
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}breakfast",
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}lunch",
+        f"{EDUPAGE_SCRAPE_TASK_PREFIX}olovrant",
+    }
+    for task in PeriodicTask.objects.filter(
+        name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+    ):
+        assert json.loads(task.kwargs)["meal_types"]

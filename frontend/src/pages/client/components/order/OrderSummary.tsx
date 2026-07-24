@@ -1,28 +1,33 @@
 import { FileCheck, AlertCircle, Eraser } from "lucide-react";
-import { useApp } from "../../context/AppContext";
-import { CategoryData } from "../../services/OrderService";
+import { CategoryData, DailyOrder } from "../../services/OrderService";
 import { getSlovakPlural } from "../../../../lib/utils";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
 interface OrderSummaryProps {
+  order: DailyOrder;
+  activeMeals: Record<MealKey, boolean>;
+  date: string;
   onSubmit: () => void;
   onReset?: () => void;
   disabled?: boolean;
   disabledMessage?: string;
+  submitLabel?: string;
 }
 
 const OrderSummary = ({
+  order,
+  activeMeals,
+  date,
   onSubmit,
   onReset,
   disabled,
   disabledMessage,
+  submitLabel = "Odoslať objednávku",
 }: OrderSummaryProps) => {
-  const { currentOrder, activeMeals, selectedDate } = useApp();
-
   const getMealTotal = (mealKey: MealKey) => {
-    if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-    return Object.values(currentOrder[mealKey]).reduce(
+    if (!activeMeals[mealKey] || !order[mealKey]) return 0;
+    return Object.values(order[mealKey]).reduce(
       (acc: number, cat: CategoryData) => {
         const counts = cat.menuCounts || {};
         const catTotal = Object.values(counts).reduce((sum: number, val: number) => sum + val, 0);
@@ -33,8 +38,8 @@ const OrderSummary = ({
   };
 
   const getDietTotal = (mealKey: MealKey) => {
-    if (!activeMeals[mealKey] || !currentOrder[mealKey]) return 0;
-    return Object.values(currentOrder[mealKey]).reduce(
+    if (!activeMeals[mealKey] || !order[mealKey]) return 0;
+    return Object.values(order[mealKey]).reduce(
       (acc: number, cat: CategoryData) => {
         if (!cat.diets) return acc;
         return acc + Object.values(cat.diets).reduce((dAcc: number, d: number) => dAcc + d, 0);
@@ -53,7 +58,7 @@ const OrderSummary = ({
 
   const totalPortions = lunchTotal + breakfastTotal + olovrantTotal;
 
-  const dateLabel = new Date(`${selectedDate}T12:00:00`).toLocaleDateString("sk-SK");
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString("sk-SK");
 
   return (
     <div className="zp-summary">
@@ -119,7 +124,7 @@ const OrderSummary = ({
         disabled={!!disabled}
         onClick={onSubmit}
       >
-        Odoslať objednávku
+        {submitLabel}
       </button>
 
       {!disabled && onReset && (

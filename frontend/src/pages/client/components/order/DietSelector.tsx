@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
+import NumericCountInput from './NumericCountInput';
 
 interface DietSelectorProps {
     isOpen: boolean;
@@ -65,7 +66,12 @@ const DietSelector = ({
                                         >
                                             <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
                                         </button>
-                                        <span className={`count${count <= 0 ? " zero" : ""}`}>{count}</span>
+                                        <NumericCountInput
+                                            value={count}
+                                            onCommit={(value) => onUpdateDiet(diet, value)}
+                                            disabled={false}
+                                            ariaLabel={`Počet diéty ${diet}`}
+                                        />
                                         <button
                                             className="plus"
                                             disabled={remaining <= 0}

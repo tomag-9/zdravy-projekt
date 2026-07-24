@@ -111,7 +111,7 @@ def request_password_reset(email: str) -> None:
         return
 
     # Edupage operations never log in – silently skip to avoid leaking their existence.
-    if hasattr(user, "profile") and user.profile.is_edupage:
+    if hasattr(user, "profile") and user.profile.is_edupage_only():
         logger.debug("Password reset skipped for Edupage operation: %s", email)
         return
 

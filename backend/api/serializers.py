@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
 from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
-from .models import DailyOrder, Holiday, Prevadzka
+from .models import DailyOrder, Diet, Holiday, Prevadzka
 from .order_data import OrderData, safe_count
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
@@ -87,23 +87,75 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         for meal_key, meal in data.items():
             if not isinstance(meal, dict):
                 raise serializers.ValidationError(f"'{meal_key}' must be an object.")
-            if "menuCounts" in meal or "diets" in meal:
-                for sub_key in ("menuCounts", "diets"):
-                    if sub_key in meal:
-                        self._validate_count_map(meal[sub_key], f"{meal_key}.{sub_key}")
+            if self._is_leaf_payload(meal):
+                self._validate_leaf(meal, meal_key)
                 continue
             for cat_name, cat_data in meal.items():
                 if not isinstance(cat_data, dict):
                     raise serializers.ValidationError(
                         f"'{meal_key}.{cat_name}' must be an object."
                     )
-                for sub_key in ("menuCounts", "diets"):
-                    if sub_key in cat_data:
-                        self._validate_count_map(
-                            cat_data[sub_key], f"{meal_key}.{cat_name}.{sub_key}"
+                if self._is_leaf_payload(cat_data):
+                    self._validate_leaf(cat_data, f"{meal_key}.{cat_name}")
+                    continue
+                for sub_name, sub_data in cat_data.items():
+                    if not isinstance(sub_data, dict):
+                        raise serializers.ValidationError(
+                            f"'{meal_key}.{cat_name}.{sub_name}' must be an object."
+                        )
+                    if self._is_leaf_payload(sub_data):
+                        self._validate_leaf(
+                            sub_data, f"{meal_key}.{cat_name}.{sub_name}"
                         )
 
         return data
+
+    @staticmethod
+    def _is_leaf_payload(value: Any) -> bool:
+        return isinstance(value, dict) and (
+            "menuCounts" in value or "diets" in value or "packSeparately" in value
+        )
+
+    def _validate_leaf(self, leaf: dict[str, Any], field_path: str) -> None:
+        for sub_key in ("menuCounts", "diets"):
+            if sub_key in leaf:
+                self._validate_count_map(leaf[sub_key], f"{field_path}.{sub_key}")
+
+        if "packSeparately" not in leaf:
+            return
+
+        pack_separately = leaf["packSeparately"]
+        if not isinstance(pack_separately, dict):
+            raise serializers.ValidationError(
+                f"'{field_path}.packSeparately' musí byť objekt."
+            )
+
+        for sub_key in set(pack_separately) - {"menus", "diets"}:
+            raise serializers.ValidationError(
+                f"'{field_path}.packSeparately.{sub_key}' nie je podporované pole."
+            )
+
+        raw_menu_counts = leaf.get("menuCounts")
+        menu_counts = raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
+        raw_diets = leaf.get("diets")
+        diets = raw_diets if isinstance(raw_diets, dict) else {}
+
+        for sub_key, base_counts, label in (
+            ("menus", menu_counts, "menu"),
+            ("diets", diets, "diétu"),
+        ):
+            if sub_key not in pack_separately:
+                continue
+            pack_counts = pack_separately[sub_key]
+            self._validate_count_map(
+                pack_counts, f"{field_path}.packSeparately.{sub_key}"
+            )
+            for key, value in pack_counts.items():
+                base_value = base_counts.get(key, 0)
+                if value > base_value:
+                    raise serializers.ValidationError(
+                        f"'{field_path}.packSeparately.{sub_key}.{key}' nemôže byť väčšie než počet pre {label} '{key}'."
+                    )
 
     @staticmethod
     def _validate_count_map(count_map: Any, field_path: str) -> None:
@@ -411,10 +463,28 @@ class HolidaySerializer(serializers.ModelSerializer):
         fields = ["id", "date", "reason"]
 
 
+class PrevadzkaDietSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Diet
+        fields = ["id", "name", "sort_order", "is_active", "description", "color"]
+
+
 class PrevadzkaSerializer(serializers.ModelSerializer):
     celok = serializers.CharField(source="celok.nazov", read_only=True)
+    visible_diets = PrevadzkaDietSerializer(many=True, read_only=True)
 
     class Meta:
         model = Prevadzka
-        fields = ["id", "nazov", "adresa", "celok"]
+        # `pack_separately_enabled` sem patrí, aby klient čítal príznak z toho istého
+        # miesta, kam ho admin zapisuje (Prevadzka).
+        fields = [
+            "id",
+            "nazov",
+            "adresa",
+            "celok",
+            "visible_menus",
+            "visible_meals",
+            "visible_diets",
+            "pack_separately_enabled",
+        ]
         read_only_fields = fields

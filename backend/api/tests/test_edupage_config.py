@@ -115,6 +115,7 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         res = _result({"lunch": LUNCH_DATA, "olovrant": LUNCH_DATA})
         apply_config(res, _cfg(OlovrantMode.ODVODIT_Z_OBEDU))
         self.assertTrue(any("over config" in n for n in res.config_notes))
+        self.assertEqual(res.order_data["olovrant"], LUNCH_DATA)
         self.assertEqual(res.warnings, [])
 
     def test_mimo_appky_drops_and_warns(self):

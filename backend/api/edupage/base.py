@@ -107,7 +107,7 @@ def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
                     f"{config.subdomena}: olovrant_mode=odvodit_z_obedu, "
                     f"ale EduPage olovrant reálne obsahuje — over config"
                 )
-            elif lunch:
+            if lunch:
                 order_data[OLOVRANT] = copy.deepcopy(lunch)
 
         case OlovrantMode.MIMO_APPKY:

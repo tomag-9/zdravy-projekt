@@ -14,7 +14,7 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from api.models import ClientSettings, UserProfile
+from api.models import DailyOrder, UserProfile
 
 PROD_CONFIRMATION = "LOAD_TEST_PROD"
 CLEANUP_CONFIRMATION = "DELETE_LOAD_TEST_USERS"
@@ -165,13 +165,18 @@ class Command(BaseCommand):
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.company_name = spec.company_name
-            profile.billing_name = spec.company_name
-            profile.save(update_fields=["company_name", "billing_name"])
-
-            client_settings, _ = ClientSettings.objects.get_or_create(user=user)
-            client_settings.visible_menus = visible_menus
-            client_settings.visible_meals = visible_meals
-            client_settings.save()
+            profile.save(update_fields=["company_name"])
+            celok = profile.primary_celok()
+            if celok:
+                celok.nazov = spec.company_name
+                celok.billing_name = spec.company_name
+                celok.save(update_fields=["nazov", "billing_name"])
+                if profile.dostupne_prevadzky().count() == 1:
+                    profile.dostupne_prevadzky().update(nazov=spec.company_name)
+            for prevadzka in profile.dostupne_prevadzky():
+                prevadzka.visible_menus = visible_menus
+                prevadzka.visible_meals = visible_meals
+                prevadzka.save(update_fields=["visible_menus", "visible_meals"])
 
             if was_created:
                 created += 1
@@ -195,10 +200,11 @@ class Command(BaseCommand):
         emails = [spec.email for spec in specs]
         queryset = User.objects.filter(username__in=emails, email__in=emails)
         count = queryset.count()
+        deleted_orders, _ = DailyOrder.objects.filter(user__in=queryset).delete()
         queryset.delete()
         self.stdout.write(
             self.style.WARNING(
-                f"Deleted {count} load-test users. DailyOrder rows for those users "
-                "were removed by cascade."
+                f"Deleted {count} load-test users and {deleted_orders} generated "
+                "order rows."
             )
         )

@@ -501,55 +501,24 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _capture_signal_failure(exc, "global_settings_saved")
 
 
-@receiver(post_save, sender="api.ClientSettings")
-def on_client_settings_saved(sender, instance, created=False, **kwargs):
-    """Apply default diets for new settings and invalidate ClientSettings cache."""
+@receiver(post_save, sender="api.Prevadzka")
+def on_prevadzka_saved(sender, instance, created=False, **kwargs):
+    """Apply canonical visibility defaults to newly created Prevádzka."""
     try:
-        if created and instance.visible_diets.count() == 0:
+        if created:
             from api.default_visibility import (
                 DEFAULT_VISIBLE_MEALS,
                 DEFAULT_VISIBLE_MENUS,
                 ensure_default_visible_diets,
             )
 
-            update_fields = []
-            if not instance.visible_menus:
-                instance.visible_menus = DEFAULT_VISIBLE_MENUS
-                update_fields.append("visible_menus")
-            if not instance.visible_meals:
-                instance.visible_meals = DEFAULT_VISIBLE_MEALS
-                update_fields.append("visible_meals")
-            if update_fields:
-                instance.save(update_fields=update_fields)
+            instance.visible_menus = DEFAULT_VISIBLE_MENUS
+            instance.visible_meals = DEFAULT_VISIBLE_MEALS
+            instance.save(update_fields=["visible_menus", "visible_meals"])
             ensure_default_visible_diets(instance.visible_diets)
 
-        from api.cache_service import clear_client_settings_cache
-
-        clear_client_settings_cache(instance.user_id)
-        logger.debug("ClientSettings cache cleared for user_id=%s", instance.user_id)
     except Exception as exc:
-        logger.exception("Error clearing ClientSettings cache: %s", exc)
-        _capture_signal_failure(exc, "client_settings_saved")
-
-
-@receiver(post_save, sender="api.Prevadzka")
-def on_prevadzka_saved(sender, instance, created=False, **kwargs):
-    """Apply default diets for newly created prevadzky."""
-    if not created:
-        return
-    try:
-        from api.default_visibility import (
-            DEFAULT_VISIBLE_MEALS,
-            DEFAULT_VISIBLE_MENUS,
-            ensure_default_visible_diets,
-        )
-
-        instance.visible_menus = DEFAULT_VISIBLE_MENUS
-        instance.visible_meals = DEFAULT_VISIBLE_MEALS
-        instance.save(update_fields=["visible_menus", "visible_meals"])
-        ensure_default_visible_diets(instance.visible_diets)
-    except Exception as exc:
-        logger.exception("Error applying default diets for Prevadzka: %s", exc)
+        logger.exception("Error initializing Prevadzka: %s", exc)
         _capture_signal_failure(exc, "prevadzka_saved")
 
 
@@ -569,60 +538,28 @@ def on_diet_changed(sender, instance, **kwargs):
 
 @receiver(post_save, sender="api.UserProfile")
 def on_user_profile_saved(sender, instance, created, **kwargs):
-    """Každý profil musí mať celok a aspoň jednu prevádzku.
+    """Nový login bez explicitného scope dostane vlastný Celok a Prevádzku."""
+    from api.models import Celok, Prevadzka, ProfileCelokAccess
 
-    Objednávky sa vedú per prevádzka, takže profil bez prevádzky by nemal kam
-    objednávať. Default: celok aj prevádzka sa volajú ako profil. Viac-prevádzkové
-    celky sa dokonfigurujú zvlášť.
-    """
-    from api.models import Celok, Prevadzka, UserProfile
+    def unique_celok_name(base_name: str, celok_id: int | None) -> str:
+        """Return a unique Celok name without merging unrelated profiles."""
+        candidate = base_name
+        if Celok.objects.filter(nazov=candidate).exclude(pk=celok_id).exists():
+            candidate = f"{base_name} ({instance.user.email})"
+        if Celok.objects.filter(nazov=candidate).exclude(pk=celok_id).exists():
+            candidate = f"{base_name} (#{instance.pk})"
+        return candidate
 
-    zdroj = (
-        Celok.ZdrojObjednavok.EDUPAGE
-        if instance.is_edupage
-        else Celok.ZdrojObjednavok.APP
-    )
-
-    # Existujúci profil: udrž zdroj celku v súlade s is_edupage (napr. keď admin
-    # prepne prevádzku na EduPage). Meníme len keď treba, nech nespúšťame zápis
-    # zbytočne.
-    if not created or instance.celok_id is not None:
-        if instance.celok_id is not None and Celok.objects.filter(
-            pk=instance.celok_id
-        ).exclude(zdroj_objednavok=zdroj).update(zdroj_objednavok=zdroj):
-            logger.info(
-                "Celok %s zdroj_objednavok → %s (profil %s)",
-                instance.celok_id,
-                zdroj,
-                instance.pk,
-            )
+    if not created or getattr(instance, "_skip_default_facility", False):
         return
     try:
-
         nazov = (instance.company_name or "").strip() or instance.user.email
-
-        # Každý auto-vytvorený profil dostane VLASTNÝ celok. Zdieľať jeden celok
-        # medzi viacerými loginmi je legitímne, ale to sa konfiguruje ručne — tu
-        # nesmieme dva rovnako pomenované (ale nesúvisiace) profily ticho zlúčiť,
-        # inak by ich prevádzky a objednávky kolidovali. `Celok.nazov` je unique,
-        # tak pri zhode odlíšime názov emailom, resp. pk.
-        celok_nazov = nazov
-        if Celok.objects.filter(nazov=celok_nazov).exists():
-            celok_nazov = f"{nazov} ({instance.user.email})"
-        if Celok.objects.filter(nazov=celok_nazov).exists():
-            celok_nazov = f"{nazov} (#{instance.pk})"
-
+        celok_nazov = unique_celok_name(nazov, None)
         celok = Celok.objects.create(
             nazov=celok_nazov,
-            billing_name=instance.billing_name,
-            ico=instance.ico,
-            dic=instance.dic,
-            zdroj_objednavok=zdroj,
         )
         Prevadzka.objects.create(celok=celok, nazov=nazov)
-        # update() namiesto save(), aby sa signál nezavolal rekurzívne.
-        UserProfile.objects.filter(pk=instance.pk).update(celok=celok)
-        instance.celok = celok
+        ProfileCelokAccess.objects.create(profile=instance, celok=celok)
     except Exception as exc:
         logger.exception("Error creating default Celok/Prevadzka: %s", exc)
         _capture_signal_failure(exc, "user_profile_saved")

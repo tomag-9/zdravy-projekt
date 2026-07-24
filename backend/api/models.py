@@ -15,10 +15,16 @@ class DailyOrder(models.Model):
     # `prevadzka` = za koho je objednávka. Identita riadku je (prevadzka, date):
     # jeden login môže objednávať za viac prevádzok, a jednu prevádzku môže
     # objednávať viac loginov.
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="orders",
+        null=True,
+        help_text="Login, ktorý objednávku naposledy zapísal; môže byť zmazaný.",
+    )
     prevadzka = models.ForeignKey(
         "Prevadzka",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="orders",
     )
     date = models.DateField(db_index=True)
@@ -89,6 +95,7 @@ class DailyOrder(models.Model):
 
 class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=0, db_index=True)
     is_active = models.BooleanField(default=True)
     description = models.TextField(blank=True, null=True)
     color = models.CharField(
@@ -97,6 +104,9 @@ class Diet(models.Model):
         default="",
         help_text="Voliteľná HEX farba pre admin prehľady, napr. #F97316.",
     )
+
+    class Meta:
+        ordering = ["sort_order", "name"]
 
     def __str__(self) -> str:
         return self.name
@@ -108,21 +118,6 @@ def _default_all_meals() -> List[str]:
 
 def _default_visible_menus() -> List[str]:
     return ["A", "B", "C", "V"]
-
-
-class ClientSettings(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="settings")
-    # Stores list of allowed menus e.g. ["A", "B", "V"]
-    visible_menus = models.JSONField(default=_default_visible_menus, blank=True)
-    # Stores list of allowed meals e.g. ["breakfast", "lunch", "olovrant"]
-    visible_meals = models.JSONField(default=_default_all_meals, blank=True)
-    # ManyToMany to allow dynamic diet selection
-    visible_diets = models.ManyToManyField(Diet, blank=True)
-    # Admin-only note displayed in admin gramage dashboard after expanding client row.
-    admin_order_note = models.TextField(blank=True, default="")
-
-    def __str__(self) -> str:
-        return f"Settings for {self.user.email}"
 
 
 class GlobalSettings(models.Model):
@@ -184,7 +179,7 @@ class GlobalSettings(models.Model):
 
 
 class UserProfile(models.Model):
-    """Extended user profile with company information."""
+    """Login-level údaje; doménové dáta žijú na Celok/Prevadzka/access modeloch."""
 
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
@@ -192,51 +187,10 @@ class UserProfile(models.Model):
         blank=True,
         help_text="Interný názov prevádzky (používa sa interne)",
     )
-    billing_name = models.CharField(
-        max_length=255, blank=True, help_text="Názov spoločnosti pre fakturáciu"
-    )
-    ico = models.CharField(
-        max_length=20, blank=True, help_text="Company registration number (IČO)"
-    )
-    dic = models.CharField(
-        max_length=20, blank=True, help_text="Tax identification number (DIČ)"
-    )
-    is_edupage = models.BooleanField(
-        default=False,
-        db_index=True,
-        help_text="True for operations that upload orders via Edupage",
-    )
-    api_identifier = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Identifier used to match this operation in Edupage file parsing",
-    )
-    mealsguest_url = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="Full mealsGuest URL for HTML scraping, e.g. https://school.edupage.org/menu/mealsGuest?id=TOKEN",
-    )
     created_at = models.DateTimeField(auto_now_add=True)
     onboarding_completed = models.BooleanField(
         default=False,
         help_text="True once the client has completed or dismissed the onboarding tour.",
-    )
-    celok = models.ForeignKey(
-        "Celok",
-        on_delete=models.PROTECT,
-        related_name="profily",
-        null=True,
-        blank=True,
-        help_text="Celok, pod ktorý toto prihlásenie patrí.",
-    )
-    prevadzky = models.ManyToManyField(
-        "Prevadzka",
-        blank=True,
-        related_name="profily",
-        help_text=(
-            "Prevádzky, ku ktorým má toto prihlásenie prístup. "
-            "Prázdne = všetky prevádzky celku."
-        ),
     )
 
     class Meta:
@@ -246,22 +200,53 @@ class UserProfile(models.Model):
         return self.company_name or self.user.email
 
     def dostupne_prevadzky(self):
-        """Prevádzky, ktoré toto prihlásenie smie objednávať.
+        """Aktívne prevádzky z explicitných celok/prevádzka access záznamov."""
+        celok_ids = self.celok_accesses.values_list("celok_id", flat=True)
+        prevadzka_ids = self.prevadzka_accesses.values_list("prevadzka_id", flat=True)
+        return (
+            Prevadzka.objects.filter(is_active=True)
+            .filter(models.Q(celok_id__in=celok_ids) | models.Q(pk__in=prevadzka_ids))
+            .distinct()
+        )
 
-        Prázdny M2M znamená „celý celok", nie „nič" — inak by každý nový login
-        stratil prístup, kým mu ho niekto ručne nenaklikal.
+    def dostupne_celky(self):
+        """Celky dosiahnuteľné cez oba explicitné access scope modely."""
+        return Celok.objects.filter(
+            models.Q(profile_accesses__profile=self)
+            | models.Q(prevadzky__profile_accesses__profile=self)
+        ).distinct()
 
-        Vyplnený M2M platí aj bez celku a smie siahať naprieč celkami: jeden EduPage
-        môže zastrešovať viac samostatných subjektov (Zdravé Brúsko vedie pod jedným
-        loginom päť škôl, ktoré fakturujú každá zvlášť). Spoločný EduPage teda nie je
-        príznak celku, preto sa tu na celok neviažeme.
-        """
-        vybrane = self.prevadzky.filter(is_active=True)
-        if vybrane.exists():
-            return vybrane
-        if self.celok_id is None:
-            return Prevadzka.objects.none()
-        return self.celok.prevadzky.filter(is_active=True)
+    def primary_celok(self):
+        """Vráti jediný dostupný celok; pri 0/N celkoch je výsledok nejednoznačný."""
+        celky = list(self.dostupne_celky()[:2])
+        return celky[0] if len(celky) == 1 else None
+
+    def is_edupage_only(self) -> bool:
+        """True, ak všetky dostupné prevádzky prijímajú objednávky cez EduPage."""
+        prevadzky = self.dostupne_prevadzky()
+        return (
+            prevadzky.exists()
+            and not prevadzky.exclude(
+                celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE
+            ).exists()
+        )
+
+
+class EdupageConnection(models.Model):
+    """Jeden EduPage feed, ktorý môže zásobovať prevádzky z viacerých celkov."""
+
+    name = models.CharField(max_length=255)
+    mealsguest_url = models.URLField(max_length=500, unique=True)
+    api_identifier = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "pk"]
+
+    def __str__(self) -> str:
+        return self.name
 
 
 class Celok(models.Model):
@@ -294,19 +279,6 @@ class Celok(models.Model):
             "(klient v appke). Určuje zaradenie v admin prehľade dodania podkladov."
         ),
     )
-    edupage_api_identifier = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Voliteľný identifikátor celku pre ručný EduPage import.",
-    )
-    mealsguest_url = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text=(
-            "EduPage mealsGuest URL pre scrape objednávok, napr. "
-            "https://school.edupage.org/menu/mealsGuest?id=TOKEN"
-        ),
-    )
 
     class Meta:
         ordering = ["nazov"]
@@ -322,7 +294,14 @@ class Prevadzka(models.Model):
     len jednu — jednotný model je lacnejší než dve vetvy v každom reporte.
     """
 
-    celok = models.ForeignKey(Celok, on_delete=models.CASCADE, related_name="prevadzky")
+    celok = models.ForeignKey(Celok, on_delete=models.PROTECT, related_name="prevadzky")
+    edupage_connection = models.ForeignKey(
+        EdupageConnection,
+        on_delete=models.SET_NULL,
+        related_name="prevadzky",
+        null=True,
+        blank=True,
+    )
     nazov = models.CharField(
         max_length=255,
         help_text="Názov prevádzky, napr. 'Jolly 1'. Kľúč v DailyOrder.data.",
@@ -409,6 +388,7 @@ class Prevadzka(models.Model):
         related_name="visible_for_prevadzky",
         help_text="Diéty dostupné pre objednávky tejto prevádzky.",
     )
+    pack_separately_enabled = models.BooleanField(default=False)
     admin_order_note = models.TextField(
         blank=True,
         default="",
@@ -441,6 +421,52 @@ class Prevadzka(models.Model):
 
     def __str__(self) -> str:
         return self.nazov
+
+
+class ProfileCelokAccess(models.Model):
+    """Login má prístup ku všetkým súčasným aj budúcim prevádzkam celku."""
+
+    profile = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="celok_accesses",
+    )
+    celok = models.ForeignKey(
+        Celok,
+        on_delete=models.CASCADE,
+        related_name="profile_accesses",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "celok"],
+                name="unique_profile_celok_access",
+            )
+        ]
+
+
+class ProfilePrevadzkaAccess(models.Model):
+    """Login má prístup iba ku konkrétnej prevádzke."""
+
+    profile = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="prevadzka_accesses",
+    )
+    prevadzka = models.ForeignKey(
+        Prevadzka,
+        on_delete=models.CASCADE,
+        related_name="profile_accesses",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["profile", "prevadzka"],
+                name="unique_profile_prevadzka_access",
+            )
+        ]
 
 
 class DeliveryBlock(models.Model):
@@ -784,50 +810,3 @@ class PushNotificationAttempt(models.Model):
 
     def __str__(self) -> str:
         return f"PushNotificationAttempt({self.status}, …{self.endpoint[-20:]})"
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Edupage integration
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-class EdupageUpload(models.Model):
-    STATUS_PENDING = "pending"
-    STATUS_PROCESSED = "processed"
-    STATUS_ERROR = "error"
-
-    STATUS_CHOICES = [
-        (STATUS_PENDING, "Čaká na spracovanie"),
-        (STATUS_PROCESSED, "Spracovaný"),
-        (STATUS_ERROR, "Chyba"),
-    ]
-
-    operation = models.ForeignKey(
-        "UserProfile",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="edupage_uploads",
-    )
-    date = models.DateField(db_index=True, help_text="Date the orders are for")
-    filename = models.CharField(max_length=500)
-    file = models.FileField(upload_to="edupage_uploads/%Y/%m/")
-    status = models.CharField(
-        max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING
-    )
-    error_message = models.TextField(blank=True)
-    uploaded_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name="edupage_uploads"
-    )
-    uploaded_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-uploaded_at"]
-        indexes = [
-            models.Index(fields=["date", "operation"]),
-            models.Index(fields=["date", "status"]),
-        ]
-
-    def __str__(self) -> str:
-        op_name = self.operation.company_name if self.operation else "?"
-        return f"EdupageUpload({op_name}, {self.date}, {self.filename})"

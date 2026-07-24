@@ -31,7 +31,15 @@ from api.default_visibility import (
     DEFAULT_VISIBLE_MENUS,
     ensure_default_visible_diets,
 )
-from api.models import Celok, DailyOrder, Prevadzka, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    EdupageConnection,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 
 EMAIL = "zdravebrusko@edupage.local"
 MEALSGUEST_URL = "https://zdravebrusko.edupage.org/menu/mealsGuest?id=LFpbpn1"
@@ -77,16 +85,26 @@ class Command(BaseCommand):
             self.stderr.write(f"✗ profil neexistuje pre {EMAIL}")
             return
 
+        connection, _ = EdupageConnection.objects.update_or_create(
+            mealsguest_url=MEALSGUEST_URL,
+            defaults={"name": "Zdravé Brúško", "is_active": True},
+        )
         prevadzky: list[Prevadzka] = []
         for sort_order, (nazov, adresa, match) in enumerate(SKOLY, start=1):
             celok, celok_created = Celok.objects.get_or_create(
                 nazov=nazov,
-                defaults={"billing_name": nazov, "zdroj_objednavok": "edupage"},
+                defaults={
+                    "billing_name": nazov,
+                    "zdroj_objednavok": "edupage",
+                },
             )
+            celok_updates = []
             if not celok_created and celok.zdroj_objednavok != "edupage":
                 # Roster ich vedie ako `app`, lebo si dosiaľ objednávali priamo.
                 celok.zdroj_objednavok = "edupage"
-                celok.save(update_fields=["zdroj_objednavok"])
+                celok_updates.append("zdroj_objednavok")
+            if celok_updates and not dry_run:
+                celok.save(update_fields=celok_updates)
 
             prevadzka, _ = Prevadzka.objects.update_or_create(
                 celok=celok,
@@ -98,6 +116,7 @@ class Command(BaseCommand):
                     "is_active": True,
                     "visible_menus": DEFAULT_VISIBLE_MENUS,
                     "visible_meals": DEFAULT_VISIBLE_MEALS,
+                    "edupage_connection": connection,
                 },
             )
             if not dry_run:
@@ -115,20 +134,22 @@ class Command(BaseCommand):
                     stara.is_active = False
                     stara.save(update_fields=["is_active"])
 
-        # Login plní všetkých päť škôl naraz. `celok` mu necháme prázdny: ukázať
-        # ním na jednu z piatich by klamalo — nepatrí ani pod jednu.
         if not dry_run:
-            profil.mealsguest_url = MEALSGUEST_URL
-            profil.is_edupage = True
-            profil.celok = None
-            profil.save(update_fields=["mealsguest_url", "is_edupage", "celok"])
-            profil.prevadzky.set(prevadzky)
+            ProfileCelokAccess.objects.filter(profile=profil).delete()
+            ProfilePrevadzkaAccess.objects.filter(profile=profil).delete()
+            ProfilePrevadzkaAccess.objects.bulk_create(
+                [
+                    ProfilePrevadzkaAccess(profile=profil, prevadzka=prevadzka)
+                    for prevadzka in prevadzky
+                ]
+            )
         self.stdout.write(
             f"  login {EMAIL} → {len(prevadzky)} prevádzok naprieč celkami"
         )
 
-        # Starý zberný celok nie je reálna škola. Nechávame len technický EduPage
-        # login a päť reálnych celkov vyššie; pôvodný artefakt zmažeme úplne.
+        # Starý zberný celok nie je reálna škola. Ak na ňom ostala história,
+        # deaktivujeme jeho prevádzky a celok ponecháme ako historický záznam.
+        # Prázdny artefakt môžeme bezpečne odstrániť.
         stary = Celok.objects.filter(nazov=STARY_CELOK).first()
         if stary is not None:
             objednavky = DailyOrder.objects.filter(prevadzka__celok=stary)
@@ -136,14 +157,17 @@ class Command(BaseCommand):
             if pocet_objednavok:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  '{STARY_CELOK}': mažem {pocet_objednavok} historických "
-                        "objednávok z neexistujúceho zberného celku"
+                        f"  '{STARY_CELOK}': ponechávam {pocet_objednavok} historických "
+                        "objednávok a deaktivujem jeho prevádzky"
                     )
                 )
-            self.stdout.write(f"  '{STARY_CELOK}': mažem neexistujúci celok")
-            if not dry_run:
-                objednavky.delete()
-                stary.delete()
+                if not dry_run:
+                    stary.prevadzky.update(is_active=False)
+            else:
+                self.stdout.write(f"  '{STARY_CELOK}': mažem prázdny historický celok")
+                if not dry_run:
+                    stary.prevadzky.all().delete()
+                    stary.delete()
 
         if dry_run:
             self.stdout.write(self.style.WARNING("\n--dry-run: rollback"))

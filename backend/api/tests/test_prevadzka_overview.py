@@ -3,21 +3,27 @@ import datetime
 import pytest
 
 from api.exporters.prevadzka_overview_exporter import _status_label
-from api.models import Celok, DailyOrder, Prevadzka, UserProfile
+from api.models import Celok, DailyOrder, Prevadzka, ProfileCelokAccess, UserProfile
 
 URL = "/api/admin/summary/prevadzka-overview/"
 DATE = datetime.date(2026, 7, 10)
 
 
 def _celok_with_prevadzka(nazov, is_edupage):
-    celok = Celok.objects.create(nazov=nazov)
+    celok = Celok.objects.create(
+        nazov=nazov,
+        zdroj_objednavok=(
+            Celok.ZdrojObjednavok.EDUPAGE if is_edupage else Celok.ZdrojObjednavok.APP
+        ),
+    )
     prevadzka = Prevadzka.objects.create(celok=celok, nazov=nazov)
     from django.contrib.auth.models import User
 
     user = User.objects.create_user(username=f"{nazov}@x.sk", email=f"{nazov}@x.sk")
-    UserProfile.objects.create(
-        user=user, company_name=nazov, celok=celok, is_edupage=is_edupage
-    )
+    profile = UserProfile(user=user, company_name=nazov)
+    profile._skip_default_facility = True
+    profile.save()
+    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
     return celok, prevadzka, user
 
 

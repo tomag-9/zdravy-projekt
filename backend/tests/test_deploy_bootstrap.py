@@ -11,7 +11,6 @@ from api.management.commands.real_initial_seed_prevadzky import (
 from api.management.commands.seed_real_delivery_layout import DELIVERY_ROWS, ROUTES
 from api.models import (
     Celok,
-    ClientSettings,
     DeliveryBlock,
     DeliveryRoute,
     Diet,
@@ -51,15 +50,10 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
 
         assert not user.has_usable_password()
         assert profile.company_name == school["company_name"]
-        assert profile.billing_name == school["company_name"]
-        assert profile.is_edupage is True
-        assert profile.mealsguest_url == school["mealsguest_url"]
-        assert user.settings.visible_menus == DEFAULT_VISIBLE_MENUS
-        assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
+        assert profile.is_edupage_only()
 
     dia = Diet.objects.get(name="DIA")
     krasnanko = User.objects.get(username="krasnanko@edupage.local")
-    assert krasnanko.settings.visible_diets.filter(pk=dia.pk).exists()
     assert (
         krasnanko.profile.dostupne_prevadzky()
         .get()
@@ -78,11 +72,12 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
             assert set(DEFAULT_DIET_NAMES).issubset(enabled_diets)
             if school["subdomain"] != "krasnanko":
                 assert "DIA" not in enabled_diets
-    assert (
-        not ClientSettings.objects.exclude(user=krasnanko)
-        .filter(visible_diets=dia)
-        .exists()
-    )
+            assert prevadzka.celok.billing_name == school["company_name"]
+            assert prevadzka.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+            assert prevadzka.edupage_connection is not None
+            assert (
+                prevadzka.edupage_connection.mealsguest_url == school["mealsguest_url"]
+            )
 
 
 @pytest.mark.django_db
@@ -161,13 +156,16 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
 
     user.refresh_from_db()
     assert user.profile.company_name == school["company_name"]
-    assert user.profile.billing_name == school["company_name"]
-    assert user.profile.is_edupage is True
-    assert user.profile.mealsguest_url == school["mealsguest_url"]
+    celok = user.profile.primary_celok()
+    prevadzka = user.profile.dostupne_prevadzky().get()
+    assert celok.nazov == school["company_name"]
+    assert celok.billing_name == school["company_name"]
+    assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+    assert prevadzka.edupage_connection.mealsguest_url == school["mealsguest_url"]
 
 
 @pytest.mark.django_db
-def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
+def test_real_edupage_seed_updates_lunch_only_visible_meals(settings):
     settings.DEBUG = False
     school = SCHOOLS[0]
     user = User.objects.create_user(
@@ -175,9 +173,6 @@ def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
         email=f"{school['subdomain']}@edupage.local",
     )
     UserProfile.objects.create(user=user)
-    ClientSettings.objects.create(
-        user=user, visible_menus=["A"], visible_meals=["lunch"]
-    )
     prevadzka = user.profile.dostupne_prevadzky().get()
     prevadzka.visible_menus = ["A"]
     prevadzka.visible_meals = ["lunch"]
@@ -185,10 +180,7 @@ def test_real_edupage_seed_updates_legacy_lunch_only_visible_meals(settings):
 
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
-    user.refresh_from_db()
     prevadzka.refresh_from_db()
-    assert user.settings.visible_menus == DEFAULT_VISIBLE_MENUS
-    assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
     assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
     assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
 

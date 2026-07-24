@@ -23,7 +23,14 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 
-from api.models import ClientSettings, DailyOrder, Diet, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 
 
 @pytest.mark.django_db
@@ -35,20 +42,13 @@ class TestAdminUserViewSetQueries:
         # Create 5 test users with their related objects
         from django.contrib.auth.models import User
 
-        # Create Diet objects for visible_diets M2M relationship
-        diets = [Diet.objects.create(name=f"Diet {i}") for i in range(1, 3)]
-
         for i in range(5):
             user = User.objects.create_user(
                 username=f"user{i}@example.com",
                 email=f"user{i}@example.com",
                 password="test123",
             )
-            # Create profile and settings for each
             UserProfile.objects.create(user=user, company_name=f"Company {i}")
-            settings = ClientSettings.objects.create(user=user)
-            # Add diets to exercise the settings__visible_diets prefetch path
-            settings.visible_diets.set(diets)
 
         # After optimization: typically ~2-3 queries (users + select_related/prefetch).
         # Baseline for 5 users without optimization: ~1 + 5 profiles + 5 settings + 5 settings M2M = ~16 queries.
@@ -61,6 +61,100 @@ class TestAdminUserViewSetQueries:
         assert (
             query_count <= 5
         ), f"Expected <= 5 queries (was ~16 before optimizations), got {query_count}. Possible N+1 issue."
+
+    def test_list_does_not_guess_billing_for_user_with_multiple_celky(
+        self, admin_authenticated_client
+    ):
+        from django.contrib.auth.models import User
+
+        user = User.objects.create_user(
+            username="multi-billing@example.com",
+            email="multi-billing@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        first = Celok.objects.create(
+            nazov="Billing first",
+            billing_name="First billing",
+            ico="11111111",
+            dic="1111111111",
+        )
+        second = Celok.objects.create(
+            nazov="Billing second",
+            billing_name="Second billing",
+            ico="22222222",
+            dic="2222222222",
+        )
+        ProfileCelokAccess.objects.create(profile=profile, celok=first)
+        ProfileCelokAccess.objects.create(profile=profile, celok=second)
+
+        response = admin_authenticated_client.get("/api/admin/users/")
+
+        assert response.status_code == status.HTTP_200_OK
+        payload = response.json()
+        users = payload.get("results", payload)
+        listed_user = next(item for item in users if item["id"] == user.pk)
+        assert listed_user["profile"]["billing_name"] == ""
+        assert listed_user["profile"]["ico"] == ""
+        assert listed_user["profile"]["dic"] == ""
+
+
+@pytest.mark.django_db
+class TestAdminCelokViewSetQueries:
+    def test_list_celky_uses_bounded_prefetches(self, admin_authenticated_client):
+        from django.contrib.auth.models import User
+
+        expected_whole_user_ids = {}
+        expected_scoped_user_ids = {}
+        for index in range(5):
+            celok = Celok.objects.create(nazov=f"Celok {index}")
+            first = Prevadzka.objects.create(celok=celok, nazov=f"Prvá {index}")
+            Prevadzka.objects.create(celok=celok, nazov=f"Druhá {index}")
+
+            whole_user = User.objects.create_user(
+                username=f"whole-{index}@example.com",
+                email=f"whole-{index}@example.com",
+            )
+            whole_profile = UserProfile(user=whole_user)
+            whole_profile._skip_default_facility = True
+            whole_profile.save()
+            ProfileCelokAccess.objects.create(
+                profile=whole_profile,
+                celok=celok,
+            )
+            expected_whole_user_ids[f"Druhá {index}"] = whole_user.pk
+
+            scoped_user = User.objects.create_user(
+                username=f"scoped-{index}@example.com",
+                email=f"scoped-{index}@example.com",
+            )
+            scoped_profile = UserProfile(user=scoped_user)
+            scoped_profile._skip_default_facility = True
+            scoped_profile.save()
+            ProfilePrevadzkaAccess.objects.create(
+                profile=scoped_profile,
+                prevadzka=first,
+            )
+            expected_scoped_user_ids[first.nazov] = scoped_user.pk
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = admin_authenticated_client.get("/api/admin/celky/")
+            assert response.status_code == status.HTTP_200_OK
+            payload = response.json()
+            assert len(payload) == 5
+
+        query_count = len(ctx.captured_queries)
+        assert query_count <= 5, f"Expected <= 5 queries, got {query_count}."
+        prevadzky = {
+            prevadzka["nazov"]: prevadzka
+            for celok_payload in payload
+            for prevadzka in celok_payload["prevadzky"]
+        }
+        for nazov, user_id in expected_whole_user_ids.items():
+            assert prevadzky[nazov]["client_user_id"] == user_id
+        for nazov, user_id in expected_scoped_user_ids.items():
+            assert prevadzky[nazov]["client_user_id"] == user_id
 
 
 @pytest.mark.django_db
@@ -115,7 +209,6 @@ class TestAdminSummaryViewSetQueries:
                 email=f"stat_user{i}@example.com",
                 password="test123",
             )
-            ClientSettings.objects.create(user=user)
             UserProfile.objects.get_or_create(
                 user=user, defaults={"company_name": user.email}
             )
@@ -153,10 +246,9 @@ class TestPlannedOrdersViewSetQueries:
         """PlannedOrdersViewSet.list should work with minimal queries."""
         from datetime import date, timedelta
 
-        # Ensure user has settings with visible_meals
-        settings, _ = ClientSettings.objects.get_or_create(user=user)
-        settings.visible_meals = ["breakfast", "lunch"]
-        settings.save()
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.visible_meals = ["breakfast", "lunch"]
+        prevadzka.save(update_fields=["visible_meals"])
 
         # Create some historical orders
         today = date.today()
@@ -169,7 +261,7 @@ class TestPlannedOrdersViewSetQueries:
             )
 
         # After query optimization, the overall query count should remain low
-        # Accessing user.settings.visible_meals should not introduce an N+1 query pattern
+        # Facility visibility lookup must not introduce an N+1 query pattern.
         with CaptureQueriesContext(connection) as ctx:
             response = authenticated_client.get("/api/orders/planned/")
             assert response.status_code == status.HTTP_200_OK

@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import OrderService, { DailyOrder, MealData } from '../services/OrderService';
+import OrderService, { CategoryData, DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
 import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
 import { logger } from '../../../lib/logger';
+import { useToast } from '../../../context/ToastContext';
+import type { Prevadzka } from './usePrevadzky';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -37,6 +39,7 @@ interface DietDetail {
     name: string;
     description?: string | null;
     is_active?: boolean;
+    sort_order?: number;
 }
 
 type ApiErrorPayload = {
@@ -45,6 +48,11 @@ type ApiErrorPayload = {
         message?: string;
     };
 };
+
+export const getVisibleMenusForMeal = (
+    mealKey: 'breakfast' | 'lunch' | 'olovrant',
+    adminVisibleMenus: string[],
+) => (mealKey === 'lunch' ? adminVisibleMenus : ['A']);
 
 export class OrderRequestError extends Error {
     code?: string;
@@ -80,8 +88,9 @@ const safeParse = (key: string, fallback: any) => {
     }
 };
 
-export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = false) => {
+export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = false, prevadzky: Prevadzka[] = []) => {
     const { apiFetch, user } = useAuth();
+    const { warning: toastWarning } = useToast();
     const parseDate = (dateStr: string) => new Date(`${dateStr}T12:00:00`);
     const scopedKey = useCallback(
         (base: string, date: string) =>
@@ -91,29 +100,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // Settings
 
     const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
-
-    const [settings] = useState(() => {
-        const defaultSettings = {
-            copyBreakfastFromPrevLunch: false,
-            copyOlovrantFromLunch: false,
-            applyDefaultLunch: false
-        };
-        const loaded = safeParse('appSettings', defaultSettings);
-        // Migrate legacy auto-copy flags: no longer user-configurable, force to false.
-        const migrated = {
-            ...loaded,
-            copyBreakfastFromPrevLunch: false,
-            copyOlovrantFromLunch: false
-        };
-        if (loaded.copyBreakfastFromPrevLunch || loaded.copyOlovrantFromLunch) {
-            try {
-                localStorage.setItem('appSettings', JSON.stringify(migrated));
-            } catch {
-                // Ignore persistence errors; settings will still be correct in memory.
-            }
-        }
-        return migrated;
-    });
+    const packSeparatelyEnabled = prevadzky.find((item) => item.id === activePrevadzkaId)?.pack_separately_enabled ?? false;
 
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
 
@@ -179,7 +166,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // selectedDateRef ensures we always write under the correct (new) date key
     // without the race condition where the new selectedDate fires the effect with
     // the old currentOrder value (which would corrupt the new date's localStorage entry).
-    useEffect(() => { localStorage.setItem('appSettings', JSON.stringify(settings)); }, [settings]);
     useEffect(() => {
         if (loadedPrevadzkaIdRef.current !== activePrevadzkaId) return;
         localStorage.setItem(scopedKey('order', selectedDateRef.current), JSON.stringify(currentOrder));
@@ -471,50 +457,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // To be safe against "React Hook useEffect has missing dependencies", we include them.
     }, [activeMeals, selectedDate, currentOrder, touchedMeals, scopedKey]);
 
-    // Copy Logic - Olovrant from Lunch
-    useEffect(() => {
-        if (settings.copyOlovrantFromLunch && activeMeals.olovrant && !touchedMeals.has('olovrant')) {
-            // Only auto-copy if user hasn't touched olovrant explicitly
-            setCurrentOrder((prev) => ({
-                ...prev,
-                olovrant: JSON.parse(JSON.stringify(prev.lunch))
-            }));
-            // Mark olovrant as touched so it won't be auto-overwritten later
-            setTouchedMeals(prev => {
-                const next = new Set(prev);
-                next.add('olovrant');
-                return next;
-            });
-        }
-    }, [currentOrder.lunch, settings.copyOlovrantFromLunch, activeMeals.olovrant, touchedMeals]);
-
-    // Copy Logic - Breakfast from Prev Lunch
-    useEffect(() => {
-        if (settings.copyBreakfastFromPrevLunch && activeMeals.breakfast && !touchedMeals.has('breakfast')) {
-            // Only auto-copy if user hasn't touched breakfast
-            const prevDate = parseDate(selectedDate);
-            prevDate.setDate(prevDate.getDate() - 1);
-            const prevDateStr = OrderService.toLocalDateString(prevDate);
-            const prevOrderSaved = localStorage.getItem(scopedKey('order', prevDateStr));
-            if (prevOrderSaved) {
-                try {
-                    const prevOrder = JSON.parse(prevOrderSaved);
-                    if (prevOrder.lunch) {
-                        setCurrentOrder((prev) => ({
-                            ...prev,
-                            breakfast: JSON.parse(JSON.stringify(prevOrder.lunch))
-                        }));
-                        // Mark as touched
-                        setTouchedMeals(prev => {
-                            const n = new Set(prev);
-                            n.add('breakfast');
-                            return n;
-                        });
-                    }
-                } catch (e) { logger.error(e); }
-            }
-        }
-    }, [settings.copyBreakfastFromPrevLunch, activeMeals.breakfast, selectedDate, touchedMeals, scopedKey]);
+    // Kopírovanie medzi chodmi je výhradne akcia používateľa (tlačidlá „Načítať z…“).
+    // Automatické kopírovanie na pozadí tu kedysi bolo, ale keďže sa spúšťalo len kým
+    // bol cieľový chod „nedotknutý“, raz zabralo a inokedy nie — presne tá nestabilita,
+    // ktorú klient hlásil. Jednorazová akcia je predvídateľná a hodnoty ostávajú
+    // ručne editovateľné.
 
     // Actions
 
@@ -527,18 +474,48 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         setFullDayOrderState(prev => !prev);
     };
 
+    /**
+     * Celodenka drží dáta mimo `currentOrder` (jeden MealData, ktorý sa pri odoslaní
+     * rozkopíruje do všetkých chodov). Aby platili tie isté pravidlá vrátane
+     * „zabaliť zvlášť“, obalíme MealData do dočasnej objednávky a použijeme rovnaké
+     * `OrderService` updatery ako pri chodoch.
+     */
+    const wrapFullDay = (meal: MealData): DailyOrder => ({
+        status: 'draft' as const,
+        breakfast: meal,
+        lunch: OrderService.createEmptyMeal(),
+        olovrant: OrderService.createEmptyMeal(),
+    });
+
     const updateFullDayMenuCount = (category: string, menuType: string, count: number) => {
-        setFullDayData(prev => {
-            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
-            return OrderService.updateMenuCount(wrapper, 'breakfast', category, menuType, count).breakfast;
-        });
+        notifyCategoryAdjustments(
+            fullDayData[category],
+            OrderService.updateMenuCount(wrapFullDay(fullDayData), 'breakfast', category, menuType, count).breakfast[category]
+        );
+        setFullDayData(prev =>
+            OrderService.updateMenuCount(wrapFullDay(prev), 'breakfast', category, menuType, count).breakfast
+        );
     };
 
     const updateFullDayDiet = (category: string, diet: string, count: number) => {
-        setFullDayData(prev => {
-            const wrapper = { status: 'draft' as const, breakfast: prev, lunch: OrderService.createEmptyMeal(), olovrant: OrderService.createEmptyMeal() };
-            return OrderService.updateDiet(wrapper, 'breakfast', category, diet, count).breakfast;
-        });
+        notifyCategoryAdjustments(
+            fullDayData[category],
+            OrderService.updateDiet(wrapFullDay(fullDayData), 'breakfast', category, diet, count).breakfast[category]
+        );
+        setFullDayData(prev =>
+            OrderService.updateDiet(wrapFullDay(prev), 'breakfast', category, diet, count).breakfast
+        );
+    };
+
+    const updateFullDayPackSeparately = (
+        category: string,
+        kind: 'menus' | 'diets',
+        key: string,
+        count: number
+    ) => {
+        setFullDayData(prev =>
+            OrderService.updatePackSeparately(wrapFullDay(prev), 'breakfast', category, kind, key, count).breakfast
+        );
     };
 
     const clearFullDay = () => {
@@ -547,13 +524,65 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
 
 
+    /**
+     * Upozorní, keď zníženie objednaného počtu stiahlo naviazaný „zvlášť“ počet.
+     *
+     * Zámerne beží MIMO `setCurrentOrder` updateru: updater musí byť čistý, a toast
+     * je setState iného kontextu — vnútri updateru by sa v StrictMode spustil dvakrát
+     * a menil cudzí komponent počas render fázy.
+     */
+    const notifyCategoryAdjustments = (
+        beforeCategory?: CategoryData,
+        afterCategory?: CategoryData
+    ) => {
+        if (!beforeCategory || !afterCategory) return;
+        OrderService.getPackSeparatelyAdjustments(beforeCategory, afterCategory).forEach(
+            ({ count: nextCount }) => {
+                toastWarning(`Zvlášť počet znížený na ${nextCount} (limit objednávky).`);
+            }
+        );
+    };
+
+    const notifyPackSeparatelyAdjustments = (
+        before: DailyOrder,
+        after: DailyOrder,
+        mealKey: 'breakfast' | 'lunch' | 'olovrant',
+        category: string
+    ) => {
+        notifyCategoryAdjustments(before[mealKey]?.[category], after[mealKey]?.[category]);
+    };
+
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
         setTouchedMeals(prev => {
             const next = new Set(prev);
             next.add(mealKey);
             return next;
         });
-        setCurrentOrder((prev) => ({ ...OrderService.updateDiet(prev, mealKey, category, diet, count), status: 'draft' }));
+        notifyPackSeparatelyAdjustments(
+            currentOrder,
+            OrderService.updateDiet(currentOrder, mealKey, category, diet, count),
+            mealKey,
+            category
+        );
+        setCurrentOrder((prev) => ({
+            ...OrderService.updateDiet(prev, mealKey, category, diet, count),
+            status: 'draft',
+        }));
+    };
+
+    const updatePackSeparately = (
+        mealKey: 'breakfast' | 'lunch' | 'olovrant',
+        category: string,
+        kind: 'menus' | 'diets',
+        key: string,
+        count: number
+    ) => {
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.add(mealKey);
+            return next;
+        });
+        setCurrentOrder((prev) => ({ ...OrderService.updatePackSeparately(prev, mealKey, category, kind, key, count), status: 'draft' }));
     };
 
     const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
@@ -661,19 +690,29 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // Admin Constraints
     // Fall back to defaults only when the setting is null/undefined;
     // an explicitly empty array means "show none".
-    const adminVisibleMenusSetting = user?.settings?.visible_menus;
+    const prevadzkaSettings = prevadzky.find((item) => item.id === activePrevadzkaId);
+
+    const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus;
     const adminVisibleMenus = adminVisibleMenusSetting == null
         ? ['A', 'B', 'C', 'V']
         : adminVisibleMenusSetting;
 
-    const adminVisibleMealsSetting = user?.settings?.visible_meals;
+    const resolvedVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') =>
+        getVisibleMenusForMeal(mealKey, adminVisibleMenus);
+
+    const adminVisibleMealsSetting = prevadzkaSettings?.visible_meals;
     const adminVisibleMeals = adminVisibleMealsSetting == null
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
+    const visibleDietSetting = prevadzkaSettings?.visible_diets as
+        | DietDetail[]
+        | undefined;
     const visibleDietDetails: DietDetail[] =
-        user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
-        ? (user.settings.visible_diets as DietDetail[])
+        visibleDietSetting && visibleDietSetting.length > 0
+        ? [...visibleDietSetting].sort(
+            (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'sk')
+        )
         : [];
     const adminVisibleDiets = visibleDietDetails.length > 0
         ? visibleDietDetails.map(d => d.name)
@@ -696,7 +735,16 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
-        setCurrentOrder((prev) => ({ ...OrderService.updateMenuCount(prev, mealKey, category, menuType, count), status: 'draft' }));
+        notifyPackSeparatelyAdjustments(
+            currentOrder,
+            OrderService.updateMenuCount(currentOrder, mealKey, category, menuType, count),
+            mealKey,
+            category
+        );
+        setCurrentOrder((prev) => ({
+            ...OrderService.updateMenuCount(prev, mealKey, category, menuType, count),
+            status: 'draft',
+        }));
     };
 
     /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
@@ -723,6 +771,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return false;
     };
 
+    /** Immediately copy today’s current breakfast into lunch. Returns true if breakfast had data. */
+    const copyLunchFromCurrentBreakfast = (): boolean => {
+        if (OrderService.isMealEmpty(currentOrder.breakfast)) return false;
+        setCurrentOrder((prev) => ({
+            ...prev,
+            lunch: JSON.parse(JSON.stringify(prev.breakfast)),
+            status: 'draft',
+        }));
+        setActiveMeals(prev => ({ ...prev, lunch: true }));
+        setTouchedMeals(prev => { const n = new Set(prev); n.add('lunch'); return n; });
+        return true;
+    };
+
     /** Immediately copy today’s current lunch into olovrant. Returns true if lunch had data. */
     const copyOlovrantFromCurrentLunch = (): boolean => {
         if (OrderService.isMealEmpty(currentOrder.lunch)) return false;
@@ -746,20 +807,23 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         selectedDate, setSelectedDate,
         currentOrder, activeMeals, toggleMeal,
         fullDayOrder, toggleFullDay,
-        fullDayData, updateFullDayMenuCount, updateFullDayDiet, clearFullDay,
+        fullDayData, updateFullDayMenuCount, updateFullDayDiet, updateFullDayPackSeparately, clearFullDay,
         specialDietNote, setSpecialDietNote,
-        updateMenuCount, updateDiet,
+        updateMenuCount, updateDiet, updatePackSeparately,
         getAvailableDiets,
         prevDayLunches,
         clearMeal,
         loadBreakfastFromPrevLunch,
+        copyLunchFromCurrentBreakfast,
         copyOlovrantFromCurrentLunch,
         submitOrder, deleteOrder,
         adminVisibleMenus,
+        getVisibleMenusForMeal: resolvedVisibleMenusForMeal,
         adminVisibleMeals,
         globalDeadlines,
         clientContactInfo,
         holidays,
         mealPlanAvailability,
+        packSeparatelyEnabled,
     };
 };

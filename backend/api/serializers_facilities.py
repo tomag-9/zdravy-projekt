@@ -26,6 +26,9 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     celok_zdroj_objednavok = serializers.CharField(
         source="celok.zdroj_objednavok", read_only=True
     )
+    edupage_connection_name = serializers.CharField(
+        source="edupage_connection.name", read_only=True
+    )
     orders_count = serializers.SerializerMethodField()
     client_user_id = serializers.SerializerMethodField()
     visible_diets = serializers.PrimaryKeyRelatedField(
@@ -33,22 +36,25 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     )
 
     def _detail_profile(self, obj):
-        scoped_profiles = getattr(obj, "_prefetched_objects_cache", {}).get("profily")
-        if scoped_profiles is None:
-            scoped_profiles = list(obj.profily.select_related("user").all())
-        if scoped_profiles:
-            return scoped_profiles[0]
-
-        celok_profiles = self.context.get("celok_profiles")
-        if celok_profiles is None:
-            celok = self.context.get("celok") or obj.celok
-            celok_profiles = list(
-                celok.profily.select_related("user").prefetch_related("prevadzky")
+        scoped_accesses = getattr(obj, "_admin_profile_accesses", None)
+        if scoped_accesses is None:
+            scoped_accesses = getattr(obj, "_prefetched_objects_cache", {}).get(
+                "profile_accesses"
             )
-        for profile in celok_profiles:
-            if not profile.prevadzky.exists():
-                return profile
-        return celok_profiles[0] if celok_profiles else None
+            if scoped_accesses is None:
+                scoped_accesses = list(
+                    obj.profile_accesses.select_related("profile__user")
+                )
+        if scoped_accesses:
+            return scoped_accesses[0].profile
+
+        celok_accesses = self.context.get("celok_accesses")
+        if celok_accesses is None:
+            celok = self.context.get("celok") or obj.celok
+            celok_accesses = list(
+                celok.profile_accesses.select_related("profile__user")
+            )
+        return celok_accesses[0].profile if celok_accesses else None
 
     def get_orders_count(self, obj):
         # Anotované vo viewsete; v inom kontexte (napr. po vytvorení) môže chýbať.
@@ -67,6 +73,8 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "celok_zdroj_objednavok",
             "nazov",
             "adresa",
+            "edupage_connection",
+            "edupage_connection_name",
             "edupage_match",
             "report_alias",
             "delivery_note",
@@ -76,6 +84,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "pack_separately_enabled",
             "admin_order_note",
             "orders_count",
             "client_user_id",
@@ -118,46 +127,73 @@ class AdminCelokSerializer(serializers.ModelSerializer):
             "ico",
             "dic",
             "zdroj_objednavok",
-            "edupage_api_identifier",
-            "mealsguest_url",
             "prevadzky_count",
             "prevadzky",
             "logins",
         ]
 
+    @staticmethod
+    def _prevadzky(obj):
+        prefetched = getattr(obj, "_admin_prevadzky", None)
+        if prefetched is not None:
+            return prefetched
+        return sorted(obj.prevadzky.all(), key=lambda p: (p.sort_order, p.nazov))
+
+    @staticmethod
+    def _celok_accesses(obj):
+        prefetched = getattr(obj, "_admin_profile_accesses", None)
+        return (
+            prefetched if prefetched is not None else list(obj.profile_accesses.all())
+        )
+
     def get_logins(self, obj):
-        # Priame loginy celku + M2M-only loginy pripnuté na prevádzky tohto celku.
         profiles_by_user_id = {}
-        for profile in obj.profily.select_related("user").prefetch_related("prevadzky"):
-            profiles_by_user_id[profile.user_id] = profile
-        for prevadzka in obj.prevadzky.all():
-            for profile in prevadzka.profily.all():
-                profiles_by_user_id.setdefault(profile.user_id, profile)
+        for access in self._celok_accesses(obj):
+            profile = access.profile
+            profiles_by_user_id[profile.user_id] = {
+                "profile": profile,
+                "whole_celok": True,
+                "prevadzka_ids": set(),
+            }
+        for prevadzka in self._prevadzky(obj):
+            accesses = getattr(prevadzka, "_admin_profile_accesses", None)
+            if accesses is None:
+                accesses = prevadzka.profile_accesses.all()
+            for access in accesses:
+                profile = access.profile
+                current = profiles_by_user_id.setdefault(
+                    profile.user_id,
+                    {
+                        "profile": profile,
+                        "whole_celok": False,
+                        "prevadzka_ids": set(),
+                    },
+                )
+                if not current["whole_celok"]:
+                    current["prevadzka_ids"].add(prevadzka.id)
         return [
             {
-                "user_id": p.user_id,
-                "email": p.user.email,
-                "company_name": p.company_name,
-                "is_edupage": p.is_edupage,
-                # Prázdne = login pokrýva celý celok; inak je obmedzený na tieto prevádzky.
-                "prevadzka_ids": list(p.prevadzky.values_list("id", flat=True)),
+                "user_id": entry["profile"].user_id,
+                "email": entry["profile"].user.email,
+                "company_name": entry["profile"].company_name,
+                "is_edupage": (obj.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE),
+                "prevadzka_ids": sorted(entry["prevadzka_ids"]),
             }
-            for p in profiles_by_user_id.values()
+            for entry in profiles_by_user_id.values()
         ]
 
     def get_prevadzky(self, obj):
-        prevadzky = sorted(obj.prevadzky.all(), key=lambda p: (p.sort_order, p.nazov))
         return AdminPrevadzkaSerializer(
-            prevadzky,
+            self._prevadzky(obj),
             many=True,
             context={
                 **self.context,
                 "celok": obj,
-                "celok_profiles": list(obj.profily.all()),
+                "celok_accesses": self._celok_accesses(obj),
             },
         ).data
 
     def get_prevadzky_count(self, obj):
         # Počítame len aktívne — deaktivované (napr. retirovaný default po splite)
         # sa v zozname ukážu, ale do počtu „(N prevádzok)" nepatria.
-        return sum(1 for p in obj.prevadzky.all() if p.is_active)
+        return sum(1 for p in self._prevadzky(obj) if p.is_active)

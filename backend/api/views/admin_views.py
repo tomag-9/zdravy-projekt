@@ -1,11 +1,13 @@
 import logging
 
 from django.contrib.auth.models import User
+from django.db.models import Exists, OuterRef, Q, Subquery
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
 from rest_framework.response import Response
 
 from ..logging_buffer import get_log_records
+from ..models import Celok, Prevadzka
 from ..serializers_user import AdminUserSerializer
 
 logger = logging.getLogger(__name__)
@@ -23,31 +25,58 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     """
     Admin ViewSet for managing users and their settings.
 
-    Uses select_related/prefetch_related to optimize queries for nested serializer access:
-    - profile: OneToOne relationship loaded via select_related, accessed in get_profile() and get_company_name()
-    - settings: OneToOne relationship loaded via select_related, accessed in get_settings()
-    - settings__visible_diets: M2M relationship loaded via prefetch_related, accessed in AdminClientSettingsSerializer
-
-    Query optimization: Without these optimizations, listing 10 users would trigger ~31 queries
-    (1 users + 10 profiles + 10 settings + 10 M2M visible_diets). With select_related/prefetch_related,
-    reduced to 2-3 queries total (>90% reduction).
+    List načítava profil cez JOIN a kanonické facility údaje cez korelované
+    subquery. Prevádzkové nastavenia patria facility endpointu.
     """
 
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
+        accessible_prevadzky = Prevadzka.objects.filter(
+            Q(profile_accesses__profile__user_id=OuterRef("pk"))
+            | Q(celok__profile_accesses__profile__user_id=OuterRef("pk"))
+        )
+        accessible_celky = (
+            Celok.objects.filter(
+                Q(profile_accesses__profile__user_id=OuterRef("pk"))
+                | Q(prevadzky__profile_accesses__profile__user_id=OuterRef("pk"))
+            )
+            .distinct()
+            .order_by("pk")
+        )
+        connected_prevadzky = accessible_prevadzky.filter(
+            edupage_connection__isnull=False
+        ).order_by("pk")
         qs = (
             User.objects.all()
-            .select_related("profile", "settings")
-            .prefetch_related("settings__visible_diets")
+            .select_related("profile")
+            .annotate(
+                _has_access=Exists(accessible_prevadzky),
+                _has_app_access=Exists(
+                    accessible_prevadzky.exclude(
+                        celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE
+                    )
+                ),
+                _first_celok_id=Subquery(accessible_celky.values("pk")[:1]),
+                _second_celok_id=Subquery(accessible_celky.values("pk")[1:2]),
+                _billing_name=Subquery(accessible_celky.values("billing_name")[:1]),
+                _ico=Subquery(accessible_celky.values("ico")[:1]),
+                _dic=Subquery(accessible_celky.values("dic")[:1]),
+                _api_identifier=Subquery(
+                    connected_prevadzky.values("edupage_connection__api_identifier")[:1]
+                ),
+                _mealsguest_url=Subquery(
+                    connected_prevadzky.values("edupage_connection__mealsguest_url")[:1]
+                ),
+            )
             .order_by("email")
         )
         is_edupage = self.request.query_params.get("is_edupage")
         if is_edupage == "true":
-            qs = qs.filter(profile__is_edupage=True)
+            qs = qs.filter(_has_access=True, _has_app_access=False)
         elif is_edupage == "false":
-            qs = qs.filter(profile__is_edupage=False)
+            qs = qs.filter(_has_app_access=True)
         return qs
 
     def perform_create(self, serializer):
@@ -55,7 +84,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
         try:
             profile = user.profile
-            if not profile.is_edupage:
+            if not profile.is_edupage_only():
                 from ..email_utils import send_account_setup_email
 
                 send_account_setup_email(user=user)

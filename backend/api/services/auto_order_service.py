@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from ..models import DailyOrder
+from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
 
 logger = logging.getLogger(__name__)
@@ -34,10 +34,14 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
     Drafts are never persisted via the normal API path, so every stored order
     is treated as submitted.
     """
-    orders = DailyOrder.objects.filter(
-        user=user,
-        date__lt=before_date,
-    ).order_by("-date")
+    orders = (
+        DailyOrder.objects.filter(
+            user=user,
+            date__lt=before_date,
+        )
+        .select_related("prevadzka")
+        .order_by("-date")
+    )
 
     for order in orders:
         if not _is_order_empty(order.data or {}):
@@ -71,6 +75,19 @@ def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str
         else:
             data[meal_key] = {}
     return data
+
+
+def _edupage_prevadzka_ids() -> set[int]:
+    """Return active prevádzka ids whose counts must come only from EduPage."""
+    # Zámerne bez filtra na is_active: preskočiť navyše je neškodné, vytvoriť
+    # auto-objednávku na EduPage prevádzke nie.
+    prevadzka_ids = set(
+        Prevadzka.objects.filter(
+            celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+        ).values_list("id", flat=True)
+    )
+
+    return prevadzka_ids
 
 
 def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any]:
@@ -121,11 +138,18 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         if not _is_order_empty(order.data or {}):
             templates_by_prevadzka[order.prevadzka_id] = order
 
+    edupage_prevadzka_ids = _edupage_prevadzka_ids()
     clients_by_id = {c.id: c for c in clients}
     created = []
     skipped = 0
+    skipped_edupage = 0
 
     for prevadzka_id, template in templates_by_prevadzka.items():
+        if prevadzka_id in edupage_prevadzka_ids:
+            skipped += 1
+            skipped_edupage += 1
+            continue
+
         # Already has an order for this date (manual or previous auto)?
         if prevadzka_id in existing_order_prevadzka_ids:
             skipped += 1
@@ -180,6 +204,11 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             template.date,
         )
 
+    logger.info(
+        "apply_auto_orders: skipped %d EduPage-driven prevadzky on %s",
+        skipped_edupage,
+        target_date,
+    )
     logger.info(
         "apply_auto_orders finished: date=%s created=%d skipped=%d",
         target_date,

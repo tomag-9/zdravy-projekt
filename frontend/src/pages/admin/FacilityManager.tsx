@@ -43,6 +43,8 @@ interface Prevadzka {
   celok_nazov: string;
   nazov: string;
   adresa: string;
+  edupage_connection: number | null;
+  edupage_connection_name: string | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -53,6 +55,28 @@ interface Prevadzka {
   client_user_id: number | null;
 }
 
+interface EdupageConnection {
+  id: number;
+  name: string;
+  mealsguest_url: string;
+  api_identifier: string;
+  is_active: boolean;
+}
+
+interface EdupageConnectionForm {
+  name: string;
+  mealsguest_url: string;
+  api_identifier: string;
+  is_active: boolean;
+}
+
+const EMPTY_CONNECTION: EdupageConnectionForm = {
+  name: "",
+  mealsguest_url: "",
+  api_identifier: "",
+  is_active: true,
+};
+
 interface Celok {
   id: number;
   nazov: string;
@@ -61,8 +85,6 @@ interface Celok {
   ico: string;
   dic: string;
   zdroj_objednavok: string;
-  edupage_api_identifier: string;
-  mealsguest_url: string;
   prevadzky_count: number;
   prevadzky: Prevadzka[];
   logins: Login[];
@@ -74,6 +96,7 @@ const API = import.meta.env.VITE_API_URL || "/api";
 interface PrevadzkaForm {
   nazov: string;
   adresa: string;
+  edupage_connection: number | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -83,6 +106,7 @@ interface PrevadzkaForm {
 const EMPTY_PREVADZKA: PrevadzkaForm = {
   nazov: "",
   adresa: "",
+  edupage_connection: null,
   edupage_match: "",
   report_alias: "",
   delivery_note: "",
@@ -98,8 +122,6 @@ interface CelokForm {
   ico: string;
   dic: string;
   zdroj_objednavok: string;
-  edupage_api_identifier: string;
-  mealsguest_url: string;
 }
 
 // ── Login form ──────────────────────────────────────────────────
@@ -115,7 +137,9 @@ const EMPTY_LOGIN: LoginForm = {
 const PrevadzkaFields: React.FC<{
   form: PrevadzkaForm;
   setForm: React.Dispatch<React.SetStateAction<PrevadzkaForm>>;
-}> = ({ form, setForm }) => (
+  connections: EdupageConnection[];
+  showEdupage: boolean;
+}> = ({ form, setForm, connections, showEdupage }) => (
   <>
     <Field label="Názov prevádzky" req>
       <Input required value={form.nazov} onChange={(e) => setForm((f) => ({ ...f, nazov: e.target.value }))} />
@@ -123,6 +147,21 @@ const PrevadzkaFields: React.FC<{
     <Field label="Adresa výdaja">
       <Input value={form.adresa} onChange={(e) => setForm((f) => ({ ...f, adresa: e.target.value }))} />
     </Field>
+    {showEdupage && (
+      <Field label="EduPage spojenie">
+        <Select
+          value={form.edupage_connection ?? ""}
+          onChange={(e) => setForm((f) => ({ ...f, edupage_connection: e.target.value ? Number(e.target.value) : null }))}
+        >
+          <option value="">Bez spojenia</option>
+          {connections.map((connection) => (
+            <option key={connection.id} value={connection.id}>
+              {connection.name}{connection.is_active ? "" : " (neaktívne)"}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    )}
     <Field label="Edupage match" hint="(prefix; ; oddeľuje viac)">
       <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => setForm((f) => ({ ...f, edupage_match: e.target.value }))} />
     </Field>
@@ -161,6 +200,12 @@ const FacilityManager: React.FC = () => {
   const { apiFetch } = useAuth();
   const { success, error: toastError } = useToast();
   const [celky, setCelky] = useState<Celok[]>([]);
+  const [connections, setConnections] = useState<EdupageConnection[]>([]);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
+  const [connectionEditorOpen, setConnectionEditorOpen] = useState(false);
+  const [connectionTarget, setConnectionTarget] = useState<EdupageConnection | null>(null);
+  const [connectionForm, setConnectionForm] = useState<EdupageConnectionForm>(EMPTY_CONNECTION);
+  const [connectionSaving, setConnectionSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -184,8 +229,6 @@ const FacilityManager: React.FC = () => {
     ico: "",
     dic: "",
     zdroj_objednavok: "app",
-    edupage_api_identifier: "",
-    mealsguest_url: "",
   });
   const [cSaving, setCSaving] = useState(false);
 
@@ -196,10 +239,17 @@ const FacilityManager: React.FC = () => {
 
   const fetchCelky = useCallback(async () => {
     try {
-      const res = await apiFetch(`${API}/admin/celky/`);
+      const [res, connectionsRes] = await Promise.all([
+        apiFetch(`${API}/admin/celky/`),
+        apiFetch(`${API}/admin/edupage-connections/`),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setCelky(Array.isArray(data) ? data : data.results || []);
+      }
+      if (connectionsRes.ok) {
+        const data = await connectionsRes.json();
+        setConnections(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
       logger.error(e);
@@ -211,6 +261,52 @@ const FacilityManager: React.FC = () => {
   useEffect(() => {
     fetchCelky();
   }, [fetchCelky]);
+
+  const openConnectionEditor = (connection: EdupageConnection | null) => {
+    setConnectionsOpen(false);
+    setConnectionTarget(connection);
+    setConnectionForm(connection ? {
+      name: connection.name,
+      mealsguest_url: connection.mealsguest_url,
+      api_identifier: connection.api_identifier,
+      is_active: connection.is_active,
+    } : { ...EMPTY_CONNECTION });
+    setConnectionEditorOpen(true);
+  };
+
+  const closeConnectionEditor = () => {
+    setConnectionEditorOpen(false);
+    setConnectionTarget(null);
+    setConnectionsOpen(true);
+  };
+
+  const saveConnection = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setConnectionSaving(true);
+    try {
+      const url = connectionTarget
+        ? `${API}/admin/edupage-connections/${connectionTarget.id}/`
+        : `${API}/admin/edupage-connections/`;
+      const res = await apiFetch(url, {
+        method: connectionTarget ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(connectionForm),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toastError(data?.mealsguest_url?.[0] || data?.error?.message || "Nepodarilo sa uložiť EduPage spojenie.");
+        return;
+      }
+      success(connectionTarget ? "EduPage spojenie upravené." : "EduPage spojenie pridané.");
+      await fetchCelky();
+      closeConnectionEditor();
+    } catch (err) {
+      logger.error(err);
+      toastError("Chyba pri ukladaní EduPage spojenia.");
+    } finally {
+      setConnectionSaving(false);
+    }
+  };
 
   const toggle = (id: number) =>
     setExpanded((prev) => {
@@ -231,6 +327,7 @@ const FacilityManager: React.FC = () => {
     setPForm({
       nazov: p.nazov,
       adresa: p.adresa,
+      edupage_connection: p.edupage_connection,
       edupage_match: p.edupage_match,
       report_alias: p.report_alias,
       delivery_note: p.delivery_note,
@@ -299,8 +396,6 @@ const FacilityManager: React.FC = () => {
       ico: celok.ico || "",
       dic: celok.dic || "",
       zdroj_objednavok: celok.zdroj_objednavok || "app",
-      edupage_api_identifier: celok.edupage_api_identifier || "",
-      mealsguest_url: celok.mealsguest_url || "",
     });
   };
   const saveCelok = async (e: React.FormEvent) => {
@@ -385,7 +480,12 @@ const FacilityManager: React.FC = () => {
 
   return (
     <>
-      <PageHead eyebrow="Prevádzky" title="Správa prevádzok" desc="Celky a ich prevádzky — rozbaľte celok pre správu prevádzok" />
+      <PageHead
+        eyebrow="Prevádzky"
+        title="Správa prevádzok"
+        desc="Celky a ich prevádzky — rozbaľte celok pre správu prevádzok"
+        actions={<Button variant="secondary" onClick={() => setConnectionsOpen(true)}>EduPage spojenia</Button>}
+      />
 
       <div className="zpa-stack">
         <SearchBox value={searchTerm} onChange={setSearchTerm} placeholder="Hľadať celok alebo prevádzku…" />
@@ -487,7 +587,12 @@ const FacilityManager: React.FC = () => {
           </>}
         >
           <form id="prevadzka-form" onSubmit={savePrevadzka} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <PrevadzkaFields form={pForm} setForm={setPForm} />
+            <PrevadzkaFields
+              form={pForm}
+              setForm={setPForm}
+              connections={connections}
+              showEdupage={modalCelok.zdroj_objednavok === "edupage"}
+            />
           </form>
         </Modal>
       )}
@@ -526,16 +631,6 @@ const FacilityManager: React.FC = () => {
                 <option value="edupage">EduPage</option>
               </Select>
             </Field>
-            {cForm.zdroj_objednavok === "edupage" && (
-              <>
-                <Field label="EduPage identifikátor">
-                  <Input value={cForm.edupage_api_identifier} onChange={(e) => setCForm((f) => ({ ...f, edupage_api_identifier: e.target.value }))} />
-                </Field>
-                <Field label="EduPage mealsGuest URL">
-                  <Input value={cForm.mealsguest_url} onChange={(e) => setCForm((f) => ({ ...f, mealsguest_url: e.target.value }))} />
-                </Field>
-              </>
-            )}
           </form>
         </Modal>
       )}
@@ -579,6 +674,67 @@ const FacilityManager: React.FC = () => {
               <> Táto akcia je nevratná a vymaže aj jej <strong>{deleteTarget.orders_count}</strong> objednávok.</>
             )}
           </p>
+        </Modal>
+      )}
+
+      {connectionsOpen && (
+        <Modal
+          title="EduPage spojenia"
+          onClose={() => setConnectionsOpen(false)}
+          wide
+          foot={<>
+            <Button variant="ghost" onClick={() => setConnectionsOpen(false)}>Zavrieť</Button>
+            <Button onClick={() => openConnectionEditor(null)}><Plus /> Pridať spojenie</Button>
+          </>}
+        >
+          {connections.length === 0 ? (
+            <div className="zpa-empty">Žiadne EduPage spojenia</div>
+          ) : (
+            <div>
+              {connections.map((connection) => (
+                <div key={connection.id} className="zpa-listrow" style={{ paddingInline: 0 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div className="lr-ttl" style={{ textTransform: "none" }}>{connection.name}</div>
+                    <div className="lr-sub" style={{ overflowWrap: "anywhere" }}>{connection.mealsguest_url}</div>
+                  </div>
+                  <Badge tone={connection.is_active ? "green" : "gray"}>
+                    {connection.is_active ? "Aktívne" : "Neaktívne"}
+                  </Badge>
+                  <IconButton onClick={() => openConnectionEditor(connection)} title="Upraviť spojenie" aria-label="Upraviť spojenie">
+                    <Pencil />
+                  </IconButton>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {connectionEditorOpen && (
+        <Modal
+          title={connectionTarget ? "Upraviť EduPage spojenie" : "Pridať EduPage spojenie"}
+          onClose={closeConnectionEditor}
+          foot={<>
+            <Button variant="ghost" onClick={closeConnectionEditor}>Zrušiť</Button>
+            <Button type="submit" form="edupage-connection-form" disabled={connectionSaving}>
+              {connectionSaving ? "Ukladám…" : "Uložiť"}
+            </Button>
+          </>}
+        >
+          <form id="edupage-connection-form" onSubmit={saveConnection} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <Field label="Názov" req>
+              <Input required value={connectionForm.name} onChange={(e) => setConnectionForm((form) => ({ ...form, name: e.target.value }))} />
+            </Field>
+            <Field label="mealsGuest URL" req>
+              <Input required type="url" value={connectionForm.mealsguest_url} onChange={(e) => setConnectionForm((form) => ({ ...form, mealsguest_url: e.target.value }))} />
+            </Field>
+            <Field label="API identifikátor">
+              <Input value={connectionForm.api_identifier} onChange={(e) => setConnectionForm((form) => ({ ...form, api_identifier: e.target.value }))} />
+            </Field>
+            <Field label="Aktívne">
+              <Toggle on={connectionForm.is_active} onChange={(value) => setConnectionForm((form) => ({ ...form, is_active: value }))} ariaLabel="Aktívne EduPage spojenie" />
+            </Field>
+          </form>
         </Modal>
       )}
     </>

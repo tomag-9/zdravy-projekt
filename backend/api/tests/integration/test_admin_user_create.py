@@ -16,7 +16,14 @@ from django.contrib.auth.models import User
 from rest_framework import status
 
 from api.default_visibility import DEFAULT_VISIBLE_MEALS, DEFAULT_VISIBLE_MENUS
-from api.models import ClientSettings, Diet, PasswordResetToken, UserProfile
+from api.models import (
+    Celok,
+    Diet,
+    PasswordResetToken,
+    Prevadzka,
+    ProfileCelokAccess,
+    UserProfile,
+)
 from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
 
 pytestmark = pytest.mark.integration
@@ -47,7 +54,7 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         mock_email.assert_called_once()
         user = User.objects.get(email="appuser@example.com")
-        assert not user.profile.is_edupage
+        assert not user.profile.is_edupage_only()
         assert not user.has_usable_password()
 
     def test_create_app_user_creates_password_reset_token(self, admin_client):
@@ -89,8 +96,7 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         mock_email.assert_called_once()
         user = User.objects.get(email="skolaeduplast@example.com")
-        assert not user.profile.is_edupage
-        assert user.profile.api_identifier == ""
+        assert not user.profile.is_edupage_only()
         assert not user.has_usable_password()
 
     def test_email_failure_does_not_break_user_creation(self, admin_client):
@@ -119,7 +125,7 @@ class TestAdminUserCreate:
 
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="defaulttype@example.com")
-        assert not user.profile.is_edupage
+        assert not user.profile.is_edupage_only()
 
     def test_create_user_gets_default_diet_settings(self, admin_client):
         """Creating an operation creates settings with the default enabled diets."""
@@ -138,12 +144,6 @@ class TestAdminUserCreate:
 
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="defaultdiets@example.com")
-        settings = ClientSettings.objects.get(user=user)
-        assert settings.visible_menus == DEFAULT_VISIBLE_MENUS
-        assert settings.visible_meals == DEFAULT_VISIBLE_MEALS
-        assert set(settings.visible_diets.values_list("name", flat=True)) == set(
-            DEFAULT_DIET_NAMES
-        )
         prevadzka = user.profile.dostupne_prevadzky().get()
         assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
         assert prevadzka.visible_meals == DEFAULT_VISIBLE_MEALS
@@ -169,8 +169,7 @@ class TestAdminUserCreate:
 
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
-        assert not user.profile.is_edupage
-        assert user.profile.api_identifier == ""
+        assert not user.profile.is_edupage_only()
 
     def test_create_user_persists_company_name(self, admin_client):
         """company_name ostáva na logine (UserProfile); ico/dic sa presunuli na
@@ -191,9 +190,6 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="company@example.com")
         assert user.profile.company_name == "Acme s.r.o."
-        # ico/dic už login-level serializer neprijíma → ostávajú prázdne.
-        assert user.profile.ico == ""
-        assert user.profile.dic == ""
 
     def test_create_user_without_company_fields_defaults_to_empty(self, admin_client):
         """Creating a user without ico/dic stores empty strings, not NULL."""
@@ -210,8 +206,73 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="nocompany@example.com")
         assert user.profile.company_name == ""
-        assert user.profile.ico == ""
-        assert user.profile.dic == ""
+
+    def test_create_rejects_prevadzka_from_another_celok_without_saving_user(
+        self, admin_client
+    ):
+        selected_celok = Celok.objects.create(nazov="Selected")
+        foreign_celok = Celok.objects.create(nazov="Foreign")
+        foreign_prevadzka = Prevadzka.objects.create(
+            celok=foreign_celok,
+            nazov="Foreign prevadzka",
+        )
+
+        res = admin_client.post(
+            API_URL,
+            {
+                "email": "invalid-scope@example.com",
+                "celok": selected_celok.pk,
+                "prevadzky": [foreign_prevadzka.pk],
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert not User.objects.filter(email="invalid-scope@example.com").exists()
+
+    def test_create_with_empty_prevadzky_uses_default_facility(self, admin_client):
+        with patch(_SETUP_EMAIL):
+            res = admin_client.post(
+                API_URL,
+                {
+                    "email": "empty-scope@example.com",
+                    "prevadzky": [],
+                },
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="empty-scope@example.com")
+        assert user.profile.dostupne_prevadzky().count() == 1
+
+    def test_invalid_settings_update_does_not_change_email(self, admin_client):
+        user = User.objects.create_user(
+            username="atomic@example.com",
+            email="atomic@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        first = Celok.objects.create(nazov="Atomic first")
+        second = Celok.objects.create(nazov="Atomic second")
+        Prevadzka.objects.create(celok=first, nazov="First")
+        Prevadzka.objects.create(celok=second, nazov="Second")
+        ProfileCelokAccess.objects.create(profile=profile, celok=first)
+        ProfileCelokAccess.objects.create(profile=profile, celok=second)
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {
+                "email": "changed@example.com",
+                "settings": {"visible_menus": ["B"]},
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        user.refresh_from_db()
+        assert user.email == "atomic@example.com"
+        assert user.username == "atomic@example.com"
 
     def test_update_user_propagates_company_name(self, admin_client):
         """PATCH aktualizuje company_name na UserProfile; ico/dic (teraz na Celku)
@@ -221,12 +282,7 @@ class TestAdminUserCreate:
             email="updatecompany@example.com",
             password="pass123",
         )
-        UserProfile.objects.create(
-            user=user,
-            company_name="Old Name",
-            ico="00000000",
-            dic="",
-        )
+        UserProfile.objects.create(user=user, company_name="Old Name")
 
         res = admin_client.patch(
             f"{API_URL}{user.pk}/",
@@ -237,9 +293,6 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
         assert user.profile.company_name == "New Name s.r.o."
-        # ico/dic login-level serializer neprijíma → ostávajú pôvodné hodnoty.
-        assert user.profile.ico == "00000000"
-        assert user.profile.dic == ""
 
     def test_update_user_clears_company_name_when_empty(self, admin_client):
         """PATCH s prázdnym company_name ho vyčistí (uloží prázdny reťazec, nie NULL)."""
@@ -248,12 +301,7 @@ class TestAdminUserCreate:
             email="clearfields@example.com",
             password="pass123",
         )
-        UserProfile.objects.create(
-            user=user,
-            company_name="Old",
-            ico="12345678",
-            dic="2012345678",
-        )
+        UserProfile.objects.create(user=user, company_name="Old")
 
         res = admin_client.patch(
             f"{API_URL}{user.pk}/",

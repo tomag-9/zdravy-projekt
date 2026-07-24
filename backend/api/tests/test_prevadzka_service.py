@@ -5,7 +5,14 @@ import datetime
 import pytest
 from django.contrib.auth.models import User
 
-from api.models import Celok, DailyOrder, Prevadzka, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 from api.services.prevadzka_service import (
     PrevadzkaNedostupna,
     PrevadzkaNejednoznacna,
@@ -29,12 +36,11 @@ def jolly(celok):
 
 def _profile(email, celok=None):
     user = User.objects.create_user(username=email, email=email)
-    # post_save signál profilu založí vlastný celok + prevádzku; prepneme profil
-    # na testovací celok, aby sme mali kontrolu nad počtom prevádzok.
-    profile = UserProfile.objects.create(user=user, company_name=email)
+    profile = UserProfile(user=user, company_name=email)
+    profile._skip_default_facility = True
+    profile.save()
     if celok is not None:
-        profile.celok = celok
-        profile.save(update_fields=["celok"])
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
     return user, profile
 
 
@@ -47,7 +53,8 @@ class TestDostupnePrevadzky:
 
     def test_explicit_subset_restricts(self, celok, jolly):
         user, profile = _profile("jano@example.com", celok)
-        profile.prevadzky.add(jolly[1])
+        profile.celok_accesses.all().delete()
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=jolly[1])
         assert [p.nazov for p in dostupne_prevadzky(user)] == ["Jolly 2"]
 
     def test_inactive_prevadzka_excluded(self, celok, jolly):
@@ -81,7 +88,8 @@ class TestVyberPrevadzku:
     def test_choice_outside_access_rejected(self, celok, jolly):
         """Nesmieš objednať za prevádzku, ku ktorej nemáš prístup."""
         user, profile = _profile("jano@example.com", celok)
-        profile.prevadzky.add(jolly[0])
+        profile.celok_accesses.all().delete()
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=jolly[0])
         with pytest.raises(PrevadzkaNedostupna):
             vyber_prevadzku(user, jolly[2].pk)
 
@@ -102,7 +110,8 @@ class TestVyberPrevadzku:
 class TestPrevadzkaEndpoint:
     def test_lists_only_accessible_prevadzky(self, api_client, celok, jolly):
         user, profile = _profile("jano@example.com", celok)
-        profile.prevadzky.add(jolly[0])
+        profile.celok_accesses.all().delete()
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=jolly[0])
         api_client.force_authenticate(user=user)
         response = api_client.get("/api/prevadzky/")
         assert response.status_code == 200
@@ -116,6 +125,33 @@ class TestPrevadzkaEndpoint:
 
     def test_requires_auth(self, api_client):
         assert api_client.get("/api/prevadzky/").status_code in (401, 403)
+
+    def test_exposes_visible_menu_settings(self, api_client, celok):
+        # `on_prevadzka_saved` pri vytvorení prepíše visible_menus/visible_meals
+        # defaultmi, takže vlastné hodnoty treba nastaviť až po vzniku záznamu.
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Jolly 1")
+        prevadzka.visible_menus = ["A", "B", "V"]
+        prevadzka.visible_meals = ["breakfast", "lunch", "olovrant"]
+        prevadzka.pack_separately_enabled = True
+        prevadzka.save()
+        user, _ = _profile("eva@example.com", celok)
+        api_client.force_authenticate(user=user)
+
+        response = api_client.get("/api/prevadzky/")
+
+        assert response.status_code == 200
+        assert response.json() == [
+            {
+                "id": prevadzka.id,
+                "nazov": "Jolly 1",
+                "adresa": "",
+                "celok": "Jolly",
+                "visible_menus": ["A", "B", "V"],
+                "visible_meals": ["breakfast", "lunch", "olovrant"],
+                "visible_diets": [],
+                "pack_separately_enabled": True,
+            }
+        ]
 
 
 @pytest.mark.django_db
@@ -183,9 +219,9 @@ class TestProfileSignalAndSaveGuards:
         u2 = User.objects.create_user(username="b@e.com", email="b@e.com")
         p1 = UserProfile.objects.create(user=u1, company_name="Rovnaký názov")
         p2 = UserProfile.objects.create(user=u2, company_name="Rovnaký názov")
-        assert p1.celok_id is not None
-        assert p2.celok_id is not None
-        assert p1.celok_id != p2.celok_id
+        assert p1.primary_celok() is not None
+        assert p2.primary_celok() is not None
+        assert p1.primary_celok() != p2.primary_celok()
 
     def test_daily_order_without_prevadzka_raises_for_multi(self, celok, jolly):
         """Objednávka bez prevádzky pre multi-prevádzka login = chyba, nie tichý None."""

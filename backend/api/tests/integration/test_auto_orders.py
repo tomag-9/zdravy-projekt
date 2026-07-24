@@ -16,7 +16,14 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
-from api.models import ClientSettings, DailyOrder
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 from api.services import (
     _build_auto_data,
     _is_order_empty,
@@ -31,6 +38,24 @@ pytestmark = pytest.mark.integration
 NON_EMPTY_DATA = {
     "breakfast": {"Dospelý": {"menuCounts": {"A": 1}, "diets": {}}},
     "lunch": {"Dospelý": {"menuCounts": {"B": 2}, "diets": {}}},
+    "olovrant": {},
+}
+
+NON_EMPTY_DATA_WITH_PACK_SEPARATELY = {
+    "breakfast": {
+        "Dospelý": {
+            "menuCounts": {"A": 1},
+            "diets": {},
+            "packSeparately": {"menus": {"A": 1}},
+        }
+    },
+    "lunch": {
+        "Dospelý": {
+            "menuCounts": {"B": 2},
+            "diets": {"Bez lepku": 1},
+            "packSeparately": {"menus": {"B": 1}, "diets": {"Bez lepku": 1}},
+        }
+    },
     "olovrant": {},
 }
 
@@ -232,6 +257,16 @@ class TestBuildAutoData:
         assert auto_data["breakfast"] == {}
         assert auto_data["lunch"] == {}
 
+    def test_pack_separately_is_carried_forward(self):
+        auto_data = _build_auto_data(
+            DailyOrder(data=NON_EMPTY_DATA_WITH_PACK_SEPARATELY), visible_meals=[]
+        )
+
+        assert (
+            auto_data["lunch"]["Dospelý"]["packSeparately"]
+            == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
+        )
+
 
 @pytest.mark.django_db
 class TestApplyAutoOrders:
@@ -270,7 +305,7 @@ class TestApplyAutoOrders:
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
         DailyOrder.objects.create(user=user, date=TUESDAY, data=EMPTY_DATA)
 
-        result = apply_auto_orders(target_date=WEDNESDAY)
+        apply_auto_orders(target_date=WEDNESDAY)
 
         auto = DailyOrder.objects.filter(user=user, date=WEDNESDAY).first()
         # Respects manual empty order, uses most recent non-empty
@@ -318,6 +353,23 @@ class TestApplyAutoOrders:
         assert auto.data.get("breakfast") == {}
         assert auto.data.get("olovrant") == {}
 
+    def test_apply_auto_orders_carries_pack_separately_forward(self, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=MONDAY,
+            data=NON_EMPTY_DATA_WITH_PACK_SEPARATELY,
+        )
+
+        apply_auto_orders(target_date=TUESDAY)
+
+        auto = DailyOrder.objects.get(user=user, prevadzka=prevadzka, date=TUESDAY)
+        assert (
+            auto.data["lunch"]["Dospelý"]["packSeparately"]
+            == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
+        )
+
     def test_idempotency_no_duplicates(self, user):
         """Running apply_auto_orders twice must not create duplicate orders."""
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
@@ -361,12 +413,111 @@ class TestApplyAutoOrders:
 
     def test_filtered_auto_data_is_empty_skipped(self, user):
         """If visible_meals filtering results in empty data → order not created."""
-        ClientSettings.objects.create(user=user, visible_meals=[])
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.visible_meals = []
+        prevadzka.save(update_fields=["visible_meals"])
         DailyOrder.objects.create(user=user, date=MONDAY, data=EMPTY_DATA)
 
         result = apply_auto_orders(target_date=TUESDAY)
 
         assert user.email not in result["created"]
+
+    def test_edupage_celok_prevadzka_is_skipped_but_app_prevadzka_still_gets_auto(self):
+        # Pozor: `on_user_profile_saved` drží `Celok.zdroj_objednavok` v súlade s
+        # `is_edupage` profilu, takže EduPage celok tu zámerne nemá vlastný profil —
+        # inak by ho signál prepol späť na `app` a test by netestoval pravidlo (a).
+        edu_user = _client_user(
+            username="edu-celok@example.com",
+            email="edu-celok@example.com",
+            password="pass123",
+        )
+        app_user = _client_user(
+            username="app-celok@example.com",
+            email="app-celok@example.com",
+            password="pass123",
+        )
+
+        edu_celok = Celok.objects.create(
+            nazov="Edu celok auto-order",
+            zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+        )
+        edu_prevadzka = Prevadzka.objects.create(celok=edu_celok, nazov="Edu prevadzka")
+
+        app_prevadzka = app_user.profile.dostupne_prevadzky().first()
+
+        DailyOrder.objects.create(
+            user=edu_user,
+            prevadzka=edu_prevadzka,
+            date=MONDAY,
+            data=NON_EMPTY_DATA,
+        )
+        DailyOrder.objects.create(
+            user=app_user,
+            prevadzka=app_prevadzka,
+            date=MONDAY,
+            data=NON_EMPTY_DATA,
+        )
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert not DailyOrder.objects.filter(
+            prevadzka=edu_prevadzka, date=TUESDAY
+        ).exists()
+        assert DailyOrder.objects.filter(
+            prevadzka=app_prevadzka, date=TUESDAY, is_auto=True
+        ).exists()
+        assert app_user.email in result["created"]
+        assert result["skipped"] >= 1
+
+    def test_app_celok_is_not_skipped_based_on_login_identity(self):
+        ordering_user = _client_user(
+            username="ordering@example.com",
+            email="ordering@example.com",
+            password="pass123",
+        )
+        edupage_user = User.objects.create_user(
+            username="edupage-login@example.com",
+            email="edupage-login@example.com",
+            password="pass123",
+        )
+
+        app_celok = Celok.objects.create(
+            nazov="Shared app celok",
+            zdroj_objednavok=Celok.ZdrojObjednavok.APP,
+        )
+        shared_prevadzka = Prevadzka.objects.create(
+            celok=app_celok, nazov="Shared prevadzka"
+        )
+
+        ordering_user.profile.celok_accesses.all().delete()
+        ProfileCelokAccess.objects.create(
+            profile=ordering_user.profile,
+            celok=app_celok,
+        )
+        edupage_profile = UserProfile(
+            user=edupage_user,
+            company_name="Shared EduPage login",
+        )
+        edupage_profile._skip_default_facility = True
+        edupage_profile.save()
+        ProfilePrevadzkaAccess.objects.create(
+            profile=edupage_profile,
+            prevadzka=shared_prevadzka,
+        )
+
+        DailyOrder.objects.create(
+            user=ordering_user,
+            prevadzka=shared_prevadzka,
+            date=MONDAY,
+            data=NON_EMPTY_DATA,
+        )
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert DailyOrder.objects.filter(
+            prevadzka=shared_prevadzka, date=TUESDAY
+        ).exists()
+        assert ordering_user.email in result["created"]
 
 
 @pytest.mark.django_db
@@ -480,7 +631,9 @@ class TestAutoOrderTemplateSelection:
 
     def test_respects_visible_meals_in_predicted(self, authenticated_client, user):
         """Predicted orders should respect visible_meals setting."""
-        ClientSettings.objects.create(user=user, visible_meals=["lunch"])
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.visible_meals = ["lunch"]
+        prevadzka.save(update_fields=["visible_meals"])
         DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
 
         url = reverse("planned-orders-list")

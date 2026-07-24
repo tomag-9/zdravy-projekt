@@ -39,6 +39,41 @@ const SystemSettings: React.FC = () => {
     });
     const [loading, setLoading] = useState(true);
     const [newRecipient, setNewRecipient] = useState('');
+    const [scrapeDate, setScrapeDate] = useState(() => {
+        const now = new Date();
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    });
+    const [scraping, setScraping] = useState(false);
+
+    const runScrapeNow = async () => {
+        setScraping(true);
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-connections/scrape/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: scrapeDate }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                error(body?.error || 'Načítanie z EduPage zlyhalo.');
+                return;
+            }
+            const results: { status?: string; orders?: unknown[] }[] = body?.results ?? [];
+            const updated = results.filter((r) => r.status === 'updated').length;
+            const orders = results.reduce((sum, r) => sum + (r.orders?.length ?? 0), 0);
+            if (updated === 0) {
+                error('Nenačítala sa žiadna prevádzka — skontroluj EduPage nastavenie.');
+            } else {
+                success(`Načítané z EduPage: ${updated} prevádzok, ${orders} objednávok (${scrapeDate}).`);
+            }
+        } catch (e) {
+            logger.error(e);
+            error('Načítanie z EduPage zlyhalo.');
+        } finally {
+            setScraping(false);
+        }
+    };
 
     const fetchSettings = React.useCallback(async () => {
         try {
@@ -211,7 +246,8 @@ const SystemSettings: React.FC = () => {
                                 Automatické čítanie objednávok z EduPage pred uzávierkami.
                             </p>
                             <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', marginTop: 8 }}>
-                                Manuálne načítanie zostane dostupné.
+                                Automaticky beží len scrape pred uzávierkou. Ranné načítanie
+                                aktuálnych počtov spusti ručne nižšie.
                             </p>
                         </div>
                         <Toggle
@@ -220,6 +256,30 @@ const SystemSettings: React.FC = () => {
                             ariaLabel="Automatické čítanie EduPage"
                         />
                     </div>
+
+                    <div style={{ borderTop: '1px solid var(--line)', marginTop: 20, paddingTop: 20 }}>
+                        <p style={{ fontSize: 14, color: 'var(--ink-3)', margin: 0 }}>
+                            Načítať teraz z EduPage
+                        </p>
+                        <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', marginTop: 8 }}>
+                            Prepíše objednávky EduPage prevádzok pre zvolený deň aktuálnymi
+                            počtami. Použi ráno, keď rodičia po večernom scrape odhlásili deti.
+                        </p>
+                        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginTop: 12 }}>
+                            <Field label="Deň">
+                                <Input
+                                    type="date"
+                                    value={scrapeDate}
+                                    onChange={(e) => setScrapeDate(e.target.value)}
+                                    style={{ width: 'auto' }}
+                                />
+                            </Field>
+                            <Button type="button" onClick={runScrapeNow} disabled={scraping}>
+                                {scraping ? 'Načítavam…' : 'Načítať z EduPage'}
+                            </Button>
+                        </div>
+                    </div>
+
                     <div style={{ paddingTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button type="button" onClick={saveSettings}>Uložiť EduPage</Button>
                     </div>

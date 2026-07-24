@@ -167,10 +167,7 @@ class PlannedOrdersViewSet(viewsets.ViewSet):
 
     def list(self, request: Request) -> Response:
         """Get planned orders for the next 5 workdays via OrderService."""
-        visible_meals = list(
-            getattr(getattr(request.user, "settings", None), "visible_meals", []) or []
-        )
-        result = OrderService.get_planned_orders(request.user, visible_meals)
+        result = OrderService.get_planned_orders(request.user)
         return Response(result)
 
     @action(detail=False, methods=["get"], url_path="monthly-summary")
@@ -229,4 +226,8 @@ class PrevadzkaViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self) -> QuerySet:
-        return dostupne_prevadzky(self.request.user).select_related("celok")
+        return (
+            dostupne_prevadzky(self.request.user)
+            .select_related("celok")
+            .prefetch_related("visible_diets")
+        )

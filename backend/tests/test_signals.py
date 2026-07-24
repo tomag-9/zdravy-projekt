@@ -77,46 +77,34 @@ class TestAutoOrderScheduleSync:
 
 
 @pytest.mark.django_db
-class TestCelokZdrojObjednavok:
-    """UserProfile signál drží Celok.zdroj_objednavok v súlade s is_edupage."""
-
-    def _profile(self, is_edupage):
+class TestDefaultProfileFacility:
+    def _profile(self, email="profile@x.sk", company_name="Test prevádzka"):
         from django.contrib.auth.models import User
 
         from api.models import UserProfile
 
-        user = User.objects.create_user(
-            username=f"zdroj-{is_edupage}@x.sk", email=f"zdroj-{is_edupage}@x.sk"
-        )
-        # Auto-vytvorí celok cez signál.
-        return UserProfile.objects.create(
-            user=user, company_name="Zdroj Test", is_edupage=is_edupage
-        )
+        user = User.objects.create_user(username=email, email=email)
+        return UserProfile.objects.create(user=user, company_name=company_name)
 
-    def test_edupage_profile_marks_celok_as_edupage(self):
-        from api.models import Celok
+    def test_new_profile_gets_own_celok_prevadzka_and_access(self):
+        profile = self._profile()
+        celok = profile.primary_celok()
 
-        profile = self._profile(is_edupage=True)
-        profile.refresh_from_db()
-        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+        assert celok is not None
+        assert celok.nazov == "Test prevádzka"
+        assert list(profile.dostupne_prevadzky().values_list("nazov", flat=True)) == [
+            "Test prevádzka"
+        ]
+        assert profile.celok_accesses.filter(celok=celok).exists()
 
-    def test_app_profile_marks_celok_as_app(self):
-        from api.models import Celok
+    def test_profile_update_does_not_rename_manually_named_celok(self):
+        profile = self._profile()
+        celok = profile.primary_celok()
+        celok.nazov = "Ručne pomenovaný celok"
+        celok.save(update_fields=["nazov"])
 
-        profile = self._profile(is_edupage=False)
-        profile.refresh_from_db()
-        assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
-
-    def test_toggling_is_edupage_updates_celok(self):
-        from api.models import Celok
-
-        profile = self._profile(is_edupage=False)
-        profile.refresh_from_db()
-        celok = profile.celok
-        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.APP
-
-        profile.is_edupage = True
-        profile.save()
+        profile.company_name = "Nový login názov"
+        profile.save(update_fields=["company_name"])
 
         celok.refresh_from_db()
-        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+        assert celok.nazov == "Ručne pomenovaný celok"

@@ -15,7 +15,7 @@ vi.mock("../../../lib/logger", () => ({
 const ok = (body: unknown) =>
     Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
 
-const P = (id: number, nazov: string) => ({ id, nazov, adresa: "", celok: "Jolly" });
+const P = (id: number, nazov: string) => ({ id, nazov, adresa: "", celok: "Jolly", pack_separately_enabled: false });
 
 describe("usePrevadzky", () => {
     beforeEach(() => mockApiFetch.mockReset());

@@ -7,7 +7,21 @@ from django.core.management import call_command
 from django.utils import timezone
 from openpyxl import Workbook
 
-from api.models import Celok, DailyOrder, Prevadzka, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
+
+
+def _profile(user, company_name):
+    profile = UserProfile(user=user, company_name=company_name)
+    profile._skip_default_facility = True
+    profile.save()
+    return profile
 
 
 def _workbook(path: Path, rows: list[list[object]]) -> Path:
@@ -60,7 +74,8 @@ def test_seed_facilities_upgrades_old_duplicate_seed_by_address(tmp_path):
         celok=old, nazov="Škôlkáreň", adresa="Komárovská 64, Podunajské"
     )
     user = User.objects.create_user(username="old@example.com", email="old@example.com")
-    UserProfile.objects.create(user=user, company_name="Škôlkáreň", celok=old)
+    profile = _profile(user, "Škôlkáreň")
+    ProfileCelokAccess.objects.create(profile=profile, celok=old)
 
     path = _workbook(
         tmp_path / "harok1.xlsx",
@@ -91,10 +106,8 @@ def test_rename_harok1_renames_single_prevadzka_with_different_old_name(
     celok = Celok.objects.create(nazov="MŠ Zdravé Bruško")
     prevadzka = Prevadzka.objects.create(celok=celok, nazov="Starý interný názov")
     user = User.objects.create_user(username="zb@example.com", email="zb@example.com")
-    profile = UserProfile.objects.create(
-        user=user, company_name="Starý interný názov", celok=celok
-    )
-    profile.prevadzky.add(prevadzka)
+    profile = _profile(user, "Starý interný názov")
+    ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=prevadzka)
 
     alias_path = tmp_path / "aliases.json"
     alias_path.write_text('{"MŠ Zdravé Bruško": "Deutsche schule"}', encoding="utf-8")
@@ -127,10 +140,8 @@ def test_rename_harok1_does_not_rewrite_unrelated_profile_subset(tmp_path, monke
     target_prevadzka = Prevadzka.objects.create(celok=celok, nazov="MŠ Zdravé Bruško")
     other_prevadzka = Prevadzka.objects.create(celok=celok, nazov="Iná")
     user = User.objects.create_user(username="zb@example.com", email="zb@example.com")
-    profile = UserProfile.objects.create(
-        user=user, company_name="Iný login", celok=celok
-    )
-    profile.prevadzky.add(other_prevadzka)
+    profile = _profile(user, "Iný login")
+    ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=other_prevadzka)
 
     alias_path = tmp_path / "aliases.json"
     alias_path.write_text('{"MŠ Zdravé Bruško": "Deutsche schule"}', encoding="utf-8")
@@ -163,12 +174,8 @@ def test_seed_zdrave_brusko_deletes_fake_aggregate_school():
         username="zdravebrusko@edupage.local",
         email="zdravebrusko@edupage.local",
     )
-    UserProfile.objects.create(
-        user=user,
-        company_name="MŠ Zdravé Bruško",
-        celok=stary,
-        is_edupage=True,
-    )
+    profile = _profile(user, "MŠ Zdravé Bruško")
+    ProfileCelokAccess.objects.create(profile=profile, celok=stary)
     dnes = timezone.localdate()
     historicka = DailyOrder.objects.create(
         user=user,
@@ -185,11 +192,12 @@ def test_seed_zdrave_brusko_deletes_fake_aggregate_school():
 
     call_command("seed_zdrave_brusko")
 
-    assert not Celok.objects.filter(pk=stary.pk).exists()
-    assert not Prevadzka.objects.filter(pk=stara_prevadzka.pk).exists()
-    assert not DailyOrder.objects.filter(pk=historicka.pk).exists()
-    assert not DailyOrder.objects.filter(pk=duplicitna.pk).exists()
-    assert set(user.profile.prevadzky.values_list("nazov", flat=True)) == {
+    stara_prevadzka.refresh_from_db()
+    assert Celok.objects.filter(pk=stary.pk).exists()
+    assert not stara_prevadzka.is_active
+    assert DailyOrder.objects.filter(pk=historicka.pk).exists()
+    assert DailyOrder.objects.filter(pk=duplicitna.pk).exists()
+    assert set(user.profile.dostupne_prevadzky().values_list("nazov", flat=True)) == {
         "Deutsche schule",
         "SŠ VETERINÁRNA",
         "ZŠ Malokarpatská",

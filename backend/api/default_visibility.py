@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.db.models import QuerySet
 
-from .models import ClientSettings, Diet, Prevadzka
+from .models import Diet, Prevadzka
 from .order_data import MEAL_KEYS
 from .reference_data import DEFAULT_DIET_NAMES
 
@@ -38,26 +38,6 @@ def ensure_default_visible_diets_for_empty_prevadzky(
     updated_count = 0
     for prevadzka in qs.filter(visible_diets__isnull=True).distinct():
         if ensure_default_visible_diets(prevadzka.visible_diets):
-            updated_count += 1
-    return updated_count
-
-
-def ensure_all_visible_meals_for_client_settings() -> int:
-    updated_count = 0
-    for settings in ClientSettings.objects.all():
-        if settings.visible_meals != DEFAULT_VISIBLE_MEALS:
-            settings.visible_meals = DEFAULT_VISIBLE_MEALS
-            settings.save(update_fields=["visible_meals"])
-            updated_count += 1
-    return updated_count
-
-
-def ensure_all_visible_menus_for_client_settings() -> int:
-    updated_count = 0
-    for settings in ClientSettings.objects.all():
-        if settings.visible_menus != DEFAULT_VISIBLE_MENUS:
-            settings.visible_menus = DEFAULT_VISIBLE_MENUS
-            settings.save(update_fields=["visible_menus"])
             updated_count += 1
     return updated_count
 
