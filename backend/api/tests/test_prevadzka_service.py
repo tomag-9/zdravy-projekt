@@ -139,6 +139,7 @@ class TestPrevadzkaEndpoint:
                 "celok": "Jolly",
                 "visible_menus": ["A", "B", "V"],
                 "visible_meals": ["breakfast", "lunch", "olovrant"],
+                "visible_diets": [],
                 "pack_separately_enabled": True,
             }
         ]

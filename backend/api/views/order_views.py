@@ -229,4 +229,8 @@ class PrevadzkaViewSet(viewsets.ReadOnlyModelViewSet):
     pagination_class = None
 
     def get_queryset(self) -> QuerySet:
-        return dostupne_prevadzky(self.request.user).select_related("celok")
+        return (
+            dostupne_prevadzky(self.request.user)
+            .select_related("celok")
+            .prefetch_related("visible_diets")
+        )
