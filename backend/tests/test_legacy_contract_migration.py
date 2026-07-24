@@ -78,6 +78,54 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         ) == ["Legacy diet"]
         with pytest.raises(LookupError):
             new_apps.get_model("api", "EdupageUpload")
+
+        table_names = connection.introspection.table_names()
+        assert "api_clientsettings" in table_names
+        assert "api_edupageupload" in table_names
+
+        with connection.cursor() as cursor:
+            profile_columns = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    "api_userprofile",
+                )
+            }
+            celok_columns = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    "api_celok",
+                )
+            }
+            upload_columns = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor,
+                    "api_edupageupload",
+                )
+            }
+
+        assert {
+            "api_identifier",
+            "billing_name",
+            "celok_id",
+            "dic",
+            "ico",
+            "is_edupage",
+            "mealsguest_url",
+        } <= profile_columns
+        assert {"edupage_api_identifier", "mealsguest_url"} <= celok_columns
+        assert "operation_id" in upload_columns
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                DROP TABLE IF EXISTS api_edupageupload CASCADE;
+                DROP TABLE IF EXISTS api_clientsettings_visible_diets CASCADE;
+                DROP TABLE IF EXISTS api_clientsettings CASCADE;
+                DROP TABLE IF EXISTS api_userprofile_prevadzky CASCADE;
+                """
+            )

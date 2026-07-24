@@ -78,6 +78,69 @@ def final_legacy_backfill(apps, schema_editor):
         celok.save(update_fields=["billing_name", "ico", "dic"])
 
 
+contract_state_operations = [
+    migrations.RemoveField(
+        model_name="clientsettings",
+        name="user",
+    ),
+    migrations.RemoveField(
+        model_name="clientsettings",
+        name="visible_diets",
+    ),
+    migrations.RemoveIndex(
+        model_name="edupageupload",
+        name="api_edupage_date_e8e32b_idx",
+    ),
+    migrations.RemoveField(
+        model_name="celok",
+        name="edupage_api_identifier",
+    ),
+    migrations.RemoveField(
+        model_name="celok",
+        name="mealsguest_url",
+    ),
+    migrations.RemoveField(
+        model_name="edupageupload",
+        name="operation",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="api_identifier",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="billing_name",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="celok",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="dic",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="ico",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="is_edupage",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="mealsguest_url",
+    ),
+    migrations.RemoveField(
+        model_name="userprofile",
+        name="prevadzky",
+    ),
+    migrations.DeleteModel(
+        name="ClientSettings",
+    ),
+]
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -86,63 +149,8 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(final_legacy_backfill, migrations.RunPython.noop),
-        migrations.RemoveField(
-            model_name="clientsettings",
-            name="user",
-        ),
-        migrations.RemoveField(
-            model_name="clientsettings",
-            name="visible_diets",
-        ),
-        migrations.RemoveIndex(
-            model_name="edupageupload",
-            name="api_edupage_date_e8e32b_idx",
-        ),
-        migrations.RemoveField(
-            model_name="celok",
-            name="edupage_api_identifier",
-        ),
-        migrations.RemoveField(
-            model_name="celok",
-            name="mealsguest_url",
-        ),
-        migrations.RemoveField(
-            model_name="edupageupload",
-            name="operation",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="api_identifier",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="billing_name",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="celok",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="dic",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="ico",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="is_edupage",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="mealsguest_url",
-        ),
-        migrations.RemoveField(
-            model_name="userprofile",
-            name="prevadzky",
-        ),
-        migrations.DeleteModel(
-            name="ClientSettings",
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=contract_state_operations,
         ),
     ]
