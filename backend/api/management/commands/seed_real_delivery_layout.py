@@ -487,4 +487,9 @@ def _candidate_names(row: DeliverySeedRow) -> Iterable[str]:
 
 
 def _delete_obsolete_celky() -> None:
-    Celok.objects.filter(nazov__in=OBSOLETE_CELKY).delete()
+    for celok in Celok.objects.filter(nazov__in=OBSOLETE_CELKY):
+        if celok.prevadzky.filter(orders__isnull=False).exists():
+            celok.prevadzky.update(is_active=False, delivery_route=None)
+            continue
+        celok.prevadzky.all().delete()
+        celok.delete()
