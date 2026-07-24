@@ -7,10 +7,10 @@ celkami sa nepodporuje — celok je pri vytvorení fixný (viď serializer).
 
 from __future__ import annotations
 
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Count, Prefetch, Q, QuerySet
 from rest_framework import permissions, viewsets
 
-from ..models import Celok, Prevadzka
+from ..models import Celok, Prevadzka, ProfileCelokAccess, ProfilePrevadzkaAccess
 from ..serializers_facilities import AdminCelokSerializer, AdminPrevadzkaSerializer
 
 
@@ -26,12 +26,35 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_queryset(self) -> QuerySet:
+        prevadzka_accesses = ProfilePrevadzkaAccess.objects.select_related(
+            "profile__user"
+        ).order_by("pk")
+        celok_accesses = ProfileCelokAccess.objects.select_related(
+            "profile__user"
+        ).order_by("pk")
+        prevadzky = (
+            Prevadzka.objects.select_related("celok", "edupage_connection")
+            .prefetch_related(
+                "visible_diets",
+                Prefetch(
+                    "profile_accesses",
+                    queryset=prevadzka_accesses,
+                    to_attr="_admin_profile_accesses",
+                ),
+            )
+            .order_by("sort_order", "nazov")
+        )
         qs = Celok.objects.prefetch_related(
-            "prevadzky",
-            "prevadzky__edupage_connection",
-            "prevadzky__visible_diets",
-            "prevadzky__profile_accesses__profile__user",
-            "profile_accesses__profile__user",
+            Prefetch(
+                "prevadzky",
+                queryset=prevadzky,
+                to_attr="_admin_prevadzky",
+            ),
+            Prefetch(
+                "profile_accesses",
+                queryset=celok_accesses,
+                to_attr="_admin_profile_accesses",
+            ),
         ).order_by("nazov")
         search = self.request.query_params.get("search", "").strip()
         if search:
