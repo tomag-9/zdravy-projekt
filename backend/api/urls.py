@@ -5,6 +5,7 @@ from .health import health_check
 from .views import (
     AdminAutoOrderViewSet,
     AdminCelokViewSet,
+    AdminEdupageConnectionViewSet,
     AdminEdupageUploadViewSet,
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
@@ -90,6 +91,11 @@ router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan"
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
 router.register(r"inbox", InboxViewSet, basename="inbox")
+router.register(
+    r"admin/edupage-connections",
+    AdminEdupageConnectionViewSet,
+    basename="admin-edupage-connection",
+)
 router.register(
     r"admin/edupage-uploads", AdminEdupageUploadViewSet, basename="admin-edupage-upload"
 )

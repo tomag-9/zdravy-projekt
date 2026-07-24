@@ -29,7 +29,7 @@ from .delivery_views import (
 from .diet_views import DietViewSet
 
 # Edupage views
-from .edupage_views import AdminEdupageUploadViewSet
+from .edupage_views import AdminEdupageConnectionViewSet, AdminEdupageUploadViewSet
 
 # Facility (celok + prevadzka) admin views
 from .facility_views import AdminCelokViewSet, AdminFacilityPrevadzkaViewSet
@@ -85,6 +85,7 @@ __all__ = [
     "AdminLogViewSet",
     "AdminUserViewSet",
     # Edupage
+    "AdminEdupageConnectionViewSet",
     "AdminEdupageUploadViewSet",
     # Reports
     "AdminSummaryViewSet",

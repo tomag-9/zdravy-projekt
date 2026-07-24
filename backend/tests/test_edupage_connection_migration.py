@@ -42,6 +42,9 @@ def test_backfill_groups_celky_and_uploads_by_edupage_url():
         filename="orders.xlsx",
         file="edupage_uploads/orders.xlsx",
     )
+    EdupageUpload.objects.update(connection=None)
+    Prevadzka.objects.update(edupage_connection=None)
+    EdupageConnection.objects.all().delete()
 
     migration.forwards(apps, None)
 

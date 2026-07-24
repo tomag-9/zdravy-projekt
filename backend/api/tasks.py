@@ -408,8 +408,9 @@ def scrape_edupage_orders_task(
             nest_order_data_by_category,
             prevadzky_without_match,
         )
-        from api.models import Celok, DailyOrder, GlobalSettings, UserProfile
+        from api.models import DailyOrder, GlobalSettings
         from api.services import _next_workday
+        from api.services.edupage_connection_service import edupage_operations
         from api.utils import filter_order_data_for_prevadzka
 
         valid_meal_types = {"breakfast", "lunch", "olovrant"}
@@ -466,91 +467,10 @@ def scrape_edupage_orders_task(
                     assert target_meals is not None
                     target_meals.append(meal_type)
 
-        def _system_scrape_user():
-            from django.contrib.auth.models import User
-
-            user, _ = User.objects.get_or_create(
-                username="edupage-scrape@system.local",
-                defaults={
-                    "email": "edupage-scrape@system.local",
-                    "is_active": False,
-                    "is_staff": False,
-                },
-            )
-            return user
-
-        def _edupage_operations():
-            operations_by_url: dict[str, dict] = {}
-            configured_celky = (
-                Celok.objects.filter(zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE)
-                .exclude(mealsguest_url="")
-                .prefetch_related(
-                    "prevadzky",
-                    "profily__user",
-                    "profily__prevadzky",
-                    "prevadzky__profily__user",
-                    "prevadzky__profily__prevadzky",
-                )
-            )
-
-            for celok in configured_celky:
-                operation = operations_by_url.setdefault(
-                    celok.mealsguest_url,
-                    {
-                        "operation_id": celok.pk,
-                        "name": celok.nazov,
-                        "url": celok.mealsguest_url,
-                        "user": None,
-                        "prevadzky": [],
-                    },
-                )
-                operation["prevadzky"].extend(
-                    [p for p in celok.prevadzky.all() if p.is_active]
-                )
-                if operation["user"] is None:
-                    profile = celok.profily.select_related("user").first()
-                    if profile is None:
-                        for prevadzka in celok.prevadzky.all():
-                            profile = prevadzka.profily.select_related("user").first()
-                            if profile is not None:
-                                break
-                    if profile is not None:
-                        operation["user"] = profile.user
-
-            configured_urls = set(operations_by_url)
-            legacy_profiles = (
-                UserProfile.objects.filter(is_edupage=True)
-                .exclude(mealsguest_url="")
-                .select_related("user", "celok")
-                .prefetch_related("celok__prevadzky", "prevadzky")
-            )
-            for profile in legacy_profiles:
-                if profile.mealsguest_url in configured_urls:
-                    continue
-                operations_by_url[profile.mealsguest_url] = {
-                    "operation_id": profile.pk,
-                    "name": str(profile),
-                    "url": profile.mealsguest_url,
-                    "user": profile.user,
-                    "prevadzky": list(profile.dostupne_prevadzky()),
-                }
-
-            system_user = None
-            for operation in operations_by_url.values():
-                if operation["user"] is None:
-                    if system_user is None:
-                        system_user = _system_scrape_user()
-                    operation["user"] = system_user
-                deduped = {}
-                for prevadzka in operation["prevadzky"]:
-                    deduped[prevadzka.pk] = prevadzka
-                operation["prevadzky"] = list(deduped.values())
-            return list(operations_by_url.values())
-
         scraper = EdupageScraper()
         scraped = errors = skipped = 0
 
-        for operation in _edupage_operations():
+        for operation in edupage_operations():
             prevadzky = list(operation["prevadzky"])
             if not prevadzky:
                 logger.warning(
