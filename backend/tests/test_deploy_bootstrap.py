@@ -54,6 +54,9 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
         assert profile.billing_name == school["company_name"]
         assert profile.is_edupage is True
         assert profile.mealsguest_url == school["mealsguest_url"]
+        if school["subdomain"] != "zdravebrusko":
+            assert profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+            assert profile.celok.mealsguest_url == school["mealsguest_url"]
         assert user.settings.visible_menus == DEFAULT_VISIBLE_MENUS
         assert user.settings.visible_meals == EDUPAGE_VISIBLE_MEALS
 
@@ -78,6 +81,9 @@ def test_real_edupage_seed_creates_operations_and_links(settings):
             assert set(DEFAULT_DIET_NAMES).issubset(enabled_diets)
             if school["subdomain"] != "krasnanko":
                 assert "DIA" not in enabled_diets
+            if school["subdomain"] == "zdravebrusko":
+                assert prevadzka.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+                assert prevadzka.celok.mealsguest_url == school["mealsguest_url"]
     assert (
         not ClientSettings.objects.exclude(user=krasnanko)
         .filter(visible_diets=dia)
@@ -164,6 +170,10 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
     assert user.profile.billing_name == school["company_name"]
     assert user.profile.is_edupage is True
     assert user.profile.mealsguest_url == school["mealsguest_url"]
+    assert user.profile.celok.nazov == school["company_name"]
+    assert user.profile.celok.billing_name == school["company_name"]
+    assert user.profile.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+    assert user.profile.celok.mealsguest_url == school["mealsguest_url"]
 
 
 @pytest.mark.django_db

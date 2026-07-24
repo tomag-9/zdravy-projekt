@@ -120,3 +120,62 @@ class TestCelokZdrojObjednavok:
 
         celok.refresh_from_db()
         assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+
+    def test_app_login_save_does_not_downgrade_edupage_celok(self):
+        from django.contrib.auth.models import User
+
+        from api.models import Celok, Prevadzka, UserProfile
+
+        celok = Celok.objects.create(
+            nazov="Edu celok",
+            zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+            mealsguest_url="https://school.edupage.org/menu/mealsGuest?id=T",
+        )
+        Prevadzka.objects.create(celok=celok, nazov="Edu prevádzka")
+        user = User.objects.create_user(
+            username="app-login@x.sk", email="app-login@x.sk"
+        )
+        profile = UserProfile.objects.create(
+            user=user, company_name="App login", celok=celok
+        )
+
+        profile.company_name = "App login renamed"
+        profile.save(update_fields=["company_name"])
+
+        celok.refresh_from_db()
+        assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+        assert celok.mealsguest_url == "https://school.edupage.org/menu/mealsGuest?id=T"
+
+    def test_filling_blank_profile_updates_auto_created_celok_metadata(self):
+        from django.contrib.auth.models import User
+
+        from api.models import UserProfile
+
+        user = User.objects.create_user(username="blank@x.sk", email="blank@x.sk")
+        profile = UserProfile.objects.create(user=user)
+        profile.refresh_from_db()
+        assert profile.celok.nazov == "blank@x.sk"
+
+        profile.company_name = "Nový názov školy"
+        profile.billing_name = "Fakturačný názov školy"
+        profile.ico = "12345678"
+        profile.dic = "2012345678"
+        profile.save()
+
+        profile.celok.refresh_from_db()
+        assert profile.celok.nazov == "Nový názov školy"
+        assert profile.celok.billing_name == "Fakturačný názov školy"
+        assert profile.celok.ico == "12345678"
+        assert profile.celok.dic == "2012345678"
+
+    def test_profile_update_does_not_rename_manually_named_celok(self):
+        profile = self._profile(is_edupage=False)
+        profile.refresh_from_db()
+        profile.celok.nazov = "Ručne pomenovaný celok"
+        profile.celok.save(update_fields=["nazov"])
+
+        profile.company_name = "Nový login názov"
+        profile.save(update_fields=["company_name"])
+
+        profile.celok.refresh_from_db()
+        assert profile.celok.nazov == "Ručne pomenovaný celok"
