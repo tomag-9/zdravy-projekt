@@ -49,7 +49,7 @@ const SystemSettings: React.FC = () => {
     const runScrapeNow = async () => {
         setScraping(true);
         try {
-            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-uploads/scrape/`, {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-connections/scrape/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ date: scrapeDate }),

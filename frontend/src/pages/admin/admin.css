@@ -769,29 +769,7 @@
 .zpa-listrow .lr-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .zpa-listrow.past { opacity: 0.55; }
 
-/* dropzone */
-.zpa-dropzone {
-    border: 2px dashed var(--line); border-radius: var(--radius-xl);
-    padding: 44px 24px; text-align: center; cursor: pointer;
-    background: var(--bg-cream-soft); transition: all 180ms;
-}
-.zpa-dropzone:hover, .zpa-dropzone.drag { border-color: var(--green-500); background: rgba(114,136,75,0.06); }
-.zpa-dropzone .ic { width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 16px; background: var(--bg-cream-warm); color: var(--green-600); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
-.zpa-dropzone .ic svg { width: 26px; height: 26px; }
-.zpa-dropzone .t { font-family: var(--font-display); font-weight: 600; color: var(--green-800); font-size: 15px; }
-.zpa-dropzone .s { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
-
-/* status chip grid (edupage) */
 .zpa-statusgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
-.zpa-statuschip {
-    display: flex; align-items: center; gap: 9px; padding: 10px 13px;
-    border-radius: var(--radius-md); border: 1px solid var(--line-soft); font-size: 13px; background: var(--bg-cream-warm);
-}
-.zpa-statuschip.done { background: rgba(114,136,75,0.10); border-color: rgba(114,136,75,0.28); color: var(--green-800); }
-.zpa-statuschip .ck { width: 18px; height: 18px; flex: 0 0 18px; color: var(--green-600); }
-.zpa-statuschip.wait .ck { color: var(--ink-mute); }
-.zpa-statuschip .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.zpa-statuschip .n { margin-left: auto; font-size: 11px; font-weight: 700; background: rgba(114,136,75,0.2); color: var(--green-700); padding: 1px 7px; border-radius: var(--radius-pill); }
 
 /* info / notice boxes */
 .zpa-notice { padding: 14px 18px; border-radius: var(--radius-md); font-size: 13px; line-height: 1.55; display: flex; gap: 12px; align-items: flex-start; }

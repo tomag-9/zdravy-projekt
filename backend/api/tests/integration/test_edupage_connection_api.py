@@ -1,17 +1,11 @@
-import datetime
-
 import pytest
-from django.contrib.auth.models import User
-from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 
-from api.models import Celok, EdupageConnection, EdupageUpload, Prevadzka
-from api.services.edupage_connection_service import SYSTEM_SCRAPE_EMAIL
+from api.models import Celok, EdupageConnection, Prevadzka
 
 pytestmark = pytest.mark.integration
 
 CONNECTIONS_URL = "/api/admin/edupage-connections/"
-UPLOADS_URL = "/api/admin/edupage-uploads/"
 
 
 @pytest.mark.django_db
@@ -88,66 +82,8 @@ def test_admin_can_manage_connections_and_assign_them_to_prevadzka(admin_client)
 
 
 @pytest.mark.django_db
-def test_admin_upload_and_status_use_connection(
-    admin_client,
-    settings,
-    tmp_path,
-):
-    settings.MEDIA_ROOT = tmp_path
-    celok = Celok.objects.create(
-        nazov="Upload school",
-        zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
-    )
-    connection = EdupageConnection.objects.create(
-        name="Upload school",
-        mealsguest_url="https://upload.edupage.org/menu/mealsGuest?id=token",
-    )
-    Prevadzka.objects.create(
-        celok=celok,
-        nazov="Upload school",
-        edupage_connection=connection,
-    )
+def test_scrape_action_lives_on_connection_endpoint(admin_client):
+    response = admin_client.post(f"{CONNECTIONS_URL}scrape/", {}, format="json")
 
-    list_response = admin_client.get(CONNECTIONS_URL)
-
-    assert list_response.status_code == status.HTTP_200_OK
-    assert list_response.json() == [
-        {
-            "id": connection.pk,
-            "name": connection.name,
-            "mealsguest_url": connection.mealsguest_url,
-            "api_identifier": "",
-            "is_active": True,
-        }
-    ]
-
-    target_date = datetime.date(2026, 7, 24)
-    upload_response = admin_client.post(
-        f"{UPLOADS_URL}upload/",
-        {
-            "date": target_date.isoformat(),
-            "connection_id": str(connection.pk),
-            "file": SimpleUploadedFile("orders.xlsx", b"test-content"),
-        },
-        format="multipart",
-    )
-
-    assert upload_response.status_code == status.HTTP_201_CREATED
-    upload = EdupageUpload.objects.get()
-    assert upload.connection_id == connection.pk
-    assert upload_response.json()["operation_name"] == connection.name
-
-    status_response = admin_client.get(
-        f"{UPLOADS_URL}status_by_date/?date={target_date.isoformat()}"
-    )
-
-    assert status_response.status_code == status.HTTP_200_OK
-    assert status_response.json()["schools"] == [
-        {
-            "id": connection.pk,
-            "name": connection.name,
-            "uploaded": True,
-            "upload_count": 1,
-        }
-    ]
-    assert not User.objects.filter(username=SYSTEM_SCRAPE_EMAIL).exists()
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json() == {"error": "date is required"}

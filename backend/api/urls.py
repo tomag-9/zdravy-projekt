@@ -6,7 +6,6 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminCelokViewSet,
     AdminEdupageConnectionViewSet,
-    AdminEdupageUploadViewSet,
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
@@ -95,9 +94,6 @@ router.register(
     r"admin/edupage-connections",
     AdminEdupageConnectionViewSet,
     basename="admin-edupage-connection",
-)
-router.register(
-    r"admin/edupage-uploads", AdminEdupageUploadViewSet, basename="admin-edupage-upload"
 )
 urlpatterns = [
     path("", include(router.urls)),

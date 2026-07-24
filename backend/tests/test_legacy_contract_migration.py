@@ -7,7 +7,7 @@ from django.db.migrations.executor import MigrationExecutor
 @pytest.mark.django_db(transaction=True)
 def test_contract_migration_preserves_latest_legacy_facility_data():
     migrate_from = [("api", "0056_explicit_profile_access")]
-    migrate_to = [("api", "0057_remove_legacy_facility_models")]
+    migrate_to = [("api", "0058_delete_edupageupload")]
     executor = MigrationExecutor(connection)
 
     try:
@@ -17,6 +17,7 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         Celok = old_apps.get_model("api", "Celok")
         ClientSettings = old_apps.get_model("api", "ClientSettings")
         Diet = old_apps.get_model("api", "Diet")
+        EdupageUpload = old_apps.get_model("api", "EdupageUpload")
         Prevadzka = old_apps.get_model("api", "Prevadzka")
         UserProfile = old_apps.get_model("api", "UserProfile")
 
@@ -51,6 +52,12 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
             admin_order_note="Fresh note",
         )
         settings.visible_diets.add(diet)
+        EdupageUpload.objects.create(
+            date="2026-07-24",
+            filename="legacy.xlsx",
+            file="edupage_uploads/legacy.xlsx",
+            uploaded_by=user,
+        )
 
         executor = MigrationExecutor(connection)
         executor.migrate(migrate_to)
@@ -69,6 +76,8 @@ def test_contract_migration_preserves_latest_legacy_facility_data():
         assert list(
             migrated_prevadzka.visible_diets.values_list("name", flat=True)
         ) == ["Legacy diet"]
+        with pytest.raises(LookupError):
+            new_apps.get_model("api", "EdupageUpload")
     finally:
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
