@@ -274,6 +274,23 @@ class UserProfile(models.Model):
         return self.celok.prevadzky.filter(is_active=True)
 
 
+class EdupageConnection(models.Model):
+    """Jeden EduPage feed, ktorý môže zásobovať prevádzky z viacerých celkov."""
+
+    name = models.CharField(max_length=255)
+    mealsguest_url = models.URLField(max_length=500, unique=True)
+    api_identifier = models.CharField(max_length=255, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "pk"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class Celok(models.Model):
     """Fakturačná jednotka — zastrešuje 1..N prevádzok a 1..N prihlásení.
 
@@ -333,6 +350,13 @@ class Prevadzka(models.Model):
     """
 
     celok = models.ForeignKey(Celok, on_delete=models.PROTECT, related_name="prevadzky")
+    edupage_connection = models.ForeignKey(
+        EdupageConnection,
+        on_delete=models.SET_NULL,
+        related_name="prevadzky",
+        null=True,
+        blank=True,
+    )
     nazov = models.CharField(
         max_length=255,
         help_text="Názov prevádzky, napr. 'Jolly 1'. Kľúč v DailyOrder.data.",
@@ -820,6 +844,13 @@ class EdupageUpload(models.Model):
         blank=True,
         related_name="edupage_uploads",
     )
+    connection = models.ForeignKey(
+        "EdupageConnection",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploads",
+    )
     date = models.DateField(db_index=True, help_text="Date the orders are for")
     filename = models.CharField(max_length=500)
     file = models.FileField(upload_to="edupage_uploads/%Y/%m/")
@@ -836,6 +867,7 @@ class EdupageUpload(models.Model):
         ordering = ["-uploaded_at"]
         indexes = [
             models.Index(fields=["date", "operation"]),
+            models.Index(fields=["date", "connection"]),
             models.Index(fields=["date", "status"]),
         ]
 
