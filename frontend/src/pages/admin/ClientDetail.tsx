@@ -43,7 +43,6 @@ interface FacilityDetail {
   edupage_match: string;
   celok_zdroj_objednavok: string;
   visible_menus: string[];
-  visible_menus_per_meal: Record<string, string[]>;
   visible_meals: string[];
   visible_diets: number[];
   admin_order_note: string;
@@ -90,11 +89,6 @@ const ClientDetail: React.FC = () => {
 
   // Settings State
   const [menus, setMenus] = useState<Set<string>>(new Set());
-  const [menusPerMeal, setMenusPerMeal] = useState<Record<string, string[] | null>>({
-    breakfast: null,
-    lunch: null,
-    olovrant: null,
-  });
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
   const [adminOrderNote, setAdminOrderNote] = useState("");
@@ -119,11 +113,6 @@ const ClientDetail: React.FC = () => {
 
   const applyFacilitySettings = useCallback((data: FacilityDetail) => {
     setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ALL_MENUS));
-    setMenusPerMeal({
-      breakfast: data.visible_menus_per_meal?.breakfast ?? null,
-      lunch: data.visible_menus_per_meal?.lunch ?? null,
-      olovrant: data.visible_menus_per_meal?.olovrant ?? null,
-    });
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
     setAdminOrderNote(data.admin_order_note || "");
@@ -312,9 +301,6 @@ const ClientDetail: React.FC = () => {
     try {
       const payload = {
         visible_menus: Array.from(menus),
-        visible_menus_per_meal: Object.fromEntries(
-          Object.entries(menusPerMeal).filter(([, value]) => value !== null)
-        ),
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
         admin_order_note: adminOrderNote,
@@ -351,16 +337,6 @@ const ClientDetail: React.FC = () => {
     if (newSet.has(value)) newSet.delete(value);
     else newSet.add(value);
     setter(newSet);
-  };
-
-  const toggleMenuPerMeal = (meal: string, menu: string) => {
-    setMenusPerMeal((prev) => {
-      const current = prev[meal] ?? [];
-      const next = current.includes(menu)
-        ? current.filter((item) => item !== menu)
-        : [...current, menu];
-      return { ...prev, [meal]: next };
-    });
   };
 
   if (loading) return <div className="zpa-empty">Načítavam…</div>;
@@ -563,57 +539,13 @@ const ClientDetail: React.FC = () => {
           <div className="zpa-stack">
             <div className="zpa-grid-2">
               <Card pad>
-                <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre túto prevádzku." />
+                <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre obed. Raňajky a olovrant majú vždy len menu A." />
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
                   {ALL_MENUS.map((menu) => (
                     <Checkbox key={menu} on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus)}>
                       Menu {menu}
                     </Checkbox>
                   ))}
-                </div>
-              </Card>
-
-              <Card pad>
-                <CardHead title="Viditeľné menu podľa chodu" desc="Ak necháte chod bez override, použije sa globálne nastavenie vyššie." />
-                <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
-                  {ALL_MEALS.map((meal) => {
-                    const overrideMenus = menusPerMeal[meal];
-                    const inheritedMenus = Array.from(menus);
-                    const effectiveMenus = overrideMenus ?? inheritedMenus;
-                    return (
-                      <div key={meal} style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 12 }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                          <div>
-                            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>
-                              {MEAL_LABELS[meal] ?? meal}
-                            </div>
-                            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>
-                              {overrideMenus === null ? `Dedené: ${effectiveMenus.join(", ") || "žiadne"}` : `Vlastné: ${effectiveMenus.join(", ") || "žiadne"}`}
-                            </div>
-                          </div>
-                          <Toggle
-                            on={overrideMenus !== null}
-                            onChange={(enabled) =>
-                              setMenusPerMeal((prev) => ({
-                                ...prev,
-                                [meal]: enabled ? [...inheritedMenus] : null,
-                              }))
-                            }
-                            ariaLabel={`Použiť vlastné menu pre ${MEAL_LABELS[meal] ?? meal}`}
-                          />
-                        </div>
-                        {overrideMenus !== null && (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
-                            {ALL_MENUS.map((menu) => (
-                              <Checkbox key={`${meal}-${menu}`} on={overrideMenus.includes(menu)} onChange={() => toggleMenuPerMeal(meal, menu)}>
-                                Menu {menu}
-                              </Checkbox>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
               </Card>
 
@@ -744,6 +676,7 @@ const ClientDetail: React.FC = () => {
           packSeparatelyEnabled={packSeparatelyEnabled}
           allDiets={allDiets}
           existingOrder={editOrderTarget ?? null}
+          knownOrders={recentOrders}
           onClose={() => {
             setShowNewOrderModal(false);
             setEditOrderTarget(null);

@@ -1,14 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Apple, Coffee, PackagePlus, Utensils, X } from 'lucide-react';
-import MealCard from '../client/components/order/MealCard';
-import CategoryRow from '../client/components/order/CategoryRow';
+import { Apple, Coffee, Copy, Trash2, Utensils, X } from 'lucide-react';
 import DietSelector from '../client/components/order/DietSelector';
+import OrderFormBody from '../client/components/order/OrderFormBody';
+import OrderSummary from '../client/components/order/OrderSummary';
 import PackSeparatelySelector from '../client/components/order/PackSeparatelySelector';
 import OrderService, { DailyOrder, MealData } from '../client/services/OrderService';
+import { getVisibleMenusForMeal as resolveVisibleMenusForMeal } from '../client/hooks/useOrder';
 import { CATEGORIES } from '../client/config/constants';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
-import { Button, Field, Input, Textarea, Toggle } from './ui';
+import { Button, Field, Input } from './ui';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -33,6 +34,8 @@ interface Props {
     packSeparatelyEnabled: boolean;
     allDiets: { id: number; name: string }[];
     existingOrder?: ExistingOrder | null;
+    /** Objednávky prevádzky — zdroj pre „Načítať z včerajška“ (obed predošlého dňa). */
+    knownOrders?: ExistingOrder[];
     onClose: () => void;
     onSaved: () => void;
 }
@@ -41,7 +44,7 @@ type MealKey = 'breakfast' | 'lunch' | 'olovrant';
 
 type PackSeparatelyMealKey = MealKey | 'fullDay';
 
-const MEAL_CONFIG: { key: MealKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+const MEAL_CONFIG: { key: MealKey; label: string; icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }> }[] = [
     { key: 'breakfast', label: 'Raňajky', icon: Coffee },
     { key: 'lunch', label: 'Obed', icon: Utensils },
     { key: 'olovrant', label: 'Olovrant', icon: Apple },
@@ -126,6 +129,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     packSeparatelyEnabled,
     allDiets,
     existingOrder,
+    knownOrders = [],
     onClose,
     onSaved,
 }) => {
@@ -146,6 +150,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         () => allDiets.filter((d) => visibleDiets.includes(d.id)).map((d) => d.name),
         [allDiets, visibleDiets],
     );
+    const visibleMenusForMeal = (meal: MealKey) => resolveVisibleMenusForMeal(meal, visibleMenus);
 
     const [date, setDate] = useState<string>(existingOrder?.date ?? OrderService.toLocalDateString(new Date()));
     const [order, setOrder] = useState<DailyOrder>(() => buildInitialOrder(categories, existingOrder));
@@ -186,6 +191,10 @@ const AdminOrderEditorModal: React.FC<Props> = ({
 
     const toggleMeal = (key: MealKey) => {
         setActiveMeals((prev) => ({ ...prev, [key]: !prev[key] }));
+    };
+
+    const toggleFullDay = () => {
+        setFullDayOrder((prev) => !prev);
     };
 
     const updateMenuCount = (meal: MealKey, category: string, menuType: string, val: number) => {
@@ -232,6 +241,51 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         setOrder((prev) => OrderService.updatePackSeparately(prev, meal, category, kind, key, count));
     };
 
+    const clearMeal = (meal: MealKey) => {
+        setOrder((prev) => ({
+            ...prev,
+            [meal]: OrderService.createEmptyMealFor(categories),
+            status: 'draft',
+        }));
+        setActiveMeals((prev) => ({ ...prev, [meal]: false }));
+    };
+
+    const copyMeal = (source: MealKey, target: MealKey) => {
+        if (OrderService.isMealEmpty(order[source])) return false;
+        setOrder((prev) => ({
+            ...prev,
+            [target]: OrderService.fastCopy(prev[source]),
+            status: 'draft',
+        }));
+        setActiveMeals((prev) => ({ ...prev, [target]: true }));
+        return true;
+    };
+
+    /** Nahrá obed z predošlého dňa do raňajok — obdoba klientskeho „Načítať z včerajška“. */
+    const loadBreakfastFromPrevLunch = () => {
+        const prevDate = new Date(`${date}T12:00:00`);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = OrderService.toLocalDateString(prevDate);
+
+        const prevOrder = knownOrders.find((item) => item.date === prevDateStr);
+        if (!prevOrder) return false;
+
+        const prevLunch = buildInitialOrder(categories, prevOrder).lunch;
+        if (OrderService.isMealEmpty(prevLunch)) return false;
+
+        setOrder((prev) => ({
+            ...prev,
+            breakfast: OrderService.fastCopy(prevLunch),
+            status: 'draft',
+        }));
+        setActiveMeals((prev) => ({ ...prev, breakfast: true }));
+        return true;
+    };
+
+    const clearFullDay = () => {
+        setFullDayData(OrderService.createEmptyMealFor(categories));
+    };
+
     const packSeparatelySections = useMemo(() => {
         const sections = fullDayOrder
             ? [
@@ -260,6 +314,22 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                 .filter((section) => section.items.length > 0),
         [packSeparatelySections],
     );
+
+    const hasSpecialDietOrdered = (): boolean => {
+        const checkMeal = (meal: MealData) =>
+            Object.values(meal).some((cat) => (cat.diets?.['Špeciálna'] ?? 0) > 0);
+        if (fullDayOrder) return checkMeal(fullDayData);
+        return visibleMealsList.some(({ key }) => activeMeals[key] && checkMeal(order[key]));
+    };
+
+    const resetOrder = () => {
+        setOrder(buildInitialOrder(categories, null));
+        setFullDayOrder(false);
+        setFullDayData(OrderService.createEmptyMealFor(categories));
+        setSpecialDietNote('');
+        setActiveMeals({ breakfast: false, lunch: false, olovrant: false });
+        toast.success('Objednávka bola vynulovaná.');
+    };
 
     const handleSave = async () => {
         setSaving(true);
@@ -313,35 +383,6 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         }
     };
 
-    const renderCategoryRows = (meal: PackSeparatelyMealKey, mealData: MealData) => (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {categories.map((category) => {
-                const data = mealData[category];
-                if (!data) return null;
-
-                const dietCount = (Object.values(data.diets || {}) as number[]).reduce((a, b) => a + b, 0);
-                const availableDiets = getAvailableDiets(category);
-
-                return (
-                    <CategoryRow
-                        key={`${meal}-${category}`}
-                        label={category}
-                        menuCounts={data.menuCounts}
-                        onMenuCountChange={(menuType, val) =>
-                            meal === 'fullDay'
-                                ? updateFullDayMenuCount(category, menuType, val)
-                                : updateMenuCount(meal, category, menuType, val)
-                        }
-                        hasDietsEnabled={availableDiets.length > 0}
-                        dietCount={dietCount}
-                        onOpenDiets={() => setActiveDietModal({ meal, category })}
-                        visibleMenus={visibleMenus}
-                    />
-                );
-            })}
-        </div>
-    );
-
     return (
         <div
             className="zpa-scrim"
@@ -377,132 +418,121 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     </div>
                 )}
 
-                <div style={{ padding: '20px 24px 0' }}>
-                    <Field label="Celý deň rovnaký">
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16 }}>
-                            <span style={{ color: 'var(--ink-2)', fontSize: 14 }}>
-                                Použiť jeden rovnaký set porcií pre všetky viditeľné jedlá.
-                            </span>
-                            <Toggle
-                                on={fullDayOrder}
-                                onChange={setFullDayOrder}
-                                ariaLabel="Celý deň rovnaký"
-                            />
-                        </div>
-                    </Field>
-                </div>
-
                 <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-                    {fullDayOrder ? (
-                        <MealCard
-                            title="Celý deň"
-                            icon={Coffee}
-                            isActive={true}
-                            onToggle={() => undefined}
-                            copyAction={null}
-                            statusMessage={null}
-                        >
-                            {renderCategoryRows('fullDay', fullDayData)}
-                        </MealCard>
-                    ) : (
-                        visibleMealsList.map(({ key, label, icon }) => {
-                            const isActive = activeMeals[key];
-                            return (
-                                <MealCard
-                                    key={key}
-                                    title={label}
-                                    icon={icon}
-                                    isActive={isActive}
-                                    onToggle={() => toggleMeal(key)}
-                                    copyAction={null}
-                                    statusMessage={null}
-                                >
-                                    {renderCategoryRows(key, order[key])}
-                                </MealCard>
-                            );
-                        })
-                    )}
-
-                    {packSeparatelyEnabled && (
-                        <MealCard
-                            title="Zabaliť zvlášť"
-                            icon={PackagePlus}
-                            isActive={activePackSeparatelyItems.length > 0}
-                            onToggle={() => setPackSeparatelyOpen(true)}
-                            copyAction={
-                                <button
-                                    type="button"
-                                    className="zp-btn zp-btn--secondary zp-btn--sm"
-                                    style={{ flex: 1 }}
-                                    onClick={() => setPackSeparatelyOpen(true)}
-                                >
-                                    <PackagePlus style={{ width: 12, height: 12 }} /> Pridať výnimku
-                                </button>
+                    <OrderFormBody
+                        categories={categories}
+                        visibleMealsList={visibleMealsList}
+                        fullDayOrder={fullDayOrder}
+                        onToggleFullDay={toggleFullDay}
+                        fullDayData={fullDayData}
+                        fullDayVisibleMenus={visibleMenus}
+                        onFullDayMenuCount={updateFullDayMenuCount}
+                        onOpenFullDayDiets={(category) => setActiveDietModal({ meal: 'fullDay', category })}
+                        onClearFullDay={clearFullDay}
+                        order={order}
+                        activeMeals={activeMeals}
+                        onToggleMeal={toggleMeal}
+                        onMenuCountChange={updateMenuCount}
+                        onOpenDiets={(meal, category) => setActiveDietModal({ meal, category })}
+                        getVisibleMenusForMeal={visibleMenusForMeal}
+                        getAvailableDiets={getAvailableDiets}
+                        mealActions={(meal) => {
+                            if (meal === 'breakfast') {
+                                return (
+                                    <>
+                                        <button
+                                            className="zp-btn zp-btn--secondary zp-btn--sm"
+                                            style={{ flex: 1 }}
+                                            onClick={() => {
+                                                if (loadBreakfastFromPrevLunch()) {
+                                                    toast.success('Raňajky načítané z obeda (včera).');
+                                                } else {
+                                                    toast.info('Nemám dáta z včerajšieho obeda.');
+                                                }
+                                            }}
+                                        >
+                                            <Copy style={{ width: 12, height: 12 }} /> Načítať z včerajška
+                                        </button>
+                                        <button
+                                            className="zp-btn zp-btn--danger zp-btn--sm"
+                                            onClick={() => clearMeal('breakfast')}
+                                        >
+                                            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+                                        </button>
+                                    </>
+                                );
                             }
-                            statusMessage={null}
-                        >
-                            <div>
-                                {activePackSeparatelyItems.length === 0 ? (
-                                    <div className="zp-empty" style={{ margin: '8px 0 0' }}>
-                                        <p>Zatiaľ nemáte nič označené na balenie zvlášť.</p>
-                                    </div>
-                                ) : (
-                                    activePackSeparatelyItems.map((section) => (
-                                        <div key={section.meal} style={{ marginBottom: 12 }}>
-                                            {activePackSeparatelyItems.length > 1 && (
-                                                <div className="zp-cat-head" style={{ marginBottom: 8 }}>{section.mealLabel}</div>
-                                            )}
-                                            {section.items.map((item) => (
-                                                <div
-                                                    key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}`}
-                                                    className={`zp-diet-row${item.count > 0 ? ' active' : ''}`}
-                                                >
-                                                    <div>
-                                                        <span className="zp-diet-label">
-                                                            {item.category} · {item.kind === 'menus' ? `Menu ${item.keyName}` : item.keyName}
-                                                        </span>
-                                                        <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
-                                                            Limit objednávky: {item.orderedCount}
-                                                        </div>
-                                                    </div>
-                                                    <div className="zp-counter">
-                                                        <button
-                                                            type="button"
-                                                            disabled={item.count <= 0}
-                                                            aria-label={`Znížiť ${section.mealLabel} ${item.category} ${item.keyName}`}
-                                                            onClick={() => updatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count - 1)}
-                                                        >
-                                                            -
-                                                        </button>
-                                                        <span className={`count${item.count <= 0 ? ' zero' : ''}`}>{item.count}</span>
-                                                        <button
-                                                            type="button"
-                                                            className="plus"
-                                                            disabled={item.count >= item.orderedCount}
-                                                            aria-label={`Zvýšiť ${section.mealLabel} ${item.category} ${item.keyName}`}
-                                                            onClick={() => updatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count + 1)}
-                                                        >
-                                                            +
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    ))
-                                )}
-                            </div>
-                        </MealCard>
-                    )}
+                            if (meal === 'lunch') {
+                                return (
+                                    <>
+                                        <button
+                                            className="zp-btn zp-btn--secondary zp-btn--sm"
+                                            style={{ flex: 1 }}
+                                            onClick={() => {
+                                                const copied = copyMeal('breakfast', 'lunch');
+                                                if (copied) {
+                                                    toast.success('Obed načítaný z raňajok.');
+                                                } else {
+                                                    toast.info('Raňajky sú prázdne, nie je čo kopírovať.');
+                                                }
+                                            }}
+                                        >
+                                            <Copy style={{ width: 12, height: 12 }} /> Načítať z raňajok
+                                        </button>
+                                        <button
+                                            className="zp-btn zp-btn--danger zp-btn--sm"
+                                            onClick={() => clearMeal('lunch')}
+                                        >
+                                            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+                                        </button>
+                                    </>
+                                );
+                            }
+                            return (
+                                <>
+                                    <button
+                                        className="zp-btn zp-btn--secondary zp-btn--sm"
+                                        style={{ flex: 1 }}
+                                        onClick={() => {
+                                            const copied = copyMeal('lunch', 'olovrant');
+                                            if (copied) {
+                                                toast.success('Olovrant skopírovaný z obeda.');
+                                            } else {
+                                                toast.info('Obed je prázdny, nie je čo kopírovať.');
+                                            }
+                                        }}
+                                    >
+                                        <Copy style={{ width: 12, height: 12 }} /> Kopírovať z obeda
+                                    </button>
+                                    <button
+                                        className="zp-btn zp-btn--danger zp-btn--sm"
+                                        onClick={() => clearMeal('olovrant')}
+                                    >
+                                        <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+                                    </button>
+                                </>
+                            );
+                        }}
+                        isMealEditable={() => true}
+                        mealStatusMessage={() => fullDayOrder ? <>Celodenná objednávka je aktívna</> : null}
+                        packSeparatelyEnabled={packSeparatelyEnabled}
+                        activePackSeparatelyItems={activePackSeparatelyItems}
+                        onOpenPackSeparately={() => setPackSeparatelyOpen(true)}
+                        onUpdatePackSeparately={updatePackSeparately}
+                        showSpecialDietNote={hasSpecialDietOrdered()}
+                        specialDietNote={specialDietNote}
+                        onSpecialDietNoteChange={setSpecialDietNote}
+                        tourIds={false}
+                    />
 
-                    <Field label="Poznámka k špeciálnej diéte">
-                        <Textarea
-                            aria-label="Poznámka k špeciálnej diéte"
-                            rows={4}
-                            value={specialDietNote}
-                            placeholder="Popis špeciálnej diéty"
-                            onChange={(e) => setSpecialDietNote(e.target.value)}
-                        />
-                    </Field>
+                    <OrderSummary
+                        order={order}
+                        activeMeals={activeMeals}
+                        date={date}
+                        onSubmit={handleSave}
+                        onReset={resetOrder}
+                        submitLabel="Uložiť objednávku"
+                    />
                 </div>
 
                 <div className="zpa-modal-foot">

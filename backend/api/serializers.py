@@ -476,7 +476,6 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
             "adresa",
             "celok",
             "visible_menus",
-            "visible_menus_per_meal",
             "visible_meals",
             "pack_separately_enabled",
         ]

@@ -49,6 +49,11 @@ type ApiErrorPayload = {
     };
 };
 
+export const getVisibleMenusForMeal = (
+    mealKey: 'breakfast' | 'lunch' | 'olovrant',
+    adminVisibleMenus: string[],
+) => (mealKey === 'lunch' ? adminVisibleMenus : ['A']);
+
 export class OrderRequestError extends Error {
     code?: string;
 
@@ -692,12 +697,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         ? ['A', 'B', 'C', 'V']
         : adminVisibleMenusSetting;
 
-    const adminVisibleMenusPerMeal = prevadzkaSettings?.visible_menus_per_meal ?? user?.settings?.visible_menus_per_meal ?? {};
-
-    const getVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
-        const perMealMenus = adminVisibleMenusPerMeal[mealKey];
-        return perMealMenus == null ? adminVisibleMenus : perMealMenus;
-    };
+    const resolvedVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') =>
+        getVisibleMenusForMeal(mealKey, adminVisibleMenus);
 
     const adminVisibleMealsSetting = prevadzkaSettings?.visible_meals ?? user?.settings?.visible_meals;
     const adminVisibleMeals = adminVisibleMealsSetting == null
@@ -814,8 +815,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         copyOlovrantFromCurrentLunch,
         submitOrder, deleteOrder,
         adminVisibleMenus,
-        adminVisibleMenusPerMeal,
-        getVisibleMenusForMeal,
+        getVisibleMenusForMeal: resolvedVisibleMenusForMeal,
         adminVisibleMeals,
         globalDeadlines,
         clientContactInfo,
