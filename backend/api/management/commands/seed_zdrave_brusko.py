@@ -137,8 +137,9 @@ class Command(BaseCommand):
             f"  login {EMAIL} → {len(prevadzky)} prevádzok naprieč celkami"
         )
 
-        # Starý zberný celok nie je reálna škola. Nechávame len technický EduPage
-        # login a päť reálnych celkov vyššie; pôvodný artefakt zmažeme úplne.
+        # Starý zberný celok nie je reálna škola. Ak na ňom ostala história,
+        # deaktivujeme jeho prevádzky a celok ponecháme ako historický záznam.
+        # Prázdny artefakt môžeme bezpečne odstrániť.
         stary = Celok.objects.filter(nazov=STARY_CELOK).first()
         if stary is not None:
             objednavky = DailyOrder.objects.filter(prevadzka__celok=stary)
@@ -146,14 +147,17 @@ class Command(BaseCommand):
             if pocet_objednavok:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"  '{STARY_CELOK}': mažem {pocet_objednavok} historických "
-                        "objednávok z neexistujúceho zberného celku"
+                        f"  '{STARY_CELOK}': ponechávam {pocet_objednavok} historických "
+                        "objednávok a deaktivujem jeho prevádzky"
                     )
                 )
-            self.stdout.write(f"  '{STARY_CELOK}': mažem neexistujúci celok")
-            if not dry_run:
-                objednavky.delete()
-                stary.delete()
+                if not dry_run:
+                    stary.prevadzky.update(is_active=False)
+            else:
+                self.stdout.write(f"  '{STARY_CELOK}': mažem prázdny historický celok")
+                if not dry_run:
+                    stary.prevadzky.all().delete()
+                    stary.delete()
 
         if dry_run:
             self.stdout.write(self.style.WARNING("\n--dry-run: rollback"))

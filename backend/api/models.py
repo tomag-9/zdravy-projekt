@@ -15,10 +15,16 @@ class DailyOrder(models.Model):
     # `prevadzka` = za koho je objednávka. Identita riadku je (prevadzka, date):
     # jeden login môže objednávať za viac prevádzok, a jednu prevádzku môže
     # objednávať viac loginov.
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="orders")
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="orders",
+        null=True,
+        help_text="Login, ktorý objednávku naposledy zapísal; môže byť zmazaný.",
+    )
     prevadzka = models.ForeignKey(
         "Prevadzka",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="orders",
     )
     date = models.DateField(db_index=True)
@@ -326,7 +332,7 @@ class Prevadzka(models.Model):
     len jednu — jednotný model je lacnejší než dve vetvy v každom reporte.
     """
 
-    celok = models.ForeignKey(Celok, on_delete=models.CASCADE, related_name="prevadzky")
+    celok = models.ForeignKey(Celok, on_delete=models.PROTECT, related_name="prevadzky")
     nazov = models.CharField(
         max_length=255,
         help_text="Názov prevádzky, napr. 'Jolly 1'. Kľúč v DailyOrder.data.",
