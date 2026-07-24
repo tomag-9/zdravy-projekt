@@ -15,12 +15,11 @@ from django.core.management.base import BaseCommand
 
 from api.default_visibility import (
     DEFAULT_VISIBLE_MEALS,
-    DEFAULT_VISIBLE_MENUS,
     ensure_all_visible_meals_for_prevadzky,
     ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets,
 )
-from api.models import ClientSettings, Diet, UserProfile
+from api.models import Celok, Diet, EdupageConnection, UserProfile
 
 EDUPAGE_VISIBLE_MEALS = DEFAULT_VISIBLE_MEALS
 OPERATION_SPECIFIC_VISIBLE_DIETS = {
@@ -147,47 +146,36 @@ class Command(BaseCommand):
                 user=user,
                 defaults={
                     "company_name": school["company_name"],
-                    "billing_name": school["company_name"],
-                    "is_edupage": True,
-                    "mealsguest_url": school["mealsguest_url"],
                 },
             )
             if not profile_created:
-                # Update URL and flags in case they changed
-                updated = False
                 if not profile.company_name:
                     profile.company_name = school["company_name"]
-                    updated = True
-                if profile.mealsguest_url != school["mealsguest_url"]:
-                    profile.mealsguest_url = school["mealsguest_url"]
-                    updated = True
-                if not profile.is_edupage:
-                    profile.is_edupage = True
-                    updated = True
-                if not profile.billing_name:
-                    profile.billing_name = school["company_name"]
-                    updated = True
-                if updated:
-                    profile.save()
+                    profile.save(update_fields=["company_name"])
 
-            client_settings, settings_created = ClientSettings.objects.get_or_create(
-                user=user,
+            connection, _ = EdupageConnection.objects.update_or_create(
+                mealsguest_url=school["mealsguest_url"],
                 defaults={
-                    "visible_menus": DEFAULT_VISIBLE_MENUS,
-                    "visible_meals": EDUPAGE_VISIBLE_MEALS,
+                    "name": school["company_name"],
+                    "is_active": True,
                 },
             )
-            if client_settings.visible_menus != DEFAULT_VISIBLE_MENUS:
-                client_settings.visible_menus = DEFAULT_VISIBLE_MENUS
-                client_settings.save(update_fields=["visible_menus"])
-            if client_settings.visible_meals != EDUPAGE_VISIBLE_MEALS:
-                client_settings.visible_meals = EDUPAGE_VISIBLE_MEALS
-                client_settings.save(update_fields=["visible_meals"])
-            ensure_default_visible_diets(client_settings.visible_diets)
             prevadzky = profile.dostupne_prevadzky()
+            primary_celok = profile.primary_celok()
+            if primary_celok and prevadzky.count() == 1:
+                primary_celok.nazov = school["company_name"]
+                primary_celok.save(update_fields=["nazov"])
+                prevadzky.update(nazov=school["company_name"])
+            Celok.objects.filter(prevadzky__in=prevadzky).update(
+                zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+                billing_name=school["company_name"],
+            )
             ensure_all_visible_menus_for_prevadzky(prevadzky)
             ensure_all_visible_meals_for_prevadzky(prevadzky)
             for prevadzka in prevadzky:
+                if prevadzka.edupage_connection_id != connection.id:
+                    prevadzka.edupage_connection = connection
+                    prevadzka.save(update_fields=["edupage_connection"])
                 ensure_default_visible_diets(prevadzka.visible_diets)
 
             extra_diet_names = OPERATION_SPECIFIC_VISIBLE_DIETS.get(
@@ -201,7 +189,6 @@ class Command(BaseCommand):
                         "is_active": True,
                     },
                 )
-                client_settings.visible_diets.add(diet)
                 for prevadzka in profile.dostupne_prevadzky():
                     prevadzka.visible_diets.add(diet)
 

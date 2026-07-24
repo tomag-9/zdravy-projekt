@@ -21,7 +21,6 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from api.models import (
-    ClientSettings,
     DailyMealPlan,
     DailyOrder,
     Diet,
@@ -279,11 +278,6 @@ class Command(BaseCommand):
 
         def apply_seed_settings(profile, seed):
             diet_list = [diet_objects[d] for d in seed["diets"] if d in diet_objects]
-            cs, _ = ClientSettings.objects.get_or_create(user=profile.user)
-            cs.visible_menus = seed["menus"]
-            cs.visible_meals = seed["meals"]
-            cs.save()
-            cs.visible_diets.set(diet_list)
             for prevadzka in profile.dostupne_prevadzky():
                 prevadzka.visible_menus = seed["menus"]
                 prevadzka.visible_meals = seed["meals"]
@@ -291,7 +285,7 @@ class Command(BaseCommand):
                 prevadzka.visible_diets.set(diet_list)
 
         # ----------------------------------------------------------------
-        # 4. Users + ClientSettings
+        # 4. Users + canonical facility settings
         # ----------------------------------------------------------------
         past_days = _past_weekdays(days)
         created_users = 0
@@ -319,10 +313,15 @@ class Command(BaseCommand):
 
             profile, _ = UserProfile.objects.get_or_create(user=user)
             profile.company_name = seed["company_name"]
-            profile.billing_name = seed["billing_name"]
-            profile.save(update_fields=["company_name", "billing_name"])
+            profile.save(update_fields=["company_name"])
+            celok = profile.primary_celok()
+            if celok:
+                celok.nazov = seed["company_name"]
+                celok.billing_name = seed["billing_name"]
+                celok.save(update_fields=["nazov", "billing_name"])
+                if profile.dostupne_prevadzky().count() == 1:
+                    profile.dostupne_prevadzky().update(nazov=seed["company_name"])
 
-            # ClientSettings
             apply_seed_settings(profile, seed)
 
             # ----------------------------------------------------------------

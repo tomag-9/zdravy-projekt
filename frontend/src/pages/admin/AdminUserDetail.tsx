@@ -74,7 +74,6 @@ const AdminUserDetail: React.FC = () => {
         first_name: firstName,
         last_name: lastName,
         email: userEmail,
-        settings: user.settings,
       };
 
       const res = await apiFetch(

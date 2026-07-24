@@ -3,7 +3,6 @@ Tests for Redis caching implementation.
 
 Tests cover:
 - GlobalSettings caching with signal-based invalidation
-- ClientSettings caching with signal-based invalidation
 - Diet list caching with signal-based invalidation
 - Daily stats caching with 5-minute TTL
 - Cache hit/miss tracking
@@ -20,26 +19,17 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from api.cache_service import (
-    clear_client_settings_cache,
     clear_diet_list_cache,
     clear_global_settings_cache,
     delete_cached,
     get_cached,
-    get_client_settings_cache_key,
     get_daily_stats_cache_key,
     get_diet_list_cache_key,
     get_global_settings_cache_key,
     set_cached,
 )
-from api.cached_settings_service import get_client_settings, get_global_settings
-from api.models import (
-    ClientSettings,
-    DailyOrder,
-    Diet,
-    GlobalSettings,
-    User,
-    UserProfile,
-)
+from api.cached_settings_service import get_global_settings
+from api.models import DailyOrder, Diet, GlobalSettings, User, UserProfile
 
 pytestmark = pytest.mark.django_db
 
@@ -71,8 +61,6 @@ class TestCacheService:
     def test_cache_key_generation(self):
         """Test cache key generation functions."""
         assert get_global_settings_cache_key() == "global_settings"
-        assert get_client_settings_cache_key(1) == "client_settings:1"
-        assert get_client_settings_cache_key(123) == "client_settings:123"
         assert get_diet_list_cache_key() == "diet_list"
         assert get_daily_stats_cache_key("2026-03-06") == "daily_stats:2026-03-06"
 
@@ -156,80 +144,6 @@ class TestGlobalSettingsCaching:
         # Next retrieval should get updated value from database
         result2 = get_global_settings()
         assert result2.deadline_breakfast == time(9, 0)
-
-
-class TestClientSettingsCaching:
-    """Test ClientSettings caching with signal-based invalidation."""
-
-    def setup_method(self):
-        """Clear cache before each test."""
-        cache.clear()
-
-    def test_client_settings_cached_on_first_access(self):
-        """Test that ClientSettings is cached on first retrieval."""
-        user = User.objects.create(username="testuser", email="test@example.com")
-        settings = ClientSettings.objects.create(
-            user=user, visible_meals=["breakfast", "lunch"]
-        )
-
-        # First call should hit database and cache
-        result = get_client_settings(user.id)
-        assert result.pk == settings.pk
-
-        # Check it's in cache
-        cache_key = get_client_settings_cache_key(user.id)
-        cached = get_cached(cache_key)
-        assert cached is not None
-        assert cached.pk == settings.pk
-
-    def test_client_settings_cache_invalidation_on_save(self):
-        """Test that cache is invalidated when ClientSettings is saved."""
-        user = User.objects.create(username="testuser", email="test@example.com")
-        settings = ClientSettings.objects.create(
-            user=user, visible_meals=["breakfast", "lunch"]
-        )
-
-        # Load into cache
-        result1 = get_client_settings(user.id)
-        assert result1.visible_meals == ["breakfast", "lunch"]
-
-        # Update and save
-        settings.visible_meals = ["lunch"]
-        settings.save()
-
-        # Cache should be invalidated
-        cache_key = get_client_settings_cache_key(user.id)
-        assert get_cached(cache_key) is None
-
-        # Next retrieval should get updated value
-        result2 = get_client_settings(user.id)
-        assert result2.visible_meals == ["lunch"]
-
-    def test_client_settings_different_users_separate_cache(self):
-        """Test that different users have separate cache entries."""
-        user1 = User.objects.create(username="user1", email="user1@example.com")
-        user2 = User.objects.create(username="user2", email="user2@example.com")
-
-        settings1 = ClientSettings.objects.create(
-            user=user1, visible_meals=["breakfast"]
-        )
-        settings2 = ClientSettings.objects.create(
-            user=user2, visible_meals=["lunch", "olovrant"]
-        )
-
-        # Cache both
-        get_client_settings(user1.id)
-        get_client_settings(user2.id)
-
-        # Check separate cache keys
-        cache_key1 = get_client_settings_cache_key(user1.id)
-        cache_key2 = get_client_settings_cache_key(user2.id)
-        assert cache_key1 != cache_key2
-
-        cached1 = get_cached(cache_key1)
-        cached2 = get_cached(cache_key2)
-        assert cached1.visible_meals == ["breakfast"]
-        assert cached2.visible_meals == ["lunch", "olovrant"]
 
 
 class TestDietListCaching:
@@ -482,27 +396,3 @@ class TestCachePerformance:
             result3 = get_global_settings()
 
         assert result1.pk == result2.pk == result3.pk
-
-    def test_client_settings_multiple_users(self, django_assert_num_queries):
-        """Test that each user's settings are cached independently."""
-        user1 = User.objects.create(username="user1", email="user1@example.com")
-        user2 = User.objects.create(username="user2", email="user2@example.com")
-
-        ClientSettings.objects.create(user=user1, visible_meals=["breakfast"])
-        ClientSettings.objects.create(user=user2, visible_meals=["lunch"])
-
-        # First access for user1 - 1 query
-        with django_assert_num_queries(1):
-            get_client_settings(user1.id)
-
-        # Subsequent access for user1 - 0 queries (cached)
-        with django_assert_num_queries(0):
-            get_client_settings(user1.id)
-
-        # First access for user2 - 1 query
-        with django_assert_num_queries(1):
-            get_client_settings(user2.id)
-
-        # Subsequent access for user2 - 0 queries (cached)
-        with django_assert_num_queries(0):
-            get_client_settings(user2.id)

@@ -8,7 +8,6 @@ from django.utils import timezone
 from factory.django import DjangoModelFactory
 
 from api.models import (
-    ClientSettings,
     DailyOrder,
     Diet,
     PasswordResetToken,
@@ -53,15 +52,6 @@ class DietFactory(DjangoModelFactory):
     description = factory.Faker("sentence")
 
 
-class ClientSettingsFactory(DjangoModelFactory):
-    class Meta:
-        model = ClientSettings
-
-    user = factory.SubFactory(UserFactory)
-    visible_menus = ["A", "B"]
-    visible_meals = ["breakfast", "lunch", "olovrant"]
-
-
 class DailyOrderFactory(DjangoModelFactory):
     class Meta:
         model = DailyOrder
@@ -83,8 +73,6 @@ class UserProfileFactory(DjangoModelFactory):
 
     user = factory.SubFactory(UserFactory)
     company_name = factory.Faker("company")
-    ico = factory.Sequence(lambda n: f"ICO{n:08d}")
-    dic = factory.Sequence(lambda n: f"DIC{n:08d}")
 
 
 class PasswordResetTokenFactory(DjangoModelFactory):

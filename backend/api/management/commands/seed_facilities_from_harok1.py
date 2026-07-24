@@ -30,7 +30,7 @@ from django.db import transaction
 from django.utils.text import slugify
 from openpyxl import load_workbook
 
-from api.models import Celok, Prevadzka, UserProfile
+from api.models import Celok, Prevadzka, ProfileCelokAccess, UserProfile
 
 from .reconcile_real import (
     REAL_DIR,
@@ -172,10 +172,12 @@ def _rename_single_facility_if_safe(celok: Celok, target: str, address: str) -> 
         prevadzka.adresa = address
     prevadzka.save(update_fields=["nazov", "adresa"])
 
-    for profile in celok.profily.all():
-        selected = list(profile.prevadzky.all())
-        if selected and selected != [prevadzka]:
-            continue
+    profiles = {
+        access.profile
+        for access in list(celok.profile_accesses.all())
+        + list(prevadzka.profile_accesses.all())
+    }
+    for profile in profiles:
         if profile.company_name in ("", old_name):
             profile.company_name = target
             profile.save(update_fields=["company_name"])
@@ -339,7 +341,7 @@ class Command(BaseCommand):
                     adresa=entry["address"],
                     zdroj_objednavok=Celok.ZdrojObjednavok.APP,
                 )
-                prevadzka = Prevadzka.objects.create(
+                Prevadzka.objects.create(
                     celok=celok, nazov=operation_name, adresa=entry["address"]
                 )
                 email = _email_for(operation_name, taken_emails)
@@ -347,13 +349,10 @@ class Command(BaseCommand):
                 user = User.objects.create_user(
                     username=email, email=email, password=password
                 )
-                UserProfile.objects.create(
-                    user=user,
-                    company_name=operation_name,
-                    celok=celok,
-                    is_edupage=False,
-                )
-                user.profile.prevadzky.add(prevadzka)
+                profile = UserProfile(user=user, company_name=operation_name)
+                profile._skip_default_facility = True
+                profile.save()
+                ProfileCelokAccess.objects.create(profile=profile, celok=celok)
                 existing_by_name.setdefault(_normalize(operation_name), []).append(
                     celok
                 )

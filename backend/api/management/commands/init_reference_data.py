@@ -12,18 +12,15 @@ Usage:
     python manage.py init_reference_data
 """
 
-from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from api.default_visibility import (
-    ensure_all_visible_meals_for_client_settings,
     ensure_all_visible_meals_for_prevadzky,
-    ensure_all_visible_menus_for_client_settings,
     ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets_for_empty_prevadzky,
 )
-from api.models import ClientSettings, Diet, PortionType
+from api.models import Diet, PortionType
 from api.reference_data import ALL_DIETS, DEFAULT_DIET_NAMES
 
 PORTION_TYPES = [
@@ -71,63 +68,28 @@ class Command(BaseCommand):
         default_diets = list(
             Diet.objects.filter(name__in=DEFAULT_DIET_NAMES, is_active=True)
         )
-        settings_updated_count = 0
-        settings_created_count = 0
         prevadzky_updated_count = 0
-        settings_menus_updated_count = 0
         prevadzky_menus_updated_count = 0
-        settings_meals_updated_count = 0
         prevadzky_meals_updated_count = 0
         if default_diets:
-            existing_settings_user_ids = ClientSettings.objects.values_list(
-                "user_id",
-                flat=True,
-            )
-            missing_settings_users = User.objects.filter(
-                is_staff=False,
-            ).exclude(id__in=existing_settings_user_ids)
-            for user in missing_settings_users:
-                ClientSettings.objects.create(user=user)
-                settings_created_count += 1
-
-            empty_settings = ClientSettings.objects.filter(
-                visible_diets__isnull=True
-            ).distinct()
-            for settings in empty_settings:
-                settings.visible_diets.set(default_diets)
-                settings_updated_count += 1
             prevadzky_updated_count = ensure_default_visible_diets_for_empty_prevadzky()
-            settings_menus_updated_count = (
-                ensure_all_visible_menus_for_client_settings()
-            )
             prevadzky_menus_updated_count = ensure_all_visible_menus_for_prevadzky()
-            settings_meals_updated_count = (
-                ensure_all_visible_meals_for_client_settings()
-            )
             prevadzky_meals_updated_count = ensure_all_visible_meals_for_prevadzky()
 
         if (
             created_count
             or diet_created_count
-            or settings_created_count
-            or settings_updated_count
             or prevadzky_updated_count
-            or settings_menus_updated_count
             or prevadzky_menus_updated_count
-            or settings_meals_updated_count
             or prevadzky_meals_updated_count
         ):
             self.stdout.write(
                 self.style.SUCCESS(
                     "init_reference_data: created "
                     f"{created_count} portion types and {diet_created_count} diets; "
-                    f"created settings for {settings_created_count} clients; "
-                    f"default diets enabled for {settings_updated_count} clients "
-                    f"and {prevadzky_updated_count} prevadzky; "
-                    f"all menus enabled for {settings_menus_updated_count} clients "
-                    f"and {prevadzky_menus_updated_count} prevadzky; "
-                    f"all meals enabled for {settings_meals_updated_count} clients "
-                    f"and {prevadzky_meals_updated_count} prevadzky."
+                    f"default diets enabled for {prevadzky_updated_count} prevadzky; "
+                    f"all menus enabled for {prevadzky_menus_updated_count} prevadzky; "
+                    f"all meals enabled for {prevadzky_meals_updated_count} prevadzky."
                 )
             )
         else:

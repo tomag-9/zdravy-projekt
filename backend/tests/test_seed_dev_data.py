@@ -29,10 +29,9 @@ def test_seed_dev_data_syncs_settings_to_prevadzka(settings):
     seed = SEED_USERS[0]
     profile = UserProfile.objects.get(user__username=seed["username"])
     prevadzka = profile.dostupne_prevadzky().get()
+    celok = profile.primary_celok()
 
-    assert profile.celok.nazov == seed["company_name"]
-    assert profile.celok.billing_name == seed["billing_name"]
-    assert profile.user.settings.visible_menus == seed["menus"]
-    assert profile.user.settings.visible_meals == seed["meals"]
+    assert celok.nazov == seed["company_name"]
+    assert celok.billing_name == seed["billing_name"]
     assert prevadzka.visible_menus == seed["menus"]
     assert prevadzka.visible_meals == seed["meals"]

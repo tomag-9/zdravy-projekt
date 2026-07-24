@@ -29,10 +29,8 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
         qs = Celok.objects.prefetch_related(
             "prevadzky",
             "prevadzky__visible_diets",
-            "prevadzky__profily__user",
-            "prevadzky__profily__prevadzky",
-            "profily__user",
-            "profily__prevadzky",
+            "prevadzky__profile_accesses__profile__user",
+            "profile_accesses__profile__user",
         ).order_by("nazov")
         search = self.request.query_params.get("search", "").strip()
         if search:
@@ -54,7 +52,11 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet:
         return (
             Prevadzka.objects.select_related("celok")
-            .prefetch_related("visible_diets", "profily__user", "profily__prevadzky")
+            .prefetch_related(
+                "visible_diets",
+                "profile_accesses__profile__user",
+                "celok__profile_accesses__profile__user",
+            )
             .annotate(orders_count=Count("orders", distinct=True))
             .order_by("celok__nazov", "sort_order", "nazov")
         )

@@ -61,8 +61,6 @@ interface Celok {
   ico: string;
   dic: string;
   zdroj_objednavok: string;
-  edupage_api_identifier: string;
-  mealsguest_url: string;
   prevadzky_count: number;
   prevadzky: Prevadzka[];
   logins: Login[];
@@ -98,8 +96,6 @@ interface CelokForm {
   ico: string;
   dic: string;
   zdroj_objednavok: string;
-  edupage_api_identifier: string;
-  mealsguest_url: string;
 }
 
 // ── Login form ──────────────────────────────────────────────────
@@ -184,8 +180,6 @@ const FacilityManager: React.FC = () => {
     ico: "",
     dic: "",
     zdroj_objednavok: "app",
-    edupage_api_identifier: "",
-    mealsguest_url: "",
   });
   const [cSaving, setCSaving] = useState(false);
 
@@ -299,8 +293,6 @@ const FacilityManager: React.FC = () => {
       ico: celok.ico || "",
       dic: celok.dic || "",
       zdroj_objednavok: celok.zdroj_objednavok || "app",
-      edupage_api_identifier: celok.edupage_api_identifier || "",
-      mealsguest_url: celok.mealsguest_url || "",
     });
   };
   const saveCelok = async (e: React.FormEvent) => {
@@ -526,16 +518,6 @@ const FacilityManager: React.FC = () => {
                 <option value="edupage">EduPage</option>
               </Select>
             </Field>
-            {cForm.zdroj_objednavok === "edupage" && (
-              <>
-                <Field label="EduPage identifikátor">
-                  <Input value={cForm.edupage_api_identifier} onChange={(e) => setCForm((f) => ({ ...f, edupage_api_identifier: e.target.value }))} />
-                </Field>
-                <Field label="EduPage mealsGuest URL">
-                  <Input value={cForm.mealsguest_url} onChange={(e) => setCForm((f) => ({ ...f, mealsguest_url: e.target.value }))} />
-                </Field>
-              </>
-            )}
           </form>
         </Modal>
       )}

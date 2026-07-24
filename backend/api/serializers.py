@@ -476,7 +476,7 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Prevadzka
         # `pack_separately_enabled` sem patrí, aby klient čítal príznak z toho istého
-        # miesta, kam ho admin zapisuje (Prevadzka) — nie z legacy ClientSettings.
+        # miesta, kam ho admin zapisuje (Prevadzka).
         fields = [
             "id",
             "nazov",

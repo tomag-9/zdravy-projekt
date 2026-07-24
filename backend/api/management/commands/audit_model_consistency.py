@@ -7,14 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Count
 from django.db.models.functions import Lower, Trim
 
-from api.models import (
-    Celok,
-    ClientSettings,
-    DailyOrder,
-    PortionType,
-    Prevadzka,
-    UserProfile,
-)
+from api.models import Celok, DailyOrder, PortionType, Prevadzka, UserProfile
 
 
 class Command(BaseCommand):
@@ -49,19 +42,20 @@ class Command(BaseCommand):
         checks.extend(
             [
                 (
-                    "edupage_celky_without_url",
-                    Celok.objects.filter(
-                        zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
-                        mealsguest_url="",
+                    "edupage_prevadzky_without_connection",
+                    Prevadzka.objects.filter(
+                        celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
+                        edupage_connection__isnull=True,
                     ).count(),
-                    "EduPage celky bez mealsGuest URL",
+                    "EduPage prevadzky bez pripojenia",
                 ),
                 (
-                    "app_celky_with_edupage_config",
-                    Celok.objects.filter(zdroj_objednavok=Celok.ZdrojObjednavok.APP)
-                    .exclude(mealsguest_url="", edupage_api_identifier="")
-                    .count(),
-                    "app celky s vyplnenou EduPage konfiguraciou",
+                    "app_prevadzky_with_edupage_connection",
+                    Prevadzka.objects.filter(
+                        celok__zdroj_objednavok=Celok.ZdrojObjednavok.APP,
+                        edupage_connection__isnull=False,
+                    ).count(),
+                    "app prevadzky s EduPage pripojenim",
                 ),
                 (
                     "orphan_celky",
@@ -125,104 +119,43 @@ class Command(BaseCommand):
     def _profile_checks():
         counters = {
             "profiles_without_active_prevadzka": 0,
-            "profile_celok_metadata_mismatches": 0,
-            "profile_edupage_config_mismatches": 0,
-            "client_settings_prevadzka_mismatches": 0,
+            "profiles_with_mixed_access_scope": 0,
         }
         profiles = (
-            UserProfile.objects.select_related("celok", "user__settings")
+            UserProfile.objects.all()
             .prefetch_related(
-                "prevadzky__celok",
-                "celok__prevadzky",
-                "user__settings__visible_diets",
+                "celok_accesses__celok__prevadzky",
+                "prevadzka_accesses__prevadzka",
             )
             .iterator(chunk_size=200)
         )
 
         for profile in profiles:
-            explicit_prevadzky = [
-                prevadzka
-                for prevadzka in profile.prevadzky.all()
+            celok_accesses = list(profile.celok_accesses.all())
+            prevadzka_accesses = list(profile.prevadzka_accesses.all())
+            available_prevadzky = {
+                prevadzka.pk
+                for access in celok_accesses
+                for prevadzka in access.celok.prevadzky.all()
                 if prevadzka.is_active
-            ]
-            if explicit_prevadzky:
-                available_prevadzky = explicit_prevadzky
-            elif profile.celok_id:
-                available_prevadzky = [
-                    prevadzka
-                    for prevadzka in profile.celok.prevadzky.all()
-                    if prevadzka.is_active
-                ]
-            else:
-                available_prevadzky = []
+            }
+            available_prevadzky.update(
+                access.prevadzka_id
+                for access in prevadzka_accesses
+                if access.prevadzka.is_active
+            )
 
             if not available_prevadzky:
                 counters["profiles_without_active_prevadzka"] += 1
-
-            if profile.celok_id:
-                for field in ("billing_name", "ico", "dic"):
-                    legacy_value = (getattr(profile, field, "") or "").strip()
-                    canonical_value = (getattr(profile.celok, field, "") or "").strip()
-                    if legacy_value and legacy_value != canonical_value:
-                        counters["profile_celok_metadata_mismatches"] += 1
-
-            configured_as_edupage = bool(
-                profile.is_edupage or profile.mealsguest_url or profile.api_identifier
-            )
-            if configured_as_edupage:
-                celky = {}
-                if profile.celok_id:
-                    celky[profile.celok_id] = profile.celok
-                for prevadzka in explicit_prevadzky:
-                    celky[prevadzka.celok_id] = prevadzka.celok
-                if not celky:
-                    counters["profile_edupage_config_mismatches"] += 1
-                for celok in celky.values():
-                    if (
-                        profile.is_edupage
-                        and celok.zdroj_objednavok != Celok.ZdrojObjednavok.EDUPAGE
-                    ):
-                        counters["profile_edupage_config_mismatches"] += 1
-                    if (
-                        profile.mealsguest_url
-                        and profile.mealsguest_url != celok.mealsguest_url
-                    ):
-                        counters["profile_edupage_config_mismatches"] += 1
-                    if (
-                        profile.api_identifier
-                        and profile.api_identifier != celok.edupage_api_identifier
-                    ):
-                        counters["profile_edupage_config_mismatches"] += 1
-
-            try:
-                settings = profile.user.settings
-            except ClientSettings.DoesNotExist:
-                settings = None
-            if settings is not None:
-                settings_diets = {diet.pk for diet in settings.visible_diets.all()}
-                for prevadzka in available_prevadzky:
-                    mismatch = (
-                        settings.visible_menus != prevadzka.visible_menus
-                        or settings.visible_meals != prevadzka.visible_meals
-                        or settings.admin_order_note != prevadzka.admin_order_note
-                        or settings_diets
-                        != set(prevadzka.visible_diets.values_list("pk", flat=True))
-                    )
-                    if mismatch:
-                        counters["client_settings_prevadzka_mismatches"] += 1
+            if celok_accesses and prevadzka_accesses:
+                counters["profiles_with_mixed_access_scope"] += 1
 
         labels = {
             "profiles_without_active_prevadzka": (
                 "profily bez dostupnej aktivnej prevadzky"
             ),
-            "profile_celok_metadata_mismatches": (
-                "rozdielne legacy a kanonicke fakturacne polia"
-            ),
-            "profile_edupage_config_mismatches": (
-                "rozdiely EduPage konfiguracie medzi profilom a celkom"
-            ),
-            "client_settings_prevadzka_mismatches": (
-                "rozdiely nastaveni medzi loginom a prevadzkou"
+            "profiles_with_mixed_access_scope": (
+                "profily s celok aj prevadzka access zaznamami"
             ),
         }
         return [(key, count, labels[key]) for key, count in counters.items()]
