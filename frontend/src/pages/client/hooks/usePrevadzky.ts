@@ -4,6 +4,14 @@ import { logger } from '../../../lib/logger';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+export interface PrevadzkaDiet {
+    id: number;
+    name: string;
+    description?: string | null;
+    is_active?: boolean;
+    sort_order?: number;
+}
+
 export interface Prevadzka {
     id: number;
     nazov: string;
@@ -11,6 +19,7 @@ export interface Prevadzka {
     celok: string;
     visible_menus: string[];
     visible_meals: string[];
+    visible_diets: PrevadzkaDiet[];
     pack_separately_enabled: boolean;
 }
 

@@ -705,9 +705,12 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         ? ['breakfast', 'lunch', 'olovrant']
         : adminVisibleMealsSetting;
 
+    const visibleDietSetting = (
+        prevadzkaSettings?.visible_diets ?? user?.settings?.visible_diets
+    ) as DietDetail[] | undefined;
     const visibleDietDetails: DietDetail[] =
-        user?.settings?.visible_diets && (user.settings.visible_diets as DietDetail[]).length > 0
-        ? [...(user.settings.visible_diets as DietDetail[])].sort(
+        visibleDietSetting && visibleDietSetting.length > 0
+        ? [...visibleDietSetting].sort(
             (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name, 'sk')
         )
         : [];

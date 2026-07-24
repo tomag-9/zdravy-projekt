@@ -31,6 +31,10 @@ def validate_password_strength(password: str, user: User | None = None) -> str:
 class UserProfileDetailSerializer(serializers.ModelSerializer):
     """Serializer for UserProfile details."""
 
+    billing_name = serializers.CharField(source="celok.billing_name", default="")
+    ico = serializers.CharField(source="celok.ico", default="")
+    dic = serializers.CharField(source="celok.dic", default="")
+
     class Meta:
         model = UserProfile
         fields = [
@@ -49,6 +53,10 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
 
 class ClientUserProfileDetailSerializer(serializers.ModelSerializer):
     """Profile details visible to the operation itself."""
+
+    billing_name = serializers.CharField(source="celok.billing_name", default="")
+    ico = serializers.CharField(source="celok.ico", default="")
+    dic = serializers.CharField(source="celok.dic", default="")
 
     class Meta:
         model = UserProfile
@@ -85,13 +93,22 @@ class UserProfileSerializer(serializers.ModelSerializer):
     settings = serializers.SerializerMethodField()
     profile = serializers.SerializerMethodField()
     billing_name = serializers.CharField(
-        source="profile.billing_name", required=False, allow_blank=True, default=""
+        source="profile.celok.billing_name",
+        required=False,
+        allow_blank=True,
+        default="",
     )
     ico = serializers.CharField(
-        source="profile.ico", required=False, allow_blank=True, allow_null=True
+        source="profile.celok.ico",
+        required=False,
+        allow_blank=True,
+        allow_null=True,
     )
     dic = serializers.CharField(
-        source="profile.dic", required=False, allow_blank=True, allow_null=True
+        source="profile.celok.dic",
+        required=False,
+        allow_blank=True,
+        allow_null=True,
     )
     onboarding_completed = serializers.BooleanField(
         source="profile.onboarding_completed", required=False
@@ -151,17 +168,15 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
         if profile_data is not None:
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            profile_fields = (
-                "billing_name",
-                "ico",
-                "dic",
-                "onboarding_completed",
-            )
-            update_fields = [field for field in profile_fields if field in profile_data]
-            for field in update_fields:
-                setattr(profile, field, profile_data[field])
-            if update_fields:
-                profile.save(update_fields=update_fields)
+            celok_data = profile_data.pop("celok", None)
+            if "onboarding_completed" in profile_data:
+                profile.onboarding_completed = profile_data["onboarding_completed"]
+                profile.save(update_fields=["onboarding_completed"])
+            if celok_data and profile.celok_id:
+                for field in ("billing_name", "ico", "dic"):
+                    if field in celok_data:
+                        setattr(profile.celok, field, celok_data[field] or "")
+                profile.celok.save(update_fields=list(celok_data))
 
         return user
 

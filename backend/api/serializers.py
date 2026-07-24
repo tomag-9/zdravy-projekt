@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
 from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
-from .models import DailyOrder, Holiday, Prevadzka
+from .models import DailyOrder, Diet, Holiday, Prevadzka
 from .order_data import OrderData, safe_count
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
@@ -463,8 +463,15 @@ class HolidaySerializer(serializers.ModelSerializer):
         fields = ["id", "date", "reason"]
 
 
+class PrevadzkaDietSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Diet
+        fields = ["id", "name", "sort_order", "is_active", "description", "color"]
+
+
 class PrevadzkaSerializer(serializers.ModelSerializer):
     celok = serializers.CharField(source="celok.nazov", read_only=True)
+    visible_diets = PrevadzkaDietSerializer(many=True, read_only=True)
 
     class Meta:
         model = Prevadzka
@@ -477,6 +484,7 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
             "celok",
             "visible_menus",
             "visible_meals",
+            "visible_diets",
             "pack_separately_enabled",
         ]
         read_only_fields = fields

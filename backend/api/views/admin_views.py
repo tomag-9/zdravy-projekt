@@ -39,7 +39,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = (
             User.objects.all()
-            .select_related("profile", "settings")
+            .select_related("profile", "profile__celok", "settings")
             .prefetch_related("settings__visible_diets")
             .order_by("email")
         )
