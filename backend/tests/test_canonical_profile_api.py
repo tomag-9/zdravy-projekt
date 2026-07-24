@@ -73,3 +73,25 @@ def test_profile_api_does_not_guess_settings_for_multiple_prevadzky(
     assert response.status_code == 200
     assert response.json()["settings"] == {}
     assert profile.primary_celok() == celok
+
+
+@pytest.mark.django_db
+def test_ambiguous_billing_update_does_not_change_email(api_client, canonical_profile):
+    user, profile, _ = canonical_profile
+    second = Celok.objects.create(nazov="Second canonical")
+    ProfileCelokAccess.objects.create(profile=profile, celok=second)
+    api_client.force_authenticate(user=user)
+
+    response = api_client.patch(
+        "/api/user/profile/",
+        {
+            "email": "changed@example.com",
+            "billing_name": "Ambiguous",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    user.refresh_from_db()
+    assert user.email == "canonical@example.com"
+    assert user.username == "canonical@example.com"

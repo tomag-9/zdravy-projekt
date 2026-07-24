@@ -37,10 +37,14 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             Q(profile_accesses__profile__user_id=OuterRef("pk"))
             | Q(celok__profile_accesses__profile__user_id=OuterRef("pk"))
         )
-        accessible_celky = Celok.objects.filter(
-            Q(profile_accesses__profile__user_id=OuterRef("pk"))
-            | Q(prevadzky__profile_accesses__profile__user_id=OuterRef("pk"))
-        ).order_by("pk")
+        accessible_celky = (
+            Celok.objects.filter(
+                Q(profile_accesses__profile__user_id=OuterRef("pk"))
+                | Q(prevadzky__profile_accesses__profile__user_id=OuterRef("pk"))
+            )
+            .distinct()
+            .order_by("pk")
+        )
         connected_prevadzky = accessible_prevadzky.filter(
             edupage_connection__isnull=False
         ).order_by("pk")
@@ -54,6 +58,8 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                         celok__zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE
                     )
                 ),
+                _first_celok_id=Subquery(accessible_celky.values("pk")[:1]),
+                _second_celok_id=Subquery(accessible_celky.values("pk")[1:2]),
                 _billing_name=Subquery(accessible_celky.values("billing_name")[:1]),
                 _ico=Subquery(accessible_celky.values("ico")[:1]),
                 _dic=Subquery(accessible_celky.values("dic")[:1]),

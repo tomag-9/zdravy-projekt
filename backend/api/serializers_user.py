@@ -3,10 +3,18 @@ from typing import Any, Dict, List, Optional
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Q
 from rest_framework import serializers
 
-from .models import Celok, Diet, Prevadzka, UserProfile
+from .models import (
+    Celok,
+    Diet,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 
 
 class DietSerializer(serializers.ModelSerializer):
@@ -216,6 +224,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
+    @transaction.atomic
     def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
         profile_data = validated_data.pop("profile", None)
         billing_data = {
@@ -223,6 +232,19 @@ class UserProfileSerializer(serializers.ModelSerializer):
             for field in ("billing_name", "ico", "dic")
             if field in validated_data
         }
+        billing_celok = None
+        if billing_data:
+            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            billing_celok = profile.primary_celok()
+            if billing_celok is None:
+                raise serializers.ValidationError(
+                    {
+                        "billing_name": (
+                            "Fakturačné údaje sa dajú upraviť iba pre login "
+                            "s práve jedným dostupným celkom."
+                        )
+                    }
+                )
 
         # Keep internal username in sync with email
         if "email" in validated_data:
@@ -250,20 +272,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
                 profile.save(update_fields=["onboarding_completed"])
 
         if billing_data:
-            profile, _ = UserProfile.objects.get_or_create(user=user)
-            celok = profile.primary_celok()
-            if celok is None:
-                raise serializers.ValidationError(
-                    {
-                        "billing_name": (
-                            "Fakturačné údaje sa dajú upraviť iba pre login "
-                            "s práve jedným dostupným celkom."
-                        )
-                    }
-                )
+            assert billing_celok is not None
             for field, value in billing_data.items():
-                setattr(celok, field, value or "")
-            celok.save(update_fields=list(billing_data))
+                setattr(billing_celok, field, value or "")
+            billing_celok.save(update_fields=list(billing_data))
 
         return user
 
@@ -370,6 +382,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Používateľ s týmto emailom už existuje.")
         return normalized_email
 
+    def validate(self, attrs):
+        celok = attrs.get("celok")
+        prevadzky = attrs.get("prevadzky")
+        if celok is not None and prevadzky:
+            if any(prevadzka.celok_id != celok.id for prevadzka in prevadzky):
+                raise serializers.ValidationError(
+                    {"prevadzky": "Prevádzky musia patriť zadanému celku."}
+                )
+        return attrs
+
+    @transaction.atomic
     def create(self, validated_data: Dict[str, Any]) -> User:
         company_name = validated_data.pop("company_name", "") or ""
         celok = validated_data.pop("celok", None)
@@ -392,19 +415,11 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # Ak je zadaný celok, nastavíme ho hneď pri vytvorení — tým sa vypne
         # auto-vytvorenie vlastného celku v `on_user_profile_saved` signáli.
         profile = UserProfile(user=user, company_name=company_name)
-        profile._skip_default_facility = celok is not None or prevadzky is not None
+        profile._skip_default_facility = celok is not None or bool(prevadzky)
         profile.save()
         # Login „na prevádzku": obmedz rozsah na vybrané prevádzky (M2M). Prázdne =
         # celý celok. Validujeme, že prevádzky patria zadanému celku.
         if prevadzky:
-            if celok is not None:
-                cudzie = [p for p in prevadzky if p.celok_id != celok.id]
-                if cudzie:
-                    raise serializers.ValidationError(
-                        {"prevadzky": "Prevádzky musia patriť zadanému celku."}
-                    )
-            from api.models import ProfilePrevadzkaAccess
-
             ProfilePrevadzkaAccess.objects.bulk_create(
                 [
                     ProfilePrevadzkaAccess(profile=profile, prevadzka=prevadzka)
@@ -412,8 +427,6 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 ]
             )
         elif celok is not None:
-            from api.models import ProfileCelokAccess
-
             ProfileCelokAccess.objects.create(profile=profile, celok=celok)
         return user
 
@@ -423,10 +436,16 @@ class AdminUserSerializer(serializers.ModelSerializer):
             view = self.context.get("view")
             access_summary = None
             if getattr(view, "action", None) == "list":
+                has_one_celok = (
+                    getattr(obj, "_first_celok_id", None) is not None
+                    and getattr(obj, "_second_celok_id", None) is None
+                )
                 access_summary = {
-                    "billing_name": getattr(obj, "_billing_name", "") or "",
-                    "ico": getattr(obj, "_ico", "") or "",
-                    "dic": getattr(obj, "_dic", "") or "",
+                    "billing_name": (
+                        getattr(obj, "_billing_name", "") or "" if has_one_celok else ""
+                    ),
+                    "ico": getattr(obj, "_ico", "") or "" if has_one_celok else "",
+                    "dic": getattr(obj, "_dic", "") or "" if has_one_celok else "",
                     "is_edupage": bool(
                         getattr(obj, "_has_access", False)
                         and not getattr(obj, "_has_app_access", False)
@@ -455,6 +474,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             return None
         return AdminPrevadzkaSettingsSerializer(prevadzky[0]).data
 
+    @transaction.atomic
     def update(self, instance: User, validated_data: Dict[str, Any]) -> User:
         """
         Update user fields and optionally update one accessible Prevádzka.
@@ -466,6 +486,28 @@ class AdminUserSerializer(serializers.ModelSerializer):
         """
         settings_data = self.initial_data.get("settings", None)
         company_name = validated_data.pop("company_name", serializers.empty)
+        settings_serializer = None
+        if settings_data is not None:
+            if not hasattr(instance, "profile"):
+                raise serializers.ValidationError(
+                    {"settings": "Login nemá profil ani dostupnú prevádzku."}
+                )
+            prevadzky = list(instance.profile.dostupne_prevadzky()[:2])
+            if len(prevadzky) != 1:
+                raise serializers.ValidationError(
+                    {
+                        "settings": (
+                            "Nastavenia upravte na konkrétnej prevádzke; "
+                            "login nemá práve jednu dostupnú prevádzku."
+                        )
+                    }
+                )
+            settings_serializer = AdminPrevadzkaSettingsSerializer(
+                prevadzky[0],
+                data=settings_data,
+                partial=True,
+            )
+            settings_serializer.is_valid(raise_exception=True)
 
         # Keep internal username in sync with email, ensuring uniqueness
         if "email" in validated_data:
@@ -493,28 +535,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 profile.company_name = company_name or ""
             profile.save()
 
-        if settings_data is not None:
-            if not hasattr(instance, "profile"):
-                raise serializers.ValidationError(
-                    {"settings": "Login nemá profil ani dostupnú prevádzku."}
-                )
-            prevadzky = list(instance.profile.dostupne_prevadzky()[:2])
-            if len(prevadzky) != 1:
-                raise serializers.ValidationError(
-                    {
-                        "settings": (
-                            "Nastavenia upravte na konkrétnej prevádzke; "
-                            "login nemá práve jednu dostupnú prevádzku."
-                        )
-                    }
-                )
-            settings_obj = prevadzky[0]
-            settings_serializer = AdminPrevadzkaSettingsSerializer(
-                settings_obj,
-                data=settings_data,
-                partial=True,
-            )
-            settings_serializer.is_valid(raise_exception=True)
+        if settings_serializer is not None:
             settings_serializer.save()
 
         return instance

@@ -43,6 +43,8 @@ interface Prevadzka {
   celok_nazov: string;
   nazov: string;
   adresa: string;
+  edupage_connection: number | null;
+  edupage_connection_name: string | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -51,6 +53,12 @@ interface Prevadzka {
   billing_portion_coefficients: Record<string, string>;
   orders_count: number | null;
   client_user_id: number | null;
+}
+
+interface EdupageConnection {
+  id: number;
+  name: string;
+  is_active: boolean;
 }
 
 interface Celok {
@@ -72,6 +80,7 @@ const API = import.meta.env.VITE_API_URL || "/api";
 interface PrevadzkaForm {
   nazov: string;
   adresa: string;
+  edupage_connection: number | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -81,6 +90,7 @@ interface PrevadzkaForm {
 const EMPTY_PREVADZKA: PrevadzkaForm = {
   nazov: "",
   adresa: "",
+  edupage_connection: null,
   edupage_match: "",
   report_alias: "",
   delivery_note: "",
@@ -111,7 +121,9 @@ const EMPTY_LOGIN: LoginForm = {
 const PrevadzkaFields: React.FC<{
   form: PrevadzkaForm;
   setForm: React.Dispatch<React.SetStateAction<PrevadzkaForm>>;
-}> = ({ form, setForm }) => (
+  connections: EdupageConnection[];
+  showEdupage: boolean;
+}> = ({ form, setForm, connections, showEdupage }) => (
   <>
     <Field label="Názov prevádzky" req>
       <Input required value={form.nazov} onChange={(e) => setForm((f) => ({ ...f, nazov: e.target.value }))} />
@@ -119,6 +131,21 @@ const PrevadzkaFields: React.FC<{
     <Field label="Adresa výdaja">
       <Input value={form.adresa} onChange={(e) => setForm((f) => ({ ...f, adresa: e.target.value }))} />
     </Field>
+    {showEdupage && (
+      <Field label="EduPage spojenie">
+        <Select
+          value={form.edupage_connection ?? ""}
+          onChange={(e) => setForm((f) => ({ ...f, edupage_connection: e.target.value ? Number(e.target.value) : null }))}
+        >
+          <option value="">Bez spojenia</option>
+          {connections.map((connection) => (
+            <option key={connection.id} value={connection.id}>
+              {connection.name}{connection.is_active ? "" : " (neaktívne)"}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    )}
     <Field label="Edupage match" hint="(prefix; ; oddeľuje viac)">
       <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => setForm((f) => ({ ...f, edupage_match: e.target.value }))} />
     </Field>
@@ -157,6 +184,7 @@ const FacilityManager: React.FC = () => {
   const { apiFetch } = useAuth();
   const { success, error: toastError } = useToast();
   const [celky, setCelky] = useState<Celok[]>([]);
+  const [connections, setConnections] = useState<EdupageConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -190,10 +218,17 @@ const FacilityManager: React.FC = () => {
 
   const fetchCelky = useCallback(async () => {
     try {
-      const res = await apiFetch(`${API}/admin/celky/`);
+      const [res, connectionsRes] = await Promise.all([
+        apiFetch(`${API}/admin/celky/`),
+        apiFetch(`${API}/admin/edupage-connections/`),
+      ]);
       if (res.ok) {
         const data = await res.json();
         setCelky(Array.isArray(data) ? data : data.results || []);
+      }
+      if (connectionsRes.ok) {
+        const data = await connectionsRes.json();
+        setConnections(Array.isArray(data) ? data : data.results || []);
       }
     } catch (e) {
       logger.error(e);
@@ -225,6 +260,7 @@ const FacilityManager: React.FC = () => {
     setPForm({
       nazov: p.nazov,
       adresa: p.adresa,
+      edupage_connection: p.edupage_connection,
       edupage_match: p.edupage_match,
       report_alias: p.report_alias,
       delivery_note: p.delivery_note,
@@ -479,7 +515,12 @@ const FacilityManager: React.FC = () => {
           </>}
         >
           <form id="prevadzka-form" onSubmit={savePrevadzka} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <PrevadzkaFields form={pForm} setForm={setPForm} />
+            <PrevadzkaFields
+              form={pForm}
+              setForm={setPForm}
+              connections={connections}
+              showEdupage={modalCelok.zdroj_objednavok === "edupage"}
+            />
           </form>
         </Modal>
       )}

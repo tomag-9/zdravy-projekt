@@ -3,6 +3,81 @@
 from django.db import migrations
 
 
+def _settings_owner(UserProfile, prevadzka):
+    profile = prevadzka.profily.order_by("pk").first()
+    if profile is None:
+        profile = (
+            UserProfile.objects.filter(
+                celok_id=prevadzka.celok_id,
+                prevadzky__isnull=True,
+            )
+            .order_by("pk")
+            .first()
+        )
+    if profile is None:
+        profile = (
+            UserProfile.objects.filter(celok_id=prevadzka.celok_id)
+            .order_by("pk")
+            .first()
+        )
+    return profile
+
+
+def _billing_owner(UserProfile, celok):
+    profile = (
+        UserProfile.objects.filter(prevadzky__celok_id=celok.pk).order_by("pk").first()
+    )
+    if profile is None:
+        profile = (
+            UserProfile.objects.filter(
+                celok_id=celok.pk,
+                prevadzky__isnull=True,
+            )
+            .order_by("pk")
+            .first()
+        )
+    if profile is None:
+        profile = UserProfile.objects.filter(celok_id=celok.pk).order_by("pk").first()
+    return profile
+
+
+def final_legacy_backfill(apps, schema_editor):
+    Celok = apps.get_model("api", "Celok")
+    ClientSettings = apps.get_model("api", "ClientSettings")
+    Prevadzka = apps.get_model("api", "Prevadzka")
+    UserProfile = apps.get_model("api", "UserProfile")
+
+    for prevadzka in Prevadzka.objects.all().iterator():
+        profile = _settings_owner(UserProfile, prevadzka)
+        if profile is None:
+            continue
+
+        settings = ClientSettings.objects.filter(user_id=profile.user_id).first()
+        if settings is None:
+            continue
+
+        prevadzka.visible_menus = settings.visible_menus or ["A"]
+        prevadzka.visible_meals = settings.visible_meals or [
+            "breakfast",
+            "lunch",
+            "olovrant",
+        ]
+        prevadzka.admin_order_note = settings.admin_order_note or ""
+        prevadzka.save(
+            update_fields=["visible_menus", "visible_meals", "admin_order_note"]
+        )
+        prevadzka.visible_diets.set(settings.visible_diets.all())
+
+    for celok in Celok.objects.all().iterator():
+        profile = _billing_owner(UserProfile, celok)
+        if profile is None:
+            continue
+        celok.billing_name = profile.billing_name
+        celok.ico = profile.ico
+        celok.dic = profile.dic
+        celok.save(update_fields=["billing_name", "ico", "dic"])
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -10,6 +85,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(final_legacy_backfill, migrations.RunPython.noop),
         migrations.RemoveField(
             model_name="clientsettings",
             name="user",

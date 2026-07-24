@@ -16,7 +16,14 @@ from django.contrib.auth.models import User
 from rest_framework import status
 
 from api.default_visibility import DEFAULT_VISIBLE_MEALS, DEFAULT_VISIBLE_MENUS
-from api.models import Diet, PasswordResetToken, UserProfile
+from api.models import (
+    Celok,
+    Diet,
+    PasswordResetToken,
+    Prevadzka,
+    ProfileCelokAccess,
+    UserProfile,
+)
 from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
 
 pytestmark = pytest.mark.integration
@@ -199,6 +206,73 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_201_CREATED
         user = User.objects.get(email="nocompany@example.com")
         assert user.profile.company_name == ""
+
+    def test_create_rejects_prevadzka_from_another_celok_without_saving_user(
+        self, admin_client
+    ):
+        selected_celok = Celok.objects.create(nazov="Selected")
+        foreign_celok = Celok.objects.create(nazov="Foreign")
+        foreign_prevadzka = Prevadzka.objects.create(
+            celok=foreign_celok,
+            nazov="Foreign prevadzka",
+        )
+
+        res = admin_client.post(
+            API_URL,
+            {
+                "email": "invalid-scope@example.com",
+                "celok": selected_celok.pk,
+                "prevadzky": [foreign_prevadzka.pk],
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        assert not User.objects.filter(email="invalid-scope@example.com").exists()
+
+    def test_create_with_empty_prevadzky_uses_default_facility(self, admin_client):
+        with patch(_SETUP_EMAIL):
+            res = admin_client.post(
+                API_URL,
+                {
+                    "email": "empty-scope@example.com",
+                    "prevadzky": [],
+                },
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_201_CREATED
+        user = User.objects.get(email="empty-scope@example.com")
+        assert user.profile.dostupne_prevadzky().count() == 1
+
+    def test_invalid_settings_update_does_not_change_email(self, admin_client):
+        user = User.objects.create_user(
+            username="atomic@example.com",
+            email="atomic@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        first = Celok.objects.create(nazov="Atomic first")
+        second = Celok.objects.create(nazov="Atomic second")
+        Prevadzka.objects.create(celok=first, nazov="First")
+        Prevadzka.objects.create(celok=second, nazov="Second")
+        ProfileCelokAccess.objects.create(profile=profile, celok=first)
+        ProfileCelokAccess.objects.create(profile=profile, celok=second)
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {
+                "email": "changed@example.com",
+                "settings": {"visible_menus": ["B"]},
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_400_BAD_REQUEST
+        user.refresh_from_db()
+        assert user.email == "atomic@example.com"
+        assert user.username == "atomic@example.com"
 
     def test_update_user_propagates_company_name(self, admin_client):
         """PATCH aktualizuje company_name na UserProfile; ico/dic (teraz na Celku)
