@@ -140,6 +140,53 @@ contract_state_operations = [
     ),
 ]
 
+legacy_insert_defaults = migrations.RunSQL(
+    sql=[
+        (
+            """
+            ALTER TABLE api_userprofile
+                ALTER COLUMN api_identifier SET DEFAULT '',
+                ALTER COLUMN billing_name SET DEFAULT '',
+                ALTER COLUMN dic SET DEFAULT '',
+                ALTER COLUMN ico SET DEFAULT '',
+                ALTER COLUMN is_edupage SET DEFAULT false,
+                ALTER COLUMN mealsguest_url SET DEFAULT '';
+            """,
+            None,
+        ),
+        (
+            """
+            ALTER TABLE api_celok
+                ALTER COLUMN edupage_api_identifier SET DEFAULT '',
+                ALTER COLUMN mealsguest_url SET DEFAULT '';
+            """,
+            None,
+        ),
+    ],
+    reverse_sql=[
+        (
+            """
+            ALTER TABLE api_userprofile
+                ALTER COLUMN api_identifier DROP DEFAULT,
+                ALTER COLUMN billing_name DROP DEFAULT,
+                ALTER COLUMN dic DROP DEFAULT,
+                ALTER COLUMN ico DROP DEFAULT,
+                ALTER COLUMN is_edupage DROP DEFAULT,
+                ALTER COLUMN mealsguest_url DROP DEFAULT;
+            """,
+            None,
+        ),
+        (
+            """
+            ALTER TABLE api_celok
+                ALTER COLUMN edupage_api_identifier DROP DEFAULT,
+                ALTER COLUMN mealsguest_url DROP DEFAULT;
+            """,
+            None,
+        ),
+    ],
+)
+
 
 class Migration(migrations.Migration):
 
@@ -150,7 +197,7 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunPython(final_legacy_backfill, migrations.RunPython.noop),
         migrations.SeparateDatabaseAndState(
-            database_operations=[],
+            database_operations=[legacy_insert_defaults],
             state_operations=contract_state_operations,
         ),
     ]
