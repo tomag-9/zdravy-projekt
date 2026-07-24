@@ -14,13 +14,14 @@ vi.mock('../../context/auth', () => ({
 
 const mockToastSuccess = vi.fn();
 const mockToastError = vi.fn();
+const mockToastInfo = vi.fn();
 
 vi.mock('../../context/ToastContext', () => ({
     useToast: vi.fn(() => ({
         success: mockToastSuccess,
         error: mockToastError,
         warning: vi.fn(),
-        info: vi.fn(),
+        info: mockToastInfo,
     })),
     ToastProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
@@ -86,6 +87,16 @@ const clickFirstPlus = (label: string) => {
     fireEvent.click(buttons[0]);
 };
 
+const getMealCard = (title: string) => {
+    // Názov chodu sa vyskytuje aj v zhrnutí objednávky — berieme len hlavičku karty.
+    const heading = screen
+        .getAllByText(title)
+        .find((el) => el.closest('.zp-meal-title'));
+    const card = heading?.closest('.zp-meal');
+    expect(card).toBeTruthy();
+    return card as HTMLElement;
+};
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('AdminOrderEditorModal', () => {
@@ -98,7 +109,7 @@ describe('AdminOrderEditorModal', () => {
 
         expect(screen.getByText('Nová objednávka')).toBeInTheDocument();
         expect(screen.getByLabelText(/dátum objednávky/i)).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: /uložiť/i })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Uložiť' })).toBeInTheDocument();
     });
 
     it('renders edit mode without date input', () => {
@@ -134,7 +145,7 @@ describe('AdminOrderEditorModal', () => {
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             expect(mockApiFetch).toHaveBeenCalledWith(
@@ -155,7 +166,7 @@ describe('AdminOrderEditorModal', () => {
 
         render(<AdminOrderEditorModal {...BASE_PROPS} clientId={null} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             expect(mockApiFetch).toHaveBeenCalledWith(
@@ -182,7 +193,7 @@ describe('AdminOrderEditorModal', () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             expect(mockApiFetch).toHaveBeenCalledWith(
@@ -220,7 +231,7 @@ describe('AdminOrderEditorModal', () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const patchCall = mockApiFetch.mock.calls.find(([url, options]) =>
@@ -237,7 +248,7 @@ describe('AdminOrderEditorModal', () => {
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             expect(mockToastError).toHaveBeenCalledWith('Nepodarilo sa uložiť objednávku.');
@@ -261,7 +272,7 @@ describe('AdminOrderEditorModal', () => {
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             expect(mockToastError).toHaveBeenCalledWith('Objednávka na tento dátum už existuje.');
@@ -307,7 +318,7 @@ describe('AdminOrderEditorModal', () => {
 
         expect(screen.getByText('Predškolák')).toBeInTheDocument();
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const body = getRequestBody();
@@ -328,7 +339,7 @@ describe('AdminOrderEditorModal', () => {
                         lunch: {
                             Škôlka: {
                                 menuCounts: { A: 1 },
-                                diets: { 'Bez lepku': 0, 'Špeciálna': 0 },
+                                diets: { 'Bez lepku': 0, 'Špeciálna': 1 },
                             },
                         },
                         special_diet_note: 'Bez paradajok',
@@ -337,7 +348,7 @@ describe('AdminOrderEditorModal', () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const body = getRequestBody();
@@ -351,14 +362,25 @@ describe('AdminOrderEditorModal', () => {
         render(
             <AdminOrderEditorModal
                 {...BASE_PROPS}
-                existingOrder={{ id: 7, date: '2026-07-30', data: {} }}
+                existingOrder={{
+                    id: 7,
+                    date: '2026-07-30',
+                    data: {
+                        lunch: {
+                            Škôlka: {
+                                menuCounts: { A: 1 },
+                                diets: { 'Bez lepku': 0, 'Špeciálna': 1 },
+                            },
+                        },
+                    },
+                }}
             />,
         );
 
-        fireEvent.change(screen.getByLabelText(/poznámka k špeciálnej diéte/i), {
+        fireEvent.change(screen.getByPlaceholderText(/popíšte vašu špeciálnu diétu/i), {
             target: { value: 'Bez mlieka a vajec' },
         });
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const body = getRequestBody();
@@ -412,7 +434,7 @@ describe('AdminOrderEditorModal', () => {
         const row = within(sheet).getByText(/Škôlka · Menu A/i).closest('.zp-diet-row') as HTMLElement;
         fireEvent.click(within(row).getByLabelText('+'));
         fireEvent.click(within(sheet).getByLabelText('Zavrieť'));
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const body = getRequestBody();
@@ -433,9 +455,9 @@ describe('AdminOrderEditorModal', () => {
             />,
         );
 
-        fireEvent.click(screen.getByRole('button', { name: /celý deň rovnaký/i }));
+        fireEvent.click(screen.getByRole('switch', { name: /celodenná objednávka - prepnúť/i }));
         clickFirstPlus('Škôlka');
-        fireEvent.click(screen.getByRole('button', { name: /uložiť/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
             const body = getRequestBody();
@@ -443,5 +465,106 @@ describe('AdminOrderEditorModal', () => {
             expect(body.data.olovrant.Škôlka.menuCounts.A).toBe(1);
             expect(body.data.lunch.Škôlka.menuCounts.A).toBe(0);
         });
+    });
+
+    it('shows only menu A for breakfast and olovrant, while lunch keeps configured menus', () => {
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        // Karta chodu renderuje countery až keď je chod zapnutý.
+        ['Raňajky', 'Obed', 'Olovrant'].forEach((meal) => {
+            fireEvent.click(screen.getByRole('switch', { name: new RegExp(`${meal} - prepnúť`, 'i') }));
+        });
+
+        const breakfastCard = getMealCard('Raňajky');
+        const lunchCard = getMealCard('Obed');
+        const olovrantCard = getMealCard('Olovrant');
+
+        // Raňajky/olovrant: 5 kategórií × iba menu A.
+        expect(within(breakfastCard).getAllByRole('button', { name: '+' })).toHaveLength(5);
+        expect(within(olovrantCard).getAllByRole('button', { name: '+' })).toHaveLength(5);
+        // Obed: visibleMenus ['A','B'] pretnuté s GROUP_CONFIG → 1+1+2+2+2.
+        expect(within(lunchCard).getAllByRole('button', { name: '+' })).toHaveLength(8);
+    });
+
+    it('shows the full-day card and, once enabled, keeps meal cards visible with full-day status', () => {
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        expect(screen.getByText('Celodenná objednávka')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('switch', { name: /celodenná objednávka - prepnúť/i }));
+
+        expect(screen.getByText(/bude objednané:/i)).toBeInTheDocument();
+        expect(screen.getAllByText('Celodenná objednávka je aktívna')).toHaveLength(3);
+        expect(screen.getByText('Raňajky')).toBeInTheDocument();
+        expect(screen.getByText('Obed')).toBeInTheDocument();
+        expect(screen.getByText('Olovrant')).toBeInTheDocument();
+    });
+
+    it('copies counts from lunch into olovrant via "Kopírovať z obeda"', () => {
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        fireEvent.click(screen.getByRole('switch', { name: /obed - prepnúť/i }));
+        fireEvent.click(screen.getByRole('switch', { name: /olovrant - prepnúť/i }));
+
+        const lunchCard = getMealCard('Obed');
+        // Kategória "Škôlka" je v každej otvorenej karte chodu — scope na obed.
+        const lunchCategory = within(lunchCard).getByText('Škôlka').closest('.zp-cat') as HTMLElement;
+        fireEvent.click(within(lunchCategory).getAllByRole('button', { name: '+' })[0]);
+        expect(within(lunchCard).getAllByDisplayValue('1').length).toBeGreaterThan(0);
+
+        fireEvent.click(screen.getByRole('button', { name: /kopírovať z obeda/i }));
+
+        const olovrantCard = getMealCard('Olovrant');
+        expect(within(olovrantCard).getAllByDisplayValue('1').length).toBeGreaterThan(0);
+    });
+
+    it('resets a meal when "Vymazať" is clicked', () => {
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        fireEvent.click(screen.getByRole('switch', { name: /raňajky - prepnúť/i }));
+        const breakfastCategory = getCategoryCard('Škôlka');
+        fireEvent.click(within(breakfastCategory).getAllByRole('button', { name: '+' })[0]);
+
+        const breakfastCard = getMealCard('Raňajky');
+        expect(within(breakfastCard).getAllByDisplayValue('1').length).toBeGreaterThan(0);
+
+        fireEvent.click(screen.getByRole('button', { name: /^vymazať$/i }));
+
+        expect(within(breakfastCard).queryByDisplayValue('1')).not.toBeInTheDocument();
+    });
+
+    it('loads breakfast from the previous day\'s lunch via "Načítať z včerajška"', () => {
+        const prevLunch = {
+            'Škôlka': { menuCounts: { A: 3 }, diets: {} },
+        };
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{ id: 7, date: '2099-03-02', data: {} }}
+                knownOrders={[{ id: 6, date: '2099-03-01', data: { lunch: prevLunch } }]}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('switch', { name: /raňajky - prepnúť/i }));
+        fireEvent.click(screen.getByRole('button', { name: /načítať z včerajška/i }));
+
+        const breakfastCard = getMealCard('Raňajky');
+        expect(within(breakfastCard).getAllByDisplayValue('3').length).toBeGreaterThan(0);
+        expect(mockToastSuccess).toHaveBeenCalledWith('Raňajky načítané z obeda (včera).');
+    });
+
+    it('reports missing data when the previous day has no lunch', () => {
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{ id: 7, date: '2099-03-02', data: {} }}
+                knownOrders={[]}
+            />,
+        );
+
+        fireEvent.click(screen.getByRole('switch', { name: /raňajky - prepnúť/i }));
+        fireEvent.click(screen.getByRole('button', { name: /načítať z včerajška/i }));
+
+        expect(mockToastInfo).toHaveBeenCalledWith('Nemám dáta z včerajšieho obeda.');
     });
 });

@@ -117,12 +117,11 @@ class TestPrevadzkaEndpoint:
     def test_requires_auth(self, api_client):
         assert api_client.get("/api/prevadzky/").status_code in (401, 403)
 
-    def test_exposes_per_meal_menu_visibility(self, api_client, celok):
+    def test_exposes_visible_menu_settings(self, api_client, celok):
         # `on_prevadzka_saved` pri vytvorení prepíše visible_menus/visible_meals
         # defaultmi, takže vlastné hodnoty treba nastaviť až po vzniku záznamu.
         prevadzka = Prevadzka.objects.create(celok=celok, nazov="Jolly 1")
         prevadzka.visible_menus = ["A", "B", "V"]
-        prevadzka.visible_menus_per_meal = {"breakfast": ["A"], "olovrant": ["A"]}
         prevadzka.visible_meals = ["breakfast", "lunch", "olovrant"]
         prevadzka.pack_separately_enabled = True
         prevadzka.save()
@@ -139,26 +138,10 @@ class TestPrevadzkaEndpoint:
                 "adresa": "",
                 "celok": "Jolly",
                 "visible_menus": ["A", "B", "V"],
-                "visible_menus_per_meal": {
-                    "breakfast": ["A"],
-                    "olovrant": ["A"],
-                },
                 "visible_meals": ["breakfast", "lunch", "olovrant"],
                 "pack_separately_enabled": True,
             }
         ]
-
-
-@pytest.mark.django_db
-class TestPrevadzkaVisibleMenusPerMeal:
-    def test_falls_back_to_global_visible_menus_when_meal_key_missing(self, celok):
-        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Fallback")
-        prevadzka.visible_menus = ["A", "B"]
-        prevadzka.visible_menus_per_meal = {"breakfast": ["A"]}
-        prevadzka.save()
-
-        assert prevadzka.resolved_visible_menus_for_meal("breakfast") == ["A"]
-        assert prevadzka.resolved_visible_menus_for_meal("lunch") == ["A", "B"]
 
 
 @pytest.mark.django_db

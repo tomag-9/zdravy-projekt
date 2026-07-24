@@ -37,7 +37,6 @@ interface User {
 
 export interface UserSettings {
   visible_menus?: string[];
-  visible_menus_per_meal?: Record<string, string[]>;
   visible_meals?: string[];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   visible_diets?: any[];

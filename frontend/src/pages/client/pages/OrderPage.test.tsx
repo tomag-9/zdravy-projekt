@@ -212,7 +212,6 @@ describe("OrderPage Logic & Triggers", () => {
               adresa: "",
               celok: "Test celok",
               visible_menus: ["A", "B", "C", "V"],
-              visible_menus_per_meal: { breakfast: ["A"], olovrant: ["A"] },
               visible_meals: ["breakfast", "lunch", "olovrant"],
               pack_separately_enabled: false,
             },
