@@ -12,6 +12,7 @@ pytestmark = pytest.mark.django_db
 def _write_workbook(path, target_date, row_values):
     workbook = openpyxl.Workbook()
     sheet = workbook.active
+    sheet.title = "Hárok1"
     sheet.append(
         [
             target_date,
@@ -65,6 +66,7 @@ def test_import_real_gram_distributions_keeps_piece_exception_idempotent(tmp_pat
     path = tmp_path / "6.7.2026_tabulka.xlsx"
     workbook = openpyxl.Workbook()
     sheet = workbook.active
+    sheet.title = "Hárok1"
     sheet.append(
         [
             "6.7.2026",
@@ -113,6 +115,7 @@ def test_import_real_gram_distributions_covers_week_28_snack_split(tmp_path):
     path = tmp_path / "7.7.2026_tabulka.xlsx"
     workbook = openpyxl.Workbook()
     sheet = workbook.active
+    sheet.title = "Hárok1"
     sheet.append(
         [
             "7.7.2026",

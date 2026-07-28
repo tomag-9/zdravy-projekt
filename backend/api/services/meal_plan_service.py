@@ -17,7 +17,12 @@ from ..models import (
     MealTemplate,
 )
 from ..order_data import OrderData
-from ..utils import order_row_label
+from ..utils import (
+    SNACK_DOUBLE_BILLING_PORTIONS,
+    SNACK_MIRRORS_LUNCH_PREVADZKY,
+    _meal_rule_key,
+    order_row_label,
+)
 
 
 def _normalize_portion_name(value: object) -> str:
@@ -707,6 +712,11 @@ class MealPlanService:
         for order in orders:
             client_label = order_row_label(order)
             prevadzka = getattr(order, "prevadzka", None)
+            prevadzka_key = (
+                _meal_rule_key(prevadzka.report_alias or prevadzka.nazov)
+                if prevadzka is not None
+                else ""
+            )
             billing_coeffs = (
                 {
                     name: prevadzka.billing_coefficient(name)
@@ -714,6 +724,9 @@ class MealPlanService:
                 }
                 if prevadzka is not None
                 else {}
+            )
+            snack_double_billing_portions: set[str] = SNACK_DOUBLE_BILLING_PORTIONS.get(
+                prevadzka_key, set()
             )
             sub_rows: list[dict] = []
             # Decimal len tam, kde prevádzka účtuje zlomkovú porciu
@@ -723,6 +736,12 @@ class MealPlanService:
             diet_summary_totals: dict[str, list[list[Decimal]]] = {}
             diet_summary_counts: dict[str, int | Decimal] = {}
             order_data = order.data if isinstance(order.data, dict) else {}
+            if prevadzka_key in SNACK_MIRRORS_LUNCH_PREVADZKY:
+                # Report-only: klientov Excel neráta olovrant zo skutočných
+                # EduPage objednávok, len skopíruje počet z obeda. `order.data`
+                # ostáva nedotknuté — pracujeme na lokálnej kópii.
+                order_data = dict(order_data)
+                order_data["olovrant"] = order_data.get("lunch", {})
 
             for order_meal, meal_data in order_data.items():
                 if order_meal == "__gram_corrections__":
@@ -765,6 +784,14 @@ class MealPlanService:
                             _BILLING_MERGE_TARGET.get(portion_name, portion_name)
                             if billing_coeff != 1
                             else portion_name
+                        )
+                        # Krásňanko "KZ" (Dospelý (SŠ)): klient reálne pripravuje aj
+                        # účtuje olovrant pre túto porciu ako dvojnásobok hláv — na
+                        # rozdiel od billing_coeff sa tu zdvojnásobujú aj gramy
+                        # (kuchyňa fyzicky pripraví 2x jedlo), nielen vykázaný počet.
+                        double_snack_portion = (
+                            meal == "afternoon_snack"
+                            and portion_name in snack_double_billing_portions
                         )
                         menu_counts = category.menu_counts
                         diets = category.diets
@@ -828,6 +855,8 @@ class MealPlanService:
                         for variant, count in adjusted_variant_counts:
                             if count <= 0:
                                 continue
+                            if double_snack_portion:
+                                count = count * 2
                             # Gramy z počtu hláv, nie z fakturovaného počtu.
                             grams = _col_grams(
                                 meal, variant, coeff, count, portion_name
@@ -862,6 +891,8 @@ class MealPlanService:
                             diet_count = _safe_nonneg_int(diet_count_raw)
                             if diet_count <= 0:
                                 continue
+                            if double_snack_portion:
+                                diet_count = diet_count * 2
                             diet_grams = _col_grams_diet(
                                 meal, diet_name, coeff, diet_count, portion_name
                             )
