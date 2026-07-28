@@ -134,3 +134,10 @@ LOGGING = {
         },
     },
 }
+
+# Spreads push-deadline-reminder delivery across batches so a big subscriber
+# list doesn't wake every client in the same instant (see api/tasks.py and
+# load-tests/README.md "Overload Plan"). 0 disables staggering.
+PUSH_REMINDER_BATCH_STAGGER_SECONDS = int(
+    os.environ.get("PUSH_REMINDER_BATCH_STAGGER_SECONDS", "15")
+)

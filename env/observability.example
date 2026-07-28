@@ -10,11 +10,7 @@ GRAFANA_PROM_API_KEY=grafana-prom-api-key
 
 # Alloy metadata / scrape targets
 ALLOY_ENVIRONMENT=production
-# Use "backend" (Compose's implicit alias, i.e. the service name in
-# compose/prod.yml / compose/staging.yml), not the raw Swarm-generated task
-# name — that one contains underscores, which Django's Host-header
-# validation rejects. A custom network alias was tried and abandoned:
-# Swarm's embedded DNS didn't reliably resolve it for this multi-network
-# service. "backend" is allow-listed in ALLOWED_HOSTS for exactly this.
-ALLOY_METRICS_TARGET=backend:8000
+# Alloy discovers backend replicas itself via the Docker socket (containers
+# labeled prometheus.io/scrape=true), one target per replica — no static
+# target env var needed. See observability/alloy/config.alloy.
 DOKPLOY_NETWORK=dokploy-network

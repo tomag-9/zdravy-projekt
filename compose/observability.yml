@@ -21,7 +21,6 @@ services:
       GRAFANA_PROM_USER: ${GRAFANA_PROM_USER:?Set GRAFANA_PROM_USER}
       GRAFANA_PROM_API_KEY: ${GRAFANA_PROM_API_KEY:?Set GRAFANA_PROM_API_KEY}
       ALLOY_ENVIRONMENT: ${ALLOY_ENVIRONMENT:-production}
-      ALLOY_METRICS_TARGET: ${ALLOY_METRICS_TARGET:-backend:8000}
     networks:
       - default
       - dokploy-network

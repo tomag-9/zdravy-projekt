@@ -164,6 +164,113 @@ python manage.py seed_load_test_users \
   --email-domain "$LOAD_TEST_DOMAIN"
 ```
 
+## Measured Capacity (2026-07-28)
+
+Ran locally against a backend container built and started exactly like prod
+(`start-backend.sh` → gunicorn, `app.settings.staging`, real PBKDF2 password
+hashing — not the dev MD5 hasher). Prod is a **single** backend replica (no
+autoscaling), so a resource-capped local container is a faithful proxy for
+its ceiling. Prod's actual host: 2 CPU cores, 3.82 GB RAM (Dokploy).
+
+**1 CPU (initial, before the host spec was confirmed):**
+
+| Rate (iterations/min) | Iterations/sec | Result |
+|---|---|---|
+| 30 (documented CI/staging profile) | 0.5 | 100% success, p95=383ms |
+| 100 | 1.67 | 100% success, p95=385ms |
+| 120 | 2.0 | **45% failed**, login p95=57s |
+| 180 | 3.0 | 100% failed, all requests hang to the 60s client timeout |
+| 1200 | 20 | 76% failed, 1559 iterations dropped entirely |
+
+**2 CPU, `GUNICORN_WORKERS=5` (`2*cores+1`) — the real prod spec:**
+
+| Rate (iterations/min) | Iterations/sec | Result |
+|---|---|---|
+| 180 | 3.0 | 100% success, p95=386ms (collapsed at 1 CPU) |
+| 360 | 6.0 | 100% success, **but p95≈11s** — queueing, not failing |
+
+Root cause: every login runs Django's default PBKDF2 password hasher, which
+is CPU-bound. With sync gunicorn workers pinned to N cores, concurrent
+logins fully occupy those cores, and past that point gunicorn's `backlog`
+(2048) queues everything else behind them instead of rejecting it — so
+without a throttle in front, requests don't fail fast, they hang until the
+client's own timeout fires (60s in this test). This scaled roughly linearly
+with CPU (1→2 cores roughly doubled the healthy ceiling), and going from 1
+CPU to 2 CPU also changed *how* it fails past the ceiling: at 1 CPU it was
+outright request failures; at 2 CPU it degrades to very bad latency before
+failing, which is a meaningfully safer failure mode.
+
+30/min in production is comfortably under the 2-CPU ceiling (~6x margin to
+180/min). The real risk isn't sustained daily volume, it's **simultaneity**:
+a burst where many different users hit the API in the same short window
+(e.g. everyone opening the app right after a push reminder). See Overload
+Plan below for what's now in place for that.
+
+## Overload Plan
+
+**Phase 1 — implemented (2026-07-28):**
+- **Global throttles** on `/api/token/` (login) and `/api/orders/` create
+  (`api/throttles.py`, `LOGIN_GLOBAL_THROTTLE_RATE` /
+  `ORDER_SUBMIT_GLOBAL_THROTTLE_RATE` env vars, default 150/min each — under
+  the measured-healthy 180/min on the real 2-CPU host, with margin). These
+  are deliberately **global**, not per-user/per-IP like DRF's built-in
+  throttles: the overload risk here is many *different* legitimate users
+  arriving at once, which a per-user limit does nothing to catch. Past the
+  limit, callers get a fast `429` with `Retry-After` (in the project's
+  standard `error.details.retry_after_seconds` shape) instead of a request
+  that hangs until it times out.
+- **Push-reminder delivery staggering** (`api/tasks.py`,
+  `PUSH_REMINDER_BATCH_STAGGER_SECONDS`, default 15s in staging/prod, 0 in
+  dev/test): the 09:45 deadline reminder and the Sunday weekly reminder used
+  to push to every subscriber in one tight loop, which tends to make
+  everyone open the app within the same few seconds — exactly the
+  simultaneity risk above. Sends are now batched (batch count capped so
+  total spread stays well under the weekly task's 290s soft time limit
+  regardless of subscriber count) and spaced out.
+- **Per-replica Prometheus scraping** (`observability/alloy/config.alloy`):
+  the old static `backend:8000` scrape target round-robins across replicas
+  via Swarm's service DNS, so with more than one replica each scrape sampled
+  a random container and per-container multiprocess counters looked like
+  they kept resetting. Alloy now discovers each backend container
+  individually (`prometheus.io/scrape=true` label, same pattern already
+  used for log shipping) and scrapes it directly, keeping each replica's
+  series continuous. **Not yet verified against a live multi-replica Swarm
+  deployment** — see the checklist in `observability/README.md`.
+- Migrations/seeds already handle multiple replicas starting concurrently:
+  `deploy_bootstrap` (run by every container on startup) wraps them in a
+  Postgres advisory lock, so a second replica starting mid-deploy blocks
+  until the first finishes rather than racing it; since seeds are
+  idempotent, its own run afterwards is a no-op. Health checks are already
+  per-container and need no cross-replica coordination. JWT auth is
+  stateless and Redis-backed cache/celery state is already shared across
+  replicas, so neither needed changes for going to >1 replica.
+
+**Still open (not done in this pass):**
+- **No fast-fail / queueing for order writes.** They run synchronously in
+  the request/response cycle. Not a priority right now — order submit
+  itself was never the bottleneck in testing (~130ms), login was. Worth
+  revisiting only if DB write contention shows up as the limit at higher
+  scale.
+- **No alerting rule** tied to the Prometheus metrics already being scraped
+  (e.g. p95 latency or 5xx rate crossing a threshold) that would notify
+  before users report an outage.
+- **BACKEND_CPU_LIMIT is still 1.00 in `env/prod.example`**, below the real
+  2-CPU host it now runs on. Recommended Dokploy change (not applied here —
+  no Dokploy access from this environment):
+  ```
+  BACKEND_CPU_LIMIT=1.50
+  GUNICORN_WORKERS=3
+  ```
+  Leaving ~0.5 core of headroom for celery/celery-beat/frontend/Traefik/
+  Dokploy itself running on the same 2-core host, rather than capping
+  backend at the full 2.00 and letting it starve everything else during a
+  burst. Re-run this load test against the real host after applying, to
+  confirm the ceiling matches the 2-CPU numbers measured here.
+- Adding a **second backend replica** was considered and deliberately not
+  done: this is a single 2-CPU host, so a second replica doesn't add
+  physical capacity — it only helps if it's on separate hardware, or purely
+  for restart-resilience. Revisit if/when a second node is available.
+
 ## What To Watch
 
 In Grafana, watch:

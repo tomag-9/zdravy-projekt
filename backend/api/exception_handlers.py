@@ -10,7 +10,7 @@ from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import Http404
 from rest_framework import status
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException, Throttled, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
@@ -106,6 +106,22 @@ def custom_exception_handler(exc, context):
             "code": exc.error_code,
             "message": str(exc.detail),
             "details": exc.extra,
+        }
+        response.data = {"error": error_data}
+        return response
+
+    # DRF's built-in Throttled (used by GlobalRateThrottle) — reshape into the
+    # same rate_limit_exceeded/retry_after_seconds shape as the hand-rolled
+    # RateLimitExceeded in exceptions.py, so callers only handle one format.
+    if isinstance(exc, Throttled):
+        wait = exc.wait or 0
+        error_data = {
+            "code": "rate_limit_exceeded",
+            "message": "Príliš veľa požiadaviek. Skúste to znova o chvíľu.",
+            "details": {
+                "retry_after_seconds": wait,
+                "retry_after_minutes": round(wait / 60),
+            },
         }
         response.data = {"error": error_data}
         return response

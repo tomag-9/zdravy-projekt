@@ -400,8 +400,8 @@ docker compose -f compose/observability.yml up -d
 ```
 
 Configure the stack from [env/observability.example](env/observability.example).
-Alloy tails Docker logs through the Docker socket and scrapes Django metrics from
-`ALLOY_METRICS_TARGET` over the Dokploy network.
+Alloy tails Docker logs and discovers Django backend replicas to scrape, both
+through the Docker socket — no static scrape target to configure.
 
 See [observability/README.md](observability/README.md) for the full production
 setup checklist, the importable Grafana dashboard

@@ -19,7 +19,6 @@ Prometheus metrics at `/metrics/`; any future Alloy/Grafana setup should run as 
 separate compose stack and scrape the app over the Dokploy network.
 
 The observability stack expects Grafana Loki and Prometheus/Mimir remote-write
-credentials through environment variables. Set `ALLOY_METRICS_TARGET` to the
-backend address reachable from `dokploy-network`, for example `backend:8000` for
-a single app stack or the explicit Dokploy service DNS if multiple app stacks are
-on the same network.
+credentials through environment variables. Alloy discovers backend containers
+itself over the Docker socket (see `observability/alloy/config.alloy`), scraping
+one target per replica — no backend address needs to be configured.
