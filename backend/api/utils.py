@@ -12,6 +12,26 @@ NON_SERVED_ORDER_MEALS_BY_PREVADZKA = {
     "deutsche schule": {"breakfast", "olovrant"},
 }
 
+# Nižšie dve mapy menia len vykázaný (billing) výstup v gramage_dashboard —
+# na rozdiel od NON_SERVED_ORDER_MEALS_BY_PREVADZKA sa neaplikujú pri importe
+# a `DailyOrder.data` teda zostáva presným odrazom EduPage. Klientov účtovný
+# Excel má pre tieto prevádzky vlastnú (nie EduPage) logiku počtu olovrantov;
+# aby appka produkovala rovnaké číslo, aké klient reálne fakturuje, report
+# preberie tú istú logiku len na výstupe.
+
+# Filipa Nériho: klientov Excel má na olovrant riadku vzorec, ktorý počet
+# automaticky preberá z obedového riadku (nepočíta sa samostatne, koľko
+# olovrantov si kto reálne objednal na EduPage). Reálne dáta to potvrdzujú
+# 1:1 (obed == olovrant každý deň) — u Rozmanitej Škôlky to NEPLATÍ (obed a
+# olovrant sa v exceli líšia o "dospelá"/Škola blok, ktorý má explicitne
+# "bez olovrantu"), preto tam mirror-lunch zámerne nie je.
+SNACK_MIRRORS_LUNCH_PREVADZKY = {"filipa neriho"}
+
+# Krásňanko: položka "KZ" (Dospelý (SŠ) porcia) sa v olovrante v klientovom
+# Exceli počíta ako dvojitá porcia. Overené na obedovom stĺpci, ktorý sedí
+# appke 1:1 bez úpravy — dvojnásobok sa týka výhradne olovrantu.
+SNACK_DOUBLE_BILLING_PORTIONS = {"krasnanko": {"Dospelý (SŠ)"}}
+
 
 def _meal_rule_key(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or "").casefold())

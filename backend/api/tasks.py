@@ -3,8 +3,10 @@ Celery tasks for the api app.
 """
 
 import logging
+import time
 
 from celery import shared_task
+from django.conf import settings
 from django.db import DatabaseError
 from django.utils import timezone
 
@@ -13,6 +15,34 @@ from api.services.push_notification_service import PushNotificationService
 logger = logging.getLogger(__name__)
 
 REPORT_CACHE_TIMEOUT = 3600  # 1 hour
+
+# Spreads push-reminder delivery across batches instead of sending to every
+# subscriber in one instant. A single "uzávierka o chvíľu" push to everyone
+# tends to make everyone open the app and log in within the same few
+# seconds — measured load testing showed the backend collapses at roughly
+# 4x its comfortable sustained rate (load-tests/README.md "Measured
+# Capacity"), so a genuine simultaneous-open burst can realistically hit
+# that. 0 by default (dev/test): only set via env in staging/prod settings.
+#
+# Batch size scales with recipient count (capped at PUSH_REMINDER_MAX_BATCHES
+# batches) rather than using a fixed size, so total stagger time stays
+# bounded regardless of how many users are subscribed —
+# send_weekly_order_reminder_task has a 290s soft time limit.
+PUSH_REMINDER_MIN_BATCH_SIZE = 25
+PUSH_REMINDER_MAX_BATCHES = 10
+
+
+def _push_batch_stagger_seconds() -> float:
+    return getattr(settings, "PUSH_REMINDER_BATCH_STAGGER_SECONDS", 0)
+
+
+def _push_batch_size(total_recipients: int) -> int:
+    if total_recipients <= 0:
+        return PUSH_REMINDER_MIN_BATCH_SIZE
+    return max(
+        PUSH_REMINDER_MIN_BATCH_SIZE,
+        -(-total_recipients // PUSH_REMINDER_MAX_BATCHES),  # ceil division
+    )
 
 
 @shared_task(
@@ -107,7 +137,7 @@ def generate_report_xlsx_task(self, date_str: str):
 )
 def send_push_deadline_reminder_task(self, meal_types: list[str]):
     """
-    Send push notifications to all subscribed clients 15 minutes before
+    Send push notifications to all subscribed clients 30 minutes before
     a meal deadline. When multiple meals share the same deadline they are
     passed together so that users receive a single combined notification.
 
@@ -201,7 +231,11 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
                 f"Nezabudnite objednať {meal_str} na {date_fmt}. Uzávierka je o chvíľu!"
             )
             date_sent = 0
-            for user_id in subscribed_user_ids:
+            stagger = _push_batch_stagger_seconds()
+            batch_size = _push_batch_size(len(subscribed_user_ids))
+            for idx, user_id in enumerate(subscribed_user_ids):
+                if stagger and idx and idx % batch_size == 0:
+                    time.sleep(stagger)
                 result = PushNotificationService.send_to_user(
                     user_id=user_id,
                     title="Pripomienka objednávky",
@@ -300,7 +334,11 @@ def send_weekly_order_reminder_task(self):
         body = f"Nezabudnite vyplniť objednávku na budúci týždeň ({week_label})."
 
         sent = 0
-        for user_id in recipients:
+        stagger = _push_batch_stagger_seconds()
+        batch_size = _push_batch_size(len(recipients))
+        for idx, user_id in enumerate(recipients):
+            if stagger and idx and idx % batch_size == 0:
+                time.sleep(stagger)
             result = PushNotificationService.send_to_user(
                 user_id=user_id,
                 title="Pripomienka objednávky",

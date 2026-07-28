@@ -42,7 +42,7 @@ locals {
       no_data_state   = "Alerting"
       severity        = "critical"
       summary         = "Alloy cannot scrape the Django backend"
-      description     = "The django scrape target is down in ${var.environment}. Check the Alloy stack, ALLOY_METRICS_TARGET, container networking, and backend health."
+      description     = "The django scrape target is down in ${var.environment}. Check the Alloy stack, per-container discovery in observability/alloy/config.alloy, container networking, and backend health."
     }
 
     alloy_scrape_down = {

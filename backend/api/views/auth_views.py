@@ -17,6 +17,7 @@ from api.management.commands.init_roles import DEMO_ADMIN_EMAIL, DEMO_OPERATION_
 
 from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
 from ..metrics import login_attempts_total
+from ..throttles import LoginRateThrottle
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,7 @@ class EmailTokenObtainPairView(TokenObtainPairView):
     """JWT login view. Returns access token in body; sets refresh token as httpOnly cookie."""
 
     serializer_class = EmailTokenObtainPairSerializer
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

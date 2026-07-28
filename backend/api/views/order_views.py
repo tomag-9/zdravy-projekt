@@ -17,6 +17,7 @@ from ..models import DailyOrder
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
 from ..services.prevadzka_service import dostupne_prevadzky
+from ..throttles import OrderSubmitRateThrottle
 
 
 @extend_schema_view(
@@ -93,6 +94,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(prevadzka_id=prevadzka_id_int)
 
         return queryset
+
+    def get_throttles(self):
+        if self.action == "create":
+            return [OrderSubmitRateThrottle()]
+        return super().get_throttles()
 
     def perform_create(self, serializer: DailyOrderSerializer) -> None:
         """

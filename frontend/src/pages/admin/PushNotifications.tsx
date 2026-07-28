@@ -142,7 +142,7 @@ const PushNotifications: React.FC = () => {
                     </div>
                     <ul style={{ margin: 0, paddingLeft: 20, display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <li>Notifikácie sa odosielajú iba používateľom, ktorí si nainštalovali aplikáciu a povolili notifikácie.</li>
-                        <li>Automatické pripomienky sa odosielajú 15 minút pred uzávierkou objednávky (nakonfigurujte v Nastaveniach).</li>
+                        <li>Automatické pripomienky sa odosielajú 30 minút pred uzávierkou objednávky (nakonfigurujte v Nastaveniach).</li>
                         <li>Neplatné subscriptions (napr. po odinštalovaní) sú automaticky odstraňované pri odosielaní.</li>
                     </ul>
                 </div>

@@ -148,7 +148,12 @@ def _upsert_template(
 
 def import_workbook(path: Path) -> date:
     workbook = load_workbook(path, data_only=True, read_only=True)
-    sheet = workbook.active
+    # Explicit by name, never `.active` — `.active` is whatever sheet the file
+    # last happened to have selected when saved, not necessarily Hárok1. Only
+    # Hárok1 is the client-maintained source of truth (see reconcile_real.py).
+    if "Hárok1" not in workbook.sheetnames:
+        raise CommandError(f"{path}: no 'Hárok1' sheet found")
+    sheet = workbook["Hárok1"]
     rows = list(sheet.iter_rows(values_only=True))
     if len(rows) < 2:
         raise CommandError(f"{path}: workbook does not contain enough rows")

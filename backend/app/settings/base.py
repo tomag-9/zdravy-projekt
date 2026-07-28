@@ -292,6 +292,16 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "EXCEPTION_HANDLER": "api.exception_handlers.custom_exception_handler",
+    # Global (not per-user) caps on the two endpoints that saturate first
+    # under load — see api/throttles.py and load-tests/README.md "Measured
+    # Capacity". Env-overridable so raising backend capacity (CPU/replicas)
+    # doesn't need a code change to move the ceiling.
+    "DEFAULT_THROTTLE_RATES": {
+        "login_global": os.environ.get("LOGIN_GLOBAL_THROTTLE_RATE", "150/min"),
+        "order_submit_global": os.environ.get(
+            "ORDER_SUBMIT_GLOBAL_THROTTLE_RATE", "150/min"
+        ),
+    },
 }
 
 LOGGING = {

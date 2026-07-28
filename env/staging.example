@@ -45,6 +45,18 @@ BACKEND_CPU_LIMIT=1.00
 BACKEND_MEMORY_LIMIT=768M
 BACKEND_CPU_RESERVATION=0.25
 BACKEND_MEMORY_RESERVATION=256M
+
+# Global throttles on the endpoints that saturate first under load (login,
+# order submit) — caps aggregate throughput across ALL callers, not
+# per-user/IP. Keep below the measured-healthy ceiling with margin; re-tune
+# if BACKEND_CPU_LIMIT changes. See api/throttles.py and
+# load-tests/README.md "Measured Capacity".
+LOGIN_GLOBAL_THROTTLE_RATE=100/min
+ORDER_SUBMIT_GLOBAL_THROTTLE_RATE=100/min
+
+# Spreads push-deadline-reminder delivery across batches instead of waking
+# every subscriber in the same instant. See api/tasks.py.
+PUSH_REMINDER_BATCH_STAGGER_SECONDS=15
 CELERY_REPLICAS=1
 CELERY_CPU_LIMIT=1.00
 CELERY_MEMORY_LIMIT=768M
