@@ -6,7 +6,7 @@ GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
   deadline_olovrant)
 - daily reports: fires at breakfast deadline (breakfast only) and
   olovrant deadline (all meals)
-- push reminders: fires 15 min before each meal deadline (one task per
+- push reminders: fires 30 min before each meal deadline (one task per
   meal type)
 """
 
@@ -23,7 +23,11 @@ PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 
 PUSH_REMINDER_TASK_PREFIX = "push-reminder-"
-PUSH_REMINDER_OFFSET_MINUTES = 15
+# Widened from 15 to 30 min: with the login being CPU-bound (see
+# load-tests/README.md "Measured Capacity"), a longer lead time before the
+# deadline gives users more room to arrive spread out rather than all at
+# once, on top of the send-side batching in api/tasks.py.
+PUSH_REMINDER_OFFSET_MINUTES = 30
 
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 

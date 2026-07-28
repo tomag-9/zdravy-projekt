@@ -245,27 +245,30 @@ Plan below for what's now in place for that.
   stateless and Redis-backed cache/celery state is already shared across
   replicas, so neither needed changes for going to >1 replica.
 
+**Phase 1 addendum (2026-07-28):**
+- `BACKEND_CPU_LIMIT=1.50` / `GUNICORN_WORKERS=3` applied on the real Dokploy
+  prod host (confirmed 2 CPU / 3.82GB), matching this document's
+  recommendation. Re-run this load test against the live host when
+  convenient to confirm the ceiling matches the 2-CPU numbers measured here.
+- `PUSH_REMINDER_OFFSET_MINUTES` widened from 15 to 30 min
+  (`api/signals.py`) — more lead time before the deadline for arrivals to
+  spread out, on top of the send-side batching above.
+- **A Grafana alert rule set already existed** in
+  `observability/terraform/grafana-alerts/` (Terraform-managed, incl. "High
+  p95 latency" at 3s and 5xx-rate alerts) — this doc previously and
+  incorrectly said no alerting existed. It was missed on the first pass;
+  now corrected. `high_backend_cpu_cores` (was 0.9, tuned for the old 1.00
+  CPU limit) has been bumped to 1.2 to match the new 1.50 limit. The 3s p95
+  threshold sits comfortably between the measured-healthy p95 (~386ms) and
+  the measured-degraded p95 (~11s at 2x over ceiling), so no change needed
+  there.
+
 **Still open (not done in this pass):**
 - **No fast-fail / queueing for order writes.** They run synchronously in
   the request/response cycle. Not a priority right now — order submit
   itself was never the bottleneck in testing (~130ms), login was. Worth
   revisiting only if DB write contention shows up as the limit at higher
   scale.
-- **No alerting rule** tied to the Prometheus metrics already being scraped
-  (e.g. p95 latency or 5xx rate crossing a threshold) that would notify
-  before users report an outage.
-- **BACKEND_CPU_LIMIT is still 1.00 in `env/prod.example`**, below the real
-  2-CPU host it now runs on. Recommended Dokploy change (not applied here —
-  no Dokploy access from this environment):
-  ```
-  BACKEND_CPU_LIMIT=1.50
-  GUNICORN_WORKERS=3
-  ```
-  Leaving ~0.5 core of headroom for celery/celery-beat/frontend/Traefik/
-  Dokploy itself running on the same 2-core host, rather than capping
-  backend at the full 2.00 and letting it starve everything else during a
-  burst. Re-run this load test against the real host after applying, to
-  confirm the ceiling matches the 2-CPU numbers measured here.
 - Adding a **second backend replica** was considered and deliberately not
   done: this is a single 2-CPU host, so a second replica doesn't add
   physical capacity — it only helps if it's on separate hardware, or purely
