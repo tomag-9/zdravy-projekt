@@ -79,7 +79,21 @@ prometheus.exporter.self "alloy" { }
 
 prometheus.scrape "alloy" {
 	targets    = prometheus.exporter.self.alloy.targets
+	forward_to = [prometheus.relabel.alloy_self.receiver]
+}
+
+prometheus.relabel "alloy_self" {
 	forward_to = [prometheus.remote_write.grafana.receiver]
+
+	rule {
+		target_label = "job"
+		replacement  = "alloy"
+	}
+
+	rule {
+		target_label = "environment"
+		replacement  = sys.env("ALLOY_ENVIRONMENT")
+	}
 }
 
 // Per-container discovery instead of a static `backend:8000` Swarm service
