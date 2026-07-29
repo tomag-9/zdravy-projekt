@@ -96,65 +96,17 @@ prometheus.relabel "alloy_self" {
 	}
 }
 
-// Per-container discovery instead of a static `backend:8000` Swarm service
-// DNS target: with more than one backend replica, the service DNS
-// round-robins per connection, so a static target samples a random replica
-// each scrape. Prometheus multiprocess counters are per-container, so that
-// looked like the counters kept resetting. Scraping every replica by its own
-// container IP keeps each one's series continuous, and Grafana sums across
-// the `instance` label same as it already does for cAdvisor.
-discovery.relabel "django_metrics" {
-	targets = discovery.docker.containers.targets
-
-	// Only containers that opt in via the prometheus.io/scrape=true compose
-	// label (currently just backend; celery/celery-beat/frontend don't set it).
-	rule {
-		source_labels = ["__meta_docker_container_label_prometheus_io_scrape"]
-		regex         = "true"
-		action        = "keep"
-	}
-
-	// Backend is attached to both `app` and `dokploy-network`; docker SD emits
-	// one target per attached network, which would otherwise double-scrape
-	// each replica. Alloy only shares `dokploy-network` with backend, so keep
-	// that one.
-	rule {
-		source_labels = ["__meta_docker_network_name"]
-		regex         = "dokploy-network"
-		action        = "keep"
-	}
-
-	rule {
-		source_labels = ["__meta_docker_container_name"]
-		regex         = "/(.+)"
-		target_label  = "instance"
-	}
-
-	rule {
-		target_label = "job"
-		replacement  = "django"
-	}
-
-	rule {
-		target_label = "environment"
-		replacement  = sys.env("ALLOY_ENVIRONMENT")
-	}
-}
-
 prometheus.scrape "django" {
-	targets      = discovery.relabel.django_metrics.output
+	targets = [
+		{
+			"__address__" = sys.env("ALLOY_METRICS_TARGET"),
+			"job"         = "django",
+			"environment" = sys.env("ALLOY_ENVIRONMENT"),
+		},
+	]
+
 	metrics_path = "/metrics/"
-
-	// Django's ALLOWED_HOSTS only accepts the literal "backend" (see
-	// app/settings/prod.py) — arbitrary Swarm task names and raw container
-	// IPs get rejected as 400 DisallowedHost. Dialing happens by container
-	// IP (from __address__ above) but the Host header must still say
-	// "backend" or every scrape silently 400s and Grafana shows no data.
-	http_headers = {
-		"Host" = ["backend"],
-	}
-
-	forward_to = [prometheus.remote_write.grafana.receiver]
+	forward_to   = [prometheus.remote_write.grafana.receiver]
 }
 
 prometheus.exporter.cadvisor "docker" {
