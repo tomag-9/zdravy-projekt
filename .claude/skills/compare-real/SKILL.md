@@ -60,9 +60,10 @@ and re-run.
 ## Prerequisites (app side)
 
 The app numbers come from `MealPlanService.gramage_dashboard(date)`, which needs the
-day's **orders + meal plan** in the local DB. If `meal_plan_id` comes back `null` or all
-facilities land in `app_only`/`real_only`, the day was not scraped/seeded yet — scrape
-EduPage for that date first, then re-run:
+day's **orders + meal plan** in the local DB.
+
+**Orders.** If all facilities land in `app_only`/`real_only`, orders weren't scraped —
+scrape EduPage for that date first, then re-run:
 
 ```bash
 docker exec compose-db-1 true            # confirm the dev DB container is up
@@ -72,6 +73,40 @@ POSTGRES_DB=zdravy_projekt_dev POSTGRES_HOST=localhost python manage.py scrape_e
 
 The local dev DB is `zdravy_projekt_dev` on `localhost:5432` (Django default name is
 `zdravy_projekt_db`, so **always pass `POSTGRES_DB=zdravy_projekt_dev POSTGRES_HOST=localhost`**).
+
+**Meal plan.** If `meal_plan_id` comes back `null`, there's no `DailyMealPlan` for that
+date yet — nobody has entered the day's menu. Seed it **from the current week's
+jedálniček PDF in `test/data/jedalnicky/`, never from the `real/` workbook.**
+
+- **Do not use `import_real_gram_distributions`** for this. That command exists for a
+  different purpose (backfilling historical gram data from the accounting workbook) and
+  reads its numbers from the same `Hárok1` sheet the reconciliation is trying to verify —
+  seeding the app side from the real side makes the comparison circular and would hide a
+  genuine app bug (e.g. a wrong portion-weight config) behind an artificially perfect
+  match.
+- Instead, find the ISO week (`date.isocalendar()`), locate that diet's PDF —
+  `Week <NN>[_]<YYYY>_Klasik.pdf` (exclude the `_AJ` English variant) — and extract it:
+  ```bash
+  pdftotext -layout "test/data/jedalnicky/Week 31_2026_Klasik.pdf" -
+  ```
+- Find the target weekday block (`PONDELOK`/`UTOROK`/`STREDA`/`ŠTVRTOK`/`PIATOK`). Its
+  `Obed:` line gives the soup (`200ml <name>`) and the next line gives the main course as
+  `<total>g (<a>g/<b>g/<c>g) <name A>, <name B>, <name C>`; `Olovrant:` gives the snack,
+  either a single `<n>g <name>` or a split like `<n>g (<a>g/<b>g) <name A>, <name B>`.
+- The PDF's dish names are descriptive (`Morčacie na smotane s hráškom 7, batátová kaša,
+  paprikový šalát`); **Tier-2 matching in `reconcile_real` is exact-string** (ASCII-folded)
+  against the `Hárok1` header row, which uses the bare dish noun (`Morčacie na smotane`).
+  Strip the trailing qualifier/allergen digits down to that bare form when typing the
+  component label — same curation a human operator does when entering the menu in the
+  app. If unsure of the exact short form, cross-check row 1 of that day's `real/` workbook
+  (read-only, for naming — never for the gram values) rather than guessing.
+- Create one `MealTemplate` + `MealPlanItem` per category (`soup`, `main_course`,
+  `afternoon_snack`) for the `DailyMealPlan`, each `components` entry as
+  `{"label": <bare dish name>, "grams": <str>, "unit": "g"|"ml"}`. `base_weight_grams`
+  and `weight_label` come from `_base_weight_grams_from_components`/
+  `_weight_label_from_components` in `api/serializers_menu.py` — don't hand-compute them.
+  Diet variants and `breakfast_snack` are out of scope unless the day's facilities
+  actually order them.
 
 ## How to run — day comparison (has a `real/` workbook)
 
