@@ -231,6 +231,25 @@ def test_real_edupage_seed_updates_lunch_only_visible_meals(settings):
 
 
 @pytest.mark.django_db
+def test_real_edupage_seed_does_not_attach_rozmanita_school_after_merge(settings):
+    settings.DEBUG = False
+
+    management.call_command("init_reference_data")
+    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
+    management.call_command("seed_real_delivery_layout", "--allow-prod")
+    management.call_command("seed_merge_celky")
+    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
+
+    skolicka = Prevadzka.objects.get(nazov="MŠ Rozmanitá")
+    skola = Prevadzka.objects.get(nazov="Rozmanita Škola")
+
+    assert skolicka.celok == skola.celok
+    assert skolicka.edupage_connection is not None
+    assert "rozmanita.edupage.org" in skolicka.edupage_connection.mealsguest_url
+    assert skola.edupage_connection is None
+
+
+@pytest.mark.django_db
 def test_deploy_bootstrap_creates_edupage_scrape_tasks(settings):
     settings.DEBUG = False
 
