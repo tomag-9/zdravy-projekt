@@ -6,6 +6,7 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminCelokViewSet,
     AdminEdupageConnectionViewSet,
+    AdminEventLogViewSet,
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
@@ -52,6 +53,7 @@ router.register(
 )
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
+router.register(r"admin/event-logs", AdminEventLogViewSet, basename="admin-event-log")
 router.register(
     r"admin/delivery-blocks",
     DeliveryBlockViewSet,

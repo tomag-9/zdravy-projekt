@@ -10,8 +10,31 @@ from __future__ import annotations
 from django.db.models import Count, Prefetch, Q, QuerySet
 from rest_framework import permissions, viewsets
 
-from ..models import Celok, Prevadzka, ProfileCelokAccess, ProfilePrevadzkaAccess
+from ..models import (
+    Celok,
+    EventLog,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+)
 from ..serializers_facilities import AdminCelokSerializer, AdminPrevadzkaSerializer
+from ..services.event_log_service import build_model_diff, log_event
+
+
+def _log_settings_change(request, instance, changes, action: str) -> None:
+    if not changes:
+        return
+    label = str(instance)
+    log_event(
+        EventLog.EventType.SETTINGS_CHANGE,
+        actor=request.user,
+        summary=f"Admin {action} {instance._meta.verbose_name}: {label}.",
+        payload={
+            "model": instance._meta.label_lower,
+            "object_id": instance.pk,
+            "changes": changes,
+        },
+    )
 
 
 class AdminCelokViewSet(viewsets.ModelViewSet):
@@ -24,6 +47,16 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
     serializer_class = AdminCelokSerializer
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None
+
+    def perform_create(self, serializer):
+        changes = build_model_diff(None, serializer.validated_data)
+        instance = serializer.save()
+        _log_settings_change(self.request, instance, changes, "vytvoril")
+
+    def perform_update(self, serializer):
+        changes = build_model_diff(serializer.instance, serializer.validated_data)
+        instance = serializer.save()
+        _log_settings_change(self.request, instance, changes, "upravil")
 
     def get_queryset(self) -> QuerySet:
         prevadzka_accesses = ProfilePrevadzkaAccess.objects.select_related(
@@ -72,6 +105,18 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
     serializer_class = AdminPrevadzkaSerializer
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None
+
+    def perform_create(self, serializer):
+        changes = build_model_diff(None, serializer.validated_data)
+        instance = serializer.save()
+        _log_settings_change(self.request, instance, changes, "vytvoril")
+
+    def perform_update(self, serializer):
+        audited_data = dict(serializer.validated_data)
+        audited_data.pop("celok", None)
+        changes = build_model_diff(serializer.instance, audited_data)
+        instance = serializer.save()
+        _log_settings_change(self.request, instance, changes, "upravil")
 
     def get_queryset(self) -> QuerySet:
         return (
