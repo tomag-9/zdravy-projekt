@@ -236,7 +236,7 @@ def test_real_edupage_seed_does_not_attach_rozmanita_school_after_merge(settings
 
     management.call_command("init_reference_data")
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
-    management.call_command("seed_real_delivery_layout", "--allow-prod")
+    management.call_command("seed_real_delivery_layout")
     management.call_command("seed_merge_celky")
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 

@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -415,16 +414,13 @@ class Command(BaseCommand):
     help = "Seed real delivery routes and Excel-derived operations for local dev."
 
     def add_arguments(self, parser):
+        # Kept for backward-compatible invocation (deploy_bootstrap still
+        # passes it); no longer enforced. Purely idempotent get_or_create
+        # seeding, same as seed_merge_celky which never had this guard.
         parser.add_argument("--allow-prod", action="store_true")
 
     @transaction.atomic
     def handle(self, *args, **options):
-        if not settings.DEBUG and not options["allow_prod"]:
-            self.stderr.write(
-                self.style.ERROR("Refused to run in production. Pass --allow-prod.")
-            )
-            return
-
         for diet in Diet.objects.filter(name__in=DIET_COLORS):
             color = DIET_COLORS[diet.name]
             if diet.color != color:
