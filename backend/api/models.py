@@ -3,11 +3,53 @@ import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+class EventLog(models.Model):
+    class EventType(models.TextChoices):
+        ORDER_ADMIN_CREATE = "order_admin_create", "Admin vytvoril objednávku"
+        ORDER_ADMIN_UPDATE = "order_admin_update", "Admin upravil objednávku"
+        AUTO_ORDER_RUN = "auto_order_run", "Spustenie auto-objednávok"
+        PUSH_BROADCAST = "push_broadcast", "Odoslanie push notifikácie"
+        SETTINGS_CHANGE = "settings_change", "Zmena nastavení"
+
+    event_type = models.CharField(max_length=50, choices=EventType.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="event_logs",
+    )
+    actor_label = models.CharField(max_length=255, blank=True)
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="targeted_event_logs",
+    )
+    summary = models.CharField(max_length=255)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["event_type"]),
+            models.Index(fields=["actor"]),
+            models.Index(fields=["target_user"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_event_type_display()}: {self.summary}"
 
 
 class DailyOrder(models.Model):

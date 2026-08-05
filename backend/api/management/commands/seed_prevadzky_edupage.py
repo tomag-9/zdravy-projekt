@@ -50,16 +50,7 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Lúka", "Lúka"),
         ("Les", "Les"),
     ],
-    # Hárok1 vedie školu ako pod-riadok škôlky (`DOBRODRUŽSTVO Škola` za blokom
-    # `dobrodružstvo`), ale sú to dve prevádzky jedného celku. EduPage ich rozlišuje
-    # spoľahlivo: škôlkové skupiny majú prefix `MŠ`, školské sa volajú `1.st`, `2.st`
-    # a `Dospelý` — spoločný prefix nemajú, preto sú vymenované (oddeľovač je
-    # bodkočiarka, viď `Prevadzka.edupage_prefixes`). Overené proti živým dátam
-    # (17.7.2026): všetkých 14 skupín sadne, 0 nezaradených.
-    "dobrodružstvo": [
-        ("MŠ Dobrodružstvo", "MŠ"),
-        ("ZŠ Dobrodružstvo", "1.st; 2.st; Dospelý"),
-    ],
+    # Split starého „dobrodružstvo“ na „MŠ Dobrodružstvo“/„ZŠ Dobrodružstvo“ žije v seed_new_edupage_2026_08.py.
 }
 
 # Fakturačné koeficienty, ktoré MUSIA prežiť každý reseed prevádzok. Historicky žili

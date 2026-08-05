@@ -13,8 +13,9 @@ from ..edupage_scraper import (
     nest_order_data_by_category,
     prevadzky_without_match,
 )
-from ..models import DailyOrder, EdupageConnection
+from ..models import DailyOrder, EdupageConnection, EventLog
 from ..services.edupage_connection_service import edupage_operations
+from ..services.event_log_service import build_model_diff, log_event
 from ..utils import filter_order_data_for_prevadzka
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,39 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
     serializer_class = EdupageConnectionSerializer
     permission_classes = [permissions.IsAdminUser]
     pagination_class = None
+
+    AUDITED_FIELDS = {"api_identifier", "mealsguest_url", "is_active"}
+
+    def _audit_data(self, serializer):
+        return {
+            key: value
+            for key, value in serializer.validated_data.items()
+            if key in self.AUDITED_FIELDS
+        }
+
+    def _log_change(self, instance, changes, action):
+        if not changes:
+            return
+        log_event(
+            EventLog.EventType.SETTINGS_CHANGE,
+            actor=self.request.user,
+            summary=f"Admin {action} EduPage pripojenie: {instance.name}.",
+            payload={
+                "model": instance._meta.label_lower,
+                "object_id": instance.pk,
+                "changes": changes,
+            },
+        )
+
+    def perform_create(self, serializer):
+        changes = build_model_diff(None, self._audit_data(serializer))
+        instance = serializer.save()
+        self._log_change(instance, changes, "vytvoril")
+
+    def perform_update(self, serializer):
+        changes = build_model_diff(serializer.instance, self._audit_data(serializer))
+        instance = serializer.save()
+        self._log_change(instance, changes, "upravil")
 
     @action(detail=False, methods=["post"], url_path="scrape")
     def scrape(self, request: Request) -> Response:

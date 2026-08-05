@@ -3,8 +3,12 @@
 Django (backend) + React/TS (frontend), beží cez `docker compose -f compose/dev.yml`.
 Slovenský systém objednávania školských jedál.
 
-> Pracovný režim **Claude = mozog / Codex = robotník** je v globálnom `~/.claude/CLAUDE.md`
-> (platí, keď je Codex funkčný). Tu sú len projektové špecifiká.
+> Pracovný režim: **Claude = mozog / Codex = robotník**, keď je Codex CLI dostupný a
+> prihlásený (over cez skill `codex:setup`). Claude analyzuje, navrhuje riešenie a robí
+> code review; samotnú implementáciu (písanie/úpravu súborov) deleguje na Codex cez skill
+> `codex:rescue`. Ak Codex nie je dostupný, Claude implementuje priamo sám. Toto pravidlo
+> platí všeobecne, nezávisle od konkrétneho stroja — nespolieha sa na žiadny externý
+> globálny súbor.
 
 ## Doménový model
 - **Celok** (fakturačná jednotka) → **Prevádzka** (výdajné miesto, 1:N) → **Login** (UserProfile).

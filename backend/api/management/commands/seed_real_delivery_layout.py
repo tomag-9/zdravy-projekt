@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
-from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
@@ -27,6 +26,7 @@ class DeliverySeedRow:
     canonical_name: str = ""
     match_names: tuple[str, ...] = ()
     is_edupage: bool = False
+    login_name: str = ""
 
     @property
     def prevadzka_name(self) -> str:
@@ -111,13 +111,23 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "trasa 2 - 9:25 - Ivan/Heňo", "Nova Tulipa", address="Orgovánová 3, Kvetoslavov"
     ),
-    DeliverySeedRow("trasa 2 - 9:25 - Ivan/Heňo", "Škôlkáreň - Kvetoslavov"),
+    DeliverySeedRow(
+        "trasa 2 - 9:25 - Ivan/Heňo",
+        "Škôlkáreň - Kvetoslavov",
+        login_name="Škôlkáreň",
+    ),
     DeliverySeedRow("trasa 2 - 9:25 - Ivan/Heňo", "Hugáčik"),
+    DeliverySeedRow(
+        "trasa 2 - 9:25 - Ivan/Heňo",
+        "Hravou Formou bez raňajok",
+        address="Krátka 7, Dunajská Lužná",
+    ),
     DeliverySeedRow("trasa 2 - 9:25 - Ivan/Heňo", "DupiDupi"),
     DeliverySeedRow(
         "trasa 2 - 9:25 - Ivan/Heňo",
         "Motýlik a Včielka",
         address="Sadová 10, Dunajská Lužná",
+        login_name="Zvlášť!!! Motýlik a Včielka",
     ),
     DeliverySeedRow("trasa 2 - 9:25 - Ivan/Heňo", "pohodička 1"),
     DeliverySeedRow("trasa 2 - 9:25 - Ivan/Heňo", "pohodička 2"),
@@ -141,9 +151,14 @@ DELIVERY_ROWS = [
     DeliverySeedRow("TRASA 3 - Jaro", "BYSTRÁ JASLE", address="Žltá 13/A"),
     DeliverySeedRow("TRASA 3 - Jaro", "VČIELKA RUSOVCE"),
     DeliverySeedRow("TRASA 3 - Jaro", "EMŠ STREČNIANSKA 15"),
-    DeliverySeedRow("TRASA 3 - Jaro", "Do Sveta"),
+    DeliverySeedRow(
+        "TRASA 3 - Jaro",
+        "Do Sveta",
+        login_name="Do Sveta (nemajú raňajky)",
+    ),
     DeliverySeedRow("TRASA 3 - Jaro", "KIDSPARADISE", address="Vyšehradská 18, BA"),
     DeliverySeedRow("TRASA 3 - Jaro", "JPND", address="Žehrianska 6, BA"),
+    DeliverySeedRow("TRASA 3 - Jaro", "Korálky", address="Žehrianska 6, BA"),
     DeliverySeedRow(
         "TRASA 3 - Jaro", "MŠ Prameň", alias="Pramienok", address="Gercenova 10, BA"
     ),
@@ -174,6 +189,7 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "trasa 5 - RADKO - 10:00", "ZŠ Dobrodružstvo", alias="DOBRODRUŽSTVO Škola"
     ),
+    DeliverySeedRow("trasa 5 - RADKO - 10:00", "Koliba", address="Desiata ulica, BA"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "dragon kids 1"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "mozart", address="Hrebendova 9"),
     DeliverySeedRow(
@@ -271,7 +287,16 @@ DELIVERY_ROWS = [
         "Deutsche schule",
         address="Bárdošova 33, Bratislava",
     ),
-    DeliverySeedRow("TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Škôlkáreň - Mokrohájska"),
+    DeliverySeedRow(
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Little Big",
+        address="Ďumbierska 3G, BA",
+    ),
+    DeliverySeedRow(
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Škôlkáreň - Mokrohájska",
+        login_name="Škôlkáreň",
+    ),
     DeliverySeedRow(
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
         "Múdre Hranie Škôlka",
@@ -295,6 +320,12 @@ DELIVERY_ROWS = [
     ),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Zvlášť!!! Tábor VEVE 2"),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Tábor Balance"),
+    DeliverySeedRow(
+        "TRASA EXTRA 3 - DUŠAN - 9:45", "Veselý Úľ 1", address="Stalicova 2"
+    ),
+    DeliverySeedRow(
+        "TRASA EXTRA 3 - DUŠAN - 9:45", "Veselý Úľ 2", address="Stalicova 2"
+    ),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Šidielko"),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "tulipánik"),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "tučniačik"),
@@ -314,6 +345,10 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "TRASA 4 - MAJO - 10:00", "MŠ Felix Karlovská", alias="Felix", address="IUVENTA"
     ),
+    DeliverySeedRow(
+        "TRASA 4 - MAJO - 10:00",
+        "Simon Drgo MŠ Milana Marečka 20, DNV",
+    ),
     DeliverySeedRow("TRASA 4 - MAJO - 10:00", "MŠ Filipáneriho", alias="Filipa Nériho"),
     DeliverySeedRow("TRASA 4 - MAJO - 10:00", "MŠ Malokarpatké námestie 6"),
     DeliverySeedRow("TRASA 4 - MAJO - 10:00", "MŠ Heyrovského 4"),
@@ -329,6 +364,11 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Waldorf Kukučínova"
     ),
+    DeliverySeedRow("TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "ZŠ Malokarpatská"),
+    DeliverySeedRow(
+        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
+        "Malokarpatské námestie 2, Lamač",
+    ),
     DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
         "Zvlášť!!! Tábor Big Hug Gym",
@@ -337,9 +377,15 @@ DELIVERY_ROWS = [
     DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Zvlášť!!! Tábor Warrior"
     ),
+    DeliverySeedRow("TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Hodonínska 27"),
     DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
         "Zvlášť!!! Futbalový Tábor",
+        address="Športová 450, Šamorín",
+    ),
+    DeliverySeedRow(
+        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
+        "Športová 450, Šamorín",
         address="Športová 450, Šamorín",
     ),
     DeliverySeedRow(
@@ -348,9 +394,17 @@ DELIVERY_ROWS = [
         address="Steinov dvor 2, Bratislava",
     ),
     DeliverySeedRow(
+        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
+        "Steinov dvor 2, Bratislava",
+        address="Steinov dvor 2, Bratislava",
+    ),
+    DeliverySeedRow(
         "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Zvlášť!!! Vojenský Tábor"
     ),
-    DeliverySeedRow("TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "ZŠ Malokarpatská"),
+    DeliverySeedRow(
+        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
+        "Pozri dokument kvôli dennej adrese",
+    ),
 ]
 
 OBSOLETE_CELKY = ("MŠ Zdravé Bruško",)
@@ -360,16 +414,13 @@ class Command(BaseCommand):
     help = "Seed real delivery routes and Excel-derived operations for local dev."
 
     def add_arguments(self, parser):
+        # Kept for backward-compatible invocation (deploy_bootstrap still
+        # passes it); no longer enforced. Purely idempotent get_or_create
+        # seeding, same as seed_merge_celky which never had this guard.
         parser.add_argument("--allow-prod", action="store_true")
 
     @transaction.atomic
     def handle(self, *args, **options):
-        if not settings.DEBUG and not options["allow_prod"]:
-            self.stderr.write(
-                self.style.ERROR("Refused to run in production. Pass --allow-prod.")
-            )
-            return
-
         for diet in Diet.objects.filter(name__in=DIET_COLORS):
             color = DIET_COLORS[diet.name]
             if diet.color != color:

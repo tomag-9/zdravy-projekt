@@ -109,7 +109,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         logger.info(
             "apply_auto_orders: target_date %s is a weekend, skipping.", target_date
         )
-        return {"created": [], "skipped": 0}
+        return {"created": [], "skipped": 0, "date": str(target_date)}
 
     clients = list(User.objects.filter(is_staff=False, is_active=True))
     client_ids = [c.id for c in clients]

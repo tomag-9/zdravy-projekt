@@ -1,4 +1,5 @@
 import datetime
+from copy import deepcopy
 from typing import Optional
 
 from django.contrib.auth.models import User
@@ -13,9 +14,10 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ..exceptions import ClientOnlyError
-from ..models import DailyOrder
+from ..models import DailyOrder, EventLog
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
+from ..services.event_log_service import log_event
 from ..services.prevadzka_service import dostupne_prevadzky
 from ..throttles import OrderSubmitRateThrottle
 
@@ -129,10 +131,66 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 raise ValidationError(
                     {"user_id": "Cannot create orders for staff users."}
                 )
-            serializer.save(user=target_user)
+            order = serializer.save(user=target_user)
+            if order.pk is None:
+                return
+            changed_meals = [
+                meal
+                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+                if (order.data or {}).get(meal)
+            ]
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_CREATE,
+                actor=self.request.user,
+                target_user=target_user,
+                summary=(
+                    f"Admin vytvoril objednávku pre {target_user.email} "
+                    f"na {order.date}."
+                ),
+                payload={
+                    "order_id": order.pk,
+                    "date": str(order.date),
+                    "changed_meals": changed_meals,
+                    "meals": {
+                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
+                    },
+                },
+            )
             return
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer: DailyOrderSerializer) -> None:
+        previous_data = deepcopy(serializer.instance.data or {})
+        order = serializer.save()
+        target_user = order.user
+        if (
+            self.request.user.is_staff
+            and target_user is not None
+            and target_user.pk != self.request.user.pk
+        ):
+            changed_meals = [
+                meal
+                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+                if previous_data.get(meal, {}) != (order.data or {}).get(meal, {})
+            ]
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_UPDATE,
+                actor=self.request.user,
+                target_user=target_user,
+                summary=(
+                    f"Admin upravil objednávku pre {target_user.email} "
+                    f"na {order.date}."
+                ),
+                payload={
+                    "order_id": order.pk,
+                    "date": str(order.date),
+                    "changed_meals": changed_meals,
+                    "meals": {
+                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
+                    },
+                },
+            )
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request: Request, date: Optional[str] = None) -> Response:
@@ -217,6 +275,16 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
         from ..services import apply_auto_orders
 
         result = apply_auto_orders(target_date)
+        log_event(
+            EventLog.EventType.AUTO_ORDER_RUN,
+            actor=request.user,
+            summary=f"Admin spustil auto-objednávky na {result['date']}.",
+            payload={
+                "created_count": len(result["created"]),
+                "skipped_count": result["skipped"],
+                "date": result["date"],
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
