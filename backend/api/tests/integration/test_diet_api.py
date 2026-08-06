@@ -81,12 +81,46 @@ def test_menu_variant_map_uses_explicit_main_course_override(api_client):
 
 
 @pytest.mark.django_db
+def test_menu_variant_map_prefers_a_for_multiple_explicit_rows(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    vegetarian = Diet.objects.create(name="Vegetariánska")
+    meal_plan = DailyMealPlan.objects.create(date=datetime.date(2026, 8, 10))
+    template = MealTemplate.objects.create(
+        category=MealCategory.MAIN_COURSE,
+        name="Vegetariánsky obed",
+        base_weight_grams="250.00",
+        menu_variant="V",
+        diet=vegetarian,
+    )
+    MealPlanItem.objects.create(
+        meal_plan=meal_plan,
+        template=template,
+        category=MealCategory.MAIN_COURSE,
+        menu_variant="V",
+        diet=vegetarian,
+    )
+    MealPlanItem.objects.create(
+        meal_plan=meal_plan,
+        template=template,
+        category=MealCategory.MAIN_COURSE,
+        menu_variant="A",
+        diet=vegetarian,
+    )
+
+    response = api_client.get("/api/diets/menu-variant-map/?date=2026-08-10")
+
+    assert response.status_code == 200
+    assert response.json() == {vegetarian.name: "A"}
+
+
+@pytest.mark.django_db
 def test_menu_variant_map_requires_date(api_client):
     api_client.force_authenticate(user=AdminUserFactory())
 
     response = api_client.get("/api/diets/menu-variant-map/")
 
     assert response.status_code == 400
+    assert response.json() == {"error": "date query param required"}
 
 
 @pytest.mark.django_db
@@ -96,6 +130,13 @@ def test_menu_variant_map_rejects_invalid_date(api_client):
     response = api_client.get("/api/diets/menu-variant-map/?date=10-08-2026")
 
     assert response.status_code == 400
+    assert response.json() == {
+        "error": {
+            "code": "validation_error",
+            "message": "Validation failed.",
+            "details": {"date": "Invalid date format, use YYYY-MM-DD"},
+        }
+    }
 
 
 @pytest.mark.django_db

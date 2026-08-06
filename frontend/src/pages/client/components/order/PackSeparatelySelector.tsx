@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
+import DietVariantHint from './DietVariantHint';
 import NumericCountInput from './NumericCountInput';
 
 // 'fullDay' je celodenná objednávka — drží dáta mimo currentOrder, ale UI je rovnaké.
@@ -77,11 +78,7 @@ const PackSeparatelySelector = ({
                                         <div>
                                             <span className="zp-diet-label">
                                                 {item.category} · {item.kind === 'menus' ? `Menu ${item.keyName}` : item.keyName}
-                                                {item.kind === 'diets' && item.menuVariant && (
-                                                    <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>
-                                                        (pripravuje sa ako Menu {item.menuVariant})
-                                                    </span>
-                                                )}
+                                                <DietVariantHint kind={item.kind} menuVariant={item.menuVariant} />
                                             </span>
                                             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
                                                 Objednané: {item.orderedCount}

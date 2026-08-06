@@ -325,8 +325,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 logger.error("Failed to fetch diet menu variant map", e);
             }
         };
-        if (user) fetchDietMenuVariantMap();
-    }, [selectedDate, apiFetch, user]);
+        if (user && packSeparatelyEnabled) fetchDietMenuVariantMap();
+    }, [selectedDate, apiFetch, user, packSeparatelyEnabled]);
 
     useEffect(() => {
         const fetchMealPlanAvailability = async () => {
