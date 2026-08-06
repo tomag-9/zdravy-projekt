@@ -9,6 +9,7 @@ export type PackSeparatelyItem = {
   count: number;
   menuVariant?: string;
   linkedDietKey?: string;
+  linkedMenuKey?: string;
   linkedRow?: "merged" | "remainder";
 };
 
@@ -36,26 +37,40 @@ export const getPackSeparatelyUpdates = (
   item: PackSeparatelyItem,
   count: number,
 ): PackSeparatelyUpdate[] => {
-  if (!item.linkedDietKey || !item.linkedRow) {
+  const linkedMenuKey = item.linkedMenuKey || (item.kind === "menus" ? item.keyName : undefined);
+  const linkedDietKey = item.linkedDietKey || (item.kind === "diets" ? item.keyName : undefined);
+  if (!linkedMenuKey || !linkedDietKey || !item.linkedRow) {
     return [{ kind: item.kind, key: item.keyName, count }];
   }
 
-  const counterpartCount = currentItems.find((candidate) =>
-    candidate.category === item.category
-    && candidate.kind === "menus"
-    && candidate.keyName === item.keyName
-    && candidate.linkedDietKey === item.linkedDietKey
-    && candidate.linkedRow !== item.linkedRow
-  )?.count || 0;
+  const counterpart = currentItems.find((candidate) => {
+    const candidateMenuKey = candidate.linkedMenuKey
+      || (candidate.kind === "menus" ? candidate.keyName : undefined);
+    const candidateDietKey = candidate.linkedDietKey
+      || (candidate.kind === "diets" ? candidate.keyName : undefined);
+    return candidate.category === item.category
+      && candidateMenuKey === linkedMenuKey
+      && candidateDietKey === linkedDietKey
+      && candidate.linkedRow !== item.linkedRow;
+  });
+  const counterpartCount = counterpart?.count || 0;
 
   if (item.linkedRow === "merged") {
     return [
-      { kind: "menus", key: item.keyName, count: count + counterpartCount },
-      { kind: "diets", key: item.linkedDietKey, count },
+      {
+        kind: "menus",
+        key: linkedMenuKey,
+        count: count + (counterpart?.kind === "menus" ? counterpartCount : 0),
+      },
+      {
+        kind: "diets",
+        key: linkedDietKey,
+        count: count + (counterpart?.kind === "diets" ? counterpartCount : 0),
+      },
     ];
   }
 
-  return [{ kind: "menus", key: item.keyName, count: counterpartCount + count }];
+  return [{ kind: item.kind, key: item.keyName, count: counterpartCount + count }];
 };
 
 export const buildPackSeparatelyItems = (
@@ -93,7 +108,12 @@ export const buildPackSeparatelyItems = (
         const [dietKey, dietOrderedCount] = linkedDiet;
         matchedDietKeys.add(dietKey);
         const mergedOrderedCount = Math.min(menuOrderedCount, dietOrderedCount);
-        const mergedCount = Math.min(dietPackCounts[dietKey] || 0, mergedOrderedCount);
+        const menuRemainderCount = menuOrderedCount - mergedOrderedCount;
+        const dietRemainderCount = dietOrderedCount - mergedOrderedCount;
+        const mergedStoredCount = dietRemainderCount > 0
+          ? menuPackCounts[menuKey] || 0
+          : dietPackCounts[dietKey] || 0;
+        const mergedCount = Math.min(mergedStoredCount, mergedOrderedCount);
         const items: PackSeparatelyItem[] = [{
           category,
           kind: "menus",
@@ -104,7 +124,6 @@ export const buildPackSeparatelyItems = (
           count: mergedCount,
         }];
 
-        const menuRemainderCount = menuOrderedCount - mergedOrderedCount;
         if (menuRemainderCount > 0) {
           const remainderCount = Math.min(
             Math.max((menuPackCounts[menuKey] || 0) - mergedCount, 0),
@@ -121,14 +140,20 @@ export const buildPackSeparatelyItems = (
           });
         }
 
-        const dietRemainderCount = dietOrderedCount - mergedOrderedCount;
         if (dietRemainderCount > 0) {
+          const remainderCount = Math.min(
+            Math.max((dietPackCounts[dietKey] || 0) - mergedCount, 0),
+            dietRemainderCount,
+          );
           dietRemainders.push({
             category,
             kind: "diets",
             keyName: dietKey,
+            linkedMenuKey: menuKey,
+            linkedDietKey: dietKey,
+            linkedRow: "remainder",
             orderedCount: dietRemainderCount,
-            count: Math.min(dietPackCounts[dietKey] || 0, dietRemainderCount),
+            count: remainderCount,
             menuVariant: dietMenuVariantMap[dietKey],
           });
         }

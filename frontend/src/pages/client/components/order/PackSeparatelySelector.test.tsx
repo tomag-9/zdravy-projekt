@@ -90,4 +90,61 @@ describe("PackSeparatelySelector", () => {
       expect(getCount(getRemainderRow())).toHaveValue("1");
     });
   });
+
+  it("keeps merged and diet remainder counters independent while sharing the diet total", async () => {
+    const category = "Škôlka";
+
+    const Harness = () => {
+      const [packSeparately, setPackSeparately] = useState({
+        menus: { A: 0 },
+        diets: { "Veggie/No Fish": 0 },
+      });
+      const items = buildPackSeparatelyItems({
+        [category]: {
+          menuCounts: { A: 2 },
+          diets: { "Veggie/No Fish": 5 },
+          packSeparately,
+        },
+      }, [category], { "Veggie/No Fish": "A" });
+
+      return (
+        <PackSeparatelySelector
+          isOpen
+          onClose={vi.fn()}
+          sections={[{ meal: "lunch", mealLabel: "Obed", items }]}
+          onUpdatePackSeparately={(_meal, _category, kind, key, count) => {
+            setPackSeparately((current) => ({
+              ...current,
+              [kind]: { ...current[kind], [key]: count },
+            }));
+          }}
+        />
+      );
+    };
+
+    render(<Harness />);
+
+    const getMergedRow = () => screen.getByText(
+      `${category} · Menu A (Veggie/No Fish)`,
+    ).closest(".zp-diet-row") as HTMLElement;
+    const getRemainderRow = () => screen.getByText(
+      `${category} · Veggie/No Fish`,
+      { exact: false },
+    ).closest(".zp-diet-row") as HTMLElement;
+    const getCount = (row: HTMLElement) => within(row).getByRole("textbox");
+
+    fireEvent.click(within(getMergedRow()).getByRole("button", { name: "+" }));
+
+    await waitFor(() => {
+      expect(getCount(getMergedRow())).toHaveValue("1");
+      expect(getCount(getRemainderRow())).toHaveValue("0");
+    });
+
+    fireEvent.click(within(getRemainderRow()).getByRole("button", { name: "+" }));
+
+    await waitFor(() => {
+      expect(getCount(getMergedRow())).toHaveValue("1");
+      expect(getCount(getRemainderRow())).toHaveValue("1");
+    });
+  });
 });
