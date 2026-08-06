@@ -313,6 +313,20 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
     // Meal plan availability: mealKey → Set of available menu_variants; null = no plan = no restriction
     const [mealPlanAvailability, setMealPlanAvailability] = useState<Record<string, Set<string>> | null>(null);
+    const [dietMenuVariantMap, setDietMenuVariantMap] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const fetchDietMenuVariantMap = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/diets/menu-variant-map/?date=${selectedDate}`);
+                if (!res.ok) return;
+                setDietMenuVariantMap(await res.json() as Record<string, string>);
+            } catch (e) {
+                logger.error("Failed to fetch diet menu variant map", e);
+            }
+        };
+        if (user) fetchDietMenuVariantMap();
+    }, [selectedDate, apiFetch, user]);
 
     useEffect(() => {
         const fetchMealPlanAvailability = async () => {
@@ -825,5 +839,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         holidays,
         mealPlanAvailability,
         packSeparatelyEnabled,
+        dietMenuVariantMap,
     };
 };

@@ -62,6 +62,7 @@ const OrderPage = () => {
     setChosenPrevadzka,
     activePrevadzka,
     packSeparatelyEnabled,
+    dietMenuVariantMap,
   } = useApp();
 
   const getOccupiedMenus = (mealKey: string): Set<string> => {
@@ -234,6 +235,7 @@ const OrderPage = () => {
           keyName: dietKey,
           orderedCount,
           count: categoryData.packSeparately?.diets?.[dietKey] || 0,
+          menuVariant: dietMenuVariantMap[dietKey],
         }));
 
       return [...menuItems, ...dietItems];

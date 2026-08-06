@@ -1,5 +1,10 @@
+import datetime
+
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.status import HTTP_400_BAD_REQUEST
 
 from ..cache_service import (
     DIET_LIST_TIMEOUT,
@@ -9,6 +14,7 @@ from ..cache_service import (
 )
 from ..models import Diet
 from ..serializers_user import DietSerializer
+from ..services.meal_plan_service import resolve_diet_menu_variants
 
 
 @extend_schema_view(
@@ -18,6 +24,7 @@ from ..serializers_user import DietSerializer
     update=extend_schema(tags=["diets"]),
     partial_update=extend_schema(tags=["diets"]),
     destroy=extend_schema(tags=["diets"]),
+    menu_variant_map=extend_schema(tags=["diets"]),
 )
 class DietViewSet(viewsets.ModelViewSet):
     """
@@ -36,6 +43,24 @@ class DietViewSet(viewsets.ModelViewSet):
         if self.action in ["create", "update", "partial_update", "destroy"]:
             return [permissions.IsAdminUser()]
         return super().get_permissions()
+
+    @action(detail=False, methods=["get"], url_path="menu-variant-map")
+    def menu_variant_map(self, request):
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"detail": "The date query parameter is required."},
+                status=HTTP_400_BAD_REQUEST,
+            )
+        try:
+            target_date = datetime.date.fromisoformat(date_str)
+        except ValueError:
+            return Response(
+                {"detail": "The date query parameter must use YYYY-MM-DD format."},
+                status=HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(resolve_diet_menu_variants(target_date))
 
     def list(self, request, *args, **kwargs):
         """

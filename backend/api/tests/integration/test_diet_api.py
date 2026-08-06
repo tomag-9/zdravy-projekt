@@ -1,6 +1,8 @@
+import datetime
+
 import pytest
 
-from api.models import Diet
+from api.models import DailyMealPlan, Diet, MealCategory, MealPlanItem, MealTemplate
 from api.tests.factories import AdminUserFactory
 
 
@@ -37,3 +39,79 @@ def test_diet_model_ordering_is_sort_order_then_name():
         "Zulu",
         "Alpha",
     ]
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_defaults_active_diets_to_a_without_meal_plan(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    Diet.objects.create(name="Bezlepková")
+    Diet.objects.create(name="Vegetariánska")
+
+    response = api_client.get("/api/diets/menu-variant-map/?date=2026-08-10")
+
+    assert response.status_code == 200
+    assert response.json() == {"Bezlepková": "A", "Vegetariánska": "A"}
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_uses_explicit_main_course_override(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    gluten_free = Diet.objects.create(name="Bezlepková")
+    vegetarian = Diet.objects.create(name="Vegetariánska")
+    meal_plan = DailyMealPlan.objects.create(date=datetime.date(2026, 8, 10))
+    template = MealTemplate.objects.create(
+        category=MealCategory.MAIN_COURSE,
+        name="Vegetariánsky obed",
+        base_weight_grams="250.00",
+        menu_variant="V",
+        diet=vegetarian,
+    )
+    MealPlanItem.objects.create(
+        meal_plan=meal_plan,
+        template=template,
+        category=MealCategory.MAIN_COURSE,
+        menu_variant="V",
+        diet=vegetarian,
+    )
+
+    response = api_client.get("/api/diets/menu-variant-map/?date=2026-08-10")
+
+    assert response.status_code == 200
+    assert response.json() == {gluten_free.name: "A", vegetarian.name: "V"}
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_requires_date(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+
+    response = api_client.get("/api/diets/menu-variant-map/")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_rejects_invalid_date(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+
+    response = api_client.get("/api/diets/menu-variant-map/?date=10-08-2026")
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_excludes_inactive_diets(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    Diet.objects.create(name="Aktívna")
+    Diet.objects.create(name="Neaktívna", is_active=False)
+
+    response = api_client.get("/api/diets/menu-variant-map/?date=2026-08-10")
+
+    assert response.status_code == 200
+    assert response.json() == {"Aktívna": "A"}
+
+
+@pytest.mark.django_db
+def test_menu_variant_map_requires_authentication(api_client):
+    response = api_client.get("/api/diets/menu-variant-map/?date=2026-08-10")
+
+    assert response.status_code in (401, 403)

@@ -11,6 +11,7 @@ from django.db import transaction
 
 from ..models import (
     DailyMealPlan,
+    Diet,
     EnrolledCount,
     MealCategory,
     MealPlanItem,
@@ -23,6 +24,32 @@ from ..utils import (
     _meal_rule_key,
     order_row_label,
 )
+
+
+def resolve_diet_menu_variants(date: datetime.date) -> dict[str, str]:
+    """Resolve each active diet's main-course menu variant for a given day.
+
+    Explicit diet-specific meal-plan variants override the default Menu A. This
+    is a read-only projection of kitchen-planning data and does not affect order
+    counts, billing, or gramage calculations.
+    """
+    meal_plan = (
+        DailyMealPlan.objects.filter(date=date).prefetch_related("items__diet").first()
+    )
+    overrides: dict[int, str] = {}
+    if meal_plan:
+        overrides = {
+            item.diet_id: item.menu_variant
+            for item in meal_plan.items.all()
+            if item.category == MealCategory.MAIN_COURSE
+            and item.diet_id
+            and item.menu_variant
+        }
+
+    return {
+        diet.name: overrides.get(diet.id, "A")
+        for diet in Diet.objects.filter(is_active=True)
+    }
 
 
 def _normalize_portion_name(value: object) -> str:

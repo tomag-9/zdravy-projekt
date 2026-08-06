@@ -12,6 +12,7 @@ interface PackSeparatelySectionItem {
     keyName: string;
     orderedCount: number;
     count: number;
+    menuVariant?: string;
 }
 
 interface PackSeparatelySection {
@@ -76,6 +77,11 @@ const PackSeparatelySelector = ({
                                         <div>
                                             <span className="zp-diet-label">
                                                 {item.category} · {item.kind === 'menus' ? `Menu ${item.keyName}` : item.keyName}
+                                                {item.kind === 'diets' && item.menuVariant && (
+                                                    <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>
+                                                        (pripravuje sa ako Menu {item.menuVariant})
+                                                    </span>
+                                                )}
                                             </span>
                                             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
                                                 Objednané: {item.orderedCount}
