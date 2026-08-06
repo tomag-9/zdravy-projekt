@@ -103,6 +103,90 @@ export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ c
     <input className={`zpa-input ${className}`.trim()} {...rest} />
 );
 
+const DIET_COLORS = [
+    '#F87171', '#FB923C', '#FDE68A', '#86EFAC', '#5EEAD4', '#93C5FD', '#C4B5FD', '#F9A8D4',
+    '#DC2626', '#EA580C', '#F59E0B', '#16A34A', '#0D9488', '#2563EB', '#7C3AED', '#DB2777',
+];
+
+export const ColorSwatchPicker: React.FC<{
+    value: string;
+    onChange: (value: string) => void;
+    ariaLabel: string;
+}> = ({ value, onChange, ariaLabel }) => {
+    const [showCustomColor, setShowCustomColor] = React.useState(false);
+    const [focusedColor, setFocusedColor] = React.useState<string | null>(null);
+
+    return (
+        <div>
+            <div
+                role="group"
+                aria-label={ariaLabel}
+                style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 28px)', gap: 8 }}
+            >
+                {DIET_COLORS.map((color) => {
+                    const selected = value.toUpperCase() === color;
+                    const focused = focusedColor === color;
+
+                    return (
+                        <button
+                            key={color}
+                            type="button"
+                            aria-label={`${ariaLabel}: ${color}`}
+                            aria-pressed={selected}
+                            onClick={() => onChange(color)}
+                            onFocus={() => setFocusedColor(color)}
+                            onBlur={() => setFocusedColor(null)}
+                            style={{
+                                width: 28,
+                                height: 28,
+                                padding: 0,
+                                border: '2px solid white',
+                                borderRadius: 999,
+                                background: color,
+                                boxShadow: focused
+                                    ? '0 0 0 3px var(--green-700)'
+                                    : selected
+                                      ? '0 0 0 3px var(--green-900)'
+                                      : '0 0 0 1px rgba(39, 52, 34, 0.22)',
+                                cursor: 'pointer',
+                                outline: 'none',
+                            }}
+                        />
+                    );
+                })}
+            </div>
+            <button
+                type="button"
+                aria-expanded={showCustomColor}
+                onClick={() => setShowCustomColor((shown) => !shown)}
+                style={{
+                    display: 'block',
+                    margin: '10px 0 0',
+                    padding: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--green-700)',
+                    font: 'inherit',
+                    fontSize: 12,
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                }}
+            >
+                Vlastná farba
+            </button>
+            {showCustomColor && (
+                <Input
+                    type="color"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    aria-label={ariaLabel}
+                    style={{ width: 64, marginTop: 8, padding: 4 }}
+                />
+            )}
+        </div>
+    );
+};
+
 export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({
     className = '',
     children,

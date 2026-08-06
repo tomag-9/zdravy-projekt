@@ -3,7 +3,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
-import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty } from "./ui";
+import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty, ColorSwatchPicker } from "./ui";
 
 interface Diet {
   id: number;
@@ -185,12 +185,10 @@ const DietManager: React.FC = () => {
               />
             </Field>
             <Field label="Farba">
-              <Input
-                type="color"
+              <ColorSwatchPicker
                 value={newDietColor}
-                onChange={(e) => setNewDietColor(e.target.value)}
-                aria-label="Farba novej diéty"
-                style={{ width: 64, padding: 4 }}
+                onChange={setNewDietColor}
+                ariaLabel="Farba novej diéty"
               />
             </Field>
             <Button type="submit" disabled={!newDietName.trim()}>
@@ -329,12 +327,10 @@ const DietManager: React.FC = () => {
             />
           </Field>
           <Field label="Farba">
-            <Input
-              type="color"
+            <ColorSwatchPicker
               value={renameModal.color}
-              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, color: e.target.value } : prev))}
-              aria-label={`Farba diéty ${renameModal.currentName}`}
-              style={{ width: 64, padding: 4 }}
+              onChange={(color) => setRenameModal((prev) => (prev ? { ...prev, color } : prev))}
+              ariaLabel={`Farba diéty ${renameModal.currentName}`}
             />
           </Field>
         </Modal>
