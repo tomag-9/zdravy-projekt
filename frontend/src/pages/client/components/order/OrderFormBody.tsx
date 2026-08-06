@@ -200,6 +200,7 @@ const OrderFormBody = ({
       {packSeparatelyEnabled && (
         <MealCard
           title="Zabaliť zvlášť"
+          className="zp-meal--muted"
           icon={PackagePlus}
           isActive={activePackSeparatelyItems.length > 0}
           onToggle={() => onOpenPackSeparately()}
