@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import OrderPage from "./OrderPage";
+import { buildPackSeparatelyItems } from "../components/order/packSeparately";
 import { AppProvider } from "../context/AppContext";
 import { MemoryRouter } from "react-router-dom";
 import OrderService from "../services/OrderService";
@@ -91,6 +92,76 @@ vi.mock("../services/OrderService", async (importOriginal) => {
 // Use local date (not UTC) to match what useOrder's selectedDate key uses.
 const localDateStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+describe("buildPackSeparatelyItems", () => {
+  const category = "Škôlka";
+  const build = (
+    menuCount: number,
+    diets: Record<string, number>,
+    dietMenuVariantMap: Record<string, string>,
+  ) => buildPackSeparatelyItems({
+    [category]: {
+      menuCounts: { A: menuCount },
+      diets,
+      packSeparately: { menus: {}, diets: {} },
+    },
+  }, [category], dietMenuVariantMap);
+
+  it("fully merges equal linked menu and diet counts", () => {
+    expect(build(2, { "Veggie/No Fish": 2 }, { "Veggie/No Fish": "A" })).toEqual([{
+      category,
+      kind: "menus",
+      keyName: "A",
+      linkedDietKey: "Veggie/No Fish",
+      linkedRow: "merged",
+      orderedCount: 2,
+      count: 0,
+    }]);
+  });
+
+  it("splits a linked menu into the overlapping portion and plain remainder", () => {
+    expect(build(5, { "Veggie/No Fish": 2 }, { "Veggie/No Fish": "A" })).toEqual([
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        linkedDietKey: "Veggie/No Fish",
+        linkedRow: "merged",
+        orderedCount: 2,
+        count: 0,
+      },
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        linkedDietKey: "Veggie/No Fish",
+        linkedRow: "remainder",
+        orderedCount: 3,
+        count: 0,
+      },
+    ]);
+  });
+
+  it("leaves an unlinked diet as its own row", () => {
+    expect(build(2, { "Špeciálna": 1 }, { "Veggie/No Fish": "A" })).toEqual([
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        orderedCount: 2,
+        count: 0,
+      },
+      {
+        category,
+        kind: "diets",
+        keyName: "Špeciálna",
+        orderedCount: 1,
+        count: 0,
+        menuVariant: undefined,
+      },
+    ]);
+  });
+});
 
 describe("OrderPage Logic & Triggers", () => {
   // Helper to interact with real localStorage in tests

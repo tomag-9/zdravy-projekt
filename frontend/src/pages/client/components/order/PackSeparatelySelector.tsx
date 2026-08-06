@@ -1,26 +1,17 @@
 import { createPortal } from 'react-dom';
+import { useRef } from 'react';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
 import DietVariantHint from './DietVariantHint';
 import NumericCountInput from './NumericCountInput';
+import {
+    getPackSeparatelyItemLabel,
+    getPackSeparatelyUpdates,
+    type PackSeparatelySection,
+} from './packSeparately';
 
 // 'fullDay' je celodenná objednávka — drží dáta mimo currentOrder, ale UI je rovnaké.
 type MealKey = 'breakfast' | 'lunch' | 'olovrant' | 'fullDay';
-
-interface PackSeparatelySectionItem {
-    category: string;
-    kind: 'menus' | 'diets';
-    keyName: string;
-    orderedCount: number;
-    count: number;
-    menuVariant?: string;
-}
-
-interface PackSeparatelySection {
-    meal: MealKey;
-    mealLabel: string;
-    items: PackSeparatelySectionItem[];
-}
 
 interface PackSeparatelySelectorProps {
     isOpen: boolean;
@@ -42,7 +33,28 @@ const PackSeparatelySelector = ({
     onUpdatePackSeparately
 }: PackSeparatelySelectorProps) => {
     useScrollLock(isOpen);
+    const sectionsRef = useRef(sections);
+    sectionsRef.current = sections;
     if (!isOpen) return null;
+
+    const updateItem = (
+        section: PackSeparatelySection,
+        item: PackSeparatelySection['items'][number],
+        count: number,
+    ) => {
+        const currentItems = sectionsRef.current.find(
+            (currentSection) => currentSection.meal === section.meal,
+        )?.items || section.items;
+        getPackSeparatelyUpdates(currentItems, item, count).forEach((update) => {
+            onUpdatePackSeparately(
+                section.meal,
+                item.category,
+                update.kind,
+                update.key,
+                update.count,
+            );
+        });
+    };
 
     return createPortal(
         <div className="zp-sheet-scrim" onClick={onClose}>
@@ -72,12 +84,12 @@ const PackSeparatelySelector = ({
                                 )}
                                 {section.items.map((item) => (
                                     <div
-                                        key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}`}
+                                        key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}-${item.linkedRow || 'plain'}`}
                                         className={`zp-diet-row${item.count > 0 ? ' active' : ''}`}
                                     >
                                         <div>
                                             <span className="zp-diet-label">
-                                                {item.category} · {item.kind === 'menus' ? `Menu ${item.keyName}` : item.keyName}
+                                                {item.category} · {getPackSeparatelyItemLabel(item)}
                                                 <DietVariantHint kind={item.kind} menuVariant={item.menuVariant} />
                                             </span>
                                             <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
@@ -89,7 +101,7 @@ const PackSeparatelySelector = ({
                                                 disabled={item.count <= 0}
                                                 aria-label="−"
                                                 onClick={() =>
-                                                    onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count - 1)
+                                                    updateItem(section, item, item.count - 1)
                                                 }
                                             >
                                                 <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
@@ -97,7 +109,7 @@ const PackSeparatelySelector = ({
                                             <NumericCountInput
                                                 value={item.count}
                                                 onCommit={(value) =>
-                                                    onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, value)
+                                                    updateItem(section, item, value)
                                                 }
                                                 disabled={false}
                                                 ariaLabel={`Počet balení zvlášť pre ${item.keyName}`}
@@ -107,7 +119,7 @@ const PackSeparatelySelector = ({
                                                 disabled={item.count >= item.orderedCount}
                                                 aria-label="+"
                                                 onClick={() =>
-                                                    onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count + 1)
+                                                    updateItem(section, item, item.count + 1)
                                                 }
                                             >
                                                 <Plus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
