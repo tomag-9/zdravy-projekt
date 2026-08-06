@@ -235,6 +235,7 @@ const OrderPage = () => {
           keyName: dietKey,
           orderedCount,
           count: categoryData.packSeparately?.diets?.[dietKey] || 0,
+          // Keyed by current diet name; a renamed diet's hint silently disappears on older orders — acceptable, cosmetic only.
           menuVariant: dietMenuVariantMap[dietKey],
         }));
 

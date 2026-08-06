@@ -86,8 +86,9 @@ export const Field: React.FC<{
     req?: boolean;
     hint?: React.ReactNode;
     children: React.ReactNode;
-}> = ({ label, req, hint, children }) => (
-    <label className="zpa-field">
+    as?: 'label' | 'div';
+}> = ({ label, req, hint, children, as: Component = 'label' }) => (
+    <Component className="zpa-field">
         {label && (
             <span className="zpa-label">
                 {label}
@@ -96,7 +97,7 @@ export const Field: React.FC<{
             </span>
         )}
         {children}
-    </label>
+    </Component>
 );
 
 export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ className = '', ...rest }) => (
@@ -113,7 +114,9 @@ export const ColorSwatchPicker: React.FC<{
     onChange: (value: string) => void;
     ariaLabel: string;
 }> = ({ value, onChange, ariaLabel }) => {
-    const [showCustomColor, setShowCustomColor] = React.useState(false);
+    const [showCustomColor, setShowCustomColor] = React.useState(
+        () => !!value && !DIET_COLORS.includes(value.toUpperCase())
+    );
     const [focusedColor, setFocusedColor] = React.useState<string | null>(null);
 
     return (

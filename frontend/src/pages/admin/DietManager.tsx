@@ -184,7 +184,7 @@ const DietManager: React.FC = () => {
                 onChange={(e) => setNewDietSortOrder(Number(e.target.value) || 0)}
               />
             </Field>
-            <Field label="Farba">
+            <Field label="Farba" as="div">
               <ColorSwatchPicker
                 value={newDietColor}
                 onChange={setNewDietColor}
@@ -326,7 +326,7 @@ const DietManager: React.FC = () => {
               rows={4}
             />
           </Field>
-          <Field label="Farba">
+          <Field label="Farba" as="div">
             <ColorSwatchPicker
               value={renameModal.color}
               onChange={(color) => setRenameModal((prev) => (prev ? { ...prev, color } : prev))}

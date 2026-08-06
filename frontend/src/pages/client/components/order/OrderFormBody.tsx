@@ -2,6 +2,7 @@ import type { ComponentType, CSSProperties, ReactNode } from "react";
 import { CalendarDays, Minus, PackagePlus, Plus, Trash2 } from "lucide-react";
 import type { DailyOrder, MealData } from "../../services/OrderService";
 import CategoryRow from "./CategoryRow";
+import DietVariantHint from "./DietVariantHint";
 import MealCard from "./MealCard";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
@@ -235,11 +236,7 @@ const OrderFormBody = ({
                       <div>
                         <span className="zp-diet-label">
                           {item.category} · {item.kind === "menus" ? `Menu ${item.keyName}` : item.keyName}
-                          {item.kind === "diets" && item.menuVariant && (
-                            <span style={{ fontSize: 11, opacity: 0.6, marginLeft: 4 }}>
-                              (pripravuje sa ako Menu {item.menuVariant})
-                            </span>
-                          )}
+                          <DietVariantHint kind={item.kind} menuVariant={item.menuVariant} />
                         </span>
                         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
                           Limit objednávky: {item.orderedCount}
