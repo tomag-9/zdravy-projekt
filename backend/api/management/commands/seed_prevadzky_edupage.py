@@ -94,6 +94,18 @@ class Command(BaseCommand):
                 {},
             )
 
+            # EduPage pripojenie historicky visí na prevádzke, ktorú split nižšie
+            # deaktivuje. Aktívne sub-prevádzky ho musia zdediť, inak ich scraper
+            # pre dané pripojenie vôbec nenájde a celý celok ticho preskočí.
+            zdedene_pripojenie = next(
+                (
+                    p.edupage_connection
+                    for p in Prevadzka.objects.filter(celok=celok)
+                    if p.edupage_connection_id
+                ),
+                None,
+            )
+
             for sort_order, (nazov, match) in enumerate(prevadzky, start=1):
                 obj, created = Prevadzka.objects.update_or_create(
                     celok=celok,
@@ -105,6 +117,7 @@ class Command(BaseCommand):
                         "visible_menus": DEFAULT_VISIBLE_MENUS,
                         "visible_meals": DEFAULT_VISIBLE_MEALS,
                         "billing_portion_coefficients": zdedeny_koeficient,
+                        "edupage_connection": zdedene_pripojenie,
                     },
                 )
                 if not dry_run:
