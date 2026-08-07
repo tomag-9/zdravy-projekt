@@ -119,7 +119,7 @@ def clear_global_settings_cache() -> None:
 
 
 def clear_diet_list_cache() -> None:
-    """Clear the Diet list cache (all paginated variants)."""
+    """Clear the Diet list cache, including keys from older paginated releases."""
     base_key = get_diet_list_cache_key()
 
     # django-redis supports wildcard invalidation via delete_pattern.
