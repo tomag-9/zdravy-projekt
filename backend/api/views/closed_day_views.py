@@ -4,14 +4,17 @@ import datetime
 
 from django.db import IntegrityError, transaction
 from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from api.exceptions import (
     DayAlreadyClosedError,
+    DayNotClosedError,
     InvalidDateFormatError,
     MissingRequiredFieldError,
 )
-from api.models import ClosedDay
+from api.models import ClosedDay, EventLog
+from api.services.event_log_service import log_event
 
 
 def _parse_date(value) -> datetime.date:
@@ -37,7 +40,7 @@ def _payload(target_date: datetime.date, closed_day: ClosedDay | None) -> dict:
 
 
 class ClosedDayViewSet(viewsets.ViewSet):
-    """Read and create global date locks; unlocking is intentionally unsupported."""
+    """Read, create, and remove global date locks."""
 
     permission_classes = [permissions.IsAdminUser]
 
@@ -57,6 +60,16 @@ class ClosedDayViewSet(viewsets.ViewSet):
                     date=target_date,
                     closed_by=request.user,
                 )
+                log_event(
+                    EventLog.EventType.SETTINGS_CHANGE,
+                    actor=request.user,
+                    summary=f"Admin uzavrel objednávky na deň {target_date}.",
+                    payload={
+                        "model": ClosedDay._meta.label_lower,
+                        "date": target_date,
+                        "changes": {"is_closed": {"from": False, "to": True}},
+                    },
+                )
         except IntegrityError as exc:
             raise DayAlreadyClosedError() from exc
 
@@ -64,3 +77,26 @@ class ClosedDayViewSet(viewsets.ViewSet):
             _payload(target_date, closed_day),
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=["delete"], url_path="unlock")
+    def unlock(self, request):
+        target_date = _parse_date(request.data.get("date"))
+        with transaction.atomic():
+            closed_day = (
+                ClosedDay.objects.select_for_update().filter(date=target_date).first()
+            )
+            if closed_day is None:
+                raise DayNotClosedError()
+
+            closed_day.delete()
+            log_event(
+                EventLog.EventType.SETTINGS_CHANGE,
+                actor=request.user,
+                summary=f"Admin odomkol objednávky na deň {target_date}.",
+                payload={
+                    "model": ClosedDay._meta.label_lower,
+                    "date": target_date,
+                    "changes": {"is_closed": {"from": True, "to": False}},
+                },
+            )
+        return Response(_payload(target_date, None), status=status.HTTP_200_OK)

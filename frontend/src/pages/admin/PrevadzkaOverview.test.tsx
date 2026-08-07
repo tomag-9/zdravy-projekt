@@ -99,4 +99,40 @@ describe('PrevadzkaOverview closed day controls', () => {
       expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining('/pdf-task/download/'));
     });
   });
+
+  it('unlocks a closed date after explicit confirmation and returns to the open state', async () => {
+    mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
+      if (url.includes('/admin/summary/prevadzka-overview/')) return Promise.resolve(overviewResponse);
+      if (url.includes('/admin/closed-days/unlock/') && options?.method === 'DELETE') {
+        return Promise.resolve(jsonResponse({ date: '2026-08-07', is_closed: false }));
+      }
+      if (url.includes('/admin/closed-days/')) {
+        return Promise.resolve(jsonResponse({ date: '2026-08-07', is_closed: true }));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+
+    render(<PrevadzkaOverview />);
+
+    const unlockButton = await screen.findByRole('button', { name: /odomknúť/i });
+    fireEvent.click(unlockButton);
+    const dialog = screen.getByRole('dialog', { name: /odomknúť objednávky/i });
+    expect(within(dialog).getByText(/znova otvorí na úpravy objednávok, diét/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Odomknúť' }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/admin/closed-days/unlock/'),
+        expect.objectContaining({
+          method: 'DELETE',
+          body: expect.stringContaining('"date"'),
+        }),
+      );
+      expect(screen.getByRole('button', { name: /uzamknúť/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'PDF objednávok' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'XLSX objednávok' })).not.toBeInTheDocument();
+    expect(mockToastSuccess).toHaveBeenCalledWith('Deň bol odomknutý.');
+  });
 });

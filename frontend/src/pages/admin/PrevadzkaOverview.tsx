@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Check, AlertTriangle, X, Upload, Smartphone, FileText, FileSpreadsheet, Loader2, LockKeyhole } from "lucide-react";
+import { Check, AlertTriangle, X, Upload, Smartphone, FileText, FileSpreadsheet, Loader2, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
@@ -177,7 +177,9 @@ const PrevadzkaOverview: React.FC = () => {
   const [closedLoading, setClosedLoading] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [unlockConfirmOpen, setUnlockConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
   const [reportLoading, setReportLoading] = useState<"pdf" | "xlsx" | null>(null);
   const closedRequestId = useRef(0);
 
@@ -270,6 +272,29 @@ const PrevadzkaOverview: React.FC = () => {
     }
   }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
 
+  const handleUnlockDay = useCallback(async () => {
+    setUnlocking(true);
+    try {
+      const res = await apiFetch(`${API}/admin/closed-days/unlock/`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message || "unlock failed");
+      }
+      setIsClosed(false);
+      toastSuccess("Deň bol odomknutý.");
+    } catch (e) {
+      logger.error(e);
+      toastError(e instanceof Error && e.message !== "unlock failed" ? e.message : "Deň sa nepodarilo odomknúť.");
+      await fetchClosedState();
+    } finally {
+      setUnlocking(false);
+    }
+  }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
+
   const handleClosedDayExport = useCallback(async (fmt: "pdf" | "xlsx") => {
     setReportLoading(fmt);
     try {
@@ -330,7 +355,7 @@ const PrevadzkaOverview: React.FC = () => {
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
         actions={
           <>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={closing} style={{ width: "auto" }} />
+            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} disabled={closing || unlocking} style={{ width: "auto" }} />
             <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !data}>
               {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} PDF
             </Button>
@@ -364,6 +389,9 @@ const PrevadzkaOverview: React.FC = () => {
                 >
                   {reportLoading === "xlsx" ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} XLSX objednávok
                 </Button>
+                <Button variant="secondary" onClick={() => setUnlockConfirmOpen(true)} disabled={unlocking}>
+                  {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />} Odomknúť
+                </Button>
               </>
             )}
           </>
@@ -384,8 +412,17 @@ const PrevadzkaOverview: React.FC = () => {
         onClose={() => setCloseConfirmOpen(false)}
         onConfirm={() => void handleCloseDay()}
         title="Uzamknúť objednávky na tento deň?"
-        description="Po uzamknutí už nebude možné upravovať objednávky pre tento deň. Odomknutie nie je v tejto chvíli dostupné."
+        description="Po uzamknutí už nebude možné upravovať objednávky pre tento deň. Prípadné odomknutie bude vyžadovať samostatné potvrdenie."
         confirmText="Uzamknúť"
+        variant="warning"
+      />
+      <ConfirmationModal
+        isOpen={unlockConfirmOpen}
+        onClose={() => setUnlockConfirmOpen(false)}
+        onConfirm={() => void handleUnlockDay()}
+        title="Odomknúť objednávky na tento deň?"
+        description="Odomknutím sa deň znova otvorí na úpravy objednávok, diét a ďalších údajov."
+        confirmText="Odomknúť"
         variant="warning"
       />
     </>

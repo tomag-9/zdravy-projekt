@@ -339,6 +339,13 @@ class DayAlreadyClosedError(ResourceAlreadyExistsError):
     default_detail = "Deň je už uzavretý."
 
 
+class DayNotClosedError(ResourceNotFoundError):
+    """Raised when an admin attempts to unlock a date that is not closed."""
+
+    error_code = "day_not_closed"
+    default_detail = "Deň nie je uzavretý."
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Report Generation Errors
 # ──────────────────────────────────────────────────────────────────────────────
