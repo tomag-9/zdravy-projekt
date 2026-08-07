@@ -499,6 +499,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         """
         settings_data = self.initial_data.get("settings", None)
         company_name = validated_data.pop("company_name", serializers.empty)
+        celok = validated_data.pop("celok", serializers.empty)
+        prevadzky = validated_data.pop("prevadzky", serializers.empty)
         settings_serializer = None
         if settings_data is not None:
             if not hasattr(instance, "profile"):
@@ -541,12 +543,39 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
-        profile_needs_update = company_name is not serializers.empty
+        profile_needs_update = (
+            company_name is not serializers.empty
+            or celok is not serializers.empty
+            or prevadzky is not serializers.empty
+        )
         if profile_needs_update:
-            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            try:
+                profile = instance.profile
+            except UserProfile.DoesNotExist:
+                profile = UserProfile(user=instance)
+                profile._skip_default_facility = True
+                profile.save()
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
-            profile.save()
+                profile.save(update_fields=["company_name"])
+
+            if celok is not serializers.empty or prevadzky is not serializers.empty:
+                ProfileCelokAccess.objects.filter(profile=profile).delete()
+                ProfilePrevadzkaAccess.objects.filter(profile=profile).delete()
+
+                selected_prevadzky = [] if prevadzky is serializers.empty else prevadzky
+                if selected_prevadzky:
+                    ProfilePrevadzkaAccess.objects.bulk_create(
+                        [
+                            ProfilePrevadzkaAccess(
+                                profile=profile,
+                                prevadzka=prevadzka,
+                            )
+                            for prevadzka in selected_prevadzky
+                        ]
+                    )
+                elif celok is not serializers.empty and celok is not None:
+                    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
 
         if settings_serializer is not None:
             settings_serializer.save()

@@ -89,6 +89,13 @@ const TourOverlay: React.FC = () => {
   useEffect(() => {
     hasRemeasured.current = false;
 
+    // Always clear the previous target first. The overlay stays mounted when
+    // the tour is skipped, so unmount cleanup alone is not sufficient.
+    if (highlightedEl.current) {
+      highlightedEl.current.classList.remove("tour-highlight");
+      highlightedEl.current = null;
+    }
+
     if (!isTourActive) {
       setTooltipPos(null);
       return;
@@ -100,12 +107,6 @@ const TourOverlay: React.FC = () => {
     if (!location.pathname.startsWith(step.page)) {
       setTooltipPos(null);
       return;
-    }
-
-    // Remove highlight from previous element
-    if (highlightedEl.current) {
-      highlightedEl.current.classList.remove("tour-highlight");
-      highlightedEl.current = null;
     }
 
     // The target element may not exist in the DOM yet — e.g. it lives inside

@@ -22,6 +22,7 @@ from api.models import (
     PasswordResetToken,
     Prevadzka,
     ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
     UserProfile,
 )
 from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
@@ -338,3 +339,59 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
         assert user.profile.company_name == ""
+
+    def test_update_user_reassigns_prevadzka_access(self, admin_client):
+        user = User.objects.create_user(
+            username="reassign@example.com",
+            email="reassign@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Reassignment celok")
+        first = Prevadzka.objects.create(celok=celok, nazov="First")
+        second = Prevadzka.objects.create(celok=celok, nazov="Second")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {
+                "email": "reassigned@example.com",
+                "company_name": "Reassigned login",
+                "celok": celok.pk,
+                "prevadzky": [second.pk],
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        profile.refresh_from_db()
+        assert user.email == "reassigned@example.com"
+        assert user.username == "reassigned@example.com"
+        assert profile.company_name == "Reassigned login"
+        assert not ProfileCelokAccess.objects.filter(profile=profile).exists()
+        assert list(
+            ProfilePrevadzkaAccess.objects.filter(profile=profile).values_list(
+                "prevadzka_id", flat=True
+            )
+        ) == [second.pk]
+        assert first.pk not in profile.dostupne_prevadzky().values_list("pk", flat=True)
+
+    def test_destroy_user_removes_profile_access(self, admin_client):
+        user = User.objects.create_user(
+            username="delete-login@example.com",
+            email="delete-login@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Delete login celok")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+        res = admin_client.delete(f"{API_URL}{user.pk}/")
+
+        assert res.status_code == status.HTTP_204_NO_CONTENT
+        assert not User.objects.filter(pk=user.pk).exists()
+        assert not UserProfile.objects.filter(pk=profile.pk).exists()
+        assert not ProfileCelokAccess.objects.filter(profile_id=profile.pk).exists()
