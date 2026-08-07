@@ -209,6 +209,16 @@ class MealTemplateCatalogApiTest(APITestCase):
         self.assertEqual(len(results), 4)
         self.assertTrue(all(r["category"] == "soup" for r in results))
 
+    def test_admin_receives_complete_unpaginated_template_catalog(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get("/api/admin/meal-templates/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertIsInstance(payload, list)
+        self.assertGreater(len(payload), 20)
+
     def test_admin_day_editor_saves_soup_and_main_course_as_separate_items(self):
         self.client.force_authenticate(user=self.admin)
         soup = MealTemplate.objects.get(name="Polievka 2")
@@ -370,6 +380,26 @@ class AdminPortionTypeApiTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         skolka.refresh_from_db()
         self.assertEqual(str(skolka.coefficient), "1.1000")
+
+    def test_admin_receives_all_portion_types_without_pagination(self):
+        PortionType.objects.bulk_create(
+            [
+                PortionType(
+                    name=f"Extra type {index:02d}",
+                    coefficient="1.0000",
+                    sort_order=100 + index,
+                )
+                for index in range(25)
+            ]
+        )
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get("/api/admin/portion-types/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertIsInstance(payload, list)
+        self.assertGreater(len(payload), 20)
 
     def test_client_cannot_update_a_portion_type_coefficient(self):
         self.client.force_authenticate(user=self.client_user)
