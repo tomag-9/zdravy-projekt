@@ -46,7 +46,7 @@ const AdminUserList: React.FC = () => {
   const fetchUsers = useCallback(async () => {
     try {
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/`,
+        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/?is_staff=true&page_size=100`,
       );
       if (res.ok) {
         const data = await res.json();

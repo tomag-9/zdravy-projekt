@@ -4,7 +4,7 @@ from django.contrib.auth.models import User
 from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, serializers, viewsets
+from rest_framework import pagination, permissions, serializers, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
@@ -13,6 +13,14 @@ from ..models import Celok, EventLog, Prevadzka
 from ..serializers_user import AdminUserSerializer
 
 logger = logging.getLogger(__name__)
+
+
+class AdminUserPagination(pagination.PageNumberPagination):
+    """Allow admin screens to request a larger, bounded user page."""
+
+    page_size = 100
+    page_size_query_param = "page_size"
+    max_page_size = 500
 
 
 class AdminEventLogSerializer(serializers.ModelSerializer):
@@ -59,6 +67,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
+    pagination_class = AdminUserPagination
 
     def get_queryset(self):
         accessible_prevadzky = Prevadzka.objects.filter(
@@ -105,6 +114,12 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(_has_access=True, _has_app_access=False)
         elif is_edupage == "false":
             qs = qs.filter(_has_app_access=True)
+
+        is_staff = self.request.query_params.get("is_staff")
+        if is_staff == "true":
+            qs = qs.filter(is_staff=True)
+        elif is_staff == "false":
+            qs = qs.filter(is_staff=False)
         return qs
 
     def perform_create(self, serializer):
