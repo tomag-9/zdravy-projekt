@@ -56,34 +56,17 @@ frontend, Postgres, Redis, and the observability container.
    - `GRAFANA_LOKI_URL`, `GRAFANA_LOKI_USER`, `GRAFANA_LOKI_API_KEY`
    - `GRAFANA_PROM_URL`, `GRAFANA_PROM_USER`, `GRAFANA_PROM_API_KEY`
    - `ALLOY_ENVIRONMENT` (`production` / `staging`)
+   - `ALLOY_METRICS_TARGET` — use **`backend:8000`**. Don't use the
+     Swarm-generated task/service name Dokploy shows in `docker ps` (e.g.
+     `zdravy-projekt-appstack-<id>_backend`) — it contains underscores, and
+     Django's Host-header validation rejects any Host value that fails
+     RFC 1034/1035 (`400 DisallowedHost`, silently swallowed as scrape
+     failures with no metrics in Grafana).
+     `backend` is the alias Compose implicitly assigns from the service name
+     in `compose/prod.yml`/`compose/staging.yml` (no config needed — it's
+     automatic), and it's allow-listed in `ALLOWED_HOSTS` in both settings
+     files for exactly this reason.
    - `DOKPLOY_NETWORK` if it differs from `dokploy-network`
-
-   Alloy discovers backend containers itself via the Docker socket
-   (`discovery.docker` in `config.alloy`), filtered to containers carrying
-   the `prometheus.io/scrape=true` label already set on the backend service
-   in `compose/prod.yml`/`compose/staging.yml` — one scrape target per
-   replica, so metrics stay correct when `BACKEND_REPLICAS` is more than 1.
-   There's no static target env var to set.
-
-   This replaced an earlier static `backend:8000` target: with only one
-   replica a static target was fine, but a Swarm service DNS name
-   round-robins per connection across replicas, so with more than one
-   replica each scrape sampled a random container and Prometheus's
-   per-container multiprocess counters looked like they kept resetting.
-
-   One gotcha carries over from the old setup: Django's `ALLOWED_HOSTS` only
-   allow-lists the literal `"backend"` (Compose's implicit service alias) —
-   raw container IPs and Swarm task names both fail RFC 1034/1035 validation
-   (`400 DisallowedHost`, which silently shows up as "no metrics" in
-   Grafana, not as an obvious error). Discovery now dials each replica by
-   its container IP but still sends `Host: backend` via `http_headers` in
-   the scrape config, so `ALLOWED_HOSTS` doesn't need to change.
-
-   **Not yet verified against a live multi-replica Swarm deployment** —
-   validate after the first `BACKEND_REPLICAS > 1` deploy by checking the
-   Grafana Explore view for the `django` job: expect one `instance` series
-   per replica with a steady request rate, not gaps or 400s in the backend
-   container logs around `/metrics/` requests.
 3. **Deploy the Alloy stack** (once per host, not per app stack):
    ```bash
    docker compose --env-file <your prod env file> -f compose/observability.yml up -d

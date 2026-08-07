@@ -12,6 +12,13 @@ export interface PrevadzkaDiet {
     sort_order?: number;
 }
 
+export interface PrevadzkaPortionType {
+    id: number;
+    name: string;
+    is_active?: boolean;
+    sort_order?: number;
+}
+
 export interface Prevadzka {
     id: number;
     nazov: string;
@@ -20,6 +27,7 @@ export interface Prevadzka {
     visible_menus: string[];
     visible_meals: string[];
     visible_diets: PrevadzkaDiet[];
+    visible_portion_types?: PrevadzkaPortionType[] | null;
     pack_separately_enabled: boolean;
 }
 

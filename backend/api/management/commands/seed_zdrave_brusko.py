@@ -30,6 +30,7 @@ from api.default_visibility import (
     DEFAULT_VISIBLE_MEALS,
     DEFAULT_VISIBLE_MENUS,
     ensure_default_visible_diets,
+    ensure_default_visible_portion_types,
 )
 from api.models import (
     Celok,
@@ -121,6 +122,7 @@ class Command(BaseCommand):
             )
             if not dry_run:
                 ensure_default_visible_diets(prevadzka.visible_diets)
+                ensure_default_visible_portion_types(prevadzka.visible_portion_types)
             prevadzky.append(prevadzka)
             verb = "vytvorený" if celok_created else "aktualizovaný"
             self.stdout.write(f"  {nazov} ({match}) — celok {verb}")

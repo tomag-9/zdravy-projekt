@@ -136,7 +136,6 @@ resource "grafana_rule_group" "backend" {
   name             = var.alert_group_name
   folder_uid       = grafana_folder.zdravy_project.uid
   interval_seconds = 60
-  org_id           = 1
 
   dynamic "rule" {
     for_each = local.alert_rules

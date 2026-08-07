@@ -254,7 +254,9 @@ class TestOrderCRUD:
         response = authenticated_client.get("/api/admin/portion-types/")
 
         assert response.status_code == status.HTTP_200_OK
-        names = [item["name"] for item in response.data.get("results", response.data)]
+        data = response.data
+        results = data["results"] if isinstance(data, dict) else data
+        names = [item["name"] for item in results]
         assert names == ["Škôlka"]
 
 

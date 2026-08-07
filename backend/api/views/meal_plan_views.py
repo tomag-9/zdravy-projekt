@@ -31,6 +31,7 @@ class PortionTypeViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = PortionTypeSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
@@ -53,6 +54,7 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = MealTemplateSerializer
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:

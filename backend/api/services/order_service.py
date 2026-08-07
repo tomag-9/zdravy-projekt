@@ -127,7 +127,10 @@ class OrderService:
         workdays = OrderService.next_workdays(today, 5, holiday_set)
 
         existing: Dict[datetime.date, DailyOrder] = {
-            o.date: o for o in DailyOrder.objects.filter(user=user, date__in=workdays)
+            o.date: o
+            for o in DailyOrder.objects.filter(user=user, date__in=workdays)
+            .select_related("prevadzka")
+            .prefetch_related("prevadzka__visible_portion_types")
         }
 
         # Pre-fetch a single historical template to avoid per-day DB queries.
@@ -178,7 +181,16 @@ class OrderService:
                         allowed_meals = list(
                             getattr(tmpl.prevadzka, "visible_meals", []) or []
                         )
-                    predicted_data = _build_auto_data(tmpl, allowed_meals)
+                    visible_portion_types = [
+                        portion_type.name
+                        for portion_type in tmpl.prevadzka.visible_portion_types.all()
+                        if portion_type.is_active
+                    ]
+                    predicted_data = _build_auto_data(
+                        tmpl,
+                        allowed_meals,
+                        visible_portion_types,
+                    )
                     predicted_total, predicted_meal_count = OrderService.order_total(
                         predicted_data
                     )

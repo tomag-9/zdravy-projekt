@@ -8,7 +8,14 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
 from django.contrib.auth.models import User
 
-from .models import DailyOrder, Diet, GlobalSettings, PasswordResetToken, UserProfile
+from .models import (
+    DailyOrder,
+    Diet,
+    EventLog,
+    GlobalSettings,
+    PasswordResetToken,
+    UserProfile,
+)
 
 
 class UserProfileInline(admin.StackedInline):
@@ -104,6 +111,37 @@ class UserAdmin(BaseUserAdmin):
 # Re-register User with our custom admin
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
+
+
+@admin.register(EventLog)
+class EventLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "event_type",
+        "actor_label",
+        "target_user",
+        "summary",
+    )
+    list_filter = ("event_type", "created_at")
+    search_fields = ("summary", "actor_label")
+    readonly_fields = (
+        "event_type",
+        "actor",
+        "actor_label",
+        "target_user",
+        "summary",
+        "payload",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(UserProfile)

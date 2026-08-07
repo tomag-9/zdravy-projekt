@@ -12,6 +12,7 @@ import { useToast } from '../../context/ToastContext';
 import { Button, Field, Input } from './ui';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const CLOSED_DAY_MESSAGE = 'Deň je uzavretý, objednávky sa už nedajú upravovať.';
 
 interface ExistingOrder {
     id: number;
@@ -173,6 +174,28 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     const [activeDietModal, setActiveDietModal] = useState<{ meal: PackSeparatelyMealKey; category: string } | null>(null);
     const [packSeparatelyOpen, setPackSeparatelyOpen] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [closedState, setClosedState] = useState<'checking' | 'open' | 'closed' | 'error'>('checking');
+
+    useEffect(() => {
+        let active = true;
+        setClosedState('checking');
+
+        const fetchClosedState = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/admin/closed-days/?date=${date}`);
+                if (!res.ok) throw new Error('closed-day status failed');
+                const payload = await res.json() as { is_closed: boolean };
+                if (active) setClosedState(payload.is_closed ? 'closed' : 'open');
+            } catch {
+                if (active) setClosedState('error');
+            }
+        };
+
+        void fetchClosedState();
+        return () => {
+            active = false;
+        };
+    }, [apiFetch, date]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -332,6 +355,23 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     };
 
     const handleSave = async () => {
+        let effectiveClosedState = closedState;
+        if (effectiveClosedState === 'checking') {
+            try {
+                const statusRes = await apiFetch(`${API_URL}/admin/closed-days/?date=${date}`);
+                if (!statusRes.ok) throw new Error('closed-day status failed');
+                const statusPayload = await statusRes.json() as { is_closed: boolean };
+                effectiveClosedState = statusPayload.is_closed ? 'closed' : 'open';
+                setClosedState(effectiveClosedState);
+            } catch {
+                effectiveClosedState = 'error';
+                setClosedState('error');
+            }
+        }
+        if (effectiveClosedState !== 'open') {
+            toast.error(effectiveClosedState === 'closed' ? CLOSED_DAY_MESSAGE : 'Stav dňa sa nepodarilo overiť. Úpravy sú zablokované.');
+            return;
+        }
         setSaving(true);
         try {
             const snapshot: DailyOrder = OrderService.fastCopy(order);
@@ -356,7 +396,11 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ data: payloadData, prevadzka: prevadzkaId }),
                 });
-                if (!res.ok) throw new Error('save failed');
+                if (!res.ok) {
+                    const body = await res.json().catch(() => ({}));
+                    toast.error(body?.error?.message || 'Nepodarilo sa uložiť objednávku.');
+                    return;
+                }
                 toast.success('Objednávka bola uložená.');
             } else {
                 const res = await apiFetch(`${API_URL}/orders/${query}`, {
@@ -418,7 +462,25 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     </div>
                 )}
 
-                <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {closedState === 'checking' && (
+                    <div role="status" style={{ padding: '24px', color: 'var(--ink-3)' }}>
+                        Overujem stav dňa…
+                    </div>
+                )}
+
+                {closedState === 'closed' && (
+                    <div role="alert" style={{ margin: '20px 24px', padding: 16, borderRadius: 12, background: 'rgba(180, 83, 9, 0.1)', color: 'var(--mustard-700)', fontWeight: 700 }}>
+                        {CLOSED_DAY_MESSAGE}
+                    </div>
+                )}
+
+                {closedState === 'error' && (
+                    <div role="alert" style={{ margin: '20px 24px', padding: 16, borderRadius: 12, background: 'rgba(185, 28, 28, 0.08)', color: 'var(--red-700)', fontWeight: 700 }}>
+                        Stav dňa sa nepodarilo overiť. Úpravy sú zablokované.
+                    </div>
+                )}
+
+                {(closedState === 'open' || closedState === 'checking') && <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, pointerEvents: closedState === 'checking' ? 'none' : undefined, opacity: closedState === 'checking' ? 0.55 : 1 }}>
                     <OrderFormBody
                         categories={categories}
                         visibleMealsList={visibleMealsList}
@@ -533,13 +595,15 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                         onReset={resetOrder}
                         submitLabel="Uložiť objednávku"
                     />
-                </div>
+                </div>}
 
                 <div className="zpa-modal-foot">
                     <Button variant="ghost" onClick={onClose}>Zrušiť</Button>
-                    <Button onClick={handleSave} disabled={saving}>
-                        {saving ? 'Ukladám…' : 'Uložiť'}
-                    </Button>
+                    {(closedState === 'open' || closedState === 'checking') && (
+                        <Button onClick={handleSave} disabled={saving}>
+                            {saving ? 'Ukladám…' : 'Uložiť'}
+                        </Button>
+                    )}
                 </div>
             </div>
 

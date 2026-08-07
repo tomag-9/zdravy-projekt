@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, FileSpreadsheet, Loader2, Inbox } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -140,6 +141,16 @@ interface OrderReport {
   totals: Record<OrderMealKey, OrderMealSummary> & { grand: number };
 }
 
+interface ClosedDayResponse {
+  date: string;
+  is_closed: boolean;
+}
+
+interface ReportTaskResponse {
+  task_id: string;
+  status: "pending" | "processing" | "complete" | "failed";
+}
+
 // ── Meal hue mapping (brand-translated meal colours, see admin.css .mh-*) ───────
 
 function mealHue(meal: string, variant: string): string {
@@ -194,7 +205,7 @@ function formatDate(s: string): string {
 
 const AdminDashboard: React.FC = () => {
   const { apiFetch } = useAuth();
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
   const maxDate = useMemo(() => lastWeekdayToday(), []);
   const actualToday = useMemo(() => toDateString(new Date()), []);
   const [date, setDate] = useState(maxDate);
@@ -203,6 +214,14 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [closedLoading, setClosedLoading] = useState(true);
+  const [isClosed, setIsClosed] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [unlockConfirmOpen, setUnlockConfirmOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const [closedReportLoading, setClosedReportLoading] = useState<"pdf" | "xlsx" | null>(null);
+  const closedRequestId = useRef(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -228,6 +247,29 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const fetchClosedState = useCallback(async () => {
+    const requestId = ++closedRequestId.current;
+    setClosedLoading(true);
+    try {
+      const res = await apiFetch(`${API}/admin/closed-days/?date=${date}`);
+      if (!res.ok) throw new Error("closed-day status failed");
+      const payload = await res.json() as ClosedDayResponse;
+      if (requestId === closedRequestId.current) setIsClosed(payload.is_closed);
+    } catch (e) {
+      logger.error(e);
+      if (requestId === closedRequestId.current) {
+        setIsClosed(false);
+        toastError("Nepodarilo sa overiť, či je deň uzavretý.");
+      }
+    } finally {
+      if (requestId === closedRequestId.current) setClosedLoading(false);
+    }
+  }, [apiFetch, date, toastError]);
+
+  useEffect(() => {
+    void fetchClosedState();
+  }, [fetchClosedState]);
+
   const handleExport = useCallback(async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
     setFmt(true);
     try {
@@ -244,6 +286,96 @@ const AdminDashboard: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (e) { logger.error(e); toastError("Chyba pri generovaní súboru."); }
     finally { setFmt(false); }
+  }, [apiFetch, date, toastError]);
+
+  const handleCloseDay = useCallback(async () => {
+    setClosing(true);
+    try {
+      const res = await apiFetch(`${API}/admin/closed-days/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message || "close failed");
+      }
+      setIsClosed(true);
+      toastSuccess("Deň bol uzavretý.");
+    } catch (e) {
+      logger.error(e);
+      toastError(e instanceof Error && e.message !== "close failed" ? e.message : "Deň sa nepodarilo uzavrieť.");
+      await fetchClosedState();
+    } finally {
+      setClosing(false);
+    }
+  }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
+
+  const handleUnlockDay = useCallback(async () => {
+    setUnlocking(true);
+    try {
+      const res = await apiFetch(`${API}/admin/closed-days/unlock/`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message || "unlock failed");
+      }
+      setIsClosed(false);
+      toastSuccess("Deň bol odomknutý.");
+    } catch (e) {
+      logger.error(e);
+      toastError(e instanceof Error && e.message !== "unlock failed" ? e.message : "Deň sa nepodarilo odomknúť.");
+      await fetchClosedState();
+    } finally {
+      setUnlocking(false);
+    }
+  }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
+
+  const handleClosedDayExport = useCallback(async (fmt: "pdf" | "xlsx") => {
+    setClosedReportLoading(fmt);
+    try {
+      const submit = await apiFetch(`${API}/admin/report-tasks/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, format: fmt }),
+      });
+      if (!submit.ok) throw new Error("submit failed");
+      const submitted = await submit.json() as ReportTaskResponse;
+
+      let complete = false;
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        const statusRes = await apiFetch(`${API}/admin/report-tasks/${submitted.task_id}/`);
+        if (!statusRes.ok) throw new Error("poll failed");
+        const task = await statusRes.json() as ReportTaskResponse;
+        if (task.status === "failed") throw new Error("task failed");
+        if (task.status === "complete") {
+          complete = true;
+          break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      if (!complete) throw new Error("task timeout");
+
+      const download = await apiFetch(`${API}/admin/report-tasks/${submitted.task_id}/download/`);
+      if (!download.ok) throw new Error("download failed");
+      const blob = await download.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `denny_prehlad_objednavok_${date}.${fmt}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      logger.error(e);
+      toastError("Denný prehľad sa nepodarilo vygenerovať.");
+    } finally {
+      setClosedReportLoading(null);
+    }
   }, [apiFetch, date, toastError]);
 
   const isAtMax = date >= maxDate;
@@ -264,6 +396,38 @@ const AdminDashboard: React.FC = () => {
             <Button variant="primary" onClick={() => handleExport("xlsx", setXlsxLoading)} disabled={xlsxLoading || loading || !hasData}>
               {xlsxLoading ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} Stiahnuť XLSX
             </Button>
+            {!closedLoading && !isClosed && (
+              <Button variant="secondary" onClick={() => setCloseConfirmOpen(true)} disabled={closing}>
+                {closing ? <Loader2 className="zpa-spin" /> : <LockKeyhole />} Uzamknúť
+              </Button>
+            )}
+            {!closedLoading && isClosed && (
+              <>
+                <span role="status" style={{ color: "var(--green-700)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  <Check style={{ width: 16, verticalAlign: "middle", marginRight: 5 }} />
+                  Deň je uzavretý
+                </span>
+                <Button
+                  variant="danger"
+                  aria-label="PDF objednávok"
+                  onClick={() => handleClosedDayExport("pdf")}
+                  disabled={closedReportLoading !== null}
+                >
+                  {closedReportLoading === "pdf" ? <Loader2 className="zpa-spin" /> : <FileText />} PDF objednávok
+                </Button>
+                <Button
+                  variant="primary"
+                  aria-label="XLSX objednávok"
+                  onClick={() => handleClosedDayExport("xlsx")}
+                  disabled={closedReportLoading !== null}
+                >
+                  {closedReportLoading === "xlsx" ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} XLSX objednávok
+                </Button>
+                <Button variant="secondary" onClick={() => setUnlockConfirmOpen(true)} disabled={unlocking}>
+                  {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />} Odomknúť
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -272,12 +436,13 @@ const AdminDashboard: React.FC = () => {
         {/* Date navigator */}
         <Card>
           <div className="zpa-datenav">
-            <button className="zpa-navchip" onClick={() => setDate(prevWeekday(date))}>
+            <button className="zpa-navchip" onClick={() => setDate(prevWeekday(date))} disabled={closing || unlocking}>
               <ChevronLeft /> Predchádzajúci deň
             </button>
             <div className="mid">
               <input
                 type="date" value={date} max={maxDate}
+                disabled={closing || unlocking}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!val) return;
@@ -293,7 +458,7 @@ const AdminDashboard: React.FC = () => {
             <button
               className="zpa-navchip"
               onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
-              disabled={isAtMax}
+              disabled={isAtMax || closing || unlocking}
             >
               Nasledujúci deň <ChevronRight />
             </button>
@@ -319,6 +484,25 @@ const AdminDashboard: React.FC = () => {
           <OrderCountsTable report={orderReport} />
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={closeConfirmOpen}
+        onClose={() => setCloseConfirmOpen(false)}
+        onConfirm={() => void handleCloseDay()}
+        title="Uzamknúť objednávky na tento deň?"
+        description="Po uzamknutí už nebude možné upravovať objednávky pre tento deň. Prípadné odomknutie bude vyžadovať samostatné potvrdenie."
+        confirmText="Uzamknúť"
+        variant="warning"
+      />
+      <ConfirmationModal
+        isOpen={unlockConfirmOpen}
+        onClose={() => setUnlockConfirmOpen(false)}
+        onConfirm={() => void handleUnlockDay()}
+        title="Odomknúť objednávky na tento deň?"
+        description="Odomknutím sa deň znova otvorí na úpravy objednávok, diét a ďalších údajov."
+        confirmText="Odomknúť"
+        variant="warning"
+      />
     </>
   );
 };

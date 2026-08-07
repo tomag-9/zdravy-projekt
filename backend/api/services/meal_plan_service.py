@@ -11,6 +11,7 @@ from django.db import transaction
 
 from ..models import (
     DailyMealPlan,
+    Diet,
     EnrolledCount,
     MealCategory,
     MealPlanItem,
@@ -23,6 +24,47 @@ from ..utils import (
     _meal_rule_key,
     order_row_label,
 )
+
+
+def resolve_diet_menu_variants(date: datetime.date) -> dict[str, str]:
+    """Resolve each active diet's main-course menu variant for a given day.
+
+    Explicit diet-specific meal-plan variants override the default Menu A. When a
+    diet has more than one explicit main-course row on the same day (different
+    menu_variant values), the row tagged "A" wins — matching the priority
+    _col_grams_diet uses for the equivalent gramage computation (see that function
+    in this module; keep this in sync if its tie-break logic ever changes).
+    Otherwise resolution is deterministic by MealPlanItem id (lowest id wins) since
+    MealPlanItem has no declared ordering.
+
+    This is a read-only projection of kitchen-planning data and does not affect
+    order counts, billing, or gramage calculations.
+    """
+    meal_plan = (
+        DailyMealPlan.objects.filter(date=date).prefetch_related("items__diet").first()
+    )
+    overrides: dict[int, str] = {}
+    if meal_plan:
+        main_course_items = sorted(
+            (
+                item
+                for item in meal_plan.items.all()
+                if item.category == MealCategory.MAIN_COURSE
+                and item.diet_id
+                and item.menu_variant
+            ),
+            key=lambda item: item.id,
+        )
+        for item in main_course_items:
+            if item.diet_id not in overrides:
+                overrides[item.diet_id] = item.menu_variant
+            elif item.menu_variant.strip().upper() == "A":
+                overrides[item.diet_id] = item.menu_variant
+
+    return {
+        diet.name: overrides.get(diet.id, "A")
+        for diet in Diet.objects.filter(is_active=True)
+    }
 
 
 def _normalize_portion_name(value: object) -> str:

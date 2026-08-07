@@ -145,7 +145,8 @@ class TestAdminCelokViewSetQueries:
             assert len(payload) == 5
 
         query_count = len(ctx.captured_queries)
-        assert query_count <= 5, f"Expected <= 5 queries, got {query_count}."
+        # <= 6: #416 added a bounded visible_portion_types prefetch per prevádzka.
+        assert query_count <= 6, f"Expected <= 6 queries, got {query_count}."
         prevadzky = {
             prevadzka["nazov"]: prevadzka
             for celok_payload in payload
@@ -267,8 +268,9 @@ class TestPlannedOrdersViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # After query optimization, total queries should be <= 3
-        # (includes main list query, helper logic like _last_non_empty_order, and user settings lookup)
+        # After query optimization, total queries should be <= 4
+        # (includes main list query, helper logic like _last_non_empty_order, user settings
+        # lookup, and #416's bounded visible_portion_types prefetch)
         assert (
-            query_count <= 3
-        ), f"Expected <= 3 queries, got {query_count}. Possible N+1 issue."
+            query_count <= 4
+        ), f"Expected <= 4 queries, got {query_count}. Possible N+1 issue."
