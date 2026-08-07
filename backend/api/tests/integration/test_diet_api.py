@@ -57,6 +57,81 @@ def test_diet_model_ordering_is_sort_order_then_name():
 
 
 @pytest.mark.django_db
+def test_diet_reorder_updates_only_included_rows_and_invalidates_cache(api_client):
+    admin = AdminUserFactory()
+    api_client.force_authenticate(user=admin)
+    first = Diet.objects.create(name="First", sort_order=10)
+    second = Diet.objects.create(name="Second", sort_order=20)
+    untouched = Diet.objects.create(name="Untouched", sort_order=30)
+
+    # Populate the 24-hour list cache with the original order.
+    initial_response = api_client.get("/api/diets/")
+    assert [item["id"] for item in initial_response.json()] == [
+        first.id,
+        second.id,
+        untouched.id,
+    ]
+
+    response = api_client.post(
+        "/api/diets/reorder/",
+        {
+            "diets": [
+                {"id": second.id, "sort_order": 1},
+                {"id": first.id, "sort_order": 2},
+            ]
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    first.refresh_from_db()
+    second.refresh_from_db()
+    untouched.refresh_from_db()
+    assert (first.sort_order, second.sort_order, untouched.sort_order) == (2, 1, 30)
+
+    cached_list_response = api_client.get("/api/diets/")
+    assert [item["id"] for item in cached_list_response.json()] == [
+        second.id,
+        first.id,
+        untouched.id,
+    ]
+
+
+@pytest.mark.django_db
+def test_diet_base_diets_can_be_added_and_removed():
+    milk_free = Diet.objects.create(name="No Milk", color="#2563EB")
+    gluten_free = Diet.objects.create(name="No Gluten", color="#F59E0B")
+    composite = Diet.objects.create(name="No Milk - No Gluten")
+
+    composite.base_diets.add(milk_free, gluten_free)
+    assert set(composite.base_diets.all()) == {milk_free, gluten_free}
+
+    composite.base_diets.remove(milk_free)
+    assert list(composite.base_diets.all()) == [gluten_free]
+
+
+@pytest.mark.django_db
+def test_diet_serializer_exposes_base_diet_ids_and_colors(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    milk_free = Diet.objects.create(name="No Milk", color="#2563EB")
+    gluten_free = Diet.objects.create(name="No Gluten", color="#F59E0B")
+    colorless = Diet.objects.create(name="No Color")
+    composite = Diet.objects.create(name="Composite", color="#7C3AED")
+    composite.base_diets.add(milk_free, gluten_free, colorless)
+
+    response = api_client.get(f"/api/diets/{composite.id}/")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload["base_diets"]) == {
+        milk_free.id,
+        gluten_free.id,
+        colorless.id,
+    }
+    assert payload["base_colors"] == ["#F59E0B", "#2563EB"]
+
+
+@pytest.mark.django_db
 def test_menu_variant_map_defaults_active_diets_to_a_without_meal_plan(api_client):
     api_client.force_authenticate(user=AdminUserFactory())
     Diet.objects.create(name="Bezlepková")

@@ -107,6 +107,8 @@ export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ c
 const DIET_COLORS = [
     '#F87171', '#FB923C', '#FDE68A', '#86EFAC', '#5EEAD4', '#93C5FD', '#C4B5FD', '#F9A8D4',
     '#DC2626', '#EA580C', '#F59E0B', '#16A34A', '#0D9488', '#2563EB', '#7C3AED', '#DB2777',
+    '#FDA4AF', '#FDBA74', '#FDE047', '#A3E635', '#34D399', '#22D3EE', '#818CF8', '#E879F9',
+    '#9F1239', '#9A3412', '#A16207', '#3F6212', '#047857', '#0E7490', '#4338CA', '#A21CAF',
 ];
 
 export const ColorSwatchPicker: React.FC<{
