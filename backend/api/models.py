@@ -3,11 +3,54 @@ import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+
+class EventLog(models.Model):
+    class EventType(models.TextChoices):
+        ORDER_ADMIN_CREATE = "order_admin_create", "Admin vytvoril objednávku"
+        ORDER_ADMIN_UPDATE = "order_admin_update", "Admin upravil objednávku"
+        ORDER_ADMIN_DELETE = "order_admin_delete", "Admin vymazal objednávku"
+        AUTO_ORDER_RUN = "auto_order_run", "Spustenie auto-objednávok"
+        PUSH_BROADCAST = "push_broadcast", "Odoslanie push notifikácie"
+        SETTINGS_CHANGE = "settings_change", "Zmena nastavení"
+
+    event_type = models.CharField(max_length=50, choices=EventType.choices)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="event_logs",
+    )
+    actor_label = models.CharField(max_length=255, blank=True)
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="targeted_event_logs",
+    )
+    summary = models.CharField(max_length=255)
+    payload = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["event_type"]),
+            models.Index(fields=["actor"]),
+            models.Index(fields=["target_user"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.get_event_type_display()}: {self.summary}"
 
 
 class DailyOrder(models.Model):
@@ -93,6 +136,24 @@ class DailyOrder(models.Model):
         self._response_status = value
 
 
+class ClosedDay(models.Model):
+    """Globálne uzavretý objednávkový deň pre všetky prevádzky."""
+
+    date = models.DateField(unique=True)
+    closed_at = models.DateTimeField(auto_now_add=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="closed_order_days",
+    )
+
+    class Meta:
+        ordering = ["-date"]
+
+    def __str__(self) -> str:
+        return f"Uzavretý deň {self.date}"
+
+
 class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
     sort_order = models.PositiveSmallIntegerField(default=0, db_index=True)
@@ -103,6 +164,12 @@ class Diet(models.Model):
         blank=True,
         default="",
         help_text="Voliteľná HEX farba pre admin prehľady, napr. #F97316.",
+    )
+    base_diets = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="composite_of",
     )
 
     class Meta:
@@ -387,6 +454,12 @@ class Prevadzka(models.Model):
         blank=True,
         related_name="visible_for_prevadzky",
         help_text="Diéty dostupné pre objednávky tejto prevádzky.",
+    )
+    visible_portion_types = models.ManyToManyField(
+        "PortionType",
+        blank=True,
+        related_name="visible_for_prevadzky_portion_types",
+        help_text="Veľkosti porcií dostupné pre objednávky tejto prevádzky.",
     )
     pack_separately_enabled = models.BooleanField(default=False)
     admin_order_note = models.TextField(

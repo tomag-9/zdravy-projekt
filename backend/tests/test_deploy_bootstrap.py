@@ -129,6 +129,22 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
     assert fan.delivery_route.name == "trasa 5 - RADKO - 10:00"
     assert fan.report_alias == "Fantastická škola"
 
+    for name in [
+        "Hravou Formou bez raňajok",
+        "Korálky",
+        "Koliba",
+        "Little Big",
+        "Veselý Úľ 1",
+        "Veselý Úľ 2",
+        "Simon Drgo MŠ Milana Marečka 20, DNV",
+        "Malokarpatské námestie 2, Lamač",
+        "Hodonínska 27",
+        "Športová 450, Šamorín",
+        "Steinov dvor 2, Bratislava",
+        "Pozri dokument kvôli dennej adrese",
+    ]:
+        assert Prevadzka.objects.filter(nazov=name, is_active=True).exists()
+
     assert not Celok.objects.filter(pk=old_zdrave_brusko_celok.pk).exists()
     assert not Prevadzka.objects.filter(pk=old_zdrave_brusko.pk).exists()
 
@@ -140,6 +156,35 @@ def test_real_delivery_layout_seed_is_idempotent_and_persistent(settings):
 
     no_gluten = Diet.objects.get(name="NO GLUTEN")
     assert no_gluten.color == "#2563EB"
+
+
+@pytest.mark.django_db
+def test_missing_multi_rows_merge_under_one_celok_idempotently(settings):
+    settings.DEBUG = True
+    management.call_command("seed_real_delivery_layout")
+    management.call_command("seed_merge_celky")
+    management.call_command("seed_real_delivery_layout")
+    management.call_command("seed_merge_celky")
+
+    expected = {
+        "ZŠ Malokarpatská": {"ZŠ Malokarpatská", "Malokarpatské námestie 2, Lamač"},
+        "Zvlášť!!! Tábor Warrior": {"Zvlášť!!! Tábor Warrior", "Hodonínska 27"},
+        "Zvlášť!!! Futbalový Tábor": {
+            "Zvlášť!!! Futbalový Tábor",
+            "Športová 450, Šamorín",
+        },
+        "Zvlášť!!! Tábor Paint People": {
+            "Zvlášť!!! Tábor Paint People",
+            "Steinov dvor 2, Bratislava",
+        },
+        "Zvlášť!!! Vojenský Tábor": {
+            "Zvlášť!!! Vojenský Tábor",
+            "Pozri dokument kvôli dennej adrese",
+        },
+    }
+    for celok_name, prevadzky in expected.items():
+        celok = Celok.objects.get(nazov=celok_name)
+        assert set(celok.prevadzky.values_list("nazov", flat=True)) == prevadzky
 
 
 @pytest.mark.django_db
@@ -183,6 +228,25 @@ def test_real_edupage_seed_updates_lunch_only_visible_meals(settings):
     prevadzka.refresh_from_db()
     assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
     assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
+
+
+@pytest.mark.django_db
+def test_real_edupage_seed_does_not_attach_rozmanita_school_after_merge(settings):
+    settings.DEBUG = False
+
+    management.call_command("init_reference_data")
+    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
+    management.call_command("seed_real_delivery_layout")
+    management.call_command("seed_merge_celky")
+    management.call_command("real_initial_seed_prevadzky", "--allow-prod")
+
+    skolicka = Prevadzka.objects.get(nazov="MŠ Rozmanitá")
+    skola = Prevadzka.objects.get(nazov="Rozmanita Škola")
+
+    assert skolicka.celok == skola.celok
+    assert skolicka.edupage_connection is not None
+    assert "rozmanita.edupage.org" in skolicka.edupage_connection.mealsguest_url
+    assert skola.edupage_connection is None
 
 
 @pytest.mark.django_db

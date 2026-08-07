@@ -125,10 +125,19 @@ function PushSubscriptionReconciler() {
   return null;
 }
 
-function ClientInstallPrompt() {
+export function ClientInstallPrompt() {
   const { user, isAuthenticated, isLoading } = useAuth();
 
   if (isLoading || !isAuthenticated || !user || user.is_staff) {
+    return null;
+  }
+
+  // Both this banner and the onboarding tour auto-show for the same
+  // first-time-mobile-user condition with no coordination between them —
+  // the banner's full-screen modal would sit on top of the tour tooltip
+  // and block its Next/Skip buttons. Defer the banner until onboarding
+  // has been completed or skipped.
+  if (user.onboarding_completed === false) {
     return null;
   }
 

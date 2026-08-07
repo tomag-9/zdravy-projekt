@@ -102,6 +102,7 @@ const getMealCard = (title: string) => {
 describe('AdminOrderEditorModal', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockApiFetch.mockResolvedValue(makeMockResponse({ is_closed: false }, true));
     });
 
     it('renders create mode with date input and save button', () => {
@@ -244,7 +245,12 @@ describe('AdminOrderEditorModal', () => {
     });
 
     it('shows error toast and does not call onSaved when API fails', async () => {
-        mockApiFetch.mockRejectedValueOnce(new Error('network error'));
+        mockApiFetch.mockImplementation((url: string) => {
+            if (url.includes('/admin/closed-days/')) {
+                return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+            }
+            return Promise.reject(new Error('network error'));
+        });
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
@@ -258,8 +264,7 @@ describe('AdminOrderEditorModal', () => {
     });
 
     it('shows API error message when POST returns 400', async () => {
-        mockApiFetch.mockResolvedValueOnce(
-            makeMockResponse(
+        const errorResponse = makeMockResponse(
                 {
                     error: {
                         message: 'Objednávka na tento dátum už existuje.',
@@ -267,6 +272,12 @@ describe('AdminOrderEditorModal', () => {
                     },
                 },
                 false,
+            );
+        mockApiFetch.mockImplementation((url: string) =>
+            Promise.resolve(
+                url.includes('/admin/closed-days/')
+                    ? makeMockResponse({ is_closed: false }, true)
+                    : errorResponse,
             ),
         );
 
@@ -566,5 +577,22 @@ describe('AdminOrderEditorModal', () => {
         fireEvent.click(screen.getByRole('button', { name: /načítať z včerajška/i }));
 
         expect(mockToastInfo).toHaveBeenCalledWith('Nemám dáta z včerajšieho obeda.');
+    });
+
+    it('shows a read-only blocked state when the order date is closed', async () => {
+        mockApiFetch.mockResolvedValue(makeMockResponse({ is_closed: true }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{ id: 7, date: '2099-03-01', data: {} }}
+            />,
+        );
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+            'Deň je uzavretý, objednávky sa už nedajú upravovať.',
+        );
+        expect(screen.queryByRole('button', { name: 'Uložiť' })).not.toBeInTheDocument();
+        expect(screen.queryByText('Celodenná objednávka')).not.toBeInTheDocument();
     });
 });

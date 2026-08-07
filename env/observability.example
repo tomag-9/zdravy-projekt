@@ -10,7 +10,8 @@ GRAFANA_PROM_API_KEY=grafana-prom-api-key
 
 # Alloy metadata / scrape targets
 ALLOY_ENVIRONMENT=production
-# Alloy discovers backend replicas itself via the Docker socket (containers
-# labeled prometheus.io/scrape=true), one target per replica — no static
-# target env var needed. See observability/alloy/config.alloy.
+# Use "backend" (Compose's implicit service alias), not the raw
+# Swarm-generated task/service name — that one contains underscores, which
+# Django's Host-header validation rejects.
+ALLOY_METRICS_TARGET=backend:8000
 DOKPLOY_NETWORK=dokploy-network

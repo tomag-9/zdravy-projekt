@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import ConfirmationModal from "./client/components/ui/ConfirmationModal";
+import { useStableViewportHeight } from "../hooks/useStableViewportHeight";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 const ForgotPasswordPage: React.FC = () => {
+  useStableViewportHeight();
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -51,7 +53,7 @@ const ForgotPasswordPage: React.FC = () => {
 
   if (submitted) {
     return (
-      <div className="zp-app" style={{ minHeight: "100vh" }}>
+      <div className="zp-app zp-app--login">
         <div className="zp-login">
           <div className="zp-login-brand">
             <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
@@ -75,7 +77,7 @@ const ForgotPasswordPage: React.FC = () => {
   }
 
   return (
-    <div className="zp-app" style={{ minHeight: "100vh" }}>
+    <div className="zp-app zp-app--login">
       <div className="zp-login">
         <div className="zp-login-brand">
           <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useStableViewportHeight } from "../hooks/useStableViewportHeight";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
 const SetPasswordPage: React.FC = () => {
+  useStableViewportHeight();
   const [searchParams] = useSearchParams();
   const token = searchParams.get("token") ?? "";
   const navigate = useNavigate();
@@ -65,7 +67,7 @@ const SetPasswordPage: React.FC = () => {
 
   if (success) {
     return (
-      <div className="zp-app" style={{ minHeight: "100vh" }}>
+      <div className="zp-app zp-app--login">
         <div className="zp-login">
           <div className="zp-login-brand">
             <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
@@ -85,7 +87,7 @@ const SetPasswordPage: React.FC = () => {
   }
 
   return (
-    <div className="zp-app" style={{ minHeight: "100vh" }}>
+    <div className="zp-app zp-app--login">
       <div className="zp-login">
         <div className="zp-login-brand">
           <img className="logoimg" src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />

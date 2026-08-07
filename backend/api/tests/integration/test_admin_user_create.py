@@ -22,6 +22,7 @@ from api.models import (
     PasswordResetToken,
     Prevadzka,
     ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
     UserProfile,
 )
 from api.reference_data import DEFAULT_DIET_NAMES, DEFAULT_DIETS
@@ -36,6 +37,32 @@ _SETUP_EMAIL = "api.email_utils.send_account_setup_email"
 @pytest.mark.django_db
 class TestAdminUserCreate:
     """Test admin user creation endpoint and onboarding emails."""
+
+    def test_list_can_filter_and_return_up_to_100_admins(self, admin_client):
+        User.objects.bulk_create(
+            [
+                User(
+                    username=f"admin-{index}@example.com",
+                    email=f"admin-{index}@example.com",
+                    is_staff=True,
+                )
+                for index in range(25)
+            ]
+            + [
+                User(
+                    username=f"client-{index}@example.com",
+                    email=f"client-{index}@example.com",
+                    is_staff=False,
+                )
+                for index in range(25)
+            ]
+        )
+
+        res = admin_client.get(f"{API_URL}?is_staff=true&page_size=100")
+
+        assert res.status_code == status.HTTP_200_OK
+        assert len(res.data["results"]) == 26  # 25 created + authenticated admin
+        assert all(user["is_staff"] for user in res.data["results"])
 
     def test_create_app_user_sends_setup_email(self, admin_client):
         """Creating a regular user triggers send_account_setup_email."""
@@ -312,3 +339,59 @@ class TestAdminUserCreate:
         assert res.status_code == status.HTTP_200_OK
         user.profile.refresh_from_db()
         assert user.profile.company_name == ""
+
+    def test_update_user_reassigns_prevadzka_access(self, admin_client):
+        user = User.objects.create_user(
+            username="reassign@example.com",
+            email="reassign@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Reassignment celok")
+        first = Prevadzka.objects.create(celok=celok, nazov="First")
+        second = Prevadzka.objects.create(celok=celok, nazov="Second")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {
+                "email": "reassigned@example.com",
+                "company_name": "Reassigned login",
+                "celok": celok.pk,
+                "prevadzky": [second.pk],
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_200_OK
+        user.refresh_from_db()
+        profile.refresh_from_db()
+        assert user.email == "reassigned@example.com"
+        assert user.username == "reassigned@example.com"
+        assert profile.company_name == "Reassigned login"
+        assert not ProfileCelokAccess.objects.filter(profile=profile).exists()
+        assert list(
+            ProfilePrevadzkaAccess.objects.filter(profile=profile).values_list(
+                "prevadzka_id", flat=True
+            )
+        ) == [second.pk]
+        assert first.pk not in profile.dostupne_prevadzky().values_list("pk", flat=True)
+
+    def test_destroy_user_removes_profile_access(self, admin_client):
+        user = User.objects.create_user(
+            username="delete-login@example.com",
+            email="delete-login@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Delete login celok")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+        res = admin_client.delete(f"{API_URL}{user.pk}/")
+
+        assert res.status_code == status.HTTP_204_NO_CONTENT
+        assert not User.objects.filter(pk=user.pk).exists()
+        assert not UserProfile.objects.filter(pk=profile.pk).exists()
+        assert not ProfileCelokAccess.objects.filter(profile_id=profile.pk).exists()
