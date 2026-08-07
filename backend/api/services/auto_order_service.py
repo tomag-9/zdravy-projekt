@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from ..exceptions import ClosedDayOrderModificationError
 from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
 
@@ -121,6 +122,18 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
     if target_date.weekday() >= 5:
         logger.info(
             "apply_auto_orders: target_date %s is a weekend, skipping.", target_date
+        )
+        return {"created": [], "skipped": 0, "date": str(target_date)}
+
+    # A closed day is immutable.  This service runs outside an HTTP request, so
+    # use the same central guard as interactive writes but skip instead of raising.
+    from ..serializers import DailyOrderSerializer
+
+    try:
+        DailyOrderSerializer._enforce_day_open(target_date)
+    except ClosedDayOrderModificationError:
+        logger.info(
+            "apply_auto_orders: target_date %s is closed, skipping.", target_date
         )
         return {"created": [], "skipped": 0, "date": str(target_date)}
 

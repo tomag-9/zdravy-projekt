@@ -14,6 +14,7 @@ from .views import (
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
+    ClosedDayViewSet,
     DailyMealPlanViewSet,
     DailyOrderViewSet,
     DeliveryBlockViewSet,
@@ -85,6 +86,7 @@ router.register(
     ReportTaskViewSet,
     basename="report-task",
 )
+router.register(r"admin/closed-days", ClosedDayViewSet, basename="closed-day")
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
 router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
 router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")

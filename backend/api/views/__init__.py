@@ -18,6 +18,9 @@ from .auth_views import (
     SafeTokenRefreshView,
 )
 
+# Closed order days
+from .closed_day_views import ClosedDayViewSet
+
 # Delivery layout views
 from .delivery_views import (
     AdminPrevadzkaDeliveryViewSet,
@@ -81,6 +84,7 @@ __all__ = [
     "PlannedOrdersViewSet",
     "PrevadzkaViewSet",
     "AdminAutoOrderViewSet",
+    "ClosedDayViewSet",
     # Admin
     "AdminLogViewSet",
     "AdminEventLogViewSet",

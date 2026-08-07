@@ -135,6 +135,24 @@ class DailyOrder(models.Model):
         self._response_status = value
 
 
+class ClosedDay(models.Model):
+    """Globálne uzavretý objednávkový deň pre všetky prevádzky."""
+
+    date = models.DateField(unique=True)
+    closed_at = models.DateTimeField(auto_now_add=True)
+    closed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="closed_order_days",
+    )
+
+    class Meta:
+        ordering = ["-date"]
+
+    def __str__(self) -> str:
+        return f"Uzavretý deň {self.date}"
+
+
 class Diet(models.Model):
     name = models.CharField(max_length=100, unique=True)
     sort_order = models.PositiveSmallIntegerField(default=0, db_index=True)

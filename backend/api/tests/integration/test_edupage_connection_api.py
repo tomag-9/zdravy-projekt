@@ -1,7 +1,8 @@
 import pytest
 from rest_framework import status
 
-from api.models import Celok, EdupageConnection, Prevadzka
+from api.edupage_scraper import ScrapeResult
+from api.models import Celok, ClosedDay, DailyOrder, EdupageConnection, Prevadzka
 
 pytestmark = pytest.mark.integration
 
@@ -87,3 +88,59 @@ def test_scrape_action_lives_on_connection_endpoint(admin_client):
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json() == {"error": "date is required"}
+
+
+@pytest.mark.django_db
+def test_scrape_rejects_closed_day_before_import(admin_client, admin_user):
+    target_date = "2099-08-07"
+    ClosedDay.objects.create(date=target_date, closed_by=admin_user)
+
+    response = admin_client.post(
+        f"{CONNECTIONS_URL}scrape/",
+        {"date": target_date},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["error"]["message"] == (
+        "Deň je uzavretý, objednávky sa už nedajú upravovať."
+    )
+    assert not DailyOrder.objects.filter(date=target_date).exists()
+
+
+@pytest.mark.django_db
+def test_scrape_imports_orders_for_open_day(admin_client, admin_user, monkeypatch):
+    target_date = "2099-08-08"
+    celok = Celok.objects.create(nazov="Open import school")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Open import school")
+    operation = {
+        "connection_id": 123,
+        "name": "Open import",
+        "url": "https://example.edupage.org/menu/mealsGuest?id=test",
+        "user": admin_user,
+        "prevadzky": [prevadzka],
+    }
+    monkeypatch.setattr(
+        "api.views.edupage_views.edupage_operations",
+        lambda connection_id=None: [operation],
+    )
+    monkeypatch.setattr(
+        "api.views.edupage_views.EdupageScraper.scrape",
+        lambda self, url, date, prevadzka_matches=None: ScrapeResult(
+            date=date,
+            order_data={"lunch": {"menuCounts": {"A": 3}, "diets": {}}},
+        ),
+    )
+
+    response = admin_client.post(
+        f"{CONNECTIONS_URL}scrape/",
+        {"date": target_date},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["results"][0]["status"] == "updated"
+    order = DailyOrder.objects.get(prevadzka=prevadzka, date=target_date)
+    assert order.data == {
+        "lunch": {"Open import school": {"menuCounts": {"A": 3}, "diets": {}}}
+    }

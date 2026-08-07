@@ -14,6 +14,7 @@ from ..edupage_scraper import (
     prevadzky_without_match,
 )
 from ..models import DailyOrder, EdupageConnection, EventLog
+from ..serializers import DailyOrderSerializer
 from ..services.edupage_connection_service import edupage_operations
 from ..services.event_log_service import build_model_diff, log_event
 from ..utils import filter_order_data_for_prevadzka
@@ -93,6 +94,10 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
             return Response(
                 {"error": "date must be YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST
             )
+
+        # The action imports one date across all matching prevádzky. Reject the
+        # whole request before scraping so a closed day's snapshot stays immutable.
+        DailyOrderSerializer._enforce_day_open(target_date)
 
         operations = edupage_operations(connection_id=connection_id)
         if connection_id and not operations:

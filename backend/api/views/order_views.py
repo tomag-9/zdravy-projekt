@@ -13,8 +13,8 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..exceptions import ClientOnlyError
-from ..models import DailyOrder, EventLog
+from ..exceptions import ClientOnlyError, ClosedDayOrderModificationError
+from ..models import ClosedDay, DailyOrder, EventLog
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
 from ..services.event_log_service import log_event
@@ -191,6 +191,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                     },
                 },
             )
+
+    def perform_destroy(self, instance: DailyOrder) -> None:
+        if ClosedDay.objects.filter(date=instance.date).exists():
+            raise ClosedDayOrderModificationError()
+        instance.delete()
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request: Request, date: Optional[str] = None) -> Response:
