@@ -38,8 +38,10 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Jolly 3", "J3"),
     ],
     # Názvy sú krátke, lebo v reportoch sa prefixujú celkom:
-    # "Edulienka – Palisády".
-    "Edulienka": [
+    # "MŠ Edulienka – Palisády".
+    # Kľúč musí sedieť na presný `Celok.nazov` ("MŠ Edulienka", nie holé
+    # "Edulienka") — inak filter nič nenájde a split sa ticho preskočí.
+    "MŠ Edulienka": [
         ("Palisády", "Palisády"),
         ("Stupava", "Stupava"),
     ],
