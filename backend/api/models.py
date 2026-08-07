@@ -15,6 +15,7 @@ class EventLog(models.Model):
     class EventType(models.TextChoices):
         ORDER_ADMIN_CREATE = "order_admin_create", "Admin vytvoril objednávku"
         ORDER_ADMIN_UPDATE = "order_admin_update", "Admin upravil objednávku"
+        ORDER_ADMIN_DELETE = "order_admin_delete", "Admin vymazal objednávku"
         AUTO_ORDER_RUN = "auto_order_run", "Spustenie auto-objednávok"
         PUSH_BROADCAST = "push_broadcast", "Odoslanie push notifikácie"
         SETTINGS_CHANGE = "settings_change", "Zmena nastavení"

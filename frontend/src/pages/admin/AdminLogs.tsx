@@ -18,6 +18,7 @@ const LEVELS = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
 const EVENT_TYPES = [
     ['order_admin_create', 'Admin vytvoril objednávku'],
     ['order_admin_update', 'Admin upravil objednávku'],
+    ['order_admin_delete', 'Admin vymazal objednávku'],
     ['auto_order_run', 'Spustenie auto-objednávok'],
     ['push_broadcast', 'Odoslanie push notifikácie'],
     ['settings_change', 'Zmena nastavení'],
@@ -60,6 +61,36 @@ interface EventLogsResponse {
     next: string | null;
     previous: string | null;
     results: EventLogEntry[];
+}
+
+interface FieldChange {
+    from?: unknown;
+    to?: unknown;
+}
+
+function formatDiffValue(value: unknown) {
+    if (
+        value == null
+        || value === ''
+        || (Array.isArray(value) && value.length === 0)
+        || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)
+    ) return '(prázdne)';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+}
+
+export function EventPayloadDetails({ payload }: { payload: Record<string, unknown> }) {
+    const changes = payload.changes;
+    if (changes && typeof changes === 'object' && !Array.isArray(changes)) {
+        const lines = Object.entries(changes as Record<string, FieldChange>).map(
+            ([field, change]) => (
+                `${field}: ${formatDiffValue(change?.from)} -> ${formatDiffValue(change?.to)}`
+            ),
+        );
+        return <pre className="tb">{lines.join('\n')}</pre>;
+    }
+    return <pre className="tb">{JSON.stringify(payload, null, 2)}</pre>;
 }
 
 function formatTime(value: string) {
@@ -266,7 +297,7 @@ export default function AdminLogs() {
                                                         </tr>
                                                         {isExpanded && (
                                                             <tr>
-                                                                <td colSpan={6}><pre className="tb">{JSON.stringify(entry.payload, null, 2)}</pre></td>
+                                                                <td colSpan={6}><EventPayloadDetails payload={entry.payload} /></td>
                                                             </tr>
                                                         )}
                                                     </Fragment>
