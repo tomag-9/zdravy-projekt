@@ -6,7 +6,7 @@ This allows imports to work the same way as before:
 """
 
 # Admin views
-from .admin_views import AdminLogViewSet, AdminUserViewSet
+from .admin_views import AdminEventLogViewSet, AdminLogViewSet, AdminUserViewSet
 
 # Authentication views
 from .auth_views import (
@@ -17,6 +17,9 @@ from .auth_views import (
     PasswordResetRequestView,
     SafeTokenRefreshView,
 )
+
+# Closed order days
+from .closed_day_views import ClosedDayViewSet
 
 # Delivery layout views
 from .delivery_views import (
@@ -81,8 +84,10 @@ __all__ = [
     "PlannedOrdersViewSet",
     "PrevadzkaViewSet",
     "AdminAutoOrderViewSet",
+    "ClosedDayViewSet",
     # Admin
     "AdminLogViewSet",
+    "AdminEventLogViewSet",
     "AdminUserViewSet",
     # Edupage
     "AdminEdupageConnectionViewSet",

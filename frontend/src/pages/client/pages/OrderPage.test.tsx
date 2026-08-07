@@ -9,6 +9,7 @@ import {
 } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import OrderPage from "./OrderPage";
+import { buildPackSeparatelyItems } from "../components/order/packSeparately";
 import { AppProvider } from "../context/AppContext";
 import { MemoryRouter } from "react-router-dom";
 import OrderService from "../services/OrderService";
@@ -32,6 +33,7 @@ vi.mock("../../../context/auth", () => ({
   useAuth: vi.fn(() => ({
     logout: vi.fn(),
     apiFetch: mockApiFetch,
+    user: { id: 1, email: "client@example.com" },
   })),
   AuthProvider: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -91,6 +93,76 @@ vi.mock("../services/OrderService", async (importOriginal) => {
 // Use local date (not UTC) to match what useOrder's selectedDate key uses.
 const localDateStr = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+describe("buildPackSeparatelyItems", () => {
+  const category = "Škôlka";
+  const build = (
+    menuCount: number,
+    diets: Record<string, number>,
+    dietMenuVariantMap: Record<string, string>,
+  ) => buildPackSeparatelyItems({
+    [category]: {
+      menuCounts: { A: menuCount },
+      diets,
+      packSeparately: { menus: {}, diets: {} },
+    },
+  }, [category], dietMenuVariantMap);
+
+  it("fully merges equal linked menu and diet counts", () => {
+    expect(build(2, { "Veggie/No Fish": 2 }, { "Veggie/No Fish": "A" })).toEqual([{
+      category,
+      kind: "menus",
+      keyName: "A",
+      linkedDietKey: "Veggie/No Fish",
+      linkedRow: "merged",
+      orderedCount: 2,
+      count: 0,
+    }]);
+  });
+
+  it("splits a linked menu into the overlapping portion and plain remainder", () => {
+    expect(build(5, { "Veggie/No Fish": 2 }, { "Veggie/No Fish": "A" })).toEqual([
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        linkedDietKey: "Veggie/No Fish",
+        linkedRow: "merged",
+        orderedCount: 2,
+        count: 0,
+      },
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        linkedDietKey: "Veggie/No Fish",
+        linkedRow: "remainder",
+        orderedCount: 3,
+        count: 0,
+      },
+    ]);
+  });
+
+  it("leaves an unlinked diet as its own row", () => {
+    expect(build(2, { "Špeciálna": 1 }, { "Veggie/No Fish": "A" })).toEqual([
+      {
+        category,
+        kind: "menus",
+        keyName: "A",
+        orderedCount: 2,
+        count: 0,
+      },
+      {
+        category,
+        kind: "diets",
+        keyName: "Špeciálna",
+        orderedCount: 1,
+        count: 0,
+        menuVariant: undefined,
+      },
+    ]);
+  });
+});
 
 describe("OrderPage Logic & Triggers", () => {
   // Helper to interact with real localStorage in tests
@@ -221,6 +293,67 @@ describe("OrderPage Logic & Triggers", () => {
       return original(url, init);
     });
   };
+
+  const mockPrevadzkaPortionVisibility = (
+    visiblePortionTypes?: Array<{ id: number; name: string }>,
+  ) => {
+    const original = mockApiFetch.getMockImplementation()!;
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/prevadzky/")) {
+        return Promise.resolve(makeMockResponse([{
+          id: 12,
+          nazov: "Porciová prevádzka",
+          adresa: "",
+          celok: "Test celok",
+          visible_menus: ["A", "B", "C", "V"],
+          visible_meals: ["breakfast", "lunch", "olovrant"],
+          visible_portion_types: visiblePortionTypes,
+          visible_diets: [],
+          pack_separately_enabled: false,
+        }]));
+      }
+      if (url.includes("/admin/portion-types/")) {
+        return Promise.resolve(makeMockResponse([
+          { id: 1, name: "Jasle", is_active: true },
+          { id: 2, name: "Škôlka", is_active: true },
+        ]));
+      }
+      return original(url, init);
+    });
+  };
+
+  it("shows only portion types visible for the active prevádzka", async () => {
+    mockPrevadzkaPortionVisibility([{ id: 2, name: "Škôlka" }]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+    expect(within(getMealCard("Obed")).queryByText("Jasle")).not.toBeInTheDocument();
+  });
+
+  it("shows all portion types when visibility is missing", async () => {
+    mockPrevadzkaPortionVisibility();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Jasle")).toBeInTheDocument();
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+  });
+
+  it("shows all portion types when visibility is an empty list (not yet backfilled)", async () => {
+    mockPrevadzkaPortionVisibility([]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Jasle")).toBeInTheDocument();
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+  });
 
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {
     const date = localDateStr();

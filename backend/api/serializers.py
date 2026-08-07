@@ -9,8 +9,12 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .cached_settings_service import get_global_settings
-from .exceptions import HolidayOrderNotAllowedError, OrderDeadlinePassedError
-from .models import DailyOrder, Diet, Holiday, Prevadzka
+from .exceptions import (
+    ClosedDayOrderModificationError,
+    HolidayOrderNotAllowedError,
+    OrderDeadlinePassedError,
+)
+from .models import ClosedDay, DailyOrder, Diet, Holiday, PortionType, Prevadzka
 from .order_data import OrderData, safe_count
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
@@ -63,6 +67,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     _ALLOWED_MEAL_KEYS = frozenset({"breakfast", "lunch", "olovrant"})
     _MAX_DATA_BYTES = 10 * 1024  # 10 KB
     _MAX_COUNT = 9999
+
+    @staticmethod
+    def _enforce_day_open(target_date: datetime.date) -> None:
+        if ClosedDay.objects.filter(date=target_date).exists():
+            raise ClosedDayOrderModificationError()
 
     def validate_data(self, data: Any) -> Dict[str, Any]:
         """Enforce meal keys, count bounds, and size limits for supported shapes."""
@@ -282,6 +291,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         input_status = validated_data.get("status", "submitted")
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
+        self._enforce_day_open(validated_data["date"])
         self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
         prevadzka = self._resolve_prevadzka(user, validated_data)
@@ -390,6 +400,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         user = validated_data.get("user") or instance.user
         is_staff = getattr(getattr(request, "user", None), "is_staff", False)
 
+        self._enforce_day_open(instance.date)
         self._enforce_holiday_restriction(user, input_status, instance.date)
 
         if not is_staff:
@@ -469,9 +480,16 @@ class PrevadzkaDietSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "sort_order", "is_active", "description", "color"]
 
 
+class PrevadzkaPortionTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PortionType
+        fields = ["id", "name", "sort_order", "is_active"]
+
+
 class PrevadzkaSerializer(serializers.ModelSerializer):
     celok = serializers.CharField(source="celok.nazov", read_only=True)
     visible_diets = PrevadzkaDietSerializer(many=True, read_only=True)
+    visible_portion_types = PrevadzkaPortionTypeSerializer(many=True, read_only=True)
 
     class Meta:
         model = Prevadzka
@@ -485,6 +503,7 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "visible_portion_types",
             "pack_separately_enabled",
         ]
         read_only_fields = fields

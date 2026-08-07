@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { GripVertical, Plus, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
-import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty } from "./ui";
+import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty, ColorSwatchPicker } from "./ui";
+import { DietColorSwatch } from "./DietColorSwatch";
+import { dietReorderPayload, moveDietBefore } from "./dietReorder";
 
-interface Diet {
+export interface Diet {
   id: number;
   name: string;
   sort_order: number;
   is_active: boolean;
   description: string;
   color?: string;
+  base_diets?: number[];
+  base_colors?: string[];
 }
 
 interface DeleteConfirm {
@@ -26,7 +30,15 @@ interface RenameModal {
   sortOrder: number;
   description: string;
   color: string;
+  baseDietIds: number[];
 }
+
+interface DragState {
+  dietId: number;
+}
+
+const sameDietIds = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((id, index) => id === right[index]);
 
 const DietManager: React.FC = () => {
   const { apiFetch } = useAuth();
@@ -36,9 +48,12 @@ const DietManager: React.FC = () => {
   const [newDietSortOrder, setNewDietSortOrder] = useState(0);
   const [newDietDescription, setNewDietDescription] = useState("");
   const [newDietColor, setNewDietColor] = useState("#FDE68A");
+  const [newDietBaseIds, setNewDietBaseIds] = useState<number[]>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
   const [renameModal, setRenameModal] = useState<RenameModal | null>(null);
   const [renaming, setRenaming] = useState(false);
+  const [dragging, setDragging] = useState<DragState | null>(null);
+  const saveVersionRef = useRef(0);
 
   const fetchDiets = useCallback(async () => {
     try {
@@ -73,6 +88,7 @@ const DietManager: React.FC = () => {
             sort_order: newDietSortOrder,
             description: newDietDescription.trim(),
             color: newDietColor,
+            base_diets: newDietBaseIds,
             is_active: true,
           }),
         },
@@ -87,6 +103,7 @@ const DietManager: React.FC = () => {
         setNewDietSortOrder(0);
         setNewDietDescription("");
         setNewDietColor("#FDE68A");
+        setNewDietBaseIds([]);
         fetchDiets();
         success("Diéta bola úspešne pridaná");
       } else {
@@ -133,6 +150,7 @@ const DietManager: React.FC = () => {
             sort_order: renameModal.sortOrder,
             description: renameModal.description.trim(),
             color: renameModal.color,
+            base_diets: renameModal.baseDietIds,
           }),
         },
       );
@@ -149,6 +167,60 @@ const DietManager: React.FC = () => {
     } finally {
       setRenaming(false);
     }
+  };
+
+  const persistDietOrder = async (nextDiets: Diet[]) => {
+    const saveVersion = saveVersionRef.current + 1;
+    saveVersionRef.current = saveVersion;
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/reorder/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dietReorderPayload(nextDiets)),
+        },
+      );
+      if (!res.ok) {
+        error("Nepodarilo sa uložiť poradie diét.");
+        if (saveVersionRef.current === saveVersion) await fetchDiets();
+        return;
+      }
+      const saved = await res.json();
+      if (saveVersionRef.current === saveVersion) {
+        setDiets(Array.isArray(saved) ? saved : saved.results || []);
+      }
+    } catch (e) {
+      logger.error(e);
+      error("Chyba pri ukladaní poradia diét.");
+      if (saveVersionRef.current === saveVersion) await fetchDiets();
+    }
+  };
+
+  const startDrag = (event: React.DragEvent, nextDragging: DragState) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, select, input, textarea, a")) {
+      event.preventDefault();
+      return;
+    }
+    setDragging(nextDragging);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-zpa-diet", JSON.stringify(nextDragging));
+  };
+
+  const allowDrop = (event: React.DragEvent) => {
+    if (!dragging) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const dropDiet = (targetDietId: number) => {
+    if (!dragging || dragging.dietId === targetDietId) return;
+    const nextDiets = moveDietBefore(diets, dragging.dietId, targetDietId);
+    if (nextDiets === diets) return;
+    setDiets(nextDiets);
+    setDragging(null);
+    void persistDietOrder(nextDiets);
   };
 
   return (
@@ -184,14 +256,27 @@ const DietManager: React.FC = () => {
                 onChange={(e) => setNewDietSortOrder(Number(e.target.value) || 0)}
               />
             </Field>
-            <Field label="Farba">
-              <Input
-                type="color"
+            <Field label="Farba" as="div">
+              <ColorSwatchPicker
                 value={newDietColor}
-                onChange={(e) => setNewDietColor(e.target.value)}
-                aria-label="Farba novej diéty"
-                style={{ width: 64, padding: 4 }}
+                onChange={setNewDietColor}
+                ariaLabel="Farba novej diéty"
               />
+            </Field>
+            <Field label="Základné diéty" hint="(pre kombinovanú diétu)">
+              <select
+                className="zpa-select"
+                multiple
+                size={Math.min(Math.max(diets.length, 3), 6)}
+                value={newDietBaseIds.map(String)}
+                onChange={(e) =>
+                  setNewDietBaseIds(Array.from(e.currentTarget.selectedOptions, (option) => Number(option.value)))
+                }
+              >
+                {diets.map((diet) => (
+                  <option key={diet.id} value={diet.id}>{diet.name}</option>
+                ))}
+              </select>
             </Field>
             <Button type="submit" disabled={!newDietName.trim()}>
               <Plus /> Pridať diétu
@@ -204,20 +289,23 @@ const DietManager: React.FC = () => {
         ) : (
           <div className="zpa-grid-cards">
             {diets.map((diet) => (
-              <Card key={diet.id} pad className="zpa-diet-card">
+              <Card
+                key={diet.id}
+                pad
+                className={`zpa-diet-card zpa-draggable-row${dragging?.dietId === diet.id ? " is-dragging" : ""}`}
+                draggable
+                onDragStart={(event) => startDrag(event, { dietId: diet.id })}
+                onDragEnd={() => setDragging(null)}
+                onDragOver={allowDrop}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dropDiet(diet.id);
+                }}
+                title="Potiahnutím zmeňte poradie"
+              >
                 <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "flex-start" }}>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 999,
-                      background: diet.color || "#FDE68A",
-                      boxShadow: "inset 0 0 0 1px rgba(39, 52, 34, 0.18)",
-                      flex: "0 0 18px",
-                      marginTop: 2,
-                    }}
-                  />
+                  <span className="zpa-row-grip" aria-hidden="true"><GripVertical /></span>
+                  <DietColorSwatch color={diet.color} baseColors={diet.base_colors} />
                   <div>
                     <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
                     <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {diet.sort_order}</p>
@@ -237,6 +325,7 @@ const DietManager: React.FC = () => {
                         sortOrder: diet.sort_order ?? 0,
                         description: diet.description || "",
                         color: diet.color || "#FDE68A",
+                        baseDietIds: diet.base_diets || [],
                       })
                     }
                   >
@@ -291,6 +380,10 @@ const DietManager: React.FC = () => {
                     renameModal.description.trim() ===
                       (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim() &&
                     renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#FDE68A"))
+                    && sameDietIds(
+                      renameModal.baseDietIds,
+                      diets.find((diet) => diet.id === renameModal.id)?.base_diets || [],
+                    )
                 }
               >
                 {renaming ? "Ukladám…" : "Uložiť"}
@@ -328,14 +421,30 @@ const DietManager: React.FC = () => {
               rows={4}
             />
           </Field>
-          <Field label="Farba">
-            <Input
-              type="color"
+          <Field label="Farba" as="div">
+            <ColorSwatchPicker
               value={renameModal.color}
-              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, color: e.target.value } : prev))}
-              aria-label={`Farba diéty ${renameModal.currentName}`}
-              style={{ width: 64, padding: 4 }}
+              onChange={(color) => setRenameModal((prev) => (prev ? { ...prev, color } : prev))}
+              ariaLabel={`Farba diéty ${renameModal.currentName}`}
             />
+          </Field>
+          <Field label="Základné diéty" hint="(pre kombinovanú diétu)">
+            <select
+              className="zpa-select"
+              multiple
+              size={Math.min(Math.max(diets.length - 1, 3), 6)}
+              value={renameModal.baseDietIds.map(String)}
+              onChange={(e) =>
+                setRenameModal((prev) => prev ? {
+                  ...prev,
+                  baseDietIds: Array.from(e.currentTarget.selectedOptions, (option) => Number(option.value)),
+                } : prev)
+              }
+            >
+              {diets.filter((diet) => diet.id !== renameModal.id).map((diet) => (
+                <option key={diet.id} value={diet.id}>{diet.name}</option>
+              ))}
+            </select>
           </Field>
         </Modal>
       )}

@@ -9,13 +9,14 @@ import OrderSummary from "../components/order/OrderSummary";
 import OrderFormBody from "../components/order/OrderFormBody";
 import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
-import OrderService, { CategoryData, DailyOrder, MealData } from "../services/OrderService";
+import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
 import { TOUR_STEPS } from "../components/onboarding/tourSteps";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
+import { buildPackSeparatelyItems } from "../components/order/packSeparately";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
@@ -62,6 +63,7 @@ const OrderPage = () => {
     setChosenPrevadzka,
     activePrevadzka,
     packSeparatelyEnabled,
+    dietMenuVariantMap,
   } = useApp();
 
   const getOccupiedMenus = (mealKey: string): Set<string> => {
@@ -211,43 +213,15 @@ const OrderPage = () => {
     return total;
   };
 
-  const buildPackSeparatelyItems = (mealData?: MealData) =>
-    CATEGORIES.filter(category => enabledCategories.includes(category)).flatMap((category) => {
-      const categoryData = mealData?.[category];
-      if (!categoryData) return [];
-
-      const menuItems = Object.entries(categoryData.menuCounts || {})
-        .filter(([, orderedCount]) => orderedCount > 0)
-        .map(([menuKey, orderedCount]) => ({
-          category,
-          kind: "menus" as const,
-          keyName: menuKey,
-          orderedCount,
-          count: categoryData.packSeparately?.menus?.[menuKey] || 0,
-        }));
-
-      const dietItems = Object.entries(categoryData.diets || {})
-        .filter(([, orderedCount]) => orderedCount > 0)
-        .map(([dietKey, orderedCount]) => ({
-          category,
-          kind: "diets" as const,
-          keyName: dietKey,
-          orderedCount,
-          count: categoryData.packSeparately?.diets?.[dietKey] || 0,
-        }));
-
-      return [...menuItems, ...dietItems];
-    });
-
   // Celodenka drží porcie v `fullDayData` mimo `currentOrder` — bez tejto vetvy by
   // blok „zabaliť zvlášť“ pri zapnutej celodenke nemal z čoho postaviť položky.
   const packSeparatelySections = (
     fullDayOrder
-      ? [{ meal: "fullDay" as const, mealLabel: "Celý deň", items: buildPackSeparatelyItems(fullDayData) }]
+      ? [{ meal: "fullDay" as const, mealLabel: "Celý deň", items: buildPackSeparatelyItems(fullDayData, enabledCategories, dietMenuVariantMap) }]
       : visibleMealsList.map(({ key, label }) => ({
           meal: key as MealKey,
           mealLabel: label,
-          items: buildPackSeparatelyItems(currentOrder[key as MealKey]),
+          items: buildPackSeparatelyItems(currentOrder[key as MealKey], enabledCategories, dietMenuVariantMap),
         }))
   ).filter((section) => section.items.length > 0);
 

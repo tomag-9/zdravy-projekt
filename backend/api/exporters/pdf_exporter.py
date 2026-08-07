@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import logging
 import os
+from collections import defaultdict
+from xml.sax.saxutils import escape
 
 from ..order_data import OrderData, safe_count
 from ..utils import order_row_label
@@ -103,7 +105,9 @@ class PDFReportExporter:
         "olovrant": "#22c55e",
     }
 
-    def __init__(self, orders: list, target_date: str):
+    def __init__(
+        self, orders: list, target_date: str, diet_colors: dict[str, str] | None = None
+    ):
         """
         Initialize exporter.
 
@@ -111,9 +115,29 @@ class PDFReportExporter:
             orders: List of order objects with user and data
             target_date: ISO format date string for the report
         """
-        self.orders = orders
+        self.orders = list(orders)
         self.target_date = target_date
+        self.diet_colors = (
+            diet_colors if diet_colors is not None else self._load_diet_colors()
+        )
         self.font_regular, self.font_bold = PDFFontManager.get_fonts()
+
+    def _load_diet_colors(self) -> dict[str, str]:
+        """Resolve colors only for diets that occur in this report."""
+        from ..models import Diet
+
+        diet_names = {
+            diet_name
+            for order in self.orders
+            for category in OrderData(
+                order.data if isinstance(order.data, dict) else {}
+            ).iter_categories()
+            for diet_name, count in category.diets.items()
+            if safe_count(count) > 0
+        }
+        return dict(
+            Diet.objects.filter(name__in=diet_names).values_list("name", "color")
+        )
 
     def generate(self) -> bytes:
         """
@@ -251,23 +275,57 @@ class PDFReportExporter:
         ordered += [c for c in categories if c not in ordered]
 
         rows = [["Kategória", "Menu", "Špeciálne diéty"]]
+        menu_totals = defaultdict(int)
+        diet_totals = defaultdict(int)
         for cat_name in ordered:
             category = categories[cat_name]
             menus_str = ", ".join(
-                f"{k}×{v}"
+                self._pdf_item_label(category, "menus", k, safe_count(v))
                 for k, v in sorted(category.menu_counts.items())
                 if safe_count(v) > 0
             )
-            diets_str = ", ".join(
-                (f"{k}×{v}" if safe_count(v) > 1 else k)
+            diet_items = [
+                (
+                    k,
+                    self._pdf_item_label(
+                        category, "diets", k, safe_count(v), diet=True
+                    ),
+                )
                 for k, v in sorted(category.diets.items())
                 if safe_count(v) > 0
-            )
-            if menus_str or diets_str:
-                rows.append([cat_name, menus_str or "–", diets_str or ""])
+            ]
+            if menus_str or diet_items:
+                rows.append(
+                    [
+                        cat_name,
+                        menus_str or "–",
+                        self._diet_cell(diet_items, col_widths[2], font_regular),
+                    ]
+                )
+                for key, value in category.menu_counts.items():
+                    menu_totals[key] += max(safe_count(value), 0)
+                for key, value in category.diets.items():
+                    diet_totals[key] += max(safe_count(value), 0)
 
         if len(rows) == 1:
             return None
+
+        meal_total = sum(menu_totals.values())
+        menu_totals_str = ", ".join(
+            f"{key}×{count}" for key, count in sorted(menu_totals.items()) if count
+        )
+        diet_total_items = [
+            (key, f"{key}×{count}")
+            for key, count in sorted(diet_totals.items())
+            if count
+        ]
+        rows.append(
+            [
+                "SPOLU",
+                f"{menu_totals_str} (celkovo: {meal_total})",
+                self._diet_cell(diet_total_items, col_widths[2], font_bold),
+            ]
+        )
 
         # Convert hex strings to HexColor objects
         bg = reportlab_colors.HexColor(self.MEAL_COLORS[meal_key])
@@ -280,8 +338,15 @@ class PDFReportExporter:
                     ("TEXTCOLOR", (0, 0), (-1, 0), reportlab_colors.white),
                     ("FONTNAME", (0, 0), (-1, -1), font_regular),
                     ("FONTNAME", (0, 0), (-1, 0), font_bold),
+                    ("FONTNAME", (0, -1), (-1, -1), font_bold),
                     ("FONTSIZE", (0, 0), (-1, -1), 8),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [bg, reportlab_colors.white]),
+                    (
+                        "BACKGROUND",
+                        (0, -1),
+                        (-1, -1),
+                        reportlab_colors.HexColor("#e2e8f0"),
+                    ),
                     (
                         "GRID",
                         (0, 0),
@@ -298,6 +363,83 @@ class PDFReportExporter:
             )
         )
         return t
+
+    @staticmethod
+    def _pack_count(category, kind: str, key: str) -> int:
+        values = category.pack_separately.get(kind, {})
+        return safe_count(values.get(key, 0)) if isinstance(values, dict) else 0
+
+    def _pdf_item_label(
+        self, category, kind: str, key: str, count: int, diet: bool = False
+    ) -> str:
+        label = key if diet and count == 1 else f"{key}×{count}"
+        separate_count = self._pack_count(category, kind, key)
+        if separate_count:
+            label += f" (zvlášť: {separate_count})"
+        return label
+
+    def _diet_cell(self, items, width, font_name):
+        """Build individually colored diet labels inside one outer table cell."""
+        from reportlab.lib import colors as reportlab_colors
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.platypus import Paragraph, Table, TableStyle
+
+        if not items:
+            return ""
+        rows = []
+        style_commands = []
+        paragraph_style = ParagraphStyle(
+            "diet-cell", fontName=font_name, fontSize=8, leading=10
+        )
+        for row_idx, (diet_name, label) in enumerate(items):
+            color = self._pdf_color(self.diet_colors.get(diet_name)) or "#FDE68A"
+            rows.append([Paragraph(escape(label), paragraph_style)])
+            style_commands.extend(
+                [
+                    (
+                        "BACKGROUND",
+                        (0, row_idx),
+                        (0, row_idx),
+                        reportlab_colors.HexColor(color),
+                    ),
+                    (
+                        "TEXTCOLOR",
+                        (0, row_idx),
+                        (0, row_idx),
+                        self._contrast_color(color, reportlab_colors),
+                    ),
+                ]
+            )
+        table = Table(rows, colWidths=[max(width - 10, 1)])
+        table.setStyle(
+            TableStyle(
+                style_commands
+                + [
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                    ("TOPPADDING", (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]
+            )
+        )
+        return table
+
+    @staticmethod
+    def _pdf_color(value: object) -> str | None:
+        color = str(value or "").strip()
+        candidate = color.lstrip("#")
+        if len(candidate) == 6 and all(
+            char in "0123456789abcdefABCDEF" for char in candidate
+        ):
+            return f"#{candidate.upper()}"
+        return None
+
+    @staticmethod
+    def _contrast_color(hex_color: str, reportlab_colors):
+        value = hex_color.lstrip("#")
+        red, green, blue = (int(value[index : index + 2], 16) for index in (0, 2, 4))
+        luminance = (299 * red + 587 * green + 114 * blue) / 1000
+        return reportlab_colors.black if luminance >= 140 else reportlab_colors.white
 
     def _render_pdf(self, story: list, styles: dict, A4, cm) -> io.BytesIO:
         """Render story to PDF."""

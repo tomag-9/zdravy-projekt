@@ -3,6 +3,7 @@ import { Send, Info } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
 import { PageHead, Card, CardHead, Button, Field, Input, Textarea, Select } from './ui';
+import { fetchAllPages } from '../../lib/pagination';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -28,12 +29,8 @@ const PushNotifications: React.FC = () => {
     const [sending, setSending] = useState(false);
 
     useEffect(() => {
-        apiFetch(`${API_URL}/admin/users/?page_size=200`)
-            .then((r) => r.json())
-            .then((data) => {
-                const results = data.results ?? data;
-                setUsers(Array.isArray(results) ? results : []);
-            })
+        fetchAllPages<AdminUser>(apiFetch, `${API_URL}/admin/users/?page_size=200`)
+            .then(setUsers)
             .catch(() => {});
     }, [apiFetch]);
 

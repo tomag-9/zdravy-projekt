@@ -19,6 +19,7 @@ from api.default_visibility import (
     ensure_all_visible_meals_for_prevadzky,
     ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets_for_empty_prevadzky,
+    ensure_default_visible_portion_types_for_empty_prevadzky,
 )
 from api.models import Diet, PortionType
 from api.reference_data import ALL_DIETS, DEFAULT_DIET_NAMES
@@ -71,6 +72,9 @@ class Command(BaseCommand):
         prevadzky_updated_count = 0
         prevadzky_menus_updated_count = 0
         prevadzky_meals_updated_count = 0
+        prevadzky_portion_types_updated_count = (
+            ensure_default_visible_portion_types_for_empty_prevadzky()
+        )
         if default_diets:
             prevadzky_updated_count = ensure_default_visible_diets_for_empty_prevadzky()
             prevadzky_menus_updated_count = ensure_all_visible_menus_for_prevadzky()
@@ -82,6 +86,7 @@ class Command(BaseCommand):
             or prevadzky_updated_count
             or prevadzky_menus_updated_count
             or prevadzky_meals_updated_count
+            or prevadzky_portion_types_updated_count
         ):
             self.stdout.write(
                 self.style.SUCCESS(
@@ -90,6 +95,8 @@ class Command(BaseCommand):
                     f"default diets enabled for {prevadzky_updated_count} prevadzky; "
                     f"all menus enabled for {prevadzky_menus_updated_count} prevadzky; "
                     f"all meals enabled for {prevadzky_meals_updated_count} prevadzky."
+                    f" all portion types enabled for "
+                    f"{prevadzky_portion_types_updated_count} prevadzky."
                 )
             )
         else:
