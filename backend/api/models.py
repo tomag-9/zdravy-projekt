@@ -165,6 +165,12 @@ class Diet(models.Model):
         default="",
         help_text="Voliteľná HEX farba pre admin prehľady, napr. #F97316.",
     )
+    base_diets = models.ManyToManyField(
+        "self",
+        symmetrical=False,
+        blank=True,
+        related_name="composite_of",
+    )
 
     class Meta:
         ordering = ["sort_order", "name"]

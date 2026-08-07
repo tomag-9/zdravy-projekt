@@ -1,3 +1,4 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
@@ -5,6 +6,7 @@ from rest_framework.response import Response
 
 from ..cache_service import (
     DIET_LIST_TIMEOUT,
+    clear_diet_list_cache,
     get_cached,
     get_diet_list_cache_key,
     set_cached,
@@ -22,6 +24,7 @@ from ..utils import parse_date_param
     update=extend_schema(tags=["diets"]),
     partial_update=extend_schema(tags=["diets"]),
     destroy=extend_schema(tags=["diets"]),
+    reorder=extend_schema(tags=["diets"]),
     menu_variant_map=extend_schema(tags=["diets"]),
 )
 class DietViewSet(viewsets.ModelViewSet):
@@ -33,7 +36,7 @@ class DietViewSet(viewsets.ModelViewSet):
     via signal handlers.
     """
 
-    queryset = Diet.objects.all()
+    queryset = Diet.objects.prefetch_related("base_diets").all()
     serializer_class = DietSerializer
     permission_classes = [permissions.IsAuthenticated]
     # Diets are reference data consumed as one complete set by the management
@@ -42,9 +45,38 @@ class DietViewSet(viewsets.ModelViewSet):
     pagination_class = None
 
     def get_permissions(self):
-        if self.action in ["create", "update", "partial_update", "destroy"]:
+        if self.action in [
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "reorder",
+        ]:
             return [permissions.IsAdminUser()]
         return super().get_permissions()
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        diets = request.data.get("diets", [])
+        if not isinstance(diets, list):
+            return Response(
+                {"error": "diets must be a list"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            for diet_index, diet_payload in enumerate(diets, start=1):
+                diet_id = diet_payload.get("id")
+                if diet_id is None:
+                    continue
+                Diet.objects.filter(pk=diet_id).update(
+                    sort_order=diet_payload.get("sort_order", diet_index)
+                )
+
+        # QuerySet.update() intentionally avoids save signals, so invalidate the
+        # cached catalogue explicitly after the transaction commits.
+        clear_diet_list_cache()
+        return self.list(request)
 
     @action(detail=False, methods=["get"], url_path="menu-variant-map")
     def menu_variant_map(self, request):

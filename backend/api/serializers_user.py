@@ -21,9 +21,33 @@ from .models import (
 class DietSerializer(serializers.ModelSerializer):
     """Read/write serializer for the Diet catalogue model."""
 
+    base_diets = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Diet.objects.all(),
+        required=False,
+    )
+    base_colors = serializers.SerializerMethodField()
+
+    def get_base_colors(self, obj: Diet) -> List[str]:
+        return [diet.color for diet in obj.base_diets.all() if diet.color]
+
+    def validate_base_diets(self, value: List[Diet]) -> List[Diet]:
+        if self.instance and any(diet.pk == self.instance.pk for diet in value):
+            raise serializers.ValidationError("A diet cannot include itself.")
+        return value
+
     class Meta:
         model = Diet
-        fields = ["id", "name", "sort_order", "is_active", "description", "color"]
+        fields = [
+            "id",
+            "name",
+            "sort_order",
+            "is_active",
+            "description",
+            "color",
+            "base_diets",
+            "base_colors",
+        ]
 
 
 class PortionTypeSettingsSerializer(serializers.ModelSerializer):
