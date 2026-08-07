@@ -279,8 +279,22 @@ DELIVERY_ROWS = [
         "Školička 2. stupeň",
         address="Panenská 4, BA",
     ),
+    # MŠ Edulienka splits into Palisády/Stupava sub-prevádzky (see
+    # seed_prevadzky_edupage.SPLITS) — target them directly, same as the
+    # Jolly Homeschool / Škôlka MS multi-prevádzka rows above/below.
+    # Targeting the pre-split default name here would resurrect it
+    # (is_active=True) every time this command reseeds, undoing the split.
     DeliverySeedRow(
-        "TRASA EXTRA 2 - MIŠO a IGOR 9:15", "MŠ Edulienka", alias="Edulienka"
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Palisády",
+        alias="Edulienka - Palisády",
+        is_edupage=True,
+    ),
+    DeliverySeedRow(
+        "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
+        "Stupava",
+        alias="Edulienka - Stupava",
+        is_edupage=True,
     ),
     DeliverySeedRow(
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
