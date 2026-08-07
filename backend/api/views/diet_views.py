@@ -31,6 +31,10 @@ class DietViewSet(viewsets.ModelViewSet):
     queryset = Diet.objects.all()
     serializer_class = DietSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # Diets are reference data consumed as one complete set by the management
+    # and facility-assignment screens. Paginating this endpoint made diets after
+    # the first 20 invisible and could hide an already assigned diet.
+    pagination_class = None
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy"]:
@@ -44,12 +48,10 @@ class DietViewSet(viewsets.ModelViewSet):
         Cache is automatically invalidated when Diet instances are
         created/updated/deleted via signal handlers (clear_diet_list_cache).
 
-        Note: Caching is per-page via pagination aware keys. This avoids returning
-        stale pages when filtering/sorting query params change.
+        The complete list is cached under one key because this endpoint is
+        intentionally not paginated.
         """
-        # Build cache key including pagination params to handle different pages
-        page_num = request.query_params.get("page", "1")
-        cache_key = f"{get_diet_list_cache_key()}:page={page_num}"
+        cache_key = get_diet_list_cache_key()
 
         # Try to get cached serialized data
         cached_data = get_cached(cache_key)
@@ -61,7 +63,7 @@ class DietViewSet(viewsets.ModelViewSet):
         # Generate response via parent list() method
         response = super().list(request, *args, **kwargs)
 
-        # Cache the serialized data (response.data is already paginated dict)
+        # Cache the complete serialized list.
         if response.status_code == 200:
             set_cached(cache_key, response.data, timeout=DIET_LIST_TIMEOUT)
 

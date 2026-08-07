@@ -16,13 +16,28 @@ def test_diet_list_respects_sort_order_then_name(api_client):
     response = api_client.get("/api/diets/")
 
     assert response.status_code == 200
-    # Odpoveď je stránkovaná, takže položky sú pod "results".
     payload = response.json()
-    items = payload["results"] if isinstance(payload, dict) else payload
-    names = [item["name"] for item in items]
+    names = [item["name"] for item in payload]
 
     # Zulu a Beta majú sort_order 0 → idú pred Alpha (5), medzi sebou podľa názvu.
     assert names.index("Beta") < names.index("Zulu") < names.index("Alpha")
+
+
+@pytest.mark.django_db
+def test_diet_list_returns_all_items_without_pagination(api_client):
+    """Admin screens must see diets beyond the former 20-item first page."""
+    admin = AdminUserFactory()
+    api_client.force_authenticate(user=admin)
+    Diet.objects.bulk_create(
+        [Diet(name=f"Diet {index:02d}", sort_order=index) for index in range(25)]
+    )
+
+    response = api_client.get("/api/diets/")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert len(payload) == 25
 
 
 @pytest.mark.django_db
