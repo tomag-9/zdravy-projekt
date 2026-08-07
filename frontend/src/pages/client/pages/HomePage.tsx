@@ -24,6 +24,7 @@ import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
 import { logger } from '../../../lib/logger';
+import { fetchAllPages } from '../../../lib/pagination';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -155,11 +156,7 @@ const HomePage = () => {
     if (!user) return;
     const fetchHistory = async () => {
       try {
-        const r = await apiFetch(`${API_URL}/orders/`);
-        if (!r.ok) return;
-        const json = await r.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const items: any[] = Array.isArray(json) ? json : (json.results ?? []);
+        const items = await fetchAllPages<Record<string, unknown>>(apiFetch, `${API_URL}/orders/`);
         const today = OrderService.toLocalDateString(OrderService.getServerNow());
         const history: HistoryOrder[] = [];
         const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];

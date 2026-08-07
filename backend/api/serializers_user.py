@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .models import (
     Celok,
     Diet,
+    PortionType,
     Prevadzka,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
@@ -20,9 +21,39 @@ from .models import (
 class DietSerializer(serializers.ModelSerializer):
     """Read/write serializer for the Diet catalogue model."""
 
+    base_diets = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=Diet.objects.all(),
+        required=False,
+    )
+    base_colors = serializers.SerializerMethodField()
+
+    def get_base_colors(self, obj: Diet) -> List[str]:
+        return [diet.color for diet in obj.base_diets.all() if diet.color]
+
+    def validate_base_diets(self, value: List[Diet]) -> List[Diet]:
+        if self.instance and any(diet.pk == self.instance.pk for diet in value):
+            raise serializers.ValidationError("A diet cannot include itself.")
+        return value
+
     class Meta:
         model = Diet
-        fields = ["id", "name", "sort_order", "is_active", "description", "color"]
+        fields = [
+            "id",
+            "name",
+            "sort_order",
+            "is_active",
+            "description",
+            "color",
+            "base_diets",
+            "base_colors",
+        ]
+
+
+class PortionTypeSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PortionType
+        fields = ["id", "name", "sort_order", "is_active"]
 
 
 def validate_password_strength(password: str, user: User | None = None) -> str:
@@ -159,6 +190,7 @@ class PrevadzkaSettingsSerializer(serializers.ModelSerializer):
     """Kompatibilný settings payload čítaný z kanonickej Prevádzky."""
 
     visible_diets = DietSerializer(many=True, read_only=True)
+    visible_portion_types = PortionTypeSettingsSerializer(many=True, read_only=True)
 
     class Meta:
         model = Prevadzka
@@ -166,6 +198,7 @@ class PrevadzkaSettingsSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "visible_portion_types",
             "admin_order_note",
         ]
 
@@ -302,7 +335,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if not hasattr(obj, "profile"):
             return {}
         prevadzky = list(
-            obj.profile.dostupne_prevadzky().prefetch_related("visible_diets")[:2]
+            obj.profile.dostupne_prevadzky().prefetch_related(
+                "visible_diets", "visible_portion_types"
+            )[:2]
         )
         return (
             PrevadzkaSettingsSerializer(prevadzky[0]).data
@@ -468,7 +503,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         if getattr(view, "action", None) == "list" or not hasattr(obj, "profile"):
             return None
         prevadzky = list(
-            obj.profile.dostupne_prevadzky().prefetch_related("visible_diets")[:2]
+            obj.profile.dostupne_prevadzky().prefetch_related(
+                "visible_diets", "visible_portion_types"
+            )[:2]
         )
         if len(prevadzky) != 1:
             return None
@@ -486,6 +523,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
         """
         settings_data = self.initial_data.get("settings", None)
         company_name = validated_data.pop("company_name", serializers.empty)
+        celok = validated_data.pop("celok", serializers.empty)
+        prevadzky = validated_data.pop("prevadzky", serializers.empty)
         settings_serializer = None
         if settings_data is not None:
             if not hasattr(instance, "profile"):
@@ -528,12 +567,39 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         instance = super().update(instance, validated_data)
 
-        profile_needs_update = company_name is not serializers.empty
+        profile_needs_update = (
+            company_name is not serializers.empty
+            or celok is not serializers.empty
+            or prevadzky is not serializers.empty
+        )
         if profile_needs_update:
-            profile, _ = UserProfile.objects.get_or_create(user=instance)
+            try:
+                profile = instance.profile
+            except UserProfile.DoesNotExist:
+                profile = UserProfile(user=instance)
+                profile._skip_default_facility = True
+                profile.save()
             if company_name is not serializers.empty:
                 profile.company_name = company_name or ""
-            profile.save()
+                profile.save(update_fields=["company_name"])
+
+            if celok is not serializers.empty or prevadzky is not serializers.empty:
+                ProfileCelokAccess.objects.filter(profile=profile).delete()
+                ProfilePrevadzkaAccess.objects.filter(profile=profile).delete()
+
+                selected_prevadzky = [] if prevadzky is serializers.empty else prevadzky
+                if selected_prevadzky:
+                    ProfilePrevadzkaAccess.objects.bulk_create(
+                        [
+                            ProfilePrevadzkaAccess(
+                                profile=profile,
+                                prevadzka=prevadzka,
+                            )
+                            for prevadzka in selected_prevadzky
+                        ]
+                    )
+                elif celok is not serializers.empty and celok is not None:
+                    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
 
         if settings_serializer is not None:
             settings_serializer.save()

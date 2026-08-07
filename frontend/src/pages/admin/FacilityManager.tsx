@@ -232,10 +232,14 @@ const FacilityManager: React.FC = () => {
   });
   const [cSaving, setCSaving] = useState(false);
 
-  // Login add (target: celok, optional prevádzka)
+  // Login list/add/edit/delete (target: celok, optional prevádzka)
+  const [loginListTarget, setLoginListTarget] = useState<{ celok: Celok; prevadzka: Prevadzka | null } | null>(null);
   const [loginTarget, setLoginTarget] = useState<{ celok: Celok; prevadzka: Prevadzka | null } | null>(null);
+  const [loginEditTarget, setLoginEditTarget] = useState<Login | null>(null);
+  const [loginDeleteTarget, setLoginDeleteTarget] = useState<Login | null>(null);
   const [lForm, setLForm] = useState<LoginForm>(EMPTY_LOGIN);
   const [lSaving, setLSaving] = useState(false);
+  const [loginDeleting, setLoginDeleting] = useState(false);
 
   const fetchCelky = useCallback(async () => {
     try {
@@ -427,10 +431,21 @@ const FacilityManager: React.FC = () => {
     }
   };
 
-  // ── Login add ──
+  // ── Login ──
   const openAddLogin = (celok: Celok, prevadzka: Prevadzka | null) => {
+    setLoginEditTarget(null);
     setLoginTarget({ celok, prevadzka });
     setLForm({ ...EMPTY_LOGIN, company_name: prevadzka?.nazov || celok.nazov });
+  };
+  const openEditLogin = (celok: Celok, prevadzka: Prevadzka | null, login: Login) => {
+    setLoginListTarget(null);
+    setLoginEditTarget(login);
+    setLoginTarget({ celok, prevadzka });
+    setLForm({ email: login.email, company_name: login.company_name });
+  };
+  const closeLoginEditor = () => {
+    setLoginTarget(null);
+    setLoginEditTarget(null);
   };
   const saveLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -447,26 +462,54 @@ const FacilityManager: React.FC = () => {
         is_active: true,
         celok: loginTarget.celok.id,
       };
-      if (loginTarget.prevadzka) body.prevadzky = [loginTarget.prevadzka.id];
-      const res = await apiFetch(`${API}/admin/users/`, {
-        method: "POST",
+      if (loginEditTarget) {
+        body.prevadzky = loginEditTarget.prevadzka_ids;
+      } else if (loginTarget.prevadzka) {
+        body.prevadzky = [loginTarget.prevadzka.id];
+      }
+      const res = await apiFetch(
+        loginEditTarget ? `${API}/admin/users/${loginEditTarget.user_id}/` : `${API}/admin/users/`,
+        {
+        method: loginEditTarget ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
-      });
+        },
+      );
       if (res.ok) {
-        success("Login bol vytvorený.");
+        success(loginEditTarget ? "Login bol upravený." : "Login bol vytvorený.");
         setExpanded((prev) => new Set(prev).add(loginTarget.celok.id));
-        setLoginTarget(null);
+        closeLoginEditor();
         fetchCelky();
       } else {
         const data = await res.json().catch(() => ({}));
-        toastError(data?.error?.details?.email?.[0] || data?.email?.[0] || data?.error?.message || "Nepodarilo sa vytvoriť login.");
+        toastError(data?.error?.details?.email?.[0] || data?.email?.[0] || data?.error?.message || "Nepodarilo sa uložiť login.");
       }
     } catch (err) {
       logger.error(err);
-      toastError("Chyba pri vytváraní loginu.");
+      toastError("Chyba pri ukladaní loginu.");
     } finally {
       setLSaving(false);
+    }
+  };
+
+  const doDeleteLogin = async () => {
+    if (!loginDeleteTarget) return;
+    setLoginDeleting(true);
+    try {
+      const res = await apiFetch(`${API}/admin/users/${loginDeleteTarget.user_id}/`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        success(`Login „${loginDeleteTarget.email}“ bol odstránený.`);
+        setLoginDeleteTarget(null);
+        setLoginListTarget(null);
+        fetchCelky();
+      } else {
+        toastError("Nepodarilo sa odstrániť login.");
+      }
+    } catch (err) {
+      logger.error(err);
+      toastError("Chyba pri odstraňovaní loginu.");
+    } finally {
+      setLoginDeleting(false);
     }
   };
 
@@ -510,10 +553,25 @@ const FacilityManager: React.FC = () => {
                           {celok.prevadzky_count} {celok.prevadzky_count === 1 ? "prevádzka" : "prevádzky"}
                         </Badge>
                         {celok.zdroj_objednavok === "edupage" && <Badge tone="teal">Edupage</Badge>}
-                        {celok.logins.length > 0 && (
-                          <Badge tone="honey"><Users size={12} style={{ verticalAlign: "-2px" }} /> {celok.logins.length}</Badge>
-                        )}
                       </button>
+                      {celok.logins.length > 0 && (
+                        <Badge
+                          tone="honey"
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`Zobraziť loginy celku ${celok.nazov}`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => setLoginListTarget({ celok, prevadzka: null })}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setLoginListTarget({ celok, prevadzka: null });
+                            }
+                          }}
+                        >
+                          <Users size={12} style={{ verticalAlign: "-2px" }} /> {celok.logins.length}
+                        </Badge>
+                      )}
                       <div className="zpa-celok-actions">
                         <IconButton onClick={() => openEditCelok(celok)} title="Upraviť celok" aria-label="Upraviť celok"><Pencil /></IconButton>
                         <IconButton onClick={() => openAddLogin(celok, null)} title="Pridať login" aria-label="Pridať login"><UserPlus /></IconButton>
@@ -538,11 +596,30 @@ const FacilityManager: React.FC = () => {
                               <tr><td colSpan={5} className="c" style={{ color: "var(--ink-mute)", padding: 16 }}>Žiadne prevádzky</td></tr>
                             ) : (
                               celok.prevadzky.map((p) => {
+                                const prevadzkaLogins = celok.logins.filter((login) => login.prevadzka_ids.includes(p.id));
                                 return (
                                   <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
                                     <td>
                                       {p.nazov}
                                       {!p.is_active && <Badge tone="gray" style={{ marginLeft: 8 }}>neaktívna</Badge>}
+                                      {prevadzkaLogins.length > 0 && (
+                                        <Badge
+                                          tone="honey"
+                                          role="button"
+                                          tabIndex={0}
+                                          aria-label={`Zobraziť loginy prevádzky ${p.nazov}`}
+                                          style={{ marginLeft: 8, cursor: "pointer" }}
+                                          onClick={() => setLoginListTarget({ celok, prevadzka: p })}
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter" || event.key === " ") {
+                                              event.preventDefault();
+                                              setLoginListTarget({ celok, prevadzka: p });
+                                            }
+                                          }}
+                                        >
+                                          <Users size={12} style={{ verticalAlign: "-2px" }} /> {prevadzkaLogins.length}
+                                        </Badge>
+                                      )}
                                     </td>
                                     <td style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.adresa || "—"}</td>
                                     <td style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.edupage_match || "—"}</td>
@@ -635,24 +712,94 @@ const FacilityManager: React.FC = () => {
         </Modal>
       )}
 
-      {/* Login add */}
+      {/* Login list */}
+      {loginListTarget && (() => {
+        const listedLogins = loginListTarget.prevadzka
+          ? loginListTarget.celok.logins.filter((login) => login.prevadzka_ids.includes(loginListTarget.prevadzka!.id))
+          : loginListTarget.celok.logins;
+        return (
+          <Modal
+            title={loginListTarget.prevadzka ? `Loginy — ${loginListTarget.prevadzka.nazov}` : `Loginy — ${loginListTarget.celok.nazov}`}
+            onClose={() => setLoginListTarget(null)}
+            wide
+            foot={<Button variant="ghost" onClick={() => setLoginListTarget(null)}>Zavrieť</Button>}
+          >
+            {listedLogins.map((login) => (
+              <div key={login.user_id} className="zpa-listrow" style={{ paddingInline: 0 }}>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div className="lr-ttl" style={{ textTransform: "none" }}>{login.company_name || login.email}</div>
+                  <div className="lr-sub">{login.email}</div>
+                </div>
+                {login.is_edupage && <Badge tone="teal">EduPage</Badge>}
+                <IconButton
+                  onClick={() => openEditLogin(loginListTarget.celok, loginListTarget.prevadzka, login)}
+                  title="Upraviť login"
+                  aria-label={`Upraviť login ${login.email}`}
+                >
+                  <Pencil />
+                </IconButton>
+                <IconButton
+                  onClick={() => {
+                    setLoginListTarget(null);
+                    setLoginDeleteTarget(login);
+                  }}
+                  title="Odstrániť login"
+                  aria-label={`Odstrániť login ${login.email}`}
+                >
+                  <Trash2 />
+                </IconButton>
+              </div>
+            ))}
+          </Modal>
+        );
+      })()}
+
+      {/* Login add/edit */}
       {loginTarget && (
         <Modal
-          title={loginTarget.prevadzka ? `Pridať login — ${loginTarget.prevadzka.nazov}` : `Pridať login — ${loginTarget.celok.nazov}`}
-          onClose={() => setLoginTarget(null)}
+          title={loginEditTarget
+            ? `Upraviť login — ${loginEditTarget.email}`
+            : loginTarget.prevadzka
+              ? `Pridať login — ${loginTarget.prevadzka.nazov}`
+              : `Pridať login — ${loginTarget.celok.nazov}`}
+          onClose={closeLoginEditor}
           foot={<>
-            <Button variant="ghost" onClick={() => setLoginTarget(null)}>Zrušiť</Button>
-            <Button type="submit" form="login-form" disabled={lSaving}>{lSaving ? "Vytváram…" : "Vytvoriť login"}</Button>
+            <Button variant="ghost" onClick={closeLoginEditor}>Zrušiť</Button>
+            <Button type="submit" form="login-form" disabled={lSaving}>
+              {lSaving ? "Ukladám…" : loginEditTarget ? "Uložiť" : "Vytvoriť login"}
+            </Button>
           </>}
         >
-          <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--ink-3)" }}>
-            {loginTarget.prevadzka
-              ? `Login bude objednávať len za prevádzku „${loginTarget.prevadzka.nazov}“.`
-              : `Login bude objednávať za celý celok „${loginTarget.celok.nazov}“ (všetky prevádzky).`}
-          </p>
+          {!loginEditTarget && (
+            <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--ink-3)" }}>
+              {loginTarget.prevadzka
+                ? `Login bude objednávať len za prevádzku „${loginTarget.prevadzka.nazov}“.`
+                : `Login bude objednávať za celý celok „${loginTarget.celok.nazov}“ (všetky prevádzky).`}
+            </p>
+          )}
           <form id="login-form" onSubmit={saveLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <LoginFields form={lForm} setForm={setLForm} />
           </form>
+        </Modal>
+      )}
+
+      {/* Login delete */}
+      {loginDeleteTarget && (
+        <Modal
+          title="Odstrániť login"
+          onClose={() => setLoginDeleteTarget(null)}
+          icon={<AlertTriangle />}
+          iconKind="danger"
+          foot={<>
+            <Button variant="ghost" onClick={() => setLoginDeleteTarget(null)} disabled={loginDeleting}>Zrušiť</Button>
+            <Button variant="danger" onClick={doDeleteLogin} disabled={loginDeleting}>
+              {loginDeleting ? "Odstraňujem…" : "Odstrániť"}
+            </Button>
+          </>}
+        >
+          <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            Naozaj odstrániť login <strong style={{ color: "var(--green-900)" }}>{loginDeleteTarget.email}</strong>?
+          </p>
         </Modal>
       )}
 

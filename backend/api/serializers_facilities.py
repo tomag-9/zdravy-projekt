@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from .models import Celok, Diet, Prevadzka
+from .models import Celok, Diet, PortionType, Prevadzka
 
 
 class AdminPrevadzkaSerializer(serializers.ModelSerializer):
@@ -33,6 +33,9 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     client_user_id = serializers.SerializerMethodField()
     visible_diets = serializers.PrimaryKeyRelatedField(
         queryset=Diet.objects.all(), many=True, required=False
+    )
+    visible_portion_types = serializers.PrimaryKeyRelatedField(
+        queryset=PortionType.objects.all(), many=True, required=False
     )
 
     def _detail_profile(self, obj):
@@ -84,6 +87,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "visible_portion_types",
             "pack_separately_enabled",
             "admin_order_note",
             "orders_count",

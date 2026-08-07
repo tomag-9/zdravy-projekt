@@ -1,14 +1,20 @@
+from django.db import transaction
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, viewsets
+from rest_framework import permissions, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from ..cache_service import (
     DIET_LIST_TIMEOUT,
+    clear_diet_list_cache,
     get_cached,
     get_diet_list_cache_key,
     set_cached,
 )
 from ..models import Diet
 from ..serializers_user import DietSerializer
+from ..services.meal_plan_service import resolve_diet_menu_variants
+from ..utils import parse_date_param
 
 
 @extend_schema_view(
@@ -18,6 +24,8 @@ from ..serializers_user import DietSerializer
     update=extend_schema(tags=["diets"]),
     partial_update=extend_schema(tags=["diets"]),
     destroy=extend_schema(tags=["diets"]),
+    reorder=extend_schema(tags=["diets"]),
+    menu_variant_map=extend_schema(tags=["diets"]),
 )
 class DietViewSet(viewsets.ModelViewSet):
     """
@@ -28,14 +36,58 @@ class DietViewSet(viewsets.ModelViewSet):
     via signal handlers.
     """
 
-    queryset = Diet.objects.all()
+    queryset = Diet.objects.prefetch_related("base_diets").all()
     serializer_class = DietSerializer
     permission_classes = [permissions.IsAuthenticated]
+    # Diets are reference data consumed as one complete set by the management
+    # and facility-assignment screens. Paginating this endpoint made diets after
+    # the first 20 invisible and could hide an already assigned diet.
+    pagination_class = None
 
     def get_permissions(self):
-        if self.action in ["create", "update", "partial_update", "destroy"]:
+        if self.action in [
+            "create",
+            "update",
+            "partial_update",
+            "destroy",
+            "reorder",
+        ]:
             return [permissions.IsAdminUser()]
         return super().get_permissions()
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        diets = request.data.get("diets", [])
+        if not isinstance(diets, list):
+            return Response(
+                {"error": "diets must be a list"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            for diet_index, diet_payload in enumerate(diets, start=1):
+                diet_id = diet_payload.get("id")
+                if diet_id is None:
+                    continue
+                Diet.objects.filter(pk=diet_id).update(
+                    sort_order=diet_payload.get("sort_order", diet_index)
+                )
+
+        # QuerySet.update() intentionally avoids save signals, so invalidate the
+        # cached catalogue explicitly after the transaction commits.
+        clear_diet_list_cache()
+        return self.list(request)
+
+    @action(detail=False, methods=["get"], url_path="menu-variant-map")
+    def menu_variant_map(self, request):
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date query param required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        target_date = parse_date_param(date_str)
+        return Response(resolve_diet_menu_variants(target_date))
 
     def list(self, request, *args, **kwargs):
         """
@@ -44,12 +96,10 @@ class DietViewSet(viewsets.ModelViewSet):
         Cache is automatically invalidated when Diet instances are
         created/updated/deleted via signal handlers (clear_diet_list_cache).
 
-        Note: Caching is per-page via pagination aware keys. This avoids returning
-        stale pages when filtering/sorting query params change.
+        The complete list is cached under one key because this endpoint is
+        intentionally not paginated.
         """
-        # Build cache key including pagination params to handle different pages
-        page_num = request.query_params.get("page", "1")
-        cache_key = f"{get_diet_list_cache_key()}:page={page_num}"
+        cache_key = get_diet_list_cache_key()
 
         # Try to get cached serialized data
         cached_data = get_cached(cache_key)
@@ -61,7 +111,7 @@ class DietViewSet(viewsets.ModelViewSet):
         # Generate response via parent list() method
         response = super().list(request, *args, **kwargs)
 
-        # Cache the serialized data (response.data is already paginated dict)
+        # Cache the complete serialized list.
         if response.status_code == 200:
             set_cached(cache_key, response.data, timeout=DIET_LIST_TIMEOUT)
 

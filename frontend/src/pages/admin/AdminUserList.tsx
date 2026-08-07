@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import { fetchAllPages } from '../../lib/pagination';
 import { PageHead, Card, Button, IconButton, SearchBox, TableWrap, Modal, Field, Input } from "./ui";
 
 interface AdUser {
@@ -45,16 +46,10 @@ const AdminUserList: React.FC = () => {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/`,
+      const list = await fetchAllPages<AdUser>(apiFetch,
+        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/?is_staff=true&page_size=100`,
       );
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.results || [];
-        setUsers(list.filter((u: AdUser) => u.is_staff === true)); // Show only admins
-      } else {
-        logger.error("Failed to fetch users");
-      }
+      setUsers(list.filter((u) => u.is_staff === true));
     } catch (e) {
       logger.error(e);
     } finally {

@@ -216,6 +216,26 @@ def _component_names(col_groups: list[dict]) -> list[str]:
     return [c["label"] for g in col_groups for c in g["components"]]
 
 
+def _component_meal_types(col_groups: list[dict]) -> list[str | None]:
+    return [
+        _APP_MEAL_TO_TYPE.get(group["meal"])
+        for group in col_groups
+        for _component in group["components"]
+    ]
+
+
+def _component_base_grams(col_groups: list[dict]) -> list[Decimal | None]:
+    return [
+        (
+            _decimal(component["base_grams"])
+            if component.get("base_grams") not in (None, "")
+            else None
+        )
+        for group in col_groups
+        for component in group["components"]
+    ]
+
+
 def _empty_totals(col_groups: list[dict]) -> list[list[Decimal]]:
     return [[Decimal("0")] * len(g["components"]) for g in col_groups]
 
@@ -609,6 +629,8 @@ class Command(BaseCommand):
         app_rows = dashboard.get("rows", [])
         col_groups = dashboard.get("col_groups", [])
         labels = _component_labels(col_groups)
+        component_meal_types = _component_meal_types(col_groups)
+        component_base_grams = _component_base_grams(col_groups)
         width = len(labels)
 
         # read_only=False: this command does random cell access per facility,
@@ -656,6 +678,14 @@ class Command(BaseCommand):
         )
         real_only = sorted(set(real_counts) - matched_keys)
 
+        count_diff_by_key_meal = {}
+        for key, (row, app_buckets) in app_counts.items():
+            real_buckets = real_counts.get(key, {})
+            for meal_type in MEAL_TYPES:
+                app_val = app_buckets.get(meal_type) or Decimal("0")
+                real_val = real_buckets.get(meal_type) or Decimal("0")
+                count_diff_by_key_meal[(key, meal_type)] = app_val - real_val
+
         # ── Tier 2: gramage ───────────────────────────────────────────────────
         gram_findings = []
         if width:
@@ -680,13 +710,26 @@ class Command(BaseCommand):
                 real_values = _real_gram_values_by_name(
                     har_sheet, block_rows, component_names, header_columns
                 )
-                for label, real_v, app_v in zip(labels, real_values, app_values):
+                for label, real_v, app_v, meal_type, base_grams in zip(
+                    labels,
+                    real_values,
+                    app_values,
+                    component_meal_types,
+                    component_base_grams,
+                ):
                     # Dish not in this day's header → can't compare, don't fake a diff.
                     if real_v is None:
                         continue
                     diff = app_v - real_v
                     if abs(diff) <= gram_tol:
                         continue
+                    if meal_type is not None and base_grams is not None:
+                        count_diff = count_diff_by_key_meal.get((key, meal_type))
+                        if (
+                            count_diff is not None
+                            and abs(diff - (count_diff * base_grams)) <= gram_tol
+                        ):
+                            continue  # Fully explained by the Tier 1 count diff.
                     gram_findings.append(
                         {
                             "facility": client,

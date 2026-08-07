@@ -54,6 +54,13 @@ MERGES: dict[str, list[str]] = {
     "Školička": ["Školička 1.stupeň", "Školička 2. stupeň"],
     "Škôlkáreň": ["Škôlkáreň - Kvetoslavov", "Škôlkáreň - Mokrohájska"],
     "Štvorlístok": ["Štvorlístok škola", "Štvorlístok škôlka"],
+    # Dva samostatné objednávkové riadky tej istej školy/tábora. Jeden login potom
+    # medzi prevádzkami prepína rovnako ako pri ostatných viac-prevádzkových celkoch.
+    "ZŠ Malokarpatská": ["Malokarpatské námestie 2, Lamač"],
+    "Zvlášť!!! Tábor Warrior": ["Hodonínska 27"],
+    "Zvlášť!!! Futbalový Tábor": ["Športová 450, Šamorín"],
+    "Zvlášť!!! Tábor Paint People": ["Steinov dvor 2, Bratislava"],
+    "Zvlášť!!! Vojenský Tábor": ["Pozri dokument kvôli dennej adrese"],
 }
 
 

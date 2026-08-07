@@ -2,12 +2,13 @@
 
 import datetime
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from ..exceptions import ClosedDayOrderModificationError
 from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
 
@@ -40,6 +41,7 @@ def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder 
             date__lt=before_date,
         )
         .select_related("prevadzka")
+        .prefetch_related("prevadzka__visible_portion_types")
         .order_by("-date")
     )
 
@@ -61,7 +63,11 @@ def _normalise_meal(meal: Any) -> Dict[str, Any]:
     return OrderData.normalise_meal(meal)
 
 
-def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str, Any]:
+def _build_auto_data(
+    template: DailyOrder,
+    visible_meals: List[str],
+    visible_portion_types: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """
     Copy only the allowed meals from the template, always in category-nested shape.
     If visible_meals is empty, all three meals are copied.
@@ -71,7 +77,15 @@ def _build_auto_data(template: DailyOrder, visible_meals: List[str]) -> Dict[str
     for meal_key in MEAL_KEYS:
         if meal_key in allowed:
             raw = (template.data or {}).get(meal_key, {})
-            data[meal_key] = _normalise_meal(raw)
+            normalised = _normalise_meal(raw)
+            if visible_portion_types:
+                allowed_portion_types = set(visible_portion_types)
+                normalised = {
+                    name: values
+                    for name, values in normalised.items()
+                    if name in allowed_portion_types
+                }
+            data[meal_key] = normalised
         else:
             data[meal_key] = {}
     return data
@@ -109,7 +123,19 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         logger.info(
             "apply_auto_orders: target_date %s is a weekend, skipping.", target_date
         )
-        return {"created": [], "skipped": 0}
+        return {"created": [], "skipped": 0, "date": str(target_date)}
+
+    # A closed day is immutable.  This service runs outside an HTTP request, so
+    # use the same central guard as interactive writes but skip instead of raising.
+    from ..serializers import DailyOrderSerializer
+
+    try:
+        DailyOrderSerializer._enforce_day_open(target_date)
+    except ClosedDayOrderModificationError:
+        logger.info(
+            "apply_auto_orders: target_date %s is closed, skipping.", target_date
+        )
+        return {"created": [], "skipped": 0, "date": str(target_date)}
 
     clients = list(User.objects.filter(is_staff=False, is_active=True))
     client_ids = [c.id for c in clients]
@@ -131,6 +157,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             prevadzka__isnull=False,
         )
         .select_related("prevadzka")
+        .prefetch_related("prevadzka__visible_portion_types")
         .order_by("prevadzka_id", "-date")
     ):
         if order.prevadzka_id in templates_by_prevadzka:
@@ -163,8 +190,17 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         visible_meals: List[str] = list(
             getattr(template.prevadzka, "visible_meals", []) or []
         )
+        visible_portion_types = [
+            portion_type.name
+            for portion_type in template.prevadzka.visible_portion_types.all()
+            if portion_type.is_active
+        ]
 
-        auto_data = _build_auto_data(template, visible_meals)
+        auto_data = _build_auto_data(
+            template,
+            visible_meals,
+            visible_portion_types,
+        )
 
         # Skip if filtered data is empty
         if _is_order_empty(auto_data):

@@ -313,6 +313,20 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
     // Meal plan availability: mealKey → Set of available menu_variants; null = no plan = no restriction
     const [mealPlanAvailability, setMealPlanAvailability] = useState<Record<string, Set<string>> | null>(null);
+    const [dietMenuVariantMap, setDietMenuVariantMap] = useState<Record<string, string>>({});
+
+    useEffect(() => {
+        const fetchDietMenuVariantMap = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/diets/menu-variant-map/?date=${selectedDate}`);
+                if (!res.ok) return;
+                setDietMenuVariantMap(await res.json() as Record<string, string>);
+            } catch (e) {
+                logger.error("Failed to fetch diet menu variant map", e);
+            }
+        };
+        if (user && packSeparatelyEnabled) fetchDietMenuVariantMap();
+    }, [selectedDate, apiFetch, user, packSeparatelyEnabled]);
 
     useEffect(() => {
         const fetchMealPlanAvailability = async () => {
@@ -797,8 +811,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return true;
     };
 
-    const enabledCategories =
+    // Na rozdiel od visible_menus/visible_meals/visible_diets (kde prázdne pole
+    // znamená vedomú voľbu adminom) je visible_portion_types M2M, ktoré môže byť
+    // prázdne aj len preto, že ešte nebolo dobackfillované (viď default_visibility.py) —
+    // preto tu prázdne pole znamená "bez obmedzenia", rovnako ako v _build_auto_data.
+    const adminVisiblePortionTypesSetting = prevadzkaSettings?.visible_portion_types;
+    const adminVisiblePortionTypeNames = !adminVisiblePortionTypesSetting || adminVisiblePortionTypesSetting.length === 0
+        ? null
+        : new Set(adminVisiblePortionTypesSetting.map((portionType) => portionType.name));
+    const availableCategories =
         portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
+    const enabledCategories = adminVisiblePortionTypeNames == null
+        ? availableCategories
+        : availableCategories.filter((name) => adminVisiblePortionTypeNames.has(name));
 
     return {
         enabledCategories,
@@ -825,5 +850,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         holidays,
         mealPlanAvailability,
         packSeparatelyEnabled,
+        dietMenuVariantMap,
     };
 };

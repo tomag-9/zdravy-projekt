@@ -2,15 +2,51 @@ import logging
 
 from django.contrib.auth.models import User
 from django.db.models import Exists, OuterRef, Q, Subquery
+from django.utils.dateparse import parse_date
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, viewsets
+from rest_framework import pagination, permissions, serializers, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from ..logging_buffer import get_log_records
-from ..models import Celok, Prevadzka
+from ..models import Celok, EventLog, Prevadzka
 from ..serializers_user import AdminUserSerializer
 
 logger = logging.getLogger(__name__)
+
+
+class AdminUserPagination(pagination.PageNumberPagination):
+    """Allow admin screens to request a larger, bounded user page."""
+
+    page_size = 100
+    page_size_query_param = "page_size"
+    max_page_size = 500
+
+
+class AdminEventLogSerializer(serializers.ModelSerializer):
+    event_type_label = serializers.CharField(
+        source="get_event_type_display", read_only=True
+    )
+    actor_email = serializers.EmailField(source="actor.email", read_only=True)
+    target_user_email = serializers.EmailField(
+        source="target_user.email", read_only=True
+    )
+
+    class Meta:
+        model = EventLog
+        fields = [
+            "id",
+            "event_type",
+            "event_type_label",
+            "actor",
+            "actor_email",
+            "actor_label",
+            "target_user",
+            "target_user_email",
+            "summary",
+            "payload",
+            "created_at",
+        ]
 
 
 @extend_schema_view(
@@ -31,6 +67,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     serializer_class = AdminUserSerializer
     permission_classes = [permissions.IsAdminUser]
+    pagination_class = AdminUserPagination
 
     def get_queryset(self):
         accessible_prevadzky = Prevadzka.objects.filter(
@@ -77,6 +114,12 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             qs = qs.filter(_has_access=True, _has_app_access=False)
         elif is_edupage == "false":
             qs = qs.filter(_has_app_access=True)
+
+        is_staff = self.request.query_params.get("is_staff")
+        if is_staff == "true":
+            qs = qs.filter(is_staff=True)
+        elif is_staff == "false":
+            qs = qs.filter(is_staff=False)
         return qs
 
     def perform_create(self, serializer):
@@ -143,3 +186,42 @@ class AdminLogViewSet(viewsets.ViewSet):
                 "available_loggers": logger_names,
             }
         )
+
+
+@extend_schema_view(
+    list=extend_schema(tags=["admin"]),
+    retrieve=extend_schema(tags=["admin"]),
+)
+class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AdminEventLogSerializer
+    permission_classes = [permissions.IsAdminUser]
+
+    def get_queryset(self):
+        queryset = EventLog.objects.select_related("actor", "target_user")
+        event_type = self.request.query_params.get("event_type", "").strip()
+        actor = self.request.query_params.get("actor", "").strip()
+        date_from = self.request.query_params.get("date_from", "").strip()
+        date_to = self.request.query_params.get("date_to", "").strip()
+        ordering = self.request.query_params.get("ordering", "-created_at")
+
+        if event_type:
+            queryset = queryset.filter(event_type=event_type)
+        if actor:
+            try:
+                actor_id = int(actor)
+            except ValueError as exc:
+                raise ValidationError({"actor": "Must be an integer."}) from exc
+            queryset = queryset.filter(actor_id=actor_id)
+        if date_from:
+            parsed_from = parse_date(date_from)
+            if parsed_from is None:
+                raise ValidationError({"date_from": "Use YYYY-MM-DD format."})
+            queryset = queryset.filter(created_at__date__gte=parsed_from)
+        if date_to:
+            parsed_to = parse_date(date_to)
+            if parsed_to is None:
+                raise ValidationError({"date_to": "Use YYYY-MM-DD format."})
+            queryset = queryset.filter(created_at__date__lte=parsed_to)
+        if ordering not in {"created_at", "-created_at"}:
+            ordering = "-created_at"
+        return queryset.order_by(ordering)
