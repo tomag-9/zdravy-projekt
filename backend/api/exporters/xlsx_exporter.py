@@ -27,7 +27,11 @@ class XLSXReportExporter:
     }
 
     def __init__(
-        self, rows_data: List[dict], target_date: str, meal_keys: List[str] = None
+        self,
+        rows_data: List[dict],
+        target_date: str,
+        meal_keys: List[str] = None,
+        diet_colors: Dict[str, str] | None = None,
     ):
         """
         Initialize exporter.
@@ -40,6 +44,11 @@ class XLSXReportExporter:
         self.rows_data = rows_data
         self.target_date = target_date
         self.meal_keys = meal_keys or ["breakfast", "lunch", "olovrant"]
+        attached_colors = next(
+            (row.get("diet_colors") for row in rows_data if row.get("diet_colors")),
+            {},
+        )
+        self.diet_colors = diet_colors if diet_colors is not None else attached_colors
 
     def generate(self) -> bytes:
         """
@@ -108,12 +117,16 @@ class XLSXReportExporter:
 
         # Write data
         self._write_data(ws, col_meta, sorted_cats, bold_font)
+        self._style_diet_columns(ws, col_meta)
         self._apply_table_grid(ws, thin_border)
 
         # Format columns
         ws.column_dimensions["A"].width = 28
         for c_idx in range(2, len(col_meta) + 1):
-            ws.column_dimensions[get_column_letter(c_idx)].width = 12
+            column_type = col_meta[c_idx - 1][2]
+            ws.column_dimensions[get_column_letter(c_idx)].width = (
+                18 if column_type in {"menu", "diet"} else 12
+            )
         ws.freeze_panes = "B6"
 
         # Save to bytes
@@ -245,6 +258,52 @@ class XLSXReportExporter:
             start_row=3, start_column=total_cols, end_row=5, end_column=total_cols
         )
 
+    def _style_diet_columns(self, ws, col_meta: List) -> None:
+        """Apply each configured Diet.color to its header and value cells."""
+        from copy import copy
+
+        from openpyxl.styles import PatternFill
+
+        for c_idx, meta in enumerate(col_meta, start=1):
+            if meta[2] != "diet":
+                continue
+            color = self._xlsx_color(self.diet_colors.get(meta[3])) or "FDE68A"
+            fill = PatternFill("solid", fgColor=color)
+            font_color = self._xlsx_contrast_color(color)
+            for row_idx in range(5, ws.max_row + 1):
+                cell = ws.cell(row=row_idx, column=c_idx)
+                cell.fill = fill
+                font = copy(cell.font)
+                font.color = font_color
+                cell.font = font
+
+    @staticmethod
+    def _xlsx_color(value: object) -> str | None:
+        color = str(value or "").strip().lstrip("#")
+        if len(color) == 6 and all(char in "0123456789abcdefABCDEF" for char in color):
+            return color.upper()
+        return None
+
+    @staticmethod
+    def _xlsx_contrast_color(hex_color: str) -> str:
+        red, green, blue = (
+            int(hex_color[index : index + 2], 16) for index in (0, 2, 4)
+        )
+        luminance = (299 * red + 587 * green + 114 * blue) / 1000
+        return "000000" if luminance >= 140 else "FFFFFF"
+
+    @staticmethod
+    def _pack_count(category, kind: str, key: str) -> int:
+        values = category.pack_separately.get(kind, {}) if category else {}
+        return safe_count(values.get(key, 0)) if isinstance(values, dict) else 0
+
+    @classmethod
+    def _display_count(cls, count: int, category, kind: str, key: str):
+        if not count:
+            return ""
+        separate_count = cls._pack_count(category, kind, key)
+        return f"{count} (zvlášť: {separate_count})" if separate_count else count
+
     def _write_data(
         self,
         ws,
@@ -297,14 +356,18 @@ class XLSXReportExporter:
                         cnt = safe_count(
                             category.menu_counts.get(menu_key, 0) if category else 0
                         )
-                        row_vals.append(cnt or "")
+                        row_vals.append(
+                            self._display_count(cnt, category, "menus", menu_key)
+                        )
                         totals[mk][cat_name]["menus"][menu_key] += cnt
                         meal_total += cnt
                     for diet_name in cat_data["diets"]:
                         cnt = safe_count(
                             category.diets.get(diet_name, 0) if category else 0
                         )
-                        row_vals.append(cnt or "")
+                        row_vals.append(
+                            self._display_count(cnt, category, "diets", diet_name)
+                        )
                         totals[mk][cat_name]["diets"][diet_name] += cnt
                 row_vals.append(meal_total or "")
                 meal_totals[mk] += meal_total

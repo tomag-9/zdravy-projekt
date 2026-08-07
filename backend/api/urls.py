@@ -6,6 +6,7 @@ from .views import (
     AdminAutoOrderViewSet,
     AdminCelokViewSet,
     AdminEdupageConnectionViewSet,
+    AdminEventLogViewSet,
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
@@ -13,6 +14,7 @@ from .views import (
     AdminSendPushView,
     AdminSummaryViewSet,
     AdminUserViewSet,
+    ClosedDayViewSet,
     DailyMealPlanViewSet,
     DailyOrderViewSet,
     DeliveryBlockViewSet,
@@ -52,6 +54,7 @@ router.register(
 )
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
+router.register(r"admin/event-logs", AdminEventLogViewSet, basename="admin-event-log")
 router.register(
     r"admin/delivery-blocks",
     DeliveryBlockViewSet,
@@ -83,6 +86,7 @@ router.register(
     ReportTaskViewSet,
     basename="report-task",
 )
+router.register(r"admin/closed-days", ClosedDayViewSet, basename="closed-day")
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")
 router.register(r"admin/portion-types", PortionTypeViewSet, basename="portion-type")
 router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-template")

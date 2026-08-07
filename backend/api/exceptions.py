@@ -325,6 +325,27 @@ class ResourceAlreadyExistsError(BaseAPIException):
     default_detail = "Resource already exists."
 
 
+class ClosedDayOrderModificationError(PermissionDeniedError):
+    """Raised when an order write targets a globally closed date."""
+
+    error_code = "day_closed"
+    default_detail = "Deň je uzavretý, objednávky sa už nedajú upravovať."
+
+
+class DayAlreadyClosedError(ResourceAlreadyExistsError):
+    """Raised when an admin attempts to close the same date twice."""
+
+    error_code = "day_already_closed"
+    default_detail = "Deň je už uzavretý."
+
+
+class DayNotClosedError(ResourceNotFoundError):
+    """Raised when an admin attempts to unlock a date that is not closed."""
+
+    error_code = "day_not_closed"
+    default_detail = "Deň nie je uzavretý."
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Report Generation Errors
 # ──────────────────────────────────────────────────────────────────────────────

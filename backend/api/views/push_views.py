@@ -12,6 +12,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from django.contrib.auth.models import User
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
@@ -19,7 +20,8 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from api.models import PushSubscription
+from api.models import EventLog, PushSubscription
+from api.services.event_log_service import log_event
 from api.services.push_notification_service import PushNotificationService
 
 logger = logging.getLogger(__name__)
@@ -130,9 +132,31 @@ class AdminSendPushView(APIView):
             result = PushNotificationService.send_to_user(
                 user_id=parsed_user_id, title=title, body=body_text, url=url
             )
+            target_user = User.objects.filter(pk=parsed_user_id).first()
+            log_event(
+                EventLog.EventType.PUSH_BROADCAST,
+                actor=request.user,
+                target_user=target_user,
+                summary=f"Admin odoslal push notifikáciu používateľovi {parsed_user_id}.",
+                payload={
+                    "sent": result.get("sent", 0),
+                    "stale_removed": result.get("stale_removed", 0),
+                    "title": title,
+                },
+            )
             return Response(result)
 
         result = PushNotificationService.send_to_all_subscribers(
             title=title, body=body_text, url=url
+        )
+        log_event(
+            EventLog.EventType.PUSH_BROADCAST,
+            actor=request.user,
+            summary="Admin odoslal hromadnú push notifikáciu.",
+            payload={
+                "sent": result.get("sent", 0),
+                "failed": result.get("failed", 0),
+                "title": title,
+            },
         )
         return Response(result)
