@@ -292,3 +292,98 @@ Staré `MŠ …` kľúče prestali sadať a navyše aktívne rozbíjali párovan
 prepísaný na aktuálne app labely s list-hodnotami nesúcimi staré aj nové pravopisy.
 
 **Fantastická +1** (obed aj olovrant 8→9) je pre tento týždeň **akceptované** (potvrdené klientom).
+
+---
+
+## 🔴 Jolly Homeschool / Škôlka MS — EduPage split znova rozbité (regresia, CHYBA APPKY)
+
+**Toto JE chyba appky** — na rozdiel od všetkého ostatného v tomto súbore. Presne ten istý
+problém bol raz už opravený (viď „17.7.2026 — bod 2" vyššie: „Škôlka MS – Les/Lúka mali 0
+objednaných"), ale vrátil sa — niekedy medzi 17.7. a 4.8. sa `seed_prevadzky_edupage.py`
+alebo nadväzujúci seed znova rozbehol do rovnakého stavu.
+
+**Zistené 5.8.2026 pri reconcile 3.–5.8.:** scrape hlási pri každom behu (každý deň v týždni)
+
+```
+Jolly Homeschool nemá žiadnu prevádzku — preskakujem
+Škôlka MS nemá žiadnu prevádzku — preskakujem
+```
+
+**Príčina (overené v DB):** `seed_prevadzky_edupage.py` rozdelí celok na aktívne
+sub-prevádzky (`Jolly 1/2/3` s `edupage_match='J1'/'J2'/'J3'`; `Les`/`Lúka` s vlastným
+matchom) a starú "default" prevádzku **deaktivuje** (`is_active=False`) — ale
+**nepresunie na sub-prevádzky jej `edupage_connection`**. Tá ostáva visieť na
+deaktivovanej default prevádzke:
+
+```
+'Jolly Homeschool' active=False edupage_connection=6   edupage_match=''
+'Jolly 1'           active=True  edupage_connection=None edupage_match='J1'
+'Jolly 2'           active=True  edupage_connection=None edupage_match='J2'
+'Jolly 3'           active=True  edupage_connection=None edupage_match='J3'
+
+'Škôlka MS' active=False edupage_connection=12  edupage_match=''
+'Lúka'      active=True  edupage_connection=None edupage_match='Lúka'
+'Les'       active=True  edupage_connection=None edupage_match='Les'
+```
+
+`edupage_operations()` (`api/services/edupage_connection_service.py`) berie z pripojenia
+len **aktívne** prevádzky (`Prevadzka.objects.filter(is_active=True)`) — keďže pripojenie
+visí na neaktívnom placeholderi, vyjde pre neho prázdny zoznam prevádzok → scraper
+zariadenie preskočí. **Dôsledok: Jolly 1/2/3 aj Les/Lúka sa nescrapujú vôbec, každý deň,
+odkedy sa split takto rozbil znova** (presný dátum regresie neznámy — treba pozrieť git
+históriu `seed_prevadzky_edupage.py`).
+
+**Fix (navrhnutý, ešte NEaplikovaný):** v tej istej sekcii kde sa dnes dedí
+`billing_portion_coefficients` zo starej default prevádzky (komentár „Fakturačný
+koeficient visí na prevádzke..."), treba rovnako zdediť `edupage_connection` a priradiť
+ho každej novej sub-prevádzke — presne ako to dnes robí `real_initial_seed_prevadzky.py`
+pri Rozmanite (opačným smerom: tam sa connection naopak **odoberá** zo `školy`, tu sa má
+**preniesť** na sub-prevádzky).
+
+**Stav: 🔴 čaká na implementáciu.** (Návrh: Codex cez `codex:rescue`, tak ako
+`reconcile_real.py` Tier2 zmena.)
+
+---
+
+## 🟢 `facility_aliases.json` — stará alias skladala Rozmanitá Škôlka + Škola dokopy (opravené)
+
+Alias `"Rozmanita Škôlka": [..., "rozmanita skola"]` (skill `compare-real`, nie appka)
+ešte z čias pred splitom `Rozmanita Škôlka` / `Rozmanita Škola` (commit `d589201`,
+4.8.2026) sčítaval real-riadok školy do škôlky. Po splite má škola vlastnú `Prevadzka`
+(`edupage_connection=None`, app-managed) aj vlastný real riadok — starý alias by ju ticho
+vynuloval z `app_only`/`real_only` porovnania a napumpoval jej počty do škôlky.
+
+**Opravené 5.8.2026:** `"rozmanita skola"` odstránené zo zoznamu, doplnená poznámka do
+komentára súboru. Netýka sa produkčnej appky, len reconcile tooling.
+
+---
+
+## 🔴 Reconcile 3.–5.8.2026 (Po/Ut/St) — nič z tohto nie je chyba appky, potrebuje odpoveď klienta
+
+Meal plan doseedovaný z Week 32 Klasik PDF (predtým chýbal, appka mala pre celý týždeň
+`meal_plan_id=null`). Po doseedovaní: counts sedia takmer všade (Po 10/12, Ut 11/12, St
+8/9); zvyšné nezrovnalosti sú tieto štyri, opakujúce sa/konzistentné cez viac dní:
+
+**1. „Kuracie v krémovej" — rozpor v receptúre, streda 5.8.** Week 32 Klasik PDF: hlavný
+chod `225g (90g/110g/25g)` → Kuracie=90g. Real tabuľka má vo svojom base-gramáž riadku
+(KLASIK, row 2) `Kuracie v krémovej = 185g` (Ryža 110g aj Šalát 25g sedia s PDF). Real
+sheet je self-consistent (počet × base gramáž = riadkové gramy sedí presne na
+Cvernička/Deutsche schule/MŠ Heyrovského 4 — 9×185=1665, 75×185=13875, 2×185=370).
+Appka počítala presne to, čo je v PDF menu. → **Otázka: ktoré číslo je správne, 90 alebo
+185g?**
+
+**2. MŠ Heyrovského 4 — olovrant chýba v appke, KAŽDÝ deň (Po/Ut/St).** Real tabuľka: 1–2
+olovranty denne. Appka: vždy 0. `visible_meals` má olovrant povolený (nie je to appkové
+nastavenie), takže títo ľudia sa objednávajú **mimo appky**. → **Otázka: kade, nech to
+vieme dohľadať/pokryť appkou.**
+
+**3. Fantastická — 1 obed v appke, real tabuľka celý blok nula, streda 5.8.** Appka len
+zobrazila objednávku, ktorú má; real tabuľka hovorí že zariadenie ten deň neobjednávalo
+vôbec (možno zatvorené). → **Otázka: prišlo dieťa?**
+
+**4. „Grahamové pečivo" base gramáž = 1g namiesto 50g, pondelok 3.8.** V real tabuľke
+(KLASIK base row) — zjavný preklep, spôsobuje umelo veľký gram-diff pre
+Cvernička/Fantastická (real vychádza rádovo nižšie, lebo sa násobí 1g namiesto 50g). →
+**Otázka: môže klient bunku opraviť?**
+
+**Stav: 🔴 čaká na odpoveď klienta** (všetky 4 body).

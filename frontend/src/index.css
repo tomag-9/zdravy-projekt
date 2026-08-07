@@ -1003,6 +1003,14 @@ select {
     opacity: 0.75;
     background: var(--bg-cream-soft);
 }
+.zp-meal--muted {
+    background: var(--bg-cream-soft);
+    border-color: var(--line-soft);
+}
+.zp-meal--muted.zp-meal--active {
+    border-color: var(--line);
+    box-shadow: var(--shadow-sm);
+}
 
 .zp-meal-head {
     display: flex;
@@ -1022,6 +1030,8 @@ select {
 }
 .zp-meal-icon svg { width: 20px; height: 20px; stroke-width: 1.8; }
 .zp-meal--active .zp-meal-icon { background: rgba(114,136,75,0.18); color: var(--green-700); }
+.zp-meal--muted .zp-meal-icon { background: rgba(23,53,5,0.05); color: var(--ink-3); }
+.zp-meal--muted.zp-meal--active .zp-meal-icon { background: rgba(23,53,5,0.07); color: var(--ink-3); }
 .zp-meal-title {
     flex: 1;
     font-family: var(--font-display);
@@ -1030,6 +1040,7 @@ select {
     font-size: 16px;
 }
 .zp-meal--locked .zp-meal-title { color: var(--ink-3); font-weight: 600; }
+.zp-meal--muted .zp-meal-title { color: var(--ink-3); font-weight: 600; }
 .zp-meal-sub {
     display: block;
     font-family: var(--font-sans);

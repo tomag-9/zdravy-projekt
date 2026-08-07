@@ -18,12 +18,21 @@ from api.default_visibility import (
     ensure_all_visible_meals_for_prevadzky,
     ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets,
+    ensure_default_visible_portion_types,
 )
 from api.models import Celok, Diet, EdupageConnection, UserProfile
 
 EDUPAGE_VISIBLE_MEALS = DEFAULT_VISIBLE_MEALS
 OPERATION_SPECIFIC_VISIBLE_DIETS = {
     "krasnanko": ["DIA"],
+}
+
+# Some facilities share one billing/delivery Celok but are not imported from the
+# same EduPage feed. Rozmanita's school is app-managed; attaching it to the
+# kindergarten EduPage connection makes the scraper treat the feed as a
+# multi-prevadzka operation without edupage_match and skip the whole import.
+EDUPAGE_CONNECTION_EXCLUDED_PREVADZKY = {
+    "rozmanita": {"Rozmanita Škola"},
 }
 
 SCHOOLS = [
@@ -172,11 +181,24 @@ class Command(BaseCommand):
             )
             ensure_all_visible_menus_for_prevadzky(prevadzky)
             ensure_all_visible_meals_for_prevadzky(prevadzky)
+            excluded_prevadzka_names = EDUPAGE_CONNECTION_EXCLUDED_PREVADZKY.get(
+                school["subdomain"], set()
+            )
             for prevadzka in prevadzky:
+                if prevadzka.nazov in excluded_prevadzka_names:
+                    if prevadzka.edupage_connection_id == connection.id:
+                        prevadzka.edupage_connection = None
+                        prevadzka.save(update_fields=["edupage_connection"])
+                    ensure_default_visible_diets(prevadzka.visible_diets)
+                    ensure_default_visible_portion_types(
+                        prevadzka.visible_portion_types
+                    )
+                    continue
                 if prevadzka.edupage_connection_id != connection.id:
                     prevadzka.edupage_connection = connection
                     prevadzka.save(update_fields=["edupage_connection"])
                 ensure_default_visible_diets(prevadzka.visible_diets)
+                ensure_default_visible_portion_types(prevadzka.visible_portion_types)
 
             extra_diet_names = OPERATION_SPECIFIC_VISIBLE_DIETS.get(
                 school["subdomain"], []

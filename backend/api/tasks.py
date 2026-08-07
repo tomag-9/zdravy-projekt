@@ -379,13 +379,25 @@ def apply_auto_orders_task(self, date_str: str | None = None):
     try:
         import datetime
 
+        from api.models import EventLog
         from api.services import apply_auto_orders
+        from api.services.event_log_service import log_event
 
         target_date = None
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
 
         result = apply_auto_orders(target_date)
+        log_event(
+            EventLog.EventType.AUTO_ORDER_RUN,
+            actor_label="cron",
+            summary=f"Cron spustil auto-objednávky na {result['date']}.",
+            payload={
+                "created_count": len(result["created"]),
+                "skipped_count": result["skipped"],
+                "date": result["date"],
+            },
+        )
         logger.info("apply_auto_orders_task result: %s", result)
         return result
     except Exception as exc:

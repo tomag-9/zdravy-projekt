@@ -1,4 +1,5 @@
 import datetime
+from copy import deepcopy
 from typing import Optional
 
 from django.contrib.auth.models import User
@@ -12,10 +13,11 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ..exceptions import ClientOnlyError
-from ..models import DailyOrder
+from ..exceptions import ClientOnlyError, ClosedDayOrderModificationError
+from ..models import ClosedDay, DailyOrder, EventLog
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
+from ..services.event_log_service import build_nested_dict_diff, log_event
 from ..services.prevadzka_service import dostupne_prevadzky
 from ..throttles import OrderSubmitRateThrottle
 
@@ -117,22 +119,118 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             user_id = self.request.query_params.get("user_id")
             if not user_id:
                 if "prevadzka" in serializer.validated_data:
-                    serializer.save(user=self.request.user)
-                    return
-                raise ClientOnlyError()
-            try:
-                user_id_int = int(user_id)
-            except (TypeError, ValueError):
-                raise ValidationError({"user_id": "Must be an integer."})
-            target_user = get_object_or_404(User, pk=user_id_int)
-            if target_user.is_staff:
-                raise ValidationError(
-                    {"user_id": "Cannot create orders for staff users."}
-                )
-            serializer.save(user=target_user)
+                    target_user = self.request.user
+                    order = serializer.save(user=target_user)
+                else:
+                    raise ClientOnlyError()
+            else:
+                try:
+                    user_id_int = int(user_id)
+                except (TypeError, ValueError):
+                    raise ValidationError({"user_id": "Must be an integer."})
+                target_user = get_object_or_404(User, pk=user_id_int)
+                if target_user.is_staff:
+                    raise ValidationError(
+                        {"user_id": "Cannot create orders for staff users."}
+                    )
+                order = serializer.save(user=target_user)
+            if order.pk is None:
+                return
+            changed_meals = [
+                meal
+                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+                if (order.data or {}).get(meal)
+            ]
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_CREATE,
+                actor=self.request.user,
+                target_user=target_user,
+                summary=(
+                    f"Admin vytvoril objednávku pre {target_user.email} "
+                    f"na {order.date}."
+                ),
+                payload={
+                    "order_id": order.pk,
+                    "date": str(order.date),
+                    "changed_meals": changed_meals,
+                    "changes": build_nested_dict_diff({}, order.data or {}),
+                    "meals": {
+                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
+                    },
+                },
+            )
             return
         # The serializer.save() will call create() which enables update_or_create logic
         serializer.save(user=self.request.user)
+
+    def perform_update(self, serializer: DailyOrderSerializer) -> None:
+        previous_data = deepcopy(serializer.instance.data or {})
+        order_id = serializer.instance.pk
+        order_date = serializer.instance.date
+        target_user = serializer.instance.user
+        target_label = (
+            target_user.email if target_user else str(serializer.instance.prevadzka)
+        )
+        order = serializer.save()
+        if self.request.user.is_staff:
+            changed_meals = [
+                meal
+                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+                if previous_data.get(meal, {}) != (order.data or {}).get(meal, {})
+            ]
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_UPDATE,
+                actor=self.request.user,
+                target_user=target_user,
+                summary=(
+                    f"Admin upravil objednávku pre {target_label} na {order_date}."
+                ),
+                payload={
+                    "order_id": order_id,
+                    "date": str(order_date),
+                    "changed_meals": changed_meals,
+                    "changes": build_nested_dict_diff(previous_data, order.data or {}),
+                    "meals": {
+                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
+                    },
+                },
+            )
+
+    def perform_destroy(self, instance: DailyOrder) -> None:
+        if ClosedDay.objects.filter(date=instance.date).exists():
+            raise ClosedDayOrderModificationError()
+        should_log = self.request.user.is_staff and (
+            instance.user_id != self.request.user.pk
+        )
+        order_id = instance.pk
+        order_date = instance.date
+        target_user = instance.user
+        previous_data = deepcopy(instance.data or {})
+        target_label = target_user.email if target_user else str(instance.prevadzka)
+        instance.delete()
+        if should_log:
+            changed_meals = [
+                meal
+                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+                if previous_data.get(meal)
+            ]
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_DELETE,
+                actor=self.request.user,
+                target_user=target_user,
+                summary=(
+                    f"Admin vymazal objednávku pre {target_label} na {order_date}."
+                ),
+                payload={
+                    "order_id": order_id,
+                    "date": str(order_date),
+                    "changed_meals": changed_meals,
+                    "changes": build_nested_dict_diff(previous_data, {}),
+                    "meals": {
+                        meal: previous_data.get(meal, {}) for meal in changed_meals
+                    },
+                },
+            )
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request: Request, date: Optional[str] = None) -> Response:
@@ -217,6 +315,16 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
         from ..services import apply_auto_orders
 
         result = apply_auto_orders(target_date)
+        log_event(
+            EventLog.EventType.AUTO_ORDER_RUN,
+            actor=request.user,
+            summary=f"Admin spustil auto-objednávky na {result['date']}.",
+            payload={
+                "created_count": len(result["created"]),
+                "skipped_count": result["skipped"],
+                "date": result["date"],
+            },
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -235,5 +343,5 @@ class PrevadzkaViewSet(viewsets.ReadOnlyModelViewSet):
         return (
             dostupne_prevadzky(self.request.user)
             .select_related("celok")
-            .prefetch_related("visible_diets")
+            .prefetch_related("visible_diets", "visible_portion_types")
         )

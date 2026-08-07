@@ -26,6 +26,7 @@ from api.default_visibility import (
     DEFAULT_VISIBLE_MEALS,
     DEFAULT_VISIBLE_MENUS,
     ensure_default_visible_diets,
+    ensure_default_visible_portion_types,
 )
 from api.models import Celok, DailyOrder, Prevadzka
 
@@ -37,8 +38,10 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Jolly 3", "J3"),
     ],
     # Názvy sú krátke, lebo v reportoch sa prefixujú celkom:
-    # "Edulienka – Palisády".
-    "Edulienka": [
+    # "MŠ Edulienka – Palisády".
+    # Kľúč musí sedieť na presný `Celok.nazov` ("MŠ Edulienka", nie holé
+    # "Edulienka") — inak filter nič nenájde a split sa ticho preskočí.
+    "MŠ Edulienka": [
         ("Palisády", "Palisády"),
         ("Stupava", "Stupava"),
     ],
@@ -50,16 +53,7 @@ SPLITS: dict[str, list[tuple[str, str]]] = {
         ("Lúka", "Lúka"),
         ("Les", "Les"),
     ],
-    # Hárok1 vedie školu ako pod-riadok škôlky (`DOBRODRUŽSTVO Škola` za blokom
-    # `dobrodružstvo`), ale sú to dve prevádzky jedného celku. EduPage ich rozlišuje
-    # spoľahlivo: škôlkové skupiny majú prefix `MŠ`, školské sa volajú `1.st`, `2.st`
-    # a `Dospelý` — spoločný prefix nemajú, preto sú vymenované (oddeľovač je
-    # bodkočiarka, viď `Prevadzka.edupage_prefixes`). Overené proti živým dátam
-    # (17.7.2026): všetkých 14 skupín sadne, 0 nezaradených.
-    "dobrodružstvo": [
-        ("MŠ Dobrodružstvo", "MŠ"),
-        ("ZŠ Dobrodružstvo", "1.st; 2.st; Dospelý"),
-    ],
+    # Split starého „dobrodružstvo“ na „MŠ Dobrodružstvo“/„ZŠ Dobrodružstvo“ žije v seed_new_edupage_2026_08.py.
 }
 
 # Fakturačné koeficienty, ktoré MUSIA prežiť každý reseed prevádzok. Historicky žili
@@ -103,6 +97,18 @@ class Command(BaseCommand):
                 {},
             )
 
+            # EduPage pripojenie historicky visí na prevádzke, ktorú split nižšie
+            # deaktivuje. Aktívne sub-prevádzky ho musia zdediť, inak ich scraper
+            # pre dané pripojenie vôbec nenájde a celý celok ticho preskočí.
+            zdedene_pripojenie = next(
+                (
+                    p.edupage_connection
+                    for p in Prevadzka.objects.filter(celok=celok)
+                    if p.edupage_connection_id
+                ),
+                None,
+            )
+
             for sort_order, (nazov, match) in enumerate(prevadzky, start=1):
                 obj, created = Prevadzka.objects.update_or_create(
                     celok=celok,
@@ -114,10 +120,12 @@ class Command(BaseCommand):
                         "visible_menus": DEFAULT_VISIBLE_MENUS,
                         "visible_meals": DEFAULT_VISIBLE_MEALS,
                         "billing_portion_coefficients": zdedeny_koeficient,
+                        "edupage_connection": zdedene_pripojenie,
                     },
                 )
                 if not dry_run:
                     ensure_default_visible_diets(obj.visible_diets)
+                    ensure_default_visible_portion_types(obj.visible_portion_types)
                 verb = "vytvorená" if created else "aktualizovaná"
                 self.stdout.write(f"  {celok_nazov}: {nazov} ({match}) — {verb}")
 
