@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { useOnboarding } from "../../../../context/OnboardingContext";
 import { TOUR_STEPS, TourStep } from "./tourSteps";
@@ -189,7 +190,14 @@ const TourOverlay: React.FC = () => {
   // Only render when we have a position (element was found on correct page)
   if (!isTourActive || !tooltipPos) return null;
 
-  return (
+  // Portalled to document.body: the mobile route wrapper (.zp-page-enter-*)
+  // ends every enter animation with a non-"none" computed transform (the
+  // identity matrix left behind by `animation-fill-mode: forwards`), which
+  // makes it a containing block for `position: fixed` descendants. Without
+  // the portal, top/left here would be resolved against that scrolled
+  // ancestor instead of the real viewport, throwing the tooltip far
+  // off-screen on steps whose target sits lower on the page.
+  return createPortal(
     <>
       {/* Backdrop */}
       <div className="fixed inset-0 z-40 bg-black/50 pointer-events-none" />
@@ -201,7 +209,8 @@ const TourOverlay: React.FC = () => {
         left={tooltipPos.left}
         arrowPlacement={tooltipPos.arrowPlacement}
       />
-    </>
+    </>,
+    document.body,
   );
 };
 

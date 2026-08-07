@@ -76,4 +76,30 @@ describe("TourOverlay", () => {
 
     expect(target).not.toHaveClass("tour-highlight");
   });
+
+  it("portals the tooltip to document.body instead of the local render tree", () => {
+    // The mobile route wrapper (.zp-page-enter-*) leaves a non-"none"
+    // computed transform behind after its enter animation finishes
+    // (animation-fill-mode: forwards resolves to an identity matrix, not
+    // literal "none"), which makes it a containing block for `position:
+    // fixed` descendants. Rendering inside that subtree would put the
+    // tooltip's fixed top/left relative to the scrolled wrapper instead of
+    // the viewport, throwing it off-screen. Portalling to document.body
+    // sidesteps this regardless of what transforms exist further up the
+    // tree.
+    mockUseOnboarding.mockReturnValue(tourState(true));
+    const view = render(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(view.container.querySelector('[data-testid="tour-tooltip"]')).toBeNull();
+    expect(document.body.querySelector('[data-testid="tour-tooltip"]')).not.toBeNull();
+  });
 });
