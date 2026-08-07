@@ -37,6 +37,32 @@ _SETUP_EMAIL = "api.email_utils.send_account_setup_email"
 class TestAdminUserCreate:
     """Test admin user creation endpoint and onboarding emails."""
 
+    def test_list_can_filter_and_return_up_to_100_admins(self, admin_client):
+        User.objects.bulk_create(
+            [
+                User(
+                    username=f"admin-{index}@example.com",
+                    email=f"admin-{index}@example.com",
+                    is_staff=True,
+                )
+                for index in range(25)
+            ]
+            + [
+                User(
+                    username=f"client-{index}@example.com",
+                    email=f"client-{index}@example.com",
+                    is_staff=False,
+                )
+                for index in range(25)
+            ]
+        )
+
+        res = admin_client.get(f"{API_URL}?is_staff=true&page_size=100")
+
+        assert res.status_code == status.HTTP_200_OK
+        assert len(res.data["results"]) == 26  # 25 created + authenticated admin
+        assert all(user["is_staff"] for user in res.data["results"])
+
     def test_create_app_user_sends_setup_email(self, admin_client):
         """Creating a regular user triggers send_account_setup_email."""
         with patch(_SETUP_EMAIL) as mock_email:

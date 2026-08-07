@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Bell, CheckCheck, ExternalLink } from "lucide-react";
 import { useAuth } from "../../../context/auth";
 import { useNavigate } from "react-router-dom";
+import { fetchAllPages } from "../../../lib/pagination";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -24,12 +25,9 @@ const InboxPage = () => {
 
     const fetchMessages = useCallback(async () => {
         try {
-            const res = await apiFetch(`${API_URL}/inbox/`);
-            if (!res.ok) return;
-            const data = await res.json();
-            const results: InboxMessage[] = data.results ?? data;
+            const results = await fetchAllPages<InboxMessage>(apiFetch, `${API_URL}/inbox/`);
             setMessages(results);
-            setUnreadCount(data.unread_count ?? 0);
+            setUnreadCount(results.filter((message) => !message.is_read).length);
         } finally {
             setLoading(false);
         }

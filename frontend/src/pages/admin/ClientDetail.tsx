@@ -6,6 +6,7 @@ import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
+import { fetchAllPages } from '../../lib/pagination';
 import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
 
 interface Diet {
@@ -193,13 +194,12 @@ const ClientDetail: React.FC = () => {
     if (!facilityId) return;
     setOrdersLoading(true);
     try {
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}`);
-      if (res.ok) {
-        const data = await res.json();
-        const list = Array.isArray(data) ? data : data.results || [];
-        list.sort((a: DailyOrder, b: DailyOrder) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        setRecentOrders(list);
-      }
+      const list = await fetchAllPages<DailyOrder>(
+        apiFetch,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}`,
+      );
+      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      setRecentOrders(list);
     } catch (e) {
       logger.error(e);
     } finally {
