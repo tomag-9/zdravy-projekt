@@ -620,6 +620,120 @@ class AdminDailyReportTest(APITestCase):
         ]
         self.assertIn("SPOLU", spolu_vals)
 
+    def test_daily_report_xlsx_marks_pack_separately_and_colors_diet_columns(self):
+        Diet.objects.create(name="Bez lepku", color="#0EA5E9")
+        order = DailyOrder.objects.get(user=self.client_user, date=self.today)
+        order.data["breakfast"]["Dospelý"]["diets"]["Bez lepku"] = 1
+        order.data["breakfast"]["Dospelý"]["packSeparately"] = {
+            "menus": {"A": 1},
+            "diets": {"Bez lepku": 1},
+        }
+        order.save(update_fields=["data"])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
+        )
+        workbook = openpyxl.load_workbook(io.BytesIO(response.content))
+        sheet = workbook.active
+
+        diet_column = next(
+            column
+            for column in range(1, sheet.max_column + 1)
+            if sheet.cell(row=5, column=column).value == "Bez lepku"
+        )
+        menu_a_column = diet_column - 1
+        data_row = next(
+            row
+            for row in range(6, sheet.max_row)
+            if sheet.cell(row=row, column=diet_column).value
+        )
+
+        self.assertEqual(
+            sheet.cell(row=data_row, column=menu_a_column).value,
+            "2 (zvlášť: 1)",
+        )
+        self.assertEqual(
+            sheet.cell(row=data_row, column=diet_column).value,
+            "1 (zvlášť: 1)",
+        )
+        self.assertEqual(
+            sheet.cell(row=5, column=diet_column).fill.fgColor.rgb[-6:], "0EA5E9"
+        )
+        self.assertEqual(
+            sheet.cell(row=data_row, column=diet_column).fill.fgColor.rgb[-6:],
+            "0EA5E9",
+        )
+
+        menu_b_column = next(
+            column
+            for column in range(1, sheet.max_column + 1)
+            if sheet.cell(row=5, column=column).value == "Menu B"
+        )
+        self.assertEqual(sheet.cell(row=data_row, column=menu_b_column).value, 1)
+
+    def test_pdf_meal_table_colors_diets_marks_separate_and_adds_totals(self):
+        from reportlab.lib import colors as reportlab_colors
+
+        from api.exporters import PDFReportExporter
+
+        Diet.objects.create(name="Bez lepku", color="#0EA5E9")
+        order = DailyOrder.objects.get(user=self.client_user, date=self.today)
+        order.data["breakfast"]["Dospelý"]["diets"]["Bez lepku"] = 1
+        order.data["breakfast"]["Dospelý"]["packSeparately"] = {
+            "menus": {"A": 1},
+            "diets": {"Bez lepku": 1},
+        }
+        order.data["breakfast"]["Jasle"] = {
+            "menuCounts": {"A": 3},
+            "diets": {},
+        }
+        order.save(update_fields=["data"])
+
+        exporter = PDFReportExporter([order], self.today)
+        table = exporter._build_meal_table(
+            order.data,
+            "breakfast",
+            [120, 220, 160],
+            exporter.font_regular,
+            exporter.font_bold,
+        )
+
+        adult_row = next(row for row in table._cellvalues if row[0] == "Dospelý")
+        self.assertEqual(adult_row[1], "A×2 (zvlášť: 1)")
+        diet_table = adult_row[2]
+        self.assertEqual(
+            diet_table._cellvalues[0][0].getPlainText(),
+            "Bez lepku (zvlášť: 1)",
+        )
+        self.assertIn(
+            (
+                "BACKGROUND",
+                (0, 0),
+                (0, 0),
+                reportlab_colors.HexColor("#0EA5E9"),
+            ),
+            diet_table._bkgrndcmds,
+        )
+
+        self.assertEqual(table._cellvalues[-1][0], "SPOLU")
+        self.assertEqual(table._cellvalues[-1][1], "A×5 (celkovo: 5)")
+        total_diet_table = table._cellvalues[-1][2]
+        self.assertEqual(
+            total_diet_table._cellvalues[0][0].getPlainText(), "Bez lepku×1"
+        )
+
+        lunch_table = exporter._build_meal_table(
+            order.data,
+            "lunch",
+            [120, 220, 160],
+            exporter.font_regular,
+            exporter.font_bold,
+        )
+        school_row = next(row for row in lunch_table._cellvalues if row[0] == "ZŠ")
+        self.assertIn("B×1", school_row[1])
+        self.assertNotIn("zvlášť", school_row[1])
+
     def test_daily_report_pdf_returns_file(self):
         self.client.force_authenticate(user=self.admin)
         response = self.client.get(
