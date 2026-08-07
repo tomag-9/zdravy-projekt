@@ -33,6 +33,7 @@ vi.mock("../../../context/auth", () => ({
   useAuth: vi.fn(() => ({
     logout: vi.fn(),
     apiFetch: mockApiFetch,
+    user: { id: 1, email: "client@example.com" },
   })),
   AuthProvider: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -292,6 +293,67 @@ describe("OrderPage Logic & Triggers", () => {
       return original(url, init);
     });
   };
+
+  const mockPrevadzkaPortionVisibility = (
+    visiblePortionTypes?: Array<{ id: number; name: string }>,
+  ) => {
+    const original = mockApiFetch.getMockImplementation()!;
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/prevadzky/")) {
+        return Promise.resolve(makeMockResponse([{
+          id: 12,
+          nazov: "Porciová prevádzka",
+          adresa: "",
+          celok: "Test celok",
+          visible_menus: ["A", "B", "C", "V"],
+          visible_meals: ["breakfast", "lunch", "olovrant"],
+          visible_portion_types: visiblePortionTypes,
+          visible_diets: [],
+          pack_separately_enabled: false,
+        }]));
+      }
+      if (url.includes("/admin/portion-types/")) {
+        return Promise.resolve(makeMockResponse([
+          { id: 1, name: "Jasle", is_active: true },
+          { id: 2, name: "Škôlka", is_active: true },
+        ]));
+      }
+      return original(url, init);
+    });
+  };
+
+  it("shows only portion types visible for the active prevádzka", async () => {
+    mockPrevadzkaPortionVisibility([{ id: 2, name: "Škôlka" }]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+    expect(within(getMealCard("Obed")).queryByText("Jasle")).not.toBeInTheDocument();
+  });
+
+  it("shows all portion types when visibility is missing", async () => {
+    mockPrevadzkaPortionVisibility();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Jasle")).toBeInTheDocument();
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+  });
+
+  it("shows all portion types when visibility is an empty list (not yet backfilled)", async () => {
+    mockPrevadzkaPortionVisibility([]);
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(within(getMealCard("Obed")).getByText("Jasle")).toBeInTheDocument();
+      expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
+    });
+  });
 
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {
     const date = localDateStr();

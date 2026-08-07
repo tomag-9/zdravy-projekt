@@ -18,6 +18,7 @@ from api.default_visibility import (
     ensure_all_visible_meals_for_prevadzky,
     ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets,
+    ensure_default_visible_portion_types,
 )
 from api.models import Celok, Diet, EdupageConnection, UserProfile
 
@@ -189,11 +190,15 @@ class Command(BaseCommand):
                         prevadzka.edupage_connection = None
                         prevadzka.save(update_fields=["edupage_connection"])
                     ensure_default_visible_diets(prevadzka.visible_diets)
+                    ensure_default_visible_portion_types(
+                        prevadzka.visible_portion_types
+                    )
                     continue
                 if prevadzka.edupage_connection_id != connection.id:
                     prevadzka.edupage_connection = connection
                     prevadzka.save(update_fields=["edupage_connection"])
                 ensure_default_visible_diets(prevadzka.visible_diets)
+                ensure_default_visible_portion_types(prevadzka.visible_portion_types)
 
             extra_diet_names = OPERATION_SPECIFIC_VISIBLE_DIETS.get(
                 school["subdomain"], []

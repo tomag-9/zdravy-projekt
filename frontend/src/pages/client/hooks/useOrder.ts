@@ -811,8 +811,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return true;
     };
 
-    const enabledCategories =
+    // Na rozdiel od visible_menus/visible_meals/visible_diets (kde prázdne pole
+    // znamená vedomú voľbu adminom) je visible_portion_types M2M, ktoré môže byť
+    // prázdne aj len preto, že ešte nebolo dobackfillované (viď default_visibility.py) —
+    // preto tu prázdne pole znamená "bez obmedzenia", rovnako ako v _build_auto_data.
+    const adminVisiblePortionTypesSetting = prevadzkaSettings?.visible_portion_types;
+    const adminVisiblePortionTypeNames = !adminVisiblePortionTypesSetting || adminVisiblePortionTypesSetting.length === 0
+        ? null
+        : new Set(adminVisiblePortionTypesSetting.map((portionType) => portionType.name));
+    const availableCategories =
         portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
+    const enabledCategories = adminVisiblePortionTypeNames == null
+        ? availableCategories
+        : availableCategories.filter((name) => adminVisiblePortionTypeNames.has(name));
 
     return {
         enabledCategories,

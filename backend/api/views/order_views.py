@@ -303,5 +303,5 @@ class PrevadzkaViewSet(viewsets.ReadOnlyModelViewSet):
         return (
             dostupne_prevadzky(self.request.user)
             .select_related("celok")
-            .prefetch_related("visible_diets")
+            .prefetch_related("visible_diets", "visible_portion_types")
         )

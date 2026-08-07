@@ -267,6 +267,24 @@ class TestBuildAutoData:
             == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
         )
 
+    def test_only_visible_portion_types_are_copied(self):
+        data = {
+            "breakfast": {
+                "Škôlka": {"menuCounts": {"A": 2}, "diets": {}},
+                "Dospelý": {"menuCounts": {"A": 1}, "diets": {}},
+            },
+            "lunch": {},
+            "olovrant": {},
+        }
+
+        auto_data = _build_auto_data(
+            DailyOrder(data=data),
+            visible_meals=[],
+            visible_portion_types=["Škôlka"],
+        )
+
+        assert set(auto_data["breakfast"]) == {"Škôlka"}
+
 
 @pytest.mark.django_db
 class TestApplyAutoOrders:

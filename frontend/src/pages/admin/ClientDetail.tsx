@@ -46,6 +46,7 @@ interface FacilityDetail {
   visible_menus: string[];
   visible_meals: string[];
   visible_diets: number[];
+  visible_portion_types?: number[] | null;
   admin_order_note: string;
   client_user_id: number | null;
   pack_separately_enabled: boolean;
@@ -83,7 +84,7 @@ const ClientDetail: React.FC = () => {
   const [facility, setFacility] = useState<FacilityDetail | null>(null);
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
-  const [portionTypeNames, setPortionTypeNames] = useState<string[]>([]);
+  const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "order_note">("dashboard");
@@ -92,6 +93,7 @@ const ClientDetail: React.FC = () => {
   const [menus, setMenus] = useState<Set<string>>(new Set());
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
+  const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
   const [adminOrderNote, setAdminOrderNote] = useState("");
   const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
 
@@ -116,6 +118,11 @@ const ClientDetail: React.FC = () => {
     setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ALL_MENUS));
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
+    setVisiblePortionTypes(
+      data.visible_portion_types == null
+        ? null
+        : new Set(data.visible_portion_types),
+    );
     setAdminOrderNote(data.admin_order_note || "");
     setPackSeparatelyEnabled(!!data.pack_separately_enabled);
   }, []);
@@ -180,13 +187,13 @@ const ClientDetail: React.FC = () => {
       if (res.ok) {
         const data = await res.json();
         const items: PortionType[] = Array.isArray(data) ? data : data.results || [];
-        setPortionTypeNames(items.filter((item) => item.is_active).map((item) => item.name));
+        setPortionTypes(items.filter((item) => item.is_active));
       } else {
-        setPortionTypeNames([]);
+        setPortionTypes([]);
       }
     } catch (e) {
       logger.error(e);
-      setPortionTypeNames([]);
+      setPortionTypes([]);
     }
   }, [apiFetch]);
 
@@ -303,6 +310,9 @@ const ClientDetail: React.FC = () => {
         visible_menus: Array.from(menus),
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
+        visible_portion_types: visiblePortionTypes == null
+          ? portionTypes.map((item) => item.id)
+          : Array.from(visiblePortionTypes),
         admin_order_note: adminOrderNote,
         pack_separately_enabled: packSeparatelyEnabled,
       };
@@ -345,6 +355,9 @@ const ClientDetail: React.FC = () => {
   const isEdupageClient = facility.celok_zdroj_objednavok === "edupage" || user?.profile?.is_edupage === true;
   const canResetPassword = Boolean(user && !user.profile?.is_edupage);
   const orderEditorMenus = Array.from(menus);
+  const portionTypeNames = portionTypes
+    .filter((item) => visiblePortionTypes == null || visiblePortionTypes.has(item.id))
+    .map((item) => item.name);
   const orderEditorMeals = Array.from(meals);
   const orderEditorDiets = Array.from(userDiets);
 
@@ -568,6 +581,30 @@ const ClientDetail: React.FC = () => {
                     </Checkbox>
                   ))}
                 </div>
+              </Card>
+
+              <Card pad>
+                <CardHead title="Viditeľné veľkosti porcií" desc="Vyberte, ktoré veľkosti porcií sa zobrazia klientovi v objednávke." />
+                {portionTypes.length === 0 ? (
+                  <Empty>V systéme nie sú definované žiadne veľkosti porcií.</Empty>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
+                    {portionTypes.map((portionType) => (
+                      <Checkbox
+                        key={portionType.id}
+                        on={visiblePortionTypes == null || visiblePortionTypes.has(portionType.id)}
+                        onChange={() => {
+                          const current = visiblePortionTypes == null
+                            ? new Set(portionTypes.map((item) => item.id))
+                            : visiblePortionTypes;
+                          toggleSet(current, portionType.id, setVisiblePortionTypes);
+                        }}
+                      >
+                        {portionType.name}
+                      </Checkbox>
+                    ))}
+                  </div>
+                )}
               </Card>
 
               <Card pad>

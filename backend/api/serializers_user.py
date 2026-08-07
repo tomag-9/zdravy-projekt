@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .models import (
     Celok,
     Diet,
+    PortionType,
     Prevadzka,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
@@ -23,6 +24,12 @@ class DietSerializer(serializers.ModelSerializer):
     class Meta:
         model = Diet
         fields = ["id", "name", "sort_order", "is_active", "description", "color"]
+
+
+class PortionTypeSettingsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PortionType
+        fields = ["id", "name", "sort_order", "is_active"]
 
 
 def validate_password_strength(password: str, user: User | None = None) -> str:
@@ -159,6 +166,7 @@ class PrevadzkaSettingsSerializer(serializers.ModelSerializer):
     """Kompatibilný settings payload čítaný z kanonickej Prevádzky."""
 
     visible_diets = DietSerializer(many=True, read_only=True)
+    visible_portion_types = PortionTypeSettingsSerializer(many=True, read_only=True)
 
     class Meta:
         model = Prevadzka
@@ -166,6 +174,7 @@ class PrevadzkaSettingsSerializer(serializers.ModelSerializer):
             "visible_menus",
             "visible_meals",
             "visible_diets",
+            "visible_portion_types",
             "admin_order_note",
         ]
 
@@ -302,7 +311,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if not hasattr(obj, "profile"):
             return {}
         prevadzky = list(
-            obj.profile.dostupne_prevadzky().prefetch_related("visible_diets")[:2]
+            obj.profile.dostupne_prevadzky().prefetch_related(
+                "visible_diets", "visible_portion_types"
+            )[:2]
         )
         return (
             PrevadzkaSettingsSerializer(prevadzky[0]).data
@@ -468,7 +479,9 @@ class AdminUserSerializer(serializers.ModelSerializer):
         if getattr(view, "action", None) == "list" or not hasattr(obj, "profile"):
             return None
         prevadzky = list(
-            obj.profile.dostupne_prevadzky().prefetch_related("visible_diets")[:2]
+            obj.profile.dostupne_prevadzky().prefetch_related(
+                "visible_diets", "visible_portion_types"
+            )[:2]
         )
         if len(prevadzky) != 1:
             return None
