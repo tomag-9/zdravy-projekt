@@ -1,4 +1,4 @@
-import { useRef, type ComponentType, type CSSProperties, type ReactNode } from "react";
+import { type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, Minus, PackagePlus, Plus, Trash2 } from "lucide-react";
 import type { DailyOrder, MealData } from "../../services/OrderService";
 import CategoryRow from "./CategoryRow";
@@ -6,7 +6,7 @@ import DietVariantHint from "./DietVariantHint";
 import MealCard from "./MealCard";
 import {
   getPackSeparatelyItemLabel,
-  getPackSeparatelyUpdates,
+  usePackSeparatelyUpdater,
   type PackSeparatelySection,
 } from "./packSeparately";
 
@@ -93,26 +93,10 @@ const OrderFormBody = ({
   dimmed = false,
   tourIds = false,
 }: OrderFormBodyProps) => {
-  const packSeparatelyItemsRef = useRef(activePackSeparatelyItems);
-  packSeparatelyItemsRef.current = activePackSeparatelyItems;
-  const updatePackSeparatelyItem = (
-    section: PackSeparatelySection,
-    item: PackSeparatelySection['items'][number],
-    count: number,
-  ) => {
-    const currentItems = packSeparatelyItemsRef.current.find(
-      (currentSection) => currentSection.meal === section.meal,
-    )?.items || section.items;
-    getPackSeparatelyUpdates(currentItems, item, count).forEach((update) => {
-      onUpdatePackSeparately(
-        section.meal,
-        item.category,
-        update.kind,
-        update.key,
-        update.count,
-      );
-    });
-  };
+  const updatePackSeparatelyItem = usePackSeparatelyUpdater(
+    activePackSeparatelyItems,
+    onUpdatePackSeparately,
+  );
   const fullDayMealLabels = visibleMealsList.map((meal) => meal.label).join(" · ");
   const fullDayBlocked = fullDayOrder && fullDayEnabled;
 

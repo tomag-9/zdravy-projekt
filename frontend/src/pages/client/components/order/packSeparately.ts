@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { CATEGORIES } from "../../config/constants";
 import type { MealData } from "../../services/OrderService";
 
@@ -71,6 +72,46 @@ export const getPackSeparatelyUpdates = (
   }
 
   return [{ kind: item.kind, key: item.keyName, count: counterpartCount + count }];
+};
+
+/**
+ * A merged/remainder row pair must read the OTHER row's just-dispatched count to
+ * compute its own update (see getPackSeparatelyUpdates above), but the caller's
+ * `sections` prop is still last render's value when several updates fire in the
+ * same tick — a ref mirrors the latest sections synchronously (updated during
+ * render, not via effect) so each update always sees its sibling's fresh count.
+ */
+export const usePackSeparatelyUpdater = (
+  sections: PackSeparatelySection[],
+  onUpdatePackSeparately: (
+    meal: PackSeparatelySection["meal"],
+    category: string,
+    kind: "menus" | "diets",
+    key: string,
+    count: number,
+  ) => void,
+) => {
+  const sectionsRef = useRef(sections);
+  sectionsRef.current = sections;
+
+  return (
+    section: PackSeparatelySection,
+    item: PackSeparatelyItem,
+    count: number,
+  ) => {
+    const currentItems = sectionsRef.current.find(
+      (currentSection) => currentSection.meal === section.meal,
+    )?.items || section.items;
+    getPackSeparatelyUpdates(currentItems, item, count).forEach((update) => {
+      onUpdatePackSeparately(
+        section.meal,
+        item.category,
+        update.kind,
+        update.key,
+        update.count,
+      );
+    });
+  };
 };
 
 export const buildPackSeparatelyItems = (

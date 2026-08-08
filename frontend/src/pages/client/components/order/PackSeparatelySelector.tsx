@@ -1,12 +1,11 @@
 import { createPortal } from 'react-dom';
-import { useRef } from 'react';
 import { X, Check, Minus, Plus } from 'lucide-react';
 import { useScrollLock } from '../../../../hooks/useScrollLock';
 import DietVariantHint from './DietVariantHint';
 import NumericCountInput from './NumericCountInput';
 import {
     getPackSeparatelyItemLabel,
-    getPackSeparatelyUpdates,
+    usePackSeparatelyUpdater,
     type PackSeparatelySection,
 } from './packSeparately';
 
@@ -33,28 +32,8 @@ const PackSeparatelySelector = ({
     onUpdatePackSeparately
 }: PackSeparatelySelectorProps) => {
     useScrollLock(isOpen);
-    const sectionsRef = useRef(sections);
-    sectionsRef.current = sections;
+    const updateItem = usePackSeparatelyUpdater(sections, onUpdatePackSeparately);
     if (!isOpen) return null;
-
-    const updateItem = (
-        section: PackSeparatelySection,
-        item: PackSeparatelySection['items'][number],
-        count: number,
-    ) => {
-        const currentItems = sectionsRef.current.find(
-            (currentSection) => currentSection.meal === section.meal,
-        )?.items || section.items;
-        getPackSeparatelyUpdates(currentItems, item, count).forEach((update) => {
-            onUpdatePackSeparately(
-                section.meal,
-                item.category,
-                update.kind,
-                update.key,
-                update.count,
-            );
-        });
-    };
 
     return createPortal(
         <div className="zp-sheet-scrim" onClick={onClose}>
