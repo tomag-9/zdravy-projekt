@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from .pdf_exporter import PDFFontManager
+from .report_helpers import PDFFontManager
 
 MEAL_HEADERS = ["R", "Ob", "Ol", "Spolu"]
 COUNT_KEYS = ["breakfast", "lunch", "olovrant", "total"]

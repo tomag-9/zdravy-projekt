@@ -1,10 +1,26 @@
-"""XLSX exporter for the gramage dashboard (orders × templates × coefficients)."""
+"""XLSX exporter for the gramage dashboard (orders × templates × coefficients).
+
+Mirrors the AdminDashboard "Gramáž jedál" screen: same meal-hue header
+colours, same diet colours, same delivery-block/route grouping and portion
+summaries — see gramage_dashboard_export.py for the shared presentation
+logic this and the PDF exporter both build on.
+"""
 
 from __future__ import annotations
 
 import io
 
 from ..services.meal_plan_service import _tidy_count
+from .gramage_dashboard_export import (
+    BRAND,
+    MEAL_PALETTE,
+    component_subtitle,
+    contrast_text_color,
+    diet_color,
+    flat_client_rows,
+    group_label,
+    meal_hue,
+)
 
 
 class GramageDashboardXLSXExporter:
@@ -20,49 +36,42 @@ class GramageDashboardXLSXExporter:
         ws.title = self.data["date"]
 
         col_groups = self.data["col_groups"]
-        rows = self.data["rows"]
         totals = self.data["totals"]
+        all_rows = flat_client_rows(self.data)
 
-        # Fonts & fills
-        title_font = Font(bold=True, size=13)
+        # ── Brand fonts & fills (mirrors admin.css BRAND palette / .mh-*) ────
+        title_font = Font(bold=True, size=13, color=BRAND["green_900"])
         hdr_font = Font(bold=True, color="FFFFFF")
-        hdr_fill = PatternFill("solid", fgColor="1E40AF")
-        meal_hdr_fill = PatternFill("solid", fgColor="DBEAFE")
-        menu_a_fill = PatternFill("solid", fgColor="DC2626")
-        menu_b_fill = PatternFill("solid", fgColor="2563EB")
         cat_font = Font(bold=True)
-        cat_fill = PatternFill("solid", fgColor="F1F5F9")
-        block_fill = PatternFill("solid", fgColor="1E40AF")
-        route_fill = PatternFill("solid", fgColor="DBEAFE")
-        diet_fill = PatternFill("solid", fgColor="FEF9C3")
+        cat_fill = PatternFill("solid", fgColor=BRAND["cream_soft"])
+        band_font = Font(bold=True, color="FFFFFF")
+        block_fill = PatternFill("solid", fgColor=BRAND["green_900"])
+        route_fill = PatternFill("solid", fgColor=BRAND["green_700"])
+        unassigned_fill = PatternFill("solid", fgColor="C64545")
+        standard_fill = PatternFill("solid", fgColor=BRAND["cream"])
         total_font = Font(bold=True, color="FFFFFF")
-        total_fill = PatternFill("solid", fgColor="1E40AF")
+        total_fill = PatternFill("solid", fgColor=BRAND["green_900"])
         center = Alignment(horizontal="center", vertical="center", wrap_text=True)
         right_align = Alignment(horizontal="right")
         thin_border = Border(
-            left=Side(style="thin", color="CBD5E1"),
-            right=Side(style="thin", color="CBD5E1"),
-            top=Side(style="thin", color="CBD5E1"),
-            bottom=Side(style="thin", color="CBD5E1"),
+            left=Side(style="thin", color=BRAND["line"]),
+            right=Side(style="thin", color=BRAND["line"]),
+            top=Side(style="thin", color=BRAND["line"]),
+            bottom=Side(style="thin", color=BRAND["line"]),
         )
 
-        def menu_variant_fill(label):
-            upper = str(label).upper()
-            if "MENU A" in upper:
-                return menu_a_fill
-            if "MENU B" in upper:
-                return menu_b_fill
-            return None
+        def meal_fills(meal, variant):
+            dark_hex, mid_hex, _light_hex = MEAL_PALETTE[meal_hue(meal, variant)]
+            return (
+                PatternFill("solid", fgColor=dark_hex),
+                PatternFill("solid", fgColor=mid_hex),
+            )
 
-        def diet_row_fill(row):
-            color = str(row.get("diet_color") or row.get("color") or "").lstrip("#")
-            if not color:
-                color = str(
-                    (self.data.get("diet_colors") or {}).get(row.get("name"), "")
-                ).lstrip("#")
-            if len(color) == 6:
-                return PatternFill("solid", fgColor=color.upper())
-            return diet_fill
+        def diet_fill_for(row):
+            hex_color = diet_color(self.data, row)
+            return PatternFill("solid", fgColor=hex_color), Font(
+                color=contrast_text_color(hex_color)
+            )
 
         # ── Column layout ───────────────────────────────────────────────────
         # Columns: A=Prevádzka/Riadok, B=Počet, then components
@@ -80,6 +89,7 @@ class GramageDashboardXLSXExporter:
         ws.merge_cells(
             start_row=1, start_column=1, end_row=1, end_column=max(total_cols, 2)
         )
+        ws.row_dimensions[1].height = 22
         ws.append([])  # blank row 2
 
         # ── Header row 1: Prevádzka, Počet, meal group labels ────────────────
@@ -95,7 +105,7 @@ class GramageDashboardXLSXExporter:
 
         for i, cg in enumerate(col_groups):
             c = col_start[i]
-            ws.cell(row=HDR_ROW, column=c, value=cg["label"])
+            ws.cell(row=HDR_ROW, column=c, value=group_label(cg))
             if len(cg["components"]) > 1:
                 ws.merge_cells(
                     start_row=HDR_ROW,
@@ -107,36 +117,27 @@ class GramageDashboardXLSXExporter:
         # ── Header row 2: component labels with base gramage ────────────────
         for i, cg in enumerate(col_groups):
             for j, comp in enumerate(cg["components"]):
-                if comp.get("is_exception"):
-                    subtitle = f"podľa vekovej skupiny ({comp.get('unit', 'ks')})"
-                else:
-                    base_g = int(float(comp["base_grams"]))
-                    subtitle = f"{base_g}{comp.get('unit', 'g')}"
                 ws.cell(
                     row=HDR_ROW + 1,
                     column=col_start[i] + j,
-                    value=f"{comp['label']} ({subtitle})",
+                    value=f"{comp['label']} ({component_subtitle(comp)})",
                 )
 
-        # Style both header rows
+        # Style both header rows in the base identity colours…
         for r in (HDR_ROW, HDR_ROW + 1):
             for c in range(1, total_cols + 1):
                 cell = ws.cell(row=r, column=c)
                 cell.font = hdr_font
-                cell.fill = hdr_fill
+                cell.fill = block_fill
                 cell.alignment = center
 
+        # …then recolour each meal-group's two header cells to its hue: dark
+        # for the merged label row, mid tone for the component subtitle row.
         for i, cg in enumerate(col_groups):
-            for j, comp in enumerate(cg["components"]):
-                fill = menu_variant_fill(comp["label"])
-                if fill:
-                    ws.cell(row=HDR_ROW + 1, column=col_start[i] + j).fill = fill
-
-        # Meal group header cells get a lighter fill for the label row
-        for i, cg in enumerate(col_groups):
-            cell = ws.cell(row=HDR_ROW, column=col_start[i])
-            cell.fill = meal_hdr_fill
-            cell.font = Font(bold=True)
+            dark_fill, mid_fill = meal_fills(cg["meal"], cg.get("variant"))
+            for j in range(len(cg["components"])):
+                ws.cell(row=HDR_ROW, column=col_start[i] + j).fill = dark_fill
+                ws.cell(row=HDR_ROW + 1, column=col_start[i] + j).fill = mid_fill
 
         DATA_ROW = HDR_ROW + 2
 
@@ -161,10 +162,10 @@ class GramageDashboardXLSXExporter:
                         cell.fill = fill
             DATA_ROW += 1
 
-        def write_summary_row(label, count, col_grams, fill):
-            write_row(label, count, col_grams, font=cat_font, fill=fill)
+        def write_summary_row(label, count, col_grams, fill, font=None):
+            write_row(label, count, col_grams, font=font or cat_font, fill=fill)
 
-        def write_client(row):
+        def write_client(row, zebra: bool):
             nonlocal DATA_ROW
             ws.cell(
                 row=DATA_ROW,
@@ -177,38 +178,39 @@ class GramageDashboardXLSXExporter:
                 end_row=DATA_ROW,
                 end_column=total_cols,
             )
+            client_fill = cat_fill if zebra else PatternFill("solid", fgColor="FFFFFF")
             for c in range(1, total_cols + 1):
                 cell = ws.cell(row=DATA_ROW, column=c)
                 cell.font = cat_font
-                cell.fill = cat_fill
+                cell.fill = client_fill
             DATA_ROW += 1
 
             for sr in row["sub_rows"]:
-                f = (
-                    diet_row_fill(sr)
-                    if sr["type"] in {"diet", "zvlast"}
-                    else menu_variant_fill(sr["label"])
-                )
+                is_diet = sr["type"] in {"diet", "zvlast"}
+                fill, font = diet_fill_for(sr) if is_diet else (None, None)
                 write_row(
                     sr["label"],
                     sr["count"],
                     sr["col_grams"],
-                    fill=f,
-                    indent=1 if sr["type"] in {"diet", "zvlast"} else 0,
+                    font=font,
+                    fill=fill,
+                    indent=1 if is_diet else 0,
                 )
 
             write_summary_row(
                 "Súčet bez diét",
                 row.get("standard_total_count", 0),
                 row.get("standard_col_grams", []),
-                PatternFill("solid", fgColor="DCFCE7"),
+                standard_fill,
             )
             for diet_row in row.get("diet_summary_rows", []):
+                fill, font = diet_fill_for(diet_row)
                 write_summary_row(
                     diet_row["name"],
                     diet_row["count"],
                     diet_row["col_grams"],
-                    diet_row_fill(diet_row),
+                    fill,
+                    font=font,
                 )
 
             if row.get("delivery_note"):
@@ -247,7 +249,7 @@ class GramageDashboardXLSXExporter:
         unassigned_rows = self.data.get("unassigned_rows") or []
         if blocks:
             for block in blocks:
-                write_band(block["name"], block_fill, Font(bold=True, color="FFFFFF"))
+                write_band(block["name"], block_fill, band_font)
                 for route in block.get("routes", []):
                     suffix = []
                     if route.get("departure_time"):
@@ -257,26 +259,24 @@ class GramageDashboardXLSXExporter:
                     route_label = route["name"]
                     if suffix:
                         route_label = f"{route_label} - {' / '.join(suffix)}"
-                    write_band(route_label, route_fill, cat_font)
-                    for row in route.get("rows", []):
-                        write_client(row)
+                    write_band(route_label, route_fill, band_font)
+                    for zebra, row in enumerate(route.get("rows", [])):
+                        write_client(row, zebra % 2 == 1)
             if unassigned_rows:
-                write_band(
-                    "Nepriradené prevádzky",
-                    PatternFill("solid", fgColor="FEE2E2"),
-                    cat_font,
-                )
-                for row in unassigned_rows:
-                    write_client(row)
+                write_band("Nepriradené prevádzky", unassigned_fill, band_font)
+                for zebra, row in enumerate(unassigned_rows):
+                    write_client(row, zebra % 2 == 1)
         else:
-            for row in rows:
-                write_client(row)
+            for zebra, row in enumerate(all_rows):
+                write_client(row, zebra % 2 == 1)
+
+        DATA_START_ROW = HDR_ROW + 2
 
         # ── Totals row ───────────────────────────────────────────────────────
         totals_count = _tidy_count(
             sum(
                 sum(sr["count"] for sr in r["sub_rows"] if sr["type"] == "standard")
-                for r in rows
+                for r in all_rows
             )
         )
         total_col_grams = [[g for g in grp] for grp in totals]
@@ -294,24 +294,33 @@ class GramageDashboardXLSXExporter:
             cell.fill = total_fill
 
         # ── Column widths ────────────────────────────────────────────────────
-        ws.column_dimensions["A"].width = 28
-        ws.column_dimensions["B"].width = 8
+        ws.column_dimensions["A"].width = 30
+        ws.column_dimensions["B"].width = 9
         for i, cg in enumerate(col_groups):
             for j in range(len(cg["components"])):
                 col_letter = openpyxl.utils.get_column_letter(col_start[i] + j)
-                ws.column_dimensions[col_letter].width = 11
+                ws.column_dimensions[col_letter].width = 12
+
+        # Freeze the row/column labels so long lists stay orientable while
+        # scrolling — the header rows and the "Prevádzka / Riadok" column.
+        ws.freeze_panes = ws.cell(row=DATA_START_ROW, column=3).coordinate
 
         # ── Count summary ────────────────────────────────────────────────────
         count_summary = self.data.get("count_summary", [])
         if count_summary:
             DATA_ROW += 2  # blank separator
             ws.cell(row=DATA_ROW, column=1, value="Súhrn objednávok")
-            ws.cell(row=DATA_ROW, column=1).font = Font(bold=True, size=12)
+            ws.cell(row=DATA_ROW, column=1).font = Font(
+                bold=True, size=12, color=BRAND["green_900"]
+            )
             DATA_ROW += 1
 
             for section in count_summary:
                 if not section.get("standard") and not section.get("diets"):
                     continue
+                dark_hex, _mid_hex, light_hex = MEAL_PALETTE[
+                    meal_hue(section.get("meal", ""), section.get("variant"))
+                ]
                 ws.cell(row=DATA_ROW, column=1, value=section["label"])
                 ws.merge_cells(
                     start_row=DATA_ROW,
@@ -322,22 +331,27 @@ class GramageDashboardXLSXExporter:
                 for c in range(1, 3):
                     cell = ws.cell(row=DATA_ROW, column=c)
                     cell.font = Font(bold=True, color="FFFFFF")
-                    cell.fill = PatternFill("solid", fgColor="1E40AF")
+                    cell.fill = PatternFill("solid", fgColor=dark_hex)
                     cell.alignment = center
                 DATA_ROW += 1
                 for row in section.get("standard", []):
                     ws.cell(row=DATA_ROW, column=1, value=f"  {row['name']}")
                     ws.cell(row=DATA_ROW, column=2, value=row["count"])
                     ws.cell(row=DATA_ROW, column=2).alignment = right_align
+                    for c in range(1, 3):
+                        ws.cell(row=DATA_ROW, column=c).fill = PatternFill(
+                            "solid", fgColor=light_hex
+                        )
                     DATA_ROW += 1
                 for row in section.get("diets", []):
+                    fill, font = diet_fill_for({"name": row["label"]})
                     ws.cell(row=DATA_ROW, column=1, value=f"  {row['label']}")
                     ws.cell(row=DATA_ROW, column=2, value=row["count"])
                     ws.cell(row=DATA_ROW, column=2).alignment = right_align
                     for c in range(1, 3):
-                        ws.cell(row=DATA_ROW, column=c).fill = PatternFill(
-                            "solid", fgColor="FEF9C3"
-                        )
+                        cell = ws.cell(row=DATA_ROW, column=c)
+                        cell.fill = fill
+                        cell.font = font
                     DATA_ROW += 1
 
         for row in ws.iter_rows(

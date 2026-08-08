@@ -1,9 +1,8 @@
 """Report Service - Extract data preparation logic from views."""
 
 import datetime
-from typing import List
 
-from ..models import DailyOrder, Diet
+from ..models import DailyOrder
 from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
 from ..order_data import OrderData, safe_count
 from ..utils import build_user_meal_row, merge_meal_totals, order_row_label
@@ -81,54 +80,6 @@ class ReportService:
             "rows": rows,
             "totals": totals,
         }
-
-    @staticmethod
-    def get_orders_for_export(target_date: datetime.date) -> List[dict]:
-        """
-        Get order data and user info for export formats.
-
-        Returns:
-            List of dicts with user, data, visible_meals for each order
-        """
-        orders = (
-            DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "prevadzka__celok")
-            .prefetch_related("prevadzka__celok__prevadzky")
-            .order_by("user__email")
-        )
-
-        orders = list(orders)
-        diet_names = {
-            diet_name
-            for order in orders
-            for category in OrderData(
-                order.data if isinstance(order.data, dict) else {}
-            ).iter_categories()
-            for diet_name, count in category.diets.items()
-            if safe_count(count) > 0
-        }
-        diet_colors = dict(
-            Diet.objects.filter(name__in=diet_names).values_list("name", "color")
-        )
-
-        rows_data = []
-        for order in orders:
-            data = order.data if isinstance(order.data, dict) else {}
-            rows_data.append(
-                {
-                    "user": order.user,
-                    # Prevádzka, nie login: celok s viacerými prevádzkami musí byť
-                    # v exporte rozpadnutý na samostatné riadky.
-                    "name": order_row_label(order),
-                    "data": data,
-                    "diet_colors": diet_colors,
-                    "visible_meals": (
-                        getattr(order.prevadzka, "visible_meals", None)
-                        or list(ReportService.MEAL_KEYS)
-                    ),
-                }
-            )
-        return rows_data
 
     # ------------------------------------------------------------------ #
     # Daily stats aggregation

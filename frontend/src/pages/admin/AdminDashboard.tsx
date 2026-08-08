@@ -150,11 +150,6 @@ interface ClosedDayResponse {
   is_closed: boolean;
 }
 
-interface ReportTaskResponse {
-  task_id: string;
-  status: "pending" | "processing" | "complete" | "failed";
-}
-
 // ── Meal hue mapping (brand-translated meal colours, see admin.css .mh-*) ───────
 
 function mealHue(meal: string, variant: string): string {
@@ -224,7 +219,6 @@ const AdminDashboard: React.FC = () => {
   const [unlockConfirmOpen, setUnlockConfirmOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
-  const [closedReportLoading, setClosedReportLoading] = useState<"pdf" | "xlsx" | null>(null);
   const closedRequestId = useRef(0);
 
   const fetchData = useCallback(async () => {
@@ -338,50 +332,6 @@ const AdminDashboard: React.FC = () => {
     }
   }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
 
-  const handleClosedDayExport = useCallback(async (fmt: "pdf" | "xlsx") => {
-    setClosedReportLoading(fmt);
-    try {
-      const submit = await apiFetch(`${API}/admin/report-tasks/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, format: fmt }),
-      });
-      if (!submit.ok) throw new Error("submit failed");
-      const submitted = await submit.json() as ReportTaskResponse;
-
-      let complete = false;
-      for (let attempt = 0; attempt < 60; attempt += 1) {
-        const statusRes = await apiFetch(`${API}/admin/report-tasks/${submitted.task_id}/`);
-        if (!statusRes.ok) throw new Error("poll failed");
-        const task = await statusRes.json() as ReportTaskResponse;
-        if (task.status === "failed") throw new Error("task failed");
-        if (task.status === "complete") {
-          complete = true;
-          break;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 1000));
-      }
-      if (!complete) throw new Error("task timeout");
-
-      const download = await apiFetch(`${API}/admin/report-tasks/${submitted.task_id}/download/`);
-      if (!download.ok) throw new Error("download failed");
-      const blob = await download.blob();
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `denny_prehlad_objednavok_${date}.${fmt}`;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      logger.error(e);
-      toastError("Denný prehľad sa nepodarilo vygenerovať.");
-    } finally {
-      setClosedReportLoading(null);
-    }
-  }, [apiFetch, date, toastError]);
-
   const isAtMax = date >= maxDate;
   const hasData = data && (data.rows.length > 0 || data.col_groups.length > 0);
   const hasOrderCounts = Boolean(orderReport?.rows.some((row) => row.total > 0));
@@ -411,22 +361,6 @@ const AdminDashboard: React.FC = () => {
                   <Check style={{ width: 16, verticalAlign: "middle", marginRight: 5 }} />
                   Deň je uzavretý
                 </span>
-                <Button
-                  variant="danger"
-                  aria-label="PDF objednávok"
-                  onClick={() => handleClosedDayExport("pdf")}
-                  disabled={closedReportLoading !== null}
-                >
-                  {closedReportLoading === "pdf" ? <Loader2 className="zpa-spin" /> : <FileText />} PDF objednávok
-                </Button>
-                <Button
-                  variant="primary"
-                  aria-label="XLSX objednávok"
-                  onClick={() => handleClosedDayExport("xlsx")}
-                  disabled={closedReportLoading !== null}
-                >
-                  {closedReportLoading === "xlsx" ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} XLSX objednávok
-                </Button>
                 <Button variant="secondary" onClick={() => setUnlockConfirmOpen(true)} disabled={unlocking}>
                   {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />} Odomknúť
                 </Button>

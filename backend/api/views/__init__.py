@@ -62,7 +62,6 @@ from .order_views import (
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
 
 # Report views
-from .report_task_views import ReportTaskViewSet
 from .report_views import AdminSummaryViewSet
 
 # Settings views
@@ -93,7 +92,6 @@ __all__ = [
     "AdminEdupageConnectionViewSet",
     # Reports
     "AdminSummaryViewSet",
-    "ReportTaskViewSet",
     # Settings
     "UserProfileViewSet",
     "GlobalSettingsViewSet",

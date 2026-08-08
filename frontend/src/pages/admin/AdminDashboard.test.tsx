@@ -231,47 +231,8 @@ describe("AdminDashboard", () => {
       );
       expect(screen.getByRole("status")).toHaveTextContent("Deň je uzavretý");
     });
-    expect(screen.getByRole("button", { name: "PDF objednávok" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "XLSX objednávok" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /stiahnuť pdf/i })).toBeInTheDocument();
     expect(mockToastSuccess).toHaveBeenCalledWith("Deň bol uzavretý.");
-  });
-
-  it("loads a persisted closed state and uses the report-task flow for export", async () => {
-    mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
-      if (url.includes("/admin/meal-plans/gramage-dashboard/")) {
-        return Promise.resolve(makeMockResponse(GRAMAGE_WITH_PLAN));
-      }
-      if (url.includes("/admin/closed-days/")) {
-        return Promise.resolve(makeMockResponse({ date: "2026-07-03", is_closed: true }));
-      }
-      if (url.endsWith("/admin/report-tasks/") && options?.method === "POST") {
-        return Promise.resolve(makeMockResponse({ task_id: "pdf-task", status: "pending" }));
-      }
-      if (url.endsWith("/admin/report-tasks/pdf-task/")) {
-        return Promise.resolve(makeMockResponse({ task_id: "pdf-task", status: "complete" }));
-      }
-      if (url.endsWith("/admin/report-tasks/pdf-task/download/")) {
-        return Promise.resolve(makeMockResponse({}));
-      }
-      throw new Error(`Unexpected URL ${url}`);
-    });
-
-    render(<AdminDashboard />);
-
-    expect(await screen.findByText("Deň je uzavretý")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /stiahnuť pdf/i })).toBeInTheDocument();
-    const pdfButton = screen.getByRole("button", { name: "PDF objednávok" });
-    expect(screen.getByRole("button", { name: "XLSX objednávok" })).toBeInTheDocument();
-    fireEvent.click(pdfButton);
-
-    await waitFor(() => {
-      expect(mockApiFetch).toHaveBeenCalledWith(
-        expect.stringContaining("/admin/report-tasks/"),
-        expect.objectContaining({ method: "POST", body: expect.stringContaining('"format":"pdf"') }),
-      );
-      expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining("/pdf-task/download/"));
-    });
   });
 
   it("unlocks a closed date after explicit confirmation and returns to the open state", async () => {
@@ -307,8 +268,6 @@ describe("AdminDashboard", () => {
       expect(screen.getByRole("button", { name: /uzamknúť/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "PDF objednávok" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "XLSX objednávok" })).not.toBeInTheDocument();
     expect(mockToastSuccess).toHaveBeenCalledWith("Deň bol odomknutý.");
   });
 });

@@ -76,25 +76,12 @@ class TestValidationErrors:
 
     def test_invalid_date_format(self, admin_client):
         """Test invalid date format returns standardized error."""
-        url = "/api/admin/report-tasks/"
-        response = admin_client.post(
-            url, {"date": "not-a-date", "format": "pdf"}, format="json"
-        )
+        url = "/api/admin/closed-days/"
+        response = admin_client.post(url, {"date": "not-a-date"}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["error"]["code"] == "invalid_date_format"
         assert "YYYY-MM-DD" in response.data["error"]["message"]
-
-    def test_invalid_report_format(self, admin_client):
-        """Test invalid report format returns standardized error."""
-        url = "/api/admin/report-tasks/"
-        response = admin_client.post(
-            url, {"date": "2024-03-06", "format": "docx"}, format="json"
-        )
-
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data["error"]["code"] == "invalid_report_format"
-        assert response.data["error"]["details"]["valid_formats"] == ["pdf", "xlsx"]
 
 
 @pytest.mark.django_db
@@ -122,12 +109,10 @@ class TestPermissionErrors:
         assert response.data["error"]["code"] == "client_only"
         assert "Administrators" in response.data["error"]["message"]
 
-    def test_non_admin_cannot_access_report_tasks(self, authenticated_client):
+    def test_non_admin_cannot_access_closed_days(self, authenticated_client):
         """Test that non-admin users cannot access admin endpoints."""
-        url = "/api/admin/report-tasks/"
-        response = authenticated_client.post(
-            url, {"date": "2024-03-06", "format": "pdf"}, format="json"
-        )
+        url = "/api/admin/closed-days/"
+        response = authenticated_client.post(url, {"date": "2024-03-06"}, format="json")
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert "error" in response.data

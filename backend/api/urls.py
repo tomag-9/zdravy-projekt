@@ -32,7 +32,6 @@ from .views import (
     PortionTypeViewSet,
     PrevadzkaViewSet,
     PushSubscribeView,
-    ReportTaskViewSet,
     SafeTokenRefreshView,
     UserProfileViewSet,
     VapidPublicKeyView,
@@ -80,11 +79,6 @@ router.register(
     r"admin/trigger-auto-orders",
     AdminAutoOrderViewSet,
     basename="trigger-auto-orders",
-)
-router.register(
-    r"admin/report-tasks",
-    ReportTaskViewSet,
-    basename="report-task",
 )
 router.register(r"admin/closed-days", ClosedDayViewSet, basename="closed-day")
 router.register(r"admin/meal-plans", DailyMealPlanViewSet, basename="meal-plan")

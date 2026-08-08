@@ -81,24 +81,6 @@ class TestReportService:
         assert result["totals"]["breakfast"]["menus"]["Menu A"] == 3
         assert result["totals"]["breakfast"]["total"] == 3
 
-    def test_get_orders_for_export(self):
-        """Test getting orders in export format."""
-        user = _with_profile(
-            User.objects.create_user(username="testuser", email="test@example.com")
-        )
-        target_date = datetime.date(2024, 1, 1)
-        order_data = {
-            "breakfast": {"Jasle": {"menuCounts": {"Menu A": 1}, "diets": {}}}
-        }
-        DailyOrder.objects.create(user=user, date=target_date, data=order_data)
-
-        rows_data = ReportService.get_orders_for_export(target_date)
-
-        assert len(rows_data) == 1
-        assert rows_data[0]["user"].email == "test@example.com"
-        assert rows_data[0]["data"] == order_data
-        assert "visible_meals" in rows_data[0]
-
 
 @pytest.mark.django_db
 class TestReportServiceHelpers:

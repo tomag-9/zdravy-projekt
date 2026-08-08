@@ -357,27 +357,3 @@ class ReportGenerationError(BaseAPIException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     error_code = "report_generation_failed"
     default_detail = "Report generation failed."
-
-
-class InvalidReportFormatError(ValidationError):
-    """Raised when report format is not supported."""
-
-    error_code = "invalid_report_format"
-    default_detail = "Invalid report format."
-
-    def __init__(self, valid_formats=None, detail=None):
-        """
-        Initialize with valid formats context.
-
-        Args:
-            valid_formats: List of valid format strings
-            detail: Optional custom message
-        """
-        if detail is None and valid_formats:
-            detail = f"Format must be one of: {', '.join(sorted(valid_formats))}"
-
-        extra = {}
-        if valid_formats:
-            extra["valid_formats"] = sorted(valid_formats)
-
-        super().__init__(detail=detail, extra=extra)
