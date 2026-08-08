@@ -415,9 +415,20 @@ class MealPlanService:
             "Histamín": "#0EA5E9",
             "DIA": "#64748B",
         }
+        active_diets = list(
+            Diet.objects.filter(is_active=True).prefetch_related("base_diets")
+        )
         diet_color_map = {
             diet.name: (diet.color or DEFAULT_DIET_COLORS.get(diet.name, "#FDE68A"))
-            for diet in Diet.objects.filter(is_active=True)
+            for diet in active_diets
+        }
+        diet_base_color_map = {
+            diet.name: [
+                base.color or DEFAULT_DIET_COLORS.get(base.name, "#FDE68A")
+                for base in diet.base_diets.all()
+            ]
+            for diet in active_diets
+            if diet.base_diets.exists()
         }
 
         def _normalize_variant(value: object) -> str:
@@ -949,6 +960,9 @@ class MealPlanService:
                                     "diet_color": diet_color_map.get(
                                         diet_name, "#FDE68A"
                                     ),
+                                    "diet_base_colors": diet_base_color_map.get(
+                                        diet_name, []
+                                    ),
                                     "count": billed_diet_count,
                                     "col_grams": diet_grams,
                                 }
@@ -1063,6 +1077,8 @@ class MealPlanService:
                 diet_summary_rows = [
                     {
                         "name": name,
+                        "color": diet_color_map.get(name, "#FDE68A"),
+                        "base_colors": diet_base_color_map.get(name, []),
                         "count": _tidy_count(diet_summary_counts[name]),
                         "col_grams": _serialize_group_totals(diet_summary_totals[name]),
                     }
@@ -1278,4 +1294,5 @@ class MealPlanService:
             "totals": totals_serialized,
             "count_summary": count_summary,
             "diet_colors": diet_color_map,
+            "diet_base_colors": diet_base_color_map,
         }

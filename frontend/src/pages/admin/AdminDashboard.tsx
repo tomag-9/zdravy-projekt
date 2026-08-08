@@ -5,6 +5,7 @@ import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
+import { DietColorSwatch } from "./DietColorSwatch";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -34,6 +35,7 @@ interface SubRow {
   variant?: string;
   label: string;
   diet_color?: string;
+  diet_base_colors?: string[];
   count: number;
   col_grams: string[][];
 }
@@ -41,6 +43,7 @@ interface SubRow {
 interface DietSummaryRow {
   name: string;
   color?: string;
+  base_colors?: string[];
   count: number;
   col_grams: string[][];
 }
@@ -109,6 +112,7 @@ interface GramageDashboard {
   totals: string[][];
   count_summary: CountSection[];
   diet_colors?: Record<string, string>;
+  diet_base_colors?: Record<string, string[]>;
 }
 
 type OrderMealKey = "breakfast" | "lunch" | "olovrant";
@@ -750,14 +754,14 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     <span className="count-badge">{count > 0 ? count : "—"}</span>
   );
 
-  const SummaryRow = ({ label, count, col_grams, kind, color }: {
-    label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string;
+  const SummaryRow = ({ label, count, col_grams, kind, color, baseColors }: {
+    label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string; baseColors?: string[];
   }) => (
     <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" && color ? { background: `${color}22` } : undefined}>
       <td>
         <span className="lbl-line">
           <span>
-            {kind === "diet" && color && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: color, marginRight: 8 }} />}
+            {kind === "diet" && color && <span style={{ display: "inline-flex", marginRight: 8 }}><DietColorSwatch color={color} baseColors={baseColors} size={10} /></span>}
             {label}
           </span>
           <CountBadge count={count} />
@@ -812,7 +816,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             <td className="lbl">
               <span className="lbl-line">
                 <span>
-                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 999, background: sr.diet_color, marginRight: 8 }} />}
+                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-flex", marginRight: 8 }}><DietColorSwatch color={sr.diet_color} baseColors={sr.diet_base_colors} size={9} /></span>}
                   {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
                 </span>
                 <CountBadge count={sr.count} />
@@ -842,7 +846,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
         <SummaryRow label="Súčet bez diét" count={row.standard_total_count} col_grams={row.standard_col_grams} kind="std" />
         {row.diet_summary_rows.map((diet) => (
-          <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" color={diet.color || data.diet_colors?.[diet.name]} />
+          <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" color={diet.color || data.diet_colors?.[diet.name]} baseColors={diet.base_colors || data.diet_base_colors?.[diet.name]} />
         ))}
       </React.Fragment>
     );

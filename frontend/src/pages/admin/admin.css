@@ -23,6 +23,11 @@
 .zpa-formrow { display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: end; }
 @media (max-width: 700px) { .zpa-formrow { grid-template-columns: 1fr; } }
 .zpa-diet-card { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.zpa-composite-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; }
+.zpa-composite-options .zpa-check { border: 0; background: transparent; padding: 8px; border-radius: var(--radius-md); text-align: left; }
+.zpa-composite-options .zpa-check:hover { background: var(--bg-cream-soft); }
+.zpa-composite-preview { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md); background: rgba(114,136,75,0.09); color: var(--green-900); font-family: var(--font-display); font-weight: 600; }
+@media (max-width: 520px) { .zpa-composite-options { grid-template-columns: 1fr; } }
 
 /* Prevádzka overview */
 .zpa-statusdot { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 50%; flex: 0 0 26px; }
