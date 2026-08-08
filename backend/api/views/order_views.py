@@ -172,7 +172,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             target_user.email if target_user else str(serializer.instance.prevadzka)
         )
         order = serializer.save()
-        if self.request.user.is_staff:
+        if (
+            self.request.user.is_staff
+            and target_user is not None
+            and target_user.pk != self.request.user.pk
+        ):
             changed_meals = [
                 meal
                 for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG

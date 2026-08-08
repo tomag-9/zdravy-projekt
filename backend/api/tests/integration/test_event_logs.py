@@ -124,7 +124,9 @@ def test_admin_order_create_and_update_are_audited(admin_client, admin_user, use
 
 
 @pytest.mark.django_db
-def test_admin_prevadzka_order_create_and_update_are_audited(admin_client, admin_user):
+def test_admin_prevadzka_order_create_is_audited_but_self_update_is_not(
+    admin_client, admin_user
+):
     celok = Celok.objects.create(nazov="Admin audit celok")
     prevadzka = Prevadzka.objects.create(celok=celok, nazov="Admin audit prevádzka")
     date = datetime.date(2099, 8, 4)
@@ -160,15 +162,9 @@ def test_admin_prevadzka_order_create_and_update_are_audited(admin_client, admin
     )
 
     assert update_response.status_code == status.HTTP_200_OK
-    updated_event = EventLog.objects.get(
+    assert not EventLog.objects.filter(
         event_type=EventLog.EventType.ORDER_ADMIN_UPDATE
-    )
-    assert updated_event.actor == admin_user
-    assert updated_event.target_user == admin_user
-    assert updated_event.payload["changes"]["lunch.Dospelý.menuCounts.A"] == {
-        "from": 1,
-        "to": 3,
-    }
+    ).exists()
 
 
 @pytest.mark.django_db
