@@ -1007,6 +1007,10 @@ class AdminMealPlanApiTest(APITestCase):
 
     def test_diet_summary_and_gramage_dashboard_return_expected_contract(self):
         self._create_plan()
+        milk_free = Diet.objects.create(name="Bez mlieka", color="#31D885")
+        gluten_free = Diet.objects.create(name="Bez lepku", color="#315BD8")
+        composite = Diet.objects.create(name="Bezlepková", color="#31D885")
+        composite.base_diets.add(milk_free, gluten_free)
         prevadzka = self.client_user.profile.dostupne_prevadzky().first()
         prevadzka.admin_order_note = "Bez cibule v pondelok"
         prevadzka.save(update_fields=["admin_order_note"])
@@ -1050,6 +1054,14 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(len(dashboard_payload["rows"]), 1)
         self.assertEqual(
             dashboard_payload["rows"][0]["diet_summary_rows"][0]["name"], "Bezlepková"
+        )
+        self.assertEqual(
+            dashboard_payload["rows"][0]["diet_summary_rows"][0]["base_colors"],
+            ["#315BD8", "#31D885"],
+        )
+        self.assertEqual(
+            dashboard_payload["diet_base_colors"]["Bezlepková"],
+            ["#315BD8", "#31D885"],
         )
         self.assertEqual(
             dashboard_payload["rows"][0]["admin_order_note"],

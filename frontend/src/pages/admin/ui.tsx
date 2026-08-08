@@ -105,10 +105,13 @@ export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ c
 );
 
 const DIET_COLORS = [
-    '#F87171', '#FB923C', '#FDE68A', '#86EFAC', '#5EEAD4', '#93C5FD', '#C4B5FD', '#F9A8D4',
-    '#DC2626', '#EA580C', '#F59E0B', '#16A34A', '#0D9488', '#2563EB', '#7C3AED', '#DB2777',
-    '#FDA4AF', '#FDBA74', '#FDE047', '#A3E635', '#34D399', '#22D3EE', '#818CF8', '#E879F9',
-    '#9F1239', '#9A3412', '#A16207', '#3F6212', '#047857', '#0E7490', '#4338CA', '#A21CAF',
+    // One consistent saturation/lightness level across the full hue wheel.
+    // This keeps every diet equally prominent without repeating light/dark
+    // variants of the same eight colours.
+    '#D83131', '#D85B31', '#D88531', '#D8AE31', '#D8D831', '#AED831',
+    '#85D831', '#5BD831', '#31D831', '#31D85B', '#31D885', '#31D8AE',
+    '#31D8D8', '#31AED8', '#3185D8', '#315BD8', '#3131D8', '#5B31D8',
+    '#8531D8', '#AE31D8', '#D831D8', '#D831AE', '#D83185', '#D8315B',
 ];
 
 export const ColorSwatchPicker: React.FC<{

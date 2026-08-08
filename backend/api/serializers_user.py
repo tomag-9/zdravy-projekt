@@ -29,7 +29,7 @@ class DietSerializer(serializers.ModelSerializer):
     base_colors = serializers.SerializerMethodField()
 
     def get_base_colors(self, obj: Diet) -> List[str]:
-        return [diet.color for diet in obj.base_diets.all() if diet.color]
+        return [diet.color or "#FDE68A" for diet in obj.base_diets.all()]
 
     def validate_base_diets(self, value: List[Diet]) -> List[Diet]:
         if self.instance and any(diet.pk == self.instance.pk for diet in value):

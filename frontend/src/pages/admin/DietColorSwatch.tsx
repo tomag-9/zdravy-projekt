@@ -3,6 +3,7 @@ import React from "react";
 interface DietColorSwatchProps {
   color?: string;
   baseColors?: string[];
+  size?: number;
 }
 
 const dietSwatchBackground = (color?: string, baseColors: string[] = []): string => {
@@ -19,18 +20,18 @@ const dietSwatchBackground = (color?: string, baseColors: string[] = []): string
   return `conic-gradient(${segments.join(", ")})`;
 };
 
-export const DietColorSwatch: React.FC<DietColorSwatchProps> = ({ color, baseColors = [] }) => (
+export const DietColorSwatch: React.FC<DietColorSwatchProps> = ({ color, baseColors = [], size = 18 }) => (
   <span
     data-testid="diet-color-swatch"
     aria-hidden="true"
     style={{
-      width: 18,
-      height: 18,
+      display: "inline-block",
+      width: size,
+      height: size,
       borderRadius: 999,
       background: dietSwatchBackground(color, baseColors),
       boxShadow: "inset 0 0 0 1px rgba(39, 52, 34, 0.18)",
-      flex: "0 0 18px",
-      marginTop: 2,
+      flex: `0 0 ${size}px`,
     }}
   />
 );

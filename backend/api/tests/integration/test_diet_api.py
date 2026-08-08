@@ -128,7 +128,7 @@ def test_diet_serializer_exposes_base_diet_ids_and_colors(api_client):
         gluten_free.id,
         colorless.id,
     }
-    assert payload["base_colors"] == ["#F59E0B", "#2563EB"]
+    assert payload["base_colors"] == ["#FDE68A", "#F59E0B", "#2563EB"]
 
 
 @pytest.mark.django_db
