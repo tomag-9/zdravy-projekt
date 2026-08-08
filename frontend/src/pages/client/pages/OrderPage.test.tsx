@@ -10,7 +10,7 @@ import {
 import "@testing-library/jest-dom";
 import OrderPage from "./OrderPage";
 import { buildPackSeparatelyItems } from "../components/order/packSeparately";
-import { AppProvider } from "../context/AppContext";
+import { AppProvider, useApp } from "../context/AppContext";
 import { MemoryRouter } from "react-router-dom";
 import OrderService from "../services/OrderService";
 import { ReactNode } from "react";
@@ -18,6 +18,7 @@ import { ToastProvider } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/auth";
 
 const mockApiFetch = vi.fn();
+const mockUser = { id: 1, email: "client@example.com" };
 
 const makeMockResponse = (payload: unknown, ok = true) => ({
   ok,
@@ -33,7 +34,7 @@ vi.mock("../../../context/auth", () => ({
   useAuth: vi.fn(() => ({
     logout: vi.fn(),
     apiFetch: mockApiFetch,
-    user: { id: 1, email: "client@example.com" },
+    user: mockUser,
   })),
   AuthProvider: ({ children }: { children: ReactNode }) => (
     <div>{children}</div>
@@ -230,16 +231,27 @@ describe("OrderPage Logic & Triggers", () => {
     vi.restoreAllMocks();
   });
 
-  const renderPage = () => {
+  const renderPage = (showMealPlanAvailability = false) => {
     return render(
       <MemoryRouter>
         <ToastProvider>
           <AppProvider>
             <OrderPage />
+            {showMealPlanAvailability && <MealPlanAvailabilityProbe />}
           </AppProvider>
         </ToastProvider>
       </MemoryRouter>,
     );
+  };
+
+  const MealPlanAvailabilityProbe = () => {
+    const { mealPlanAvailability } = useApp();
+    const serialized = mealPlanAvailability === null
+      ? "none"
+      : JSON.stringify(Object.fromEntries(
+          Object.entries(mealPlanAvailability).map(([meal, variants]) => [meal, [...variants]]),
+        ));
+    return <output data-testid="meal-plan-availability">{serialized}</output>;
   };
 
   const getOrderData = (date: string) => {
@@ -638,6 +650,65 @@ describe("OrderPage Logic & Triggers", () => {
     });
 
     expect(screen.getAllByText("zasednutá").length).toBeGreaterThan(0);
+  });
+
+  it("keeps meal-plan availability from the latest selected date when an earlier request resolves last", async () => {
+    type DeferredResponse = {
+      promise: Promise<ReturnType<typeof makeMockResponse>>;
+      resolve: (response: ReturnType<typeof makeMockResponse>) => void;
+      signal?: AbortSignal;
+    };
+    const mealPlanRequests: DeferredResponse[] = [];
+    const original = mockApiFetch.getMockImplementation()!;
+
+    // useAuth's default mock factory (`vi.fn(() => ({...}))`) returns a fresh
+    // `user` object on every call, which the fetch effects depend on — that
+    // makes them refire on every render instead of only on real date/user
+    // changes. Pin a stable reference for this test so the assertions below
+    // observe only the deliberate "Ďalší deň" click, not mock-driven churn.
+    (useAuth as Mock).mockReturnValue({
+      logout: vi.fn(),
+      apiFetch: mockApiFetch,
+      user: { id: 1, email: "client@example.com" },
+    });
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/meal-plans/by-date/")) {
+        let resolve!: DeferredResponse["resolve"];
+        const promise = new Promise<ReturnType<typeof makeMockResponse>>((promiseResolve) => {
+          resolve = promiseResolve;
+        });
+        mealPlanRequests.push({ promise, resolve, signal: init?.signal ?? undefined });
+        return promise;
+      }
+      return original(url, init);
+    });
+
+    renderPage(true);
+
+    await waitFor(() => expect(mealPlanRequests).toHaveLength(1));
+    fireEvent.click(screen.getByRole("button", { name: "Ďalší deň" }));
+    await waitFor(() => expect(mealPlanRequests).toHaveLength(2));
+    expect(mealPlanRequests[0].signal?.aborted).toBe(true);
+
+    await act(async () => {
+      mealPlanRequests[1].resolve(makeMockResponse({
+        exists: true,
+        items: [
+          { category: "main_course", menu_variant: "A", template_detail: {} },
+        ],
+      }));
+      await mealPlanRequests[1].promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("meal-plan-availability")).toHaveTextContent('{"lunch":["A"]}');
+    });
+
+    await act(async () => {
+      mealPlanRequests[0].resolve(makeMockResponse({ exists: false, items: [] }));
+      await mealPlanRequests[0].promise;
+    });
+    expect(screen.getByTestId("meal-plan-availability")).toHaveTextContent('{"lunch":["A"]}');
   });
 
   it("does not mark any menu as occupied when the jedálniček uses variant-less catalog selections", async () => {

@@ -316,25 +316,36 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const [dietMenuVariantMap, setDietMenuVariantMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
+        const controller = new AbortController();
         const fetchDietMenuVariantMap = async () => {
             try {
-                const res = await apiFetch(`${API_URL}/diets/menu-variant-map/?date=${selectedDate}`);
+                const res = await apiFetch(`${API_URL}/diets/menu-variant-map/?date=${selectedDate}`, { signal: controller.signal });
                 if (!res.ok) return;
-                setDietMenuVariantMap(await res.json() as Record<string, string>);
+                const data = await res.json() as Record<string, string>;
+                if (controller.signal.aborted) return;
+                setDietMenuVariantMap(data);
             } catch (e) {
+                if (controller.signal.aborted) return;
                 logger.error("Failed to fetch diet menu variant map", e);
             }
         };
         if (user && packSeparatelyEnabled) fetchDietMenuVariantMap();
+        return () => controller.abort();
     }, [selectedDate, apiFetch, user, packSeparatelyEnabled]);
 
     useEffect(() => {
+        const controller = new AbortController();
         const fetchMealPlanAvailability = async () => {
             try {
-                const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`);
-                if (!res.ok) { setMealPlanAvailability(null); return; }
+                const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`, { signal: controller.signal });
+                if (!res.ok) {
+                    if (controller.signal.aborted) return;
+                    setMealPlanAvailability(null);
+                    return;
+                }
                 const data = await res.json();
                 if (!data.exists || !Array.isArray(data.items) || data.items.length === 0) {
+                    if (controller.signal.aborted) return;
                     setMealPlanAvailability(null);
                     return;
                 }
@@ -356,13 +367,16 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 for (const mealKey of unrestrictedMealKeys) {
                     delete availability[mealKey];
                 }
+                if (controller.signal.aborted) return;
                 setMealPlanAvailability(availability);
             } catch (e) {
+                if (controller.signal.aborted) return;
                 logger.error("Failed to fetch meal plan availability", e);
                 setMealPlanAvailability(null);
             }
         };
         if (user) fetchMealPlanAvailability();
+        return () => controller.abort();
     }, [selectedDate, apiFetch, user]);
 
     // Holidays: set of date strings "YYYY-MM-DD" that are blocked
