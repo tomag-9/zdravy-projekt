@@ -104,6 +104,27 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         res.order_data["olovrant"]["Škôlka"]["menuCounts"]["A"] = 999
         self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 10)
 
+    def test_odvodit_z_obedu_uses_each_prevadzka_own_lunch(self):
+        first_lunch = {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}}
+        second_lunch = {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Prvá": {"lunch": first_lunch},
+                "Druhá": {"lunch": second_lunch},
+            },
+        )
+
+        apply_config(res, _cfg(OlovrantMode.ODVODIT_Z_OBEDU))
+
+        self.assertEqual(res.order_data_by_prevadzka["Prvá"]["olovrant"], first_lunch)
+        self.assertEqual(res.order_data_by_prevadzka["Druhá"]["olovrant"], second_lunch)
+        self.assertNotEqual(
+            res.order_data_by_prevadzka["Prvá"]["olovrant"],
+            res.order_data_by_prevadzka["Druhá"]["olovrant"],
+        )
+
     def test_odvodit_z_obedu_empty_day_stays_empty(self):
         """Zatvorená škola = prázdny deň, nie chyba — nedopočítavame nič."""
         res = _result({})

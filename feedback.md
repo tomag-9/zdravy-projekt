@@ -387,3 +387,141 @@ Cvernička/Fantastická (real vychádza rádovo nižšie, lebo sa násobí 1g na
 **Otázka: môže klient bunku opraviť?**
 
 **Stav: 🔴 čaká na odpoveď klienta** (všetky 4 body).
+
+---
+
+## Reconciliation findings — 2026-08-08
+
+Reconcile spustený na posledných 2 týždňoch so skutočnými real-tabuľkami:
+27.–30.7. a 3.,4.,5.,7.8.2026 (31.7.–2.8. a 6.8. nemajú `.xlsx`, 8.8. je dnes bez
+tabuľky). Meal plan doseedovaný z Week 31/32 Klasik PDF (predtým `meal_plan_id=null`
+pre všetky). Nový nález oproti predošlým behom:
+
+### 🟢 MŠ Edulienka — chýba `edupage_match`, orders sa nescrapujú NIKDY (vyriešené)
+
+Pri scrape každého z 8 dní (27.7.–7.8.) sa opakuje presne táto chyba:
+
+```
+scrape_edupage_orders_task: MŠ Edulienka má 3 prevádzok, ale MŠ Edulienka
+nemá edupage_match — preskakujem, aby sa objem nezapísal nesprávne
+```
+
+Celok „MŠ Edulienka" má 3 prevádzky (default placeholder + Palisády + Stupava), ale
+placeholder prevádzka „MŠ Edulienka" nemá `edupage_match`, takže scraper celú skupinu
+z bezpečnostných dôvodov preskočí.
+
+**Príčina bola už opravená v `#435`** (`seed_prevadzky_edupage.py`: `SPLITS` bol kľúčovaný
+na holé `"Edulienka"`, nie na skutočný `Celok.nazov` `"MŠ Edulienka"`, takže split na
+Palisády/Stupava sa pri reseede ticho preskakoval) — commit je v `develop`, len lokálna
+dev DB nebola po ňom pretiahnutá cez `seed_prevadzky_edupage`. Spustené `--dry-run` aj
+naostro proti dev DB: placeholder „MŠ Edulienka" teraz `is_active=False`, Palisády/
+Stupava majú `edupage_match` aj zdedený `edupage_connection`/koeficient. Overené
+rescrapom 7.8.2026: `scraped` 25→27, `skipped`/`errors` 0.
+
+**Stav: 🟢 vyriešené (kód mal fix už na developi, dev DB doseedovaná).**
+
+### 🟡 Montessori — obed skoro opravený, olovrant a facility-alias stále chýbajú (čiastočne vyriešené)
+
+27.–30.7.: appka pre „Montesori škôlka" ukazovala 1–2 obedy/deň, real tabuľka 19–24.
+Scrape log za tieto 4 dni hlásil:
+
+```
+scrape_edupage_orders_task: empty result for Montessori/montesori škola on <date>
+meals=[] (warnings=[], unmapped=['A:MŠ/ZŠ Iná'])
+```
+
+**Príčina (opravené):** `resolve_menu_variant` v `edupage_scraper.py` rozpoznávala
+len `"klasik"`/`"classic"` ako bežné menu; EduPage nazýva Montessori kombinovanú
+MŠ/ZŠ triedu `"MŠ/ZŠ Iná"`, ktorá sa preto vyhodnotila ako neznáma diéta a celá sa
+zahodila (`unmapped`). Pridaný normalizovaný literál `"mszsina"` do
+`_CLASSIC_MENU_NAMES` (over, že nekoliduje so žiadnym diet keywordom —
+skontrolované) + regresný test. Rescrape po fixe, 4/4 dni (27.–30.7.), lunch
+(vrátane diét) presne sedí s real tabuľkou (`Montesori škôlka` riadok samotný,
+20/20/20/17 base + diety) — malé jednotkové odchýlky v tier1 reporte sú tým, že
+report tam nesčítava diety do lunch total, nie appková chyba.
+
+**Olovrant (opravené, + bonus nález):** appka nescrapovala olovrant vôbec
+(`nastavenia` je pre Montessori prázdny zoznam — EduPage nedodáva `vydaj_normal`
+časy, niet z čoho odvodiť samostatný olovrant jid). Overil som 4/4 dni (27.–30.7.):
+real workbook snack/olovrant riadok `Montesori škôlka` **presne sedí** s appkiným
+lunch `menuCounts` súčtom. Rovnaký vzor ako existujúci `OlovrantMode.ODVODIT_Z_OBEDU`
+(Pramienok — "olovrant = obed", zdokumentované v `registry.py`). Pridaný
+`PrevadzkaConfig(subdomena="montessorisk", ..., olovrant_mode=ODVODIT_Z_OBEDU)`.
+
+Pri overovaní sa našiel **samostatný, všeobecnejší bug**: `apply_config`
+(`api/edupage/base.py`) upravovala len `result.order_data` (súhrn za celý feed),
+ale `tasks.py` pre KAŽDÝ celok rozdelený na viac prevádzok (napr. Montessori
+Škôlka+Škola na jednom feede) zapisuje do DB `result.order_data_by_prevadzka`,
+ktoré `apply_config` nikdy neupravila — `ODVODIT_Z_OBEDU`/`MIMO_APPKY`/`NEZNAMY`
+logika sa v praxi aplikovala len na jedno-prevádzkové celky. Opravené: `base.py`
+teraz aplikuje olovrant pravidlo na `order_data` aj na každú položku
+`order_data_by_prevadzka` samostatne (`config_notes` sa pridáva len raz, za celok,
+nie duplicitne). Regresný test pridaný, 629/629 zelených. Overené reconcile behom
+4/4 dní: **snack diff 0/0/0/0** (predtým 22/-21/-21/-18).
+
+**Čo zostáva otvorené — genuinná onboarding medzera, nie mapping bug:**
+Real tabuľka má okrem `Montesori škôlka`/`montesori škola` (appkine 2 prevádzky)
+**3 ĎALŠIE samostatné riadky** s vlastnou dodávkou/adresou, nie preklepy:
+```
+Montessori pod lesom - Škôlka - Hranie     (Škôlka pod Lesom)   ~17–19 porcií/deň
+Montessori pod lesom - Škôločka - Hranie   (Pizza box/Kocka)    ~7–8 porcií/deň, "bez olovrantu"
+Montessori pod lesom - ŠKOLA - Hranie      (len piatok, Menu B) 0 väčšinu dní
+```
+(`montesori škola` appkina ZŠ prevádzka je v reáli **nulová** každý deň — poznámka
+„Nakladanie:" — appkine 1–2 objednávky pre ňu nemajú v real tabuľke žiadny
+náprotivok, malý objem.) „Pod lesom" skupiny vyzerajú ako samostatná fyzická
+pobočka (iná adresa/box, iný dodávateľský kanál pre olovrant), nie duplicitný
+zápis toho istého — appka pre ne nemá žiadnu `Prevadzka` ani `edupage_match`.
+Nechcel som vytvárať nové prevádzky/aliasy bez potvrdenia, ide o ~25 porcií/deň
+(reálne peniaze), treba klientovo rozhodnutie, či a ako tieto 3 skupiny zaviesť.
+→ **Otázka na klienta**: sú „Montessori pod lesom" skupiny osobitná pobočka, ktorá
+sa má v appke zaviesť ako nová/é `Prevadzka` (s vlastným `edupage_match`), a čo je
+zdroj ich olovrantu/counts, keď EduPage `nastavenia` pre celú Montessori doménu nič
+nedodáva?
+
+**Stav: 🟢 obed aj olovrant appkinej existujúcej prevádzky opravené a overené (4/4 dní).
+🔴 „pod lesom" pobočky čakajú na klienta — nová onboarding práca, nie bug.**
+
+### 🟡 Deutsche schule — obed konzistentne −3, tri dni za sebou (3.–5.8., nízka istota)
+
+```
+3.8.: app 79 vs real 82   4.8.: app 77 vs real 80   5.8.: app 72 vs real 75
+```
+
+Presne −3 každý deň, čo sa premieta aj do Tier2 gramáže polievky (−600g = 3×200ml).
+Filipa Nériho/Cvernička/Rozmanita Škôlka majú v tomto behu podobné konzistentné
+rozdiely (viď nižšie), ale pre tie už máme z minulých reconcile behov potvrdené od
+klienta, že ide o jeho ručné úpravy mimo EduPage (viď sekcie vyššie: Filipa Nériho
+„nemôže prísť menej", Rozmanitá manuálne dopĺňanie). Pre Deutsche schule takéto
+vysvetlenie zatiaľ nemáme a −3 obedy je dosť veľký & pravidelný objem na to, aby to
+bola náhoda. → **Otázka na klienta**, či má Deutsche schule podobnú manuálnu úpravu,
+alebo treba appku preveriť.
+
+**Stav: 🔴 čaká na odpoveď klienta / vyšetrenie.**
+
+### ⚪ Fantastická — obed v appke, real tabuľka 0 (5.8. aj 7.8., pravdepodobne nie appková chyba)
+
+Appka ukazuje 5 obedov (1000g polievky), real tabuľka má pre Fantastickú za tieto dva
+dni riadok s nulou (celý blok chýba/0). Vyzerá to na zatvorené zariadenie tie dni,
+kde appka nedostala/nespracovala info o zatvorení — v súlade s precedentom vyššie
+(„Fantastická +1" bola dohodnutá dočasná úprava tento týždeň predtým, klient si
+podľa všetkého mení počty ad-hoc). Nízka istota, treba sa spýtať klienta, či
+Fantastická tieto dni skutočne neobjednávala.
+
+### ⚪ Receptúra PDF vs. real tabuľka — 2 nové rozpory (nie appková chyba)
+
+- **5.8. (streda), hlavný chod:** Week 32 Klasik PDF delí `225g (90g/110g/25g)` na
+  Kuracie/ryžu/šalát. Real tabuľka (Hárok1 base-gramáž riadok KLASIK) má namiesto 90g
+  **185g** pre „Kuracie v krémovej" (rovnaká hodnota ako už zdokumentovaný nález č.1
+  v sekcii „Reconcile 3.–5.8.2026" vyššie — potvrdzuje sa aj pri tomto behu,
+  self-check v tabuľke sedí, PDF a real si odporujú).
+- **7.8. (piatok), hlavný chod:** PDF opisuje jedno kombinované jedlo `185g (Cestoviny
+  v krémovej omáčke)`, real tabuľka ho ale rozpisuje na dva samostatné stĺpce
+  „Krémová omáčka" (90g) + „Cestoviny" (100g) — súčet 190g, nie 185g, a PDF nedáva
+  žiadny podklad na to, ako presne tento súčet rozdeliť medzi dva stĺpce. Appka bola
+  preto naseedovaná len s jedným kombinovaným komponentom (185g „Cestoviny"), čo
+  spôsobí očakávaný Tier2 diff — nejde o appkovú chybu, len o chýbajúci recept-split
+  v PDF menu.
+
+**Stav: ⚪ info pre kuchyňu/klienta, netýka sa appky.**
+
