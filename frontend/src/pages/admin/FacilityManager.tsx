@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -513,6 +513,26 @@ const FacilityManager: React.FC = () => {
     }
   };
 
+  // celok.logins.filter((login) => login.prevadzka_ids.includes(p.id)) inside the
+  // prevádzka row map below would re-scan every login of the celok for every row —
+  // O(prevádzky × logins) on each render. Index once per celok instead.
+  const loginsByPrevadzka = useMemo(() => {
+    const map = new Map<number, Login[]>();
+    for (const celok of celky) {
+      for (const login of celok.logins) {
+        for (const prevadzkaId of login.prevadzka_ids) {
+          const existing = map.get(prevadzkaId);
+          if (existing) {
+            existing.push(login);
+          } else {
+            map.set(prevadzkaId, [login]);
+          }
+        }
+      }
+    }
+    return map;
+  }, [celky]);
+
   const term = searchTerm.toLowerCase();
   const filtered = celky.filter(
     (c) =>
@@ -596,7 +616,7 @@ const FacilityManager: React.FC = () => {
                               <tr><td colSpan={5} className="c" style={{ color: "var(--ink-mute)", padding: 16 }}>Žiadne prevádzky</td></tr>
                             ) : (
                               celok.prevadzky.map((p) => {
-                                const prevadzkaLogins = celok.logins.filter((login) => login.prevadzka_ids.includes(p.id));
+                                const prevadzkaLogins = loginsByPrevadzka.get(p.id) ?? [];
                                 return (
                                   <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
                                     <td>
