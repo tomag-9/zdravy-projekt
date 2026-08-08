@@ -152,6 +152,9 @@ class TestResolveMenuVariant(unittest.TestCase):
     def test_klasik_is_menu_a(self):
         self.assertEqual(self._r("A", "Klasik"), "A")
 
+    def test_montessori_combined_ms_zs_class_is_menu_a(self):
+        self.assertEqual(self._r("MŠ/ZŠ Iná", "MŠ/ZŠ Iná"), "A")
+
     def test_menu_a_is_menu_a(self):
         self.assertEqual(self._r("A", "Menu A"), "A")
 

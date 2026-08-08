@@ -1,5 +1,5 @@
 {
-  "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Value may be a single string, or a LIST of real labels meaning 'sum these real rows for this one app facility' (used when the app scrapes a celok as one bucket but the real sheet bills its sub-units on separate rows, e.g. Rozmanitá = Škôlka + Škola). Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report. NOTE (2026-07-17 update): the real workbook renamed most facilities with an 'ms ' prefix and the app dropped its 'MŠ' prefix; list values below carry both spellings so old and new workbooks both reconcile.",
+  "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Value may be a single string, or a LIST of real labels meaning 'sum these real rows for this one app facility' (used when the app scrapes a celok as one bucket but the real sheet bills its sub-units on separate rows). Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report. NOTE (2026-07-17 update): the real workbook renamed most facilities with an 'ms ' prefix and the app dropped its 'MŠ' prefix; list values below carry both spellings so old and new workbooks both reconcile. NOTE (2026-08-04 Rozmanita split, d5892019): 'Rozmanita Škola' is now its own app-managed prevadzka (edupage_connection=None, own real row) — it must NOT be summed into 'Rozmanita Škôlka' here, or its counts vanish from its own real_only/app_only comparison and get silently folded into the kindergarten's total.",
 
   "Fantastická": ["fantasticka skolka", "fantasticka"],
   "Edulienka": ["ms edulienka", "edulienka"],
@@ -8,7 +8,7 @@
   "Krasňanko": ["ms krasnanko", "krasnanko"],
   "Libellus": ["ms libellus", "libellus"],
   "Pramienok": ["ms pramen", "pramienok"],
-  "Rozmanita Škôlka": ["ms rozmanita", "rozmanita skolka", "rozmanita skola"],
+  "Rozmanita Škôlka": ["ms rozmanita", "rozmanita skolka"],
   "Jolly Homeschool – Jolly 1": "Jolly 1",
   "Jolly Homeschool – Jolly 2": "Jolly 2",
   "Jolly Homeschool – Jolly 3": "Jolly 3",

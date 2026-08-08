@@ -492,38 +492,6 @@ class AdminDailyReportTest(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_daily_report_xlsx_returns_file(self):
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            response["Content-Type"],
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        self.assertIn("prehlad_", response["Content-Disposition"])
-        self.assertGreater(len(response.content), 100)
-
-    def test_daily_report_xlsx_client_forbidden(self):
-        self.client.force_authenticate(user=self.client_user)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_daily_report_xlsx_invalid_date_format(self):
-        self.client.force_authenticate(user=self.admin)
-        for bad_date in ["not-a-date", "2024/01/01", "01-01-2024"]:
-            response = self.client.get(
-                f"/api/admin/summary/daily-report-xlsx/?date={bad_date}"
-            )
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_400_BAD_REQUEST,
-                msg=f"Expected 400 for bad date: {bad_date!r}",
-            )
-
     def test_daily_report_flat_shape(self):
         """Flat meal shape {menuCounts, diets} must be aggregated correctly."""
         flat_user = _client_user(
@@ -553,108 +521,6 @@ class AdminDailyReportTest(APITestCase):
         self.assertEqual(flat_row["breakfast"]["total"], 3)
         self.assertEqual(flat_row["lunch"]["total"], 2)
         self.assertEqual(flat_row["total"], 5)
-
-    def test_daily_report_xlsx_flat_shape(self):
-        """XLSX export must include columns for flat-shape meal data."""
-        flat_user = _client_user(
-            username="flatclient2@example.com",
-            password="password",
-            email="flatclient2@example.com",
-            is_staff=False,
-        )
-        DailyOrder.objects.create(
-            user=flat_user,
-            date=self.today,
-            status="submitted",
-            data={
-                "breakfast": {"menuCounts": {"A": 1}, "diets": {}},
-                "lunch": {},
-                "olovrant": {},
-            },
-        )
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertGreater(len(response.content), 100)
-
-    def test_daily_report_xlsx_has_category_columns(self):
-        """XLSX must have 3-level headers: meal → category/size → menu/diet."""
-        import io
-
-        import openpyxl
-
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-xlsx/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-        wb = openpyxl.load_workbook(io.BytesIO(response.content))
-        ws = wb.active
-
-        # Row 3: meal-level labels
-        row3 = [ws.cell(row=3, column=c).value for c in range(1, ws.max_column + 1)]
-        self.assertIn("Raňajky", row3)
-        self.assertIn("Obed", row3)
-
-        # Row 4: category-level labels (from setUp order data)
-        row4 = [ws.cell(row=4, column=c).value for c in range(1, ws.max_column + 1)]
-        self.assertIn("Dospelý", row4)  # breakfast category in setUp
-        self.assertIn("ZŠ", row4)  # lunch category in setUp
-
-        # Row 5: menu/diet labels
-        row5 = [ws.cell(row=5, column=c).value for c in range(1, ws.max_column + 1)]
-        self.assertIn("Menu A", row5)
-        self.assertIn("No Milk", row5)  # diet from setUp breakfast
-
-        # Data rows start at row 6
-        row6 = [ws.cell(row=6, column=c).value for c in range(1, ws.max_column + 1)]
-        self.assertIn("anna@test.sk", row6)
-
-        # SPOLU row is the last row
-        last_row = ws.max_row
-        spolu_vals = [
-            ws.cell(row=last_row, column=c).value for c in range(1, ws.max_column + 1)
-        ]
-        self.assertIn("SPOLU", spolu_vals)
-
-    def test_daily_report_pdf_returns_file(self):
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-pdf/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertIn("prehlad_", response["Content-Disposition"])
-        # PDF magic bytes — consume streaming response
-        content = b"".join(response.streaming_content)
-        self.assertTrue(content.startswith(b"%PDF"))
-
-    def test_daily_report_pdf_client_forbidden(self):
-        self.client.force_authenticate(user=self.client_user)
-        response = self.client.get(
-            f"/api/admin/summary/daily-report-pdf/?date={self.today}"
-        )
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_daily_report_pdf_requires_date(self):
-        self.client.force_authenticate(user=self.admin)
-        response = self.client.get("/api/admin/summary/daily-report-pdf/")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_daily_report_pdf_invalid_date_format(self):
-        self.client.force_authenticate(user=self.admin)
-        for bad_date in ["not-a-date", "2024/01/01", "01-01-2024"]:
-            response = self.client.get(
-                f"/api/admin/summary/daily-report-pdf/?date={bad_date}"
-            )
-            self.assertEqual(
-                response.status_code,
-                status.HTTP_400_BAD_REQUEST,
-                msg=f"Expected 400 for bad date: {bad_date!r}",
-            )
 
 
 class AdminMealPlanByDateTest(APITestCase):
@@ -893,6 +759,10 @@ class AdminMealPlanApiTest(APITestCase):
 
     def test_diet_summary_and_gramage_dashboard_return_expected_contract(self):
         self._create_plan()
+        milk_free = Diet.objects.create(name="Bez mlieka", color="#31D885")
+        gluten_free = Diet.objects.create(name="Bez lepku", color="#315BD8")
+        composite = Diet.objects.create(name="Bezlepková", color="#31D885")
+        composite.base_diets.add(milk_free, gluten_free)
         prevadzka = self.client_user.profile.dostupne_prevadzky().first()
         prevadzka.admin_order_note = "Bez cibule v pondelok"
         prevadzka.save(update_fields=["admin_order_note"])
@@ -936,6 +806,14 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(len(dashboard_payload["rows"]), 1)
         self.assertEqual(
             dashboard_payload["rows"][0]["diet_summary_rows"][0]["name"], "Bezlepková"
+        )
+        self.assertEqual(
+            dashboard_payload["rows"][0]["diet_summary_rows"][0]["base_colors"],
+            ["#315BD8", "#31D885"],
+        )
+        self.assertEqual(
+            dashboard_payload["diet_base_colors"]["Bezlepková"],
+            ["#315BD8", "#31D885"],
         )
         self.assertEqual(
             dashboard_payload["rows"][0]["admin_order_note"],

@@ -85,6 +85,52 @@ class PrevadzkaConfig:
     payer_hook: PayerHook | None = None
 
 
+def _apply_olovrant_config(
+    order_data: dict,
+    config: PrevadzkaConfig,
+    config_notes: list[str] | None = None,
+) -> dict:
+    """Aplikuj olovrant config na jeden order_data slovník."""
+    lunch = order_data.get(LUNCH)
+    has_olovrant = bool(order_data.get(OLOVRANT))
+
+    match config.olovrant_mode:
+        case OlovrantMode.ODVODIT_Z_OBEDU:
+            if has_olovrant and config_notes is not None:
+                # Škola začala olovrant objednávať cez EduPage → config je zastaraný.
+                config_notes.append(
+                    f"{config.subdomena}: olovrant_mode=odvodit_z_obedu, "
+                    f"ale EduPage olovrant reálne obsahuje — over config"
+                )
+            if lunch:
+                order_data[OLOVRANT] = copy.deepcopy(lunch)
+
+        case OlovrantMode.MIMO_APPKY:
+            if has_olovrant:
+                if config_notes is not None:
+                    config_notes.append(
+                        f"{config.subdomena}: olovrant_mode=mimo_appky, "
+                        f"ale EduPage olovrant obsahuje — over config"
+                    )
+                order_data.pop(OLOVRANT, None)
+
+        case OlovrantMode.EDUPAGE:
+            if lunch and not has_olovrant and config_notes is not None:
+                config_notes.append(
+                    f"{config.subdomena}: očakávaný olovrant z EduPage chýba "
+                    f"(obed prítomný)"
+                )
+
+        case OlovrantMode.NEZNAMY:
+            if lunch and not has_olovrant and config_notes is not None:
+                config_notes.append(
+                    f"{config.subdomena}: olovrant_mode nepotvrdený a olovrant chýba "
+                    f"— netipujeme, treba doplniť config"
+                )
+
+    return order_data
+
+
 def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     """Aplikuj per-prevádzka pravidlá na výsledok scrapingu.
 
@@ -95,41 +141,8 @@ def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     znamená „scrape zlyhal, neimportuj nič" (viď `tasks.py`), a config drift takým
     zlyhaním nie je.
     """
-    order_data = result.order_data
-    lunch = order_data.get(LUNCH)
-    has_olovrant = bool(order_data.get(OLOVRANT))
-
-    match config.olovrant_mode:
-        case OlovrantMode.ODVODIT_Z_OBEDU:
-            if has_olovrant:
-                # Škola začala olovrant objednávať cez EduPage → config je zastaraný.
-                result.config_notes.append(
-                    f"{config.subdomena}: olovrant_mode=odvodit_z_obedu, "
-                    f"ale EduPage olovrant reálne obsahuje — over config"
-                )
-            if lunch:
-                order_data[OLOVRANT] = copy.deepcopy(lunch)
-
-        case OlovrantMode.MIMO_APPKY:
-            if has_olovrant:
-                result.config_notes.append(
-                    f"{config.subdomena}: olovrant_mode=mimo_appky, "
-                    f"ale EduPage olovrant obsahuje — over config"
-                )
-                order_data.pop(OLOVRANT, None)
-
-        case OlovrantMode.EDUPAGE:
-            if lunch and not has_olovrant:
-                result.config_notes.append(
-                    f"{config.subdomena}: očakávaný olovrant z EduPage chýba "
-                    f"(obed prítomný)"
-                )
-
-        case OlovrantMode.NEZNAMY:
-            if lunch and not has_olovrant:
-                result.config_notes.append(
-                    f"{config.subdomena}: olovrant_mode nepotvrdený a olovrant chýba "
-                    f"— netipujeme, treba doplniť config"
-                )
+    _apply_olovrant_config(result.order_data, config, result.config_notes)
+    for order_data in result.order_data_by_prevadzka.values():
+        _apply_olovrant_config(order_data, config)
 
     return result

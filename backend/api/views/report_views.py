@@ -6,7 +6,6 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..exporters import PDFReportExporter, XLSXReportExporter
 from ..models import Celok, DailyOrder, Prevadzka
 from ..services import ReportService
 from ..utils import meal_counts, order_row_label
@@ -83,8 +82,6 @@ def build_prevadzka_overview(target_date):
     prevadzka_overview=extend_schema(tags=["admin"]),
     prevadzka_overview_xlsx=extend_schema(tags=["admin"]),
     prevadzka_overview_pdf=extend_schema(tags=["admin"]),
-    daily_report_xlsx=extend_schema(tags=["admin"]),
-    daily_report_pdf=extend_schema(tags=["admin"]),
 )
 class AdminSummaryViewSet(viewsets.ViewSet):
     """
@@ -266,68 +263,4 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         response["Content-Disposition"] = (
             f'attachment; filename="dodanie_podkladov_{parsed.isoformat()}.pdf"'
         )
-        return response
-
-    @action(detail=False, methods=["get"], url_path="daily-report-xlsx")
-    def daily_report_xlsx(self, request):
-        """Download per-user order report as XLSX."""
-        from django.http import HttpResponse
-
-        date_str = request.query_params.get("date")
-        if not date_str:
-            return Response(
-                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
-            target_date = datetime.date.fromisoformat(date_str)
-        except (TypeError, ValueError):
-            return Response(
-                {"error": "invalid date format, expected YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        rows_data = ReportService.get_orders_for_export(target_date)
-        exporter = XLSXReportExporter(rows_data, date_str)
-        xlsx_bytes = exporter.generate()
-
-        filename = f"prehlad_{date_str}.xlsx"
-        content_type = (
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-        response = HttpResponse(xlsx_bytes, content_type=content_type)
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
-
-    @action(detail=False, methods=["get"], url_path="daily-report-pdf")
-    def daily_report_pdf(self, request):
-        """Download per-user order report as portrait PDF."""
-        import io
-
-        from django.http import FileResponse
-
-        date_str = request.query_params.get("date")
-        if not date_str:
-            return Response(
-                {"error": "date parameter required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        try:
-            target_date = datetime.date.fromisoformat(date_str)
-        except (TypeError, ValueError):
-            return Response(
-                {"error": "invalid date format, expected YYYY-MM-DD"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        orders = (
-            DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "prevadzka")
-            .order_by("user__email")
-        )
-
-        exporter = PDFReportExporter(orders, date_str)
-        pdf_bytes = exporter.generate()
-
-        filename = f"prehlad_{date_str}.pdf"
-        response = FileResponse(io.BytesIO(pdf_bytes), content_type="application/pdf")
-        response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response

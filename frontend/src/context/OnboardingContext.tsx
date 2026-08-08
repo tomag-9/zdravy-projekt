@@ -104,12 +104,14 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const completeTour = useCallback(async () => {
     setIsTourActive(false);
+    setCurrentStep(0);
     updateProfile({ onboarding_completed: true });
     await markOnServer(true);
   }, [updateProfile, markOnServer]);
 
   const skipTour = useCallback(async () => {
     setIsTourActive(false);
+    setCurrentStep(0);
     updateProfile({ onboarding_completed: true });
     await markOnServer(true);
   }, [updateProfile, markOnServer]);

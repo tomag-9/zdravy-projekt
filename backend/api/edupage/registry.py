@@ -26,6 +26,15 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         poznamka="Len jid=2 (obed). Olovrant = obed, potvrdené 6/6 dní v XLSX.",
     ),
     PrevadzkaConfig(
+        subdomena="montessorisk",
+        ucty=("Montesori škôlka", "montesori škola"),
+        olovrant_mode=OlovrantMode.ODVODIT_Z_OBEDU,
+        poznamka=(
+            "nastavenia prázdne — žiadny samostatný olovrant jid. Real tabuľka "
+            "potvrdzuje olovrant = obed 4/4 dní (27.–30.7.2026)."
+        ),
+    ),
+    PrevadzkaConfig(
         subdomena="jollyhomeschool",
         ucty=("Jolly 1", "Jolly 2", "Jolly 3"),
         olovrant_mode=OlovrantMode.MIMO_APPKY,

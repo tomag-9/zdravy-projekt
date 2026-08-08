@@ -1,7 +1,6 @@
 """Report Service - Extract data preparation logic from views."""
 
 import datetime
-from typing import List
 
 from ..models import DailyOrder
 from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
@@ -81,39 +80,6 @@ class ReportService:
             "rows": rows,
             "totals": totals,
         }
-
-    @staticmethod
-    def get_orders_for_export(target_date: datetime.date) -> List[dict]:
-        """
-        Get order data and user info for export formats.
-
-        Returns:
-            List of dicts with user, data, visible_meals for each order
-        """
-        orders = (
-            DailyOrder.objects.filter(date=target_date)
-            .select_related("user", "user__profile", "prevadzka__celok")
-            .prefetch_related("prevadzka__celok__prevadzky")
-            .order_by("user__email")
-        )
-
-        rows_data = []
-        for order in orders:
-            data = order.data if isinstance(order.data, dict) else {}
-            rows_data.append(
-                {
-                    "user": order.user,
-                    # Prevádzka, nie login: celok s viacerými prevádzkami musí byť
-                    # v exporte rozpadnutý na samostatné riadky.
-                    "name": order_row_label(order),
-                    "data": data,
-                    "visible_meals": (
-                        getattr(order.prevadzka, "visible_meals", None)
-                        or list(ReportService.MEAL_KEYS)
-                    ),
-                }
-            )
-        return rows_data
 
     # ------------------------------------------------------------------ #
     # Daily stats aggregation

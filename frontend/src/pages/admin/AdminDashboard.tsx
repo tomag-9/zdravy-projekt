@@ -1,9 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, FileText, FileSpreadsheet, Loader2, Inbox } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
+import { DietColorSwatch } from "./DietColorSwatch";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -33,6 +35,7 @@ interface SubRow {
   variant?: string;
   label: string;
   diet_color?: string;
+  diet_base_colors?: string[];
   count: number;
   col_grams: string[][];
 }
@@ -40,6 +43,7 @@ interface SubRow {
 interface DietSummaryRow {
   name: string;
   color?: string;
+  base_colors?: string[];
   count: number;
   col_grams: string[][];
 }
@@ -108,6 +112,7 @@ interface GramageDashboard {
   totals: string[][];
   count_summary: CountSection[];
   diet_colors?: Record<string, string>;
+  diet_base_colors?: Record<string, string[]>;
 }
 
 type OrderMealKey = "breakfast" | "lunch" | "olovrant";
@@ -138,6 +143,11 @@ interface OrderReport {
   date: string;
   rows: OrderReportRow[];
   totals: Record<OrderMealKey, OrderMealSummary> & { grand: number };
+}
+
+interface ClosedDayResponse {
+  date: string;
+  is_closed: boolean;
 }
 
 // ── Meal hue mapping (brand-translated meal colours, see admin.css .mh-*) ───────
@@ -194,7 +204,7 @@ function formatDate(s: string): string {
 
 const AdminDashboard: React.FC = () => {
   const { apiFetch } = useAuth();
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
   const maxDate = useMemo(() => lastWeekdayToday(), []);
   const actualToday = useMemo(() => toDateString(new Date()), []);
   const [date, setDate] = useState(maxDate);
@@ -203,6 +213,13 @@ const AdminDashboard: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [xlsxLoading, setXlsxLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [closedLoading, setClosedLoading] = useState(true);
+  const [isClosed, setIsClosed] = useState(false);
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
+  const [unlockConfirmOpen, setUnlockConfirmOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
+  const closedRequestId = useRef(0);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -228,6 +245,29 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  const fetchClosedState = useCallback(async () => {
+    const requestId = ++closedRequestId.current;
+    setClosedLoading(true);
+    try {
+      const res = await apiFetch(`${API}/admin/closed-days/?date=${date}`);
+      if (!res.ok) throw new Error("closed-day status failed");
+      const payload = await res.json() as ClosedDayResponse;
+      if (requestId === closedRequestId.current) setIsClosed(payload.is_closed);
+    } catch (e) {
+      logger.error(e);
+      if (requestId === closedRequestId.current) {
+        setIsClosed(false);
+        toastError("Nepodarilo sa overiť, či je deň uzavretý.");
+      }
+    } finally {
+      if (requestId === closedRequestId.current) setClosedLoading(false);
+    }
+  }, [apiFetch, date, toastError]);
+
+  useEffect(() => {
+    void fetchClosedState();
+  }, [fetchClosedState]);
+
   const handleExport = useCallback(async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
     setFmt(true);
     try {
@@ -245,6 +285,66 @@ const AdminDashboard: React.FC = () => {
     } catch (e) { logger.error(e); toastError("Chyba pri generovaní súboru."); }
     finally { setFmt(false); }
   }, [apiFetch, date, toastError]);
+
+  const submitClosedDayAction = useCallback(
+    async (
+      method: "POST" | "DELETE",
+      url: string,
+      setPending: (pending: boolean) => void,
+      nextIsClosed: boolean,
+      successMsg: string,
+      genericFailMsg: string,
+      failMarker: string,
+    ) => {
+      setPending(true);
+      try {
+        const res = await apiFetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error?.message || failMarker);
+        }
+        setIsClosed(nextIsClosed);
+        toastSuccess(successMsg);
+      } catch (e) {
+        logger.error(e);
+        toastError(e instanceof Error && e.message !== failMarker ? e.message : genericFailMsg);
+        await fetchClosedState();
+      } finally {
+        setPending(false);
+      }
+    },
+    [apiFetch, date, fetchClosedState, toastError, toastSuccess],
+  );
+
+  const handleCloseDay = useCallback(
+    () => submitClosedDayAction(
+      "POST",
+      `${API}/admin/closed-days/`,
+      setClosing,
+      true,
+      "Deň bol uzavretý.",
+      "Deň sa nepodarilo uzavrieť.",
+      "close failed",
+    ),
+    [submitClosedDayAction],
+  );
+
+  const handleUnlockDay = useCallback(
+    () => submitClosedDayAction(
+      "DELETE",
+      `${API}/admin/closed-days/unlock/`,
+      setUnlocking,
+      false,
+      "Deň bol odomknutý.",
+      "Deň sa nepodarilo odomknúť.",
+      "unlock failed",
+    ),
+    [submitClosedDayAction],
+  );
 
   const isAtMax = date >= maxDate;
   const hasData = data && (data.rows.length > 0 || data.col_groups.length > 0);
@@ -264,6 +364,22 @@ const AdminDashboard: React.FC = () => {
             <Button variant="primary" onClick={() => handleExport("xlsx", setXlsxLoading)} disabled={xlsxLoading || loading || !hasData}>
               {xlsxLoading ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} Stiahnuť XLSX
             </Button>
+            {!closedLoading && !isClosed && (
+              <Button variant="secondary" onClick={() => setCloseConfirmOpen(true)} disabled={closing}>
+                {closing ? <Loader2 className="zpa-spin" /> : <LockKeyhole />} Uzamknúť
+              </Button>
+            )}
+            {!closedLoading && isClosed && (
+              <>
+                <span role="status" style={{ color: "var(--green-700)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                  <Check style={{ width: 16, verticalAlign: "middle", marginRight: 5 }} />
+                  Deň je uzavretý
+                </span>
+                <Button variant="secondary" onClick={() => setUnlockConfirmOpen(true)} disabled={unlocking}>
+                  {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />} Odomknúť
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -272,12 +388,13 @@ const AdminDashboard: React.FC = () => {
         {/* Date navigator */}
         <Card>
           <div className="zpa-datenav">
-            <button className="zpa-navchip" onClick={() => setDate(prevWeekday(date))}>
+            <button className="zpa-navchip" onClick={() => setDate(prevWeekday(date))} disabled={closing || unlocking}>
               <ChevronLeft /> Predchádzajúci deň
             </button>
             <div className="mid">
               <input
                 type="date" value={date} max={maxDate}
+                disabled={closing || unlocking}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!val) return;
@@ -293,7 +410,7 @@ const AdminDashboard: React.FC = () => {
             <button
               className="zpa-navchip"
               onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
-              disabled={isAtMax}
+              disabled={isAtMax || closing || unlocking}
             >
               Nasledujúci deň <ChevronRight />
             </button>
@@ -319,6 +436,25 @@ const AdminDashboard: React.FC = () => {
           <OrderCountsTable report={orderReport} />
         )}
       </div>
+
+      <ConfirmationModal
+        isOpen={closeConfirmOpen}
+        onClose={() => setCloseConfirmOpen(false)}
+        onConfirm={() => void handleCloseDay()}
+        title="Uzamknúť objednávky na tento deň?"
+        description="Po uzamknutí už nebude možné upravovať objednávky pre tento deň. Prípadné odomknutie bude vyžadovať samostatné potvrdenie."
+        confirmText="Uzamknúť"
+        variant="warning"
+      />
+      <ConfirmationModal
+        isOpen={unlockConfirmOpen}
+        onClose={() => setUnlockConfirmOpen(false)}
+        onConfirm={() => void handleUnlockDay()}
+        title="Odomknúť objednávky na tento deň?"
+        description="Odomknutím sa deň znova otvorí na úpravy objednávok, diét a ďalších údajov."
+        confirmText="Odomknúť"
+        variant="warning"
+      />
     </>
   );
 };
@@ -566,14 +702,14 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     <span className="count-badge">{count > 0 ? count : "—"}</span>
   );
 
-  const SummaryRow = ({ label, count, col_grams, kind, color }: {
-    label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string;
+  const SummaryRow = ({ label, count, col_grams, kind, color, baseColors }: {
+    label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string; baseColors?: string[];
   }) => (
     <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" && color ? { background: `${color}22` } : undefined}>
       <td>
         <span className="lbl-line">
           <span>
-            {kind === "diet" && color && <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 999, background: color, marginRight: 8 }} />}
+            {kind === "diet" && color && <span style={{ display: "inline-flex", marginRight: 8 }}><DietColorSwatch color={color} baseColors={baseColors} size={10} /></span>}
             {label}
           </span>
           <CountBadge count={count} />
@@ -628,7 +764,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
             <td className="lbl">
               <span className="lbl-line">
                 <span>
-                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 999, background: sr.diet_color, marginRight: 8 }} />}
+                  {sr.type === "diet" && sr.diet_color && <span style={{ display: "inline-flex", marginRight: 8 }}><DietColorSwatch color={sr.diet_color} baseColors={sr.diet_base_colors} size={9} /></span>}
                   {sr.type === "diet" ? `↳ ${sr.label}` : sr.label}
                 </span>
                 <CountBadge count={sr.count} />
@@ -658,7 +794,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
         <SummaryRow label="Súčet bez diét" count={row.standard_total_count} col_grams={row.standard_col_grams} kind="std" />
         {row.diet_summary_rows.map((diet) => (
-          <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" color={diet.color || data.diet_colors?.[diet.name]} />
+          <SummaryRow key={diet.name} label={diet.name} count={diet.count} col_grams={diet.col_grams} kind="diet" color={diet.color || data.diet_colors?.[diet.name]} baseColors={diet.base_colors || data.diet_base_colors?.[diet.name]} />
         ))}
       </React.Fragment>
     );

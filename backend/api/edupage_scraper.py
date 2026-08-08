@@ -156,7 +156,13 @@ _MEAL_BY_HOUR: list[tuple[int, str]] = [
 _DEFAULT_MEAL = "olovrant"  # vydaj_od ≥ 15:00
 _MENU_NAME_RE = re.compile(r"^(?:menu\s*)?([ABC])$", re.IGNORECASE)
 _PREFIXED_MENU_NAME_RE = re.compile(r"(?:^|\s)(?:menu\s*)?([ABC])$", re.IGNORECASE)
-_CLASSIC_MENU_NAMES = {"klasik", "classic"}
+_CLASSIC_MENU_NAMES = {
+    "klasik",
+    "classic",
+    # Montessori labels its combined MŠ/ZŠ class this way instead of "Klasik";
+    # real-table volumes confirm that it is a regular menu, not a diet.
+    "mszsina",
+}
 
 
 def _normalise_key(value: str) -> str:

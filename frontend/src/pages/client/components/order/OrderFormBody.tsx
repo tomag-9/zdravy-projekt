@@ -1,8 +1,14 @@
-import type { ComponentType, CSSProperties, ReactNode } from "react";
+import { type ComponentType, type CSSProperties, type ReactNode } from "react";
 import { CalendarDays, Minus, PackagePlus, Plus, Trash2 } from "lucide-react";
 import type { DailyOrder, MealData } from "../../services/OrderService";
 import CategoryRow from "./CategoryRow";
+import DietVariantHint from "./DietVariantHint";
 import MealCard from "./MealCard";
+import {
+  getPackSeparatelyItemLabel,
+  usePackSeparatelyUpdater,
+  type PackSeparatelySection,
+} from "./packSeparately";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
@@ -10,20 +16,6 @@ type VisibleMeal = {
   key: MealKey;
   label: string;
   icon: ComponentType<{ className?: string; style?: CSSProperties }>;
-};
-
-type PackSeparatelyItem = {
-  category: string;
-  kind: "menus" | "diets";
-  keyName: string;
-  orderedCount: number;
-  count: number;
-};
-
-type PackSeparatelySection = {
-  meal: MealKey | "fullDay";
-  mealLabel: string;
-  items: PackSeparatelyItem[];
 };
 
 interface OrderFormBodyProps {
@@ -101,6 +93,10 @@ const OrderFormBody = ({
   dimmed = false,
   tourIds = false,
 }: OrderFormBodyProps) => {
+  const updatePackSeparatelyItem = usePackSeparatelyUpdater(
+    activePackSeparatelyItems,
+    onUpdatePackSeparately,
+  );
   const fullDayMealLabels = visibleMealsList.map((meal) => meal.label).join(" · ");
   const fullDayBlocked = fullDayOrder && fullDayEnabled;
 
@@ -200,6 +196,7 @@ const OrderFormBody = ({
       {packSeparatelyEnabled && (
         <MealCard
           title="Zabaliť zvlášť"
+          className="zp-meal--muted"
           icon={PackagePlus}
           isActive={activePackSeparatelyItems.length > 0}
           onToggle={() => onOpenPackSeparately()}
@@ -227,12 +224,13 @@ const OrderFormBody = ({
                   )}
                   {section.items.map((item) => (
                     <div
-                      key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}`}
+                      key={`${section.meal}-${item.category}-${item.kind}-${item.keyName}-${item.linkedRow || "plain"}`}
                       className={`zp-diet-row${item.count > 0 ? " active" : ""}`}
                     >
                       <div>
                         <span className="zp-diet-label">
-                          {item.category} · {item.kind === "menus" ? `Menu ${item.keyName}` : item.keyName}
+                          {item.category} · {getPackSeparatelyItemLabel(item)}
+                          <DietVariantHint kind={item.kind} menuVariant={item.menuVariant} />
                         </span>
                         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
                           Limit objednávky: {item.orderedCount}
@@ -242,7 +240,7 @@ const OrderFormBody = ({
                         <button
                           disabled={item.count <= 0}
                           aria-label="−"
-                          onClick={() => onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count - 1)}
+                          onClick={() => updatePackSeparatelyItem(section, item, item.count - 1)}
                         >
                           <Minus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
                         </button>
@@ -251,7 +249,7 @@ const OrderFormBody = ({
                           className="plus"
                           disabled={item.count >= item.orderedCount}
                           aria-label="+"
-                          onClick={() => onUpdatePackSeparately(section.meal, item.category, item.kind, item.keyName, item.count + 1)}
+                          onClick={() => updatePackSeparatelyItem(section, item, item.count + 1)}
                         >
                           <Plus style={{ width: 14, height: 14, strokeWidth: 2.5 }} />
                         </button>

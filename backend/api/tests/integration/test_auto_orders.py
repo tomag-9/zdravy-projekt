@@ -18,6 +18,7 @@ from rest_framework import status
 
 from api.models import (
     Celok,
+    ClosedDay,
     DailyOrder,
     Prevadzka,
     ProfileCelokAccess,
@@ -267,6 +268,24 @@ class TestBuildAutoData:
             == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
         )
 
+    def test_only_visible_portion_types_are_copied(self):
+        data = {
+            "breakfast": {
+                "Škôlka": {"menuCounts": {"A": 2}, "diets": {}},
+                "Dospelý": {"menuCounts": {"A": 1}, "diets": {}},
+            },
+            "lunch": {},
+            "olovrant": {},
+        }
+
+        auto_data = _build_auto_data(
+            DailyOrder(data=data),
+            visible_meals=[],
+            visible_portion_types=["Škôlka"],
+        )
+
+        assert set(auto_data["breakfast"]) == {"Škôlka"}
+
 
 @pytest.mark.django_db
 class TestApplyAutoOrders:
@@ -289,6 +308,27 @@ class TestApplyAutoOrders:
         auto = DailyOrder.objects.get(user=user, date=TUESDAY)
         assert auto.is_auto is True
         assert auto.status == "submitted"
+
+    def test_closed_day_is_skipped_without_creating_orders(self, user, admin_user):
+        DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
+        ClosedDay.objects.create(date=TUESDAY, closed_by=admin_user)
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert result == {
+            "created": [],
+            "skipped": 0,
+            "date": TUESDAY.isoformat(),
+        }
+        assert not DailyOrder.objects.filter(date=TUESDAY).exists()
+
+    def test_open_day_still_creates_auto_order(self, user):
+        DailyOrder.objects.create(user=user, date=MONDAY, data=NON_EMPTY_DATA)
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert result["created"] == [user.email]
+        assert DailyOrder.objects.filter(user=user, date=TUESDAY, is_auto=True).exists()
 
     def test_manual_order_prevents_auto(self, user):
         """If user already has an order for target_date → no auto order."""

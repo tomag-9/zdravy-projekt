@@ -5,7 +5,7 @@ from __future__ import annotations
 import io
 
 from ..models import MealCategory
-from .pdf_exporter import PDFFontManager
+from .report_helpers import PDFFontManager
 
 
 class MealPlanPDFExporter:

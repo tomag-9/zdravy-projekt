@@ -69,6 +69,7 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
             Prevadzka.objects.select_related("celok", "edupage_connection")
             .prefetch_related(
                 "visible_diets",
+                "visible_portion_types",
                 Prefetch(
                     "profile_accesses",
                     queryset=prevadzka_accesses,
@@ -123,6 +124,7 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
             Prevadzka.objects.select_related("celok", "edupage_connection")
             .prefetch_related(
                 "visible_diets",
+                "visible_portion_types",
                 "profile_accesses__profile__user",
                 "celok__profile_accesses__profile__user",
             )

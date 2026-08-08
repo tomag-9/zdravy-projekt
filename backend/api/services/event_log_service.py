@@ -52,6 +52,32 @@ def build_model_diff(instance: Model | None, validated_data: dict[str, Any]) -> 
     return changes
 
 
+def build_nested_dict_diff(
+    previous: dict[str, Any], current: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """Return leaf-level changes between nested dictionaries using dotted paths."""
+    changes: dict[str, dict[str, Any]] = {}
+
+    def visit(old_value: Any, new_value: Any, path: str) -> None:
+        if old_value is None and isinstance(new_value, dict):
+            old_value = {}
+        if new_value is None and isinstance(old_value, dict):
+            new_value = {}
+        if isinstance(old_value, dict) and isinstance(new_value, dict):
+            for key in sorted(set(old_value) | set(new_value)):
+                child_path = f"{path}.{key}" if path else key
+                visit(old_value.get(key), new_value.get(key), child_path)
+            return
+
+        old_json = _json_value(old_value)
+        new_json = _json_value(new_value)
+        if old_json != new_json:
+            changes[path] = {"from": old_json, "to": new_json}
+
+    visit(previous, current, "")
+    return changes
+
+
 def log_event(
     event_type: Any,
     actor=None,

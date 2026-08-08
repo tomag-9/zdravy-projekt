@@ -325,6 +325,27 @@ class ResourceAlreadyExistsError(BaseAPIException):
     default_detail = "Resource already exists."
 
 
+class ClosedDayOrderModificationError(PermissionDeniedError):
+    """Raised when an order write targets a globally closed date."""
+
+    error_code = "day_closed"
+    default_detail = "Deň je uzavretý, objednávky sa už nedajú upravovať."
+
+
+class DayAlreadyClosedError(ResourceAlreadyExistsError):
+    """Raised when an admin attempts to close the same date twice."""
+
+    error_code = "day_already_closed"
+    default_detail = "Deň je už uzavretý."
+
+
+class DayNotClosedError(ResourceNotFoundError):
+    """Raised when an admin attempts to unlock a date that is not closed."""
+
+    error_code = "day_not_closed"
+    default_detail = "Deň nie je uzavretý."
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Report Generation Errors
 # ──────────────────────────────────────────────────────────────────────────────
@@ -336,27 +357,3 @@ class ReportGenerationError(BaseAPIException):
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     error_code = "report_generation_failed"
     default_detail = "Report generation failed."
-
-
-class InvalidReportFormatError(ValidationError):
-    """Raised when report format is not supported."""
-
-    error_code = "invalid_report_format"
-    default_detail = "Invalid report format."
-
-    def __init__(self, valid_formats=None, detail=None):
-        """
-        Initialize with valid formats context.
-
-        Args:
-            valid_formats: List of valid format strings
-            detail: Optional custom message
-        """
-        if detail is None and valid_formats:
-            detail = f"Format must be one of: {', '.join(sorted(valid_formats))}"
-
-        extra = {}
-        if valid_formats:
-            extra["valid_formats"] = sorted(valid_formats)
-
-        super().__init__(detail=detail, extra=extra)

@@ -12,7 +12,6 @@ from api.exceptions import (
     EmailAlreadyExistsError,
     InvalidCredentialsError,
     InvalidDateFormatError,
-    InvalidReportFormatError,
     MissingRequiredFieldError,
     OrderDeadlinePassedError,
     RateLimitExceeded,
@@ -83,14 +82,6 @@ class TestCustomExceptions:
         assert exc.status_code == status.HTTP_400_BAD_REQUEST
         assert exc.error_code == "invalid_date_format"
         assert "YYYY-MM-DD" in str(exc.detail)
-
-    def test_invalid_report_format_error(self):
-        """Test InvalidReportFormatError includes valid formats."""
-        exc = InvalidReportFormatError(valid_formats=["pdf", "xlsx"])
-        assert exc.status_code == status.HTTP_400_BAD_REQUEST
-        assert exc.error_code == "invalid_report_format"
-        assert exc.extra["valid_formats"] == ["pdf", "xlsx"]
-        assert "pdf" in str(exc.detail)
 
     def test_custom_detail_message(self):
         """Test that custom detail message overrides default."""

@@ -313,14 +313,39 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
     // Meal plan availability: mealKey → Set of available menu_variants; null = no plan = no restriction
     const [mealPlanAvailability, setMealPlanAvailability] = useState<Record<string, Set<string>> | null>(null);
+    const [dietMenuVariantMap, setDietMenuVariantMap] = useState<Record<string, string>>({});
 
     useEffect(() => {
+        const controller = new AbortController();
+        const fetchDietMenuVariantMap = async () => {
+            try {
+                const res = await apiFetch(`${API_URL}/diets/menu-variant-map/?date=${selectedDate}`, { signal: controller.signal });
+                if (!res.ok) return;
+                const data = await res.json() as Record<string, string>;
+                if (controller.signal.aborted) return;
+                setDietMenuVariantMap(data);
+            } catch (e) {
+                if (controller.signal.aborted) return;
+                logger.error("Failed to fetch diet menu variant map", e);
+            }
+        };
+        if (user && packSeparatelyEnabled) fetchDietMenuVariantMap();
+        return () => controller.abort();
+    }, [selectedDate, apiFetch, user, packSeparatelyEnabled]);
+
+    useEffect(() => {
+        const controller = new AbortController();
         const fetchMealPlanAvailability = async () => {
             try {
-                const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`);
-                if (!res.ok) { setMealPlanAvailability(null); return; }
+                const res = await apiFetch(`${API_URL}/meal-plans/by-date/?date=${selectedDate}`, { signal: controller.signal });
+                if (!res.ok) {
+                    if (controller.signal.aborted) return;
+                    setMealPlanAvailability(null);
+                    return;
+                }
                 const data = await res.json();
                 if (!data.exists || !Array.isArray(data.items) || data.items.length === 0) {
+                    if (controller.signal.aborted) return;
                     setMealPlanAvailability(null);
                     return;
                 }
@@ -342,13 +367,16 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 for (const mealKey of unrestrictedMealKeys) {
                     delete availability[mealKey];
                 }
+                if (controller.signal.aborted) return;
                 setMealPlanAvailability(availability);
             } catch (e) {
+                if (controller.signal.aborted) return;
                 logger.error("Failed to fetch meal plan availability", e);
                 setMealPlanAvailability(null);
             }
         };
         if (user) fetchMealPlanAvailability();
+        return () => controller.abort();
     }, [selectedDate, apiFetch, user]);
 
     // Holidays: set of date strings "YYYY-MM-DD" that are blocked
@@ -797,8 +825,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return true;
     };
 
-    const enabledCategories =
+    // Na rozdiel od visible_menus/visible_meals/visible_diets (kde prázdne pole
+    // znamená vedomú voľbu adminom) je visible_portion_types M2M, ktoré môže byť
+    // prázdne aj len preto, že ešte nebolo dobackfillované (viď default_visibility.py) —
+    // preto tu prázdne pole znamená "bez obmedzenia", rovnako ako v _build_auto_data.
+    const adminVisiblePortionTypesSetting = prevadzkaSettings?.visible_portion_types;
+    const adminVisiblePortionTypeNames = !adminVisiblePortionTypesSetting || adminVisiblePortionTypesSetting.length === 0
+        ? null
+        : new Set(adminVisiblePortionTypesSetting.map((portionType) => portionType.name));
+    const availableCategories =
         portionTypes.length > 0 ? portionTypes.map((pt) => pt.name) : CATEGORIES;
+    const enabledCategories = adminVisiblePortionTypeNames == null
+        ? availableCategories
+        : availableCategories.filter((name) => adminVisiblePortionTypeNames.has(name));
 
     return {
         enabledCategories,
@@ -825,5 +864,6 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         holidays,
         mealPlanAvailability,
         packSeparatelyEnabled,
+        dietMenuVariantMap,
     };
 };

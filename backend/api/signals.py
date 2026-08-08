@@ -514,12 +514,14 @@ def on_prevadzka_saved(sender, instance, created=False, **kwargs):
                 DEFAULT_VISIBLE_MEALS,
                 DEFAULT_VISIBLE_MENUS,
                 ensure_default_visible_diets,
+                ensure_default_visible_portion_types,
             )
 
             instance.visible_menus = DEFAULT_VISIBLE_MENUS
             instance.visible_meals = DEFAULT_VISIBLE_MEALS
             instance.save(update_fields=["visible_menus", "visible_meals"])
             ensure_default_visible_diets(instance.visible_diets)
+            ensure_default_visible_portion_types(instance.visible_portion_types)
 
     except Exception as exc:
         logger.exception("Error initializing Prevadzka: %s", exc)

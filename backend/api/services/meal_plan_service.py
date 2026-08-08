@@ -11,6 +11,7 @@ from django.db import transaction
 
 from ..models import (
     DailyMealPlan,
+    Diet,
     EnrolledCount,
     MealCategory,
     MealPlanItem,
@@ -23,6 +24,47 @@ from ..utils import (
     _meal_rule_key,
     order_row_label,
 )
+
+
+def resolve_diet_menu_variants(date: datetime.date) -> dict[str, str]:
+    """Resolve each active diet's main-course menu variant for a given day.
+
+    Explicit diet-specific meal-plan variants override the default Menu A. When a
+    diet has more than one explicit main-course row on the same day (different
+    menu_variant values), the row tagged "A" wins — matching the priority
+    _col_grams_diet uses for the equivalent gramage computation (see that function
+    in this module; keep this in sync if its tie-break logic ever changes).
+    Otherwise resolution is deterministic by MealPlanItem id (lowest id wins) since
+    MealPlanItem has no declared ordering.
+
+    This is a read-only projection of kitchen-planning data and does not affect
+    order counts, billing, or gramage calculations.
+    """
+    meal_plan = (
+        DailyMealPlan.objects.filter(date=date).prefetch_related("items__diet").first()
+    )
+    overrides: dict[int, str] = {}
+    if meal_plan:
+        main_course_items = sorted(
+            (
+                item
+                for item in meal_plan.items.all()
+                if item.category == MealCategory.MAIN_COURSE
+                and item.diet_id
+                and item.menu_variant
+            ),
+            key=lambda item: item.id,
+        )
+        for item in main_course_items:
+            if item.diet_id not in overrides:
+                overrides[item.diet_id] = item.menu_variant
+            elif item.menu_variant.strip().upper() == "A":
+                overrides[item.diet_id] = item.menu_variant
+
+    return {
+        diet.name: overrides.get(diet.id, "A")
+        for diet in Diet.objects.filter(is_active=True)
+    }
 
 
 def _normalize_portion_name(value: object) -> str:
@@ -373,9 +415,20 @@ class MealPlanService:
             "Histamín": "#0EA5E9",
             "DIA": "#64748B",
         }
+        active_diets = list(
+            Diet.objects.filter(is_active=True).prefetch_related("base_diets")
+        )
         diet_color_map = {
             diet.name: (diet.color or DEFAULT_DIET_COLORS.get(diet.name, "#FDE68A"))
-            for diet in Diet.objects.filter(is_active=True)
+            for diet in active_diets
+        }
+        diet_base_color_map = {
+            diet.name: [
+                base.color or DEFAULT_DIET_COLORS.get(base.name, "#FDE68A")
+                for base in diet.base_diets.all()
+            ]
+            for diet in active_diets
+            if diet.base_diets.exists()
         }
 
         def _normalize_variant(value: object) -> str:
@@ -907,6 +960,9 @@ class MealPlanService:
                                     "diet_color": diet_color_map.get(
                                         diet_name, "#FDE68A"
                                     ),
+                                    "diet_base_colors": diet_base_color_map.get(
+                                        diet_name, []
+                                    ),
                                     "count": billed_diet_count,
                                     "col_grams": diet_grams,
                                 }
@@ -1021,6 +1077,8 @@ class MealPlanService:
                 diet_summary_rows = [
                     {
                         "name": name,
+                        "color": diet_color_map.get(name, "#FDE68A"),
+                        "base_colors": diet_base_color_map.get(name, []),
                         "count": _tidy_count(diet_summary_counts[name]),
                         "col_grams": _serialize_group_totals(diet_summary_totals[name]),
                     }
@@ -1236,4 +1294,5 @@ class MealPlanService:
             "totals": totals_serialized,
             "count_summary": count_summary,
             "diet_colors": diet_color_map,
+            "diet_base_colors": diet_base_color_map,
         }

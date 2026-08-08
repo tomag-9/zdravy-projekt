@@ -1,17 +1,21 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { GripVertical, Layers, Plus, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
-import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty } from "./ui";
+import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty, ColorSwatchPicker, Checkbox } from "./ui";
+import { DietColorSwatch } from "./DietColorSwatch";
+import { dietReorderPayload, moveDietBefore } from "./dietReorder";
 
-interface Diet {
+export interface Diet {
   id: number;
   name: string;
   sort_order: number;
   is_active: boolean;
   description: string;
   color?: string;
+  base_diets?: number[];
+  base_colors?: string[];
 }
 
 interface DeleteConfirm {
@@ -26,7 +30,20 @@ interface RenameModal {
   sortOrder: number;
   description: string;
   color: string;
+  baseDietIds: number[];
+  isComposite: boolean;
 }
+
+interface CompositeModal {
+  baseDietIds: number[];
+}
+
+interface DragState {
+  dietId: number;
+}
+
+const sameDietIds = (left: number[], right: number[]) =>
+  left.length === right.length && left.every((id, index) => id === right[index]);
 
 const DietManager: React.FC = () => {
   const { apiFetch } = useAuth();
@@ -35,10 +52,14 @@ const DietManager: React.FC = () => {
   const [newDietName, setNewDietName] = useState("");
   const [newDietSortOrder, setNewDietSortOrder] = useState(0);
   const [newDietDescription, setNewDietDescription] = useState("");
-  const [newDietColor, setNewDietColor] = useState("#FDE68A");
+  const [newDietColor, setNewDietColor] = useState("#D83131");
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
   const [renameModal, setRenameModal] = useState<RenameModal | null>(null);
+  const [compositeModal, setCompositeModal] = useState<CompositeModal | null>(null);
+  const [creatingComposite, setCreatingComposite] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [dragging, setDragging] = useState<DragState | null>(null);
+  const saveVersionRef = useRef(0);
 
   const fetchDiets = useCallback(async () => {
     try {
@@ -73,6 +94,7 @@ const DietManager: React.FC = () => {
             sort_order: newDietSortOrder,
             description: newDietDescription.trim(),
             color: newDietColor,
+            base_diets: [],
             is_active: true,
           }),
         },
@@ -86,7 +108,7 @@ const DietManager: React.FC = () => {
         setNewDietName("");
         setNewDietSortOrder(0);
         setNewDietDescription("");
-        setNewDietColor("#FDE68A");
+        setNewDietColor("#D83131");
         fetchDiets();
         success("Diéta bola úspešne pridaná");
       } else {
@@ -95,6 +117,55 @@ const DietManager: React.FC = () => {
     } catch (e) {
       logger.error(e);
       error("Chyba pri vytváraní diéty");
+    }
+  };
+
+  const toggleCompositeDiet = (dietId: number) => {
+    setCompositeModal((current) => {
+      if (!current) return current;
+      const selected = current.baseDietIds.includes(dietId)
+        ? current.baseDietIds.filter((id) => id !== dietId)
+        : [...current.baseDietIds, dietId];
+      return { baseDietIds: selected };
+    });
+  };
+
+  const handleAddCompositeDiet = async () => {
+    if (!compositeModal || compositeModal.baseDietIds.length < 2) return;
+    const selectedDiets = composableDiets.filter((diet) =>
+      compositeModal.baseDietIds.includes(diet.id),
+    );
+    if (selectedDiets.length < 2) return;
+
+    setCreatingComposite(true);
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: selectedDiets.map((diet) => diet.name).join(" – "),
+            sort_order: Math.max(0, ...diets.map((diet) => diet.sort_order || 0)) + 1,
+            description: `Kombinácia: ${selectedDiets.map((diet) => diet.name).join(", ")}`,
+            color: selectedDiets[0].color || "#D83131",
+            base_diets: selectedDiets.map((diet) => diet.id),
+            is_active: true,
+          }),
+        },
+      );
+      if (res.ok) {
+        setCompositeModal(null);
+        await fetchDiets();
+        success("Kombinovaná diéta bola vytvorená");
+      } else {
+        error("Nepodarilo sa vytvoriť kombinovanú diétu (možno už existuje)");
+      }
+    } catch (e) {
+      logger.error(e);
+      error("Chyba pri vytváraní kombinovanej diéty");
+    } finally {
+      setCreatingComposite(false);
     }
   };
 
@@ -133,6 +204,7 @@ const DietManager: React.FC = () => {
             sort_order: renameModal.sortOrder,
             description: renameModal.description.trim(),
             color: renameModal.color,
+            base_diets: renameModal.baseDietIds,
           }),
         },
       );
@@ -150,6 +222,62 @@ const DietManager: React.FC = () => {
       setRenaming(false);
     }
   };
+
+  const persistDietOrder = async (nextDiets: Diet[]) => {
+    const saveVersion = saveVersionRef.current + 1;
+    saveVersionRef.current = saveVersion;
+    try {
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/diets/reorder/`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(dietReorderPayload(nextDiets)),
+        },
+      );
+      if (!res.ok) {
+        error("Nepodarilo sa uložiť poradie diét.");
+        if (saveVersionRef.current === saveVersion) await fetchDiets();
+        return;
+      }
+      const saved = await res.json();
+      if (saveVersionRef.current === saveVersion) {
+        setDiets(Array.isArray(saved) ? saved : saved.results || []);
+      }
+    } catch (e) {
+      logger.error(e);
+      error("Chyba pri ukladaní poradia diét.");
+      if (saveVersionRef.current === saveVersion) await fetchDiets();
+    }
+  };
+
+  const startDrag = (event: React.DragEvent, nextDragging: DragState) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, select, input, textarea, a")) {
+      event.preventDefault();
+      return;
+    }
+    setDragging(nextDragging);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-zpa-diet", JSON.stringify(nextDragging));
+  };
+
+  const allowDrop = (event: React.DragEvent) => {
+    if (!dragging) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  };
+
+  const dropDiet = (targetDietId: number) => {
+    if (!dragging || dragging.dietId === targetDietId) return;
+    const nextDiets = moveDietBefore(diets, dragging.dietId, targetDietId);
+    if (nextDiets === diets) return;
+    setDiets(nextDiets);
+    setDragging(null);
+    void persistDietOrder(nextDiets);
+  };
+
+  const composableDiets = diets.filter((diet) => (diet.base_diets || []).length === 0);
 
   return (
     <>
@@ -184,17 +312,23 @@ const DietManager: React.FC = () => {
                 onChange={(e) => setNewDietSortOrder(Number(e.target.value) || 0)}
               />
             </Field>
-            <Field label="Farba">
-              <Input
-                type="color"
+            <Field label="Farba" as="div">
+              <ColorSwatchPicker
                 value={newDietColor}
-                onChange={(e) => setNewDietColor(e.target.value)}
-                aria-label="Farba novej diéty"
-                style={{ width: 64, padding: 4 }}
+                onChange={setNewDietColor}
+                ariaLabel="Farba novej diéty"
               />
             </Field>
             <Button type="submit" disabled={!newDietName.trim()}>
               <Plus /> Pridať diétu
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={composableDiets.length < 2}
+              onClick={() => setCompositeModal({ baseDietIds: [] })}
+            >
+              <Layers /> Vytvoriť kombinovanú
             </Button>
           </form>
         </Card>
@@ -204,25 +338,33 @@ const DietManager: React.FC = () => {
         ) : (
           <div className="zpa-grid-cards">
             {diets.map((diet) => (
-              <Card key={diet.id} pad className="zpa-diet-card">
+              <Card
+                key={diet.id}
+                pad
+                className={`zpa-diet-card zpa-draggable-row${dragging?.dietId === diet.id ? " is-dragging" : ""}`}
+                draggable
+                onDragStart={(event) => startDrag(event, { dietId: diet.id })}
+                onDragEnd={() => setDragging(null)}
+                onDragOver={allowDrop}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  dropDiet(diet.id);
+                }}
+                title="Potiahnutím zmeňte poradie"
+              >
                 <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "flex-start" }}>
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      width: 18,
-                      height: 18,
-                      borderRadius: 999,
-                      background: diet.color || "#FDE68A",
-                      boxShadow: "inset 0 0 0 1px rgba(39, 52, 34, 0.18)",
-                      flex: "0 0 18px",
-                      marginTop: 2,
-                    }}
-                  />
+                  <span className="zpa-row-grip" aria-hidden="true"><GripVertical /></span>
+                  <DietColorSwatch color={diet.color} baseColors={diet.base_colors} />
                   <div>
                     <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
                     <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {diet.sort_order}</p>
                   {diet.description && (
                     <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
+                  )}
+                  {(diet.base_diets || []).length > 0 && (
+                    <p style={{ fontSize: 12, color: "var(--green-700)", margin: "4px 0 0" }}>
+                      Kombinácia: {(diet.base_diets || []).map((id) => diets.find((item) => item.id === id)?.name).filter(Boolean).join(" + ")}
+                    </p>
                   )}
                   </div>
                 </div>
@@ -236,7 +378,9 @@ const DietManager: React.FC = () => {
                         newName: diet.name,
                         sortOrder: diet.sort_order ?? 0,
                         description: diet.description || "",
-                        color: diet.color || "#FDE68A",
+                        color: diet.color || "#D83131",
+                        baseDietIds: diet.base_diets || [],
+                        isComposite: (diet.base_diets || []).length > 0,
                       })
                     }
                   >
@@ -251,6 +395,53 @@ const DietManager: React.FC = () => {
           </div>
         )}
       </div>
+
+      {compositeModal && (
+        <Modal
+          title="Vytvoriť kombinovanú diétu"
+          onClose={() => setCompositeModal(null)}
+          icon={<Layers />}
+          iconKind="ok"
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setCompositeModal(null)}>Zrušiť</Button>
+              <Button
+                onClick={handleAddCompositeDiet}
+                disabled={creatingComposite || compositeModal.baseDietIds.length < 2}
+              >
+                {creatingComposite ? "Vytváram…" : "Vytvoriť kombináciu"}
+              </Button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, color: "var(--ink-2)" }}>
+            Vyberte aspoň dve existujúce diéty. Názov aj viacfarebné označenie sa vytvoria automaticky.
+          </p>
+          <div className="zpa-composite-options">
+            {composableDiets.map((diet) => (
+              <Checkbox
+                key={diet.id}
+                on={compositeModal.baseDietIds.includes(diet.id)}
+                onChange={() => toggleCompositeDiet(diet.id)}
+              >
+                <DietColorSwatch color={diet.color} size={14} />
+                <span>{diet.name}</span>
+              </Checkbox>
+            ))}
+          </div>
+          {compositeModal.baseDietIds.length > 0 && (
+            <div className="zpa-composite-preview">
+              <DietColorSwatch
+                baseColors={compositeModal.baseDietIds.map((id) => diets.find((diet) => diet.id === id)?.color || "")}
+                size={24}
+              />
+              <span>
+                {compositeModal.baseDietIds.map((id) => diets.find((diet) => diet.id === id)?.name).filter(Boolean).join(" – ")}
+              </span>
+            </div>
+          )}
+        </Modal>
+      )}
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (
@@ -286,11 +477,16 @@ const DietManager: React.FC = () => {
                 disabled={
                   renaming ||
                   !renameModal.newName.trim() ||
+                  (renameModal.isComposite && renameModal.baseDietIds.length < 2) ||
                   (renameModal.newName.trim() === renameModal.currentName &&
                     renameModal.sortOrder === (diets.find((diet) => diet.id === renameModal.id)?.sort_order || 0) &&
                     renameModal.description.trim() ===
                       (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim() &&
-                    renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#FDE68A"))
+                    renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#D83131"))
+                    && sameDietIds(
+                      renameModal.baseDietIds,
+                      diets.find((diet) => diet.id === renameModal.id)?.base_diets || [],
+                    )
                 }
               >
                 {renaming ? "Ukladám…" : "Uložiť"}
@@ -328,15 +524,35 @@ const DietManager: React.FC = () => {
               rows={4}
             />
           </Field>
-          <Field label="Farba">
-            <Input
-              type="color"
-              value={renameModal.color}
-              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, color: e.target.value } : prev))}
-              aria-label={`Farba diéty ${renameModal.currentName}`}
-              style={{ width: 64, padding: 4 }}
-            />
-          </Field>
+          {!renameModal.isComposite ? (
+            <Field label="Farba" as="div">
+              <ColorSwatchPicker
+                value={renameModal.color}
+                onChange={(color) => setRenameModal((prev) => (prev ? { ...prev, color } : prev))}
+                ariaLabel={`Farba diéty ${renameModal.currentName}`}
+              />
+            </Field>
+          ) : (
+            <Field label="Zloženie kombinácie" as="div">
+              <div className="zpa-composite-options">
+                {composableDiets.filter((diet) => diet.id !== renameModal.id).map((diet) => (
+                  <Checkbox
+                    key={diet.id}
+                    on={renameModal.baseDietIds.includes(diet.id)}
+                    onChange={(selected) => setRenameModal((current) => current ? {
+                      ...current,
+                      baseDietIds: selected
+                        ? [...current.baseDietIds, diet.id]
+                        : current.baseDietIds.filter((id) => id !== diet.id),
+                    } : current)}
+                  >
+                    <DietColorSwatch color={diet.color} size={14} />
+                    <span>{diet.name}</span>
+                  </Checkbox>
+                ))}
+              </div>
+            </Field>
+          )}
         </Modal>
       )}
     </>

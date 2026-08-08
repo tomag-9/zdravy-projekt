@@ -149,6 +149,7 @@ class TestPrevadzkaEndpoint:
                 "visible_menus": ["A", "B", "V"],
                 "visible_meals": ["breakfast", "lunch", "olovrant"],
                 "visible_diets": [],
+                "visible_portion_types": [],
                 "pack_separately_enabled": True,
             }
         ]

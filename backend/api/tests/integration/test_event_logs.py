@@ -1,4 +1,5 @@
 import datetime
+from copy import deepcopy
 from unittest.mock import patch
 
 import pytest
@@ -6,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
 
-from api.models import Celok, EventLog
+from api.models import Celok, DailyOrder, EventLog, Prevadzka
 from api.services.event_log_service import log_event
 from api.tasks import apply_auto_orders_task
 
@@ -97,6 +98,10 @@ def test_admin_order_create_and_update_are_audited(admin_client, admin_user, use
     assert created_event.target_user == user
     assert created_event.payload["date"] == str(date)
     assert created_event.payload["changed_meals"] == ["breakfast"]
+    assert created_event.payload["changes"]["breakfast.Dospelý.menuCounts.A"] == {
+        "from": None,
+        "to": 2,
+    }
 
     order_id = create_response.json()["id"]
     updated_data = {**initial_data, "lunch": {"Dospelý": {"menuCounts": {"A": 1}}}}
@@ -112,6 +117,83 @@ def test_admin_order_create_and_update_are_audited(admin_client, admin_user, use
     )
     assert updated_event.payload["changed_meals"] == ["lunch"]
     assert updated_event.payload["meals"]["lunch"] == updated_data["lunch"]
+    assert updated_event.payload["changes"]["lunch.Dospelý.menuCounts.A"] == {
+        "from": None,
+        "to": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_admin_prevadzka_order_create_is_audited_but_self_update_is_not(
+    admin_client, admin_user
+):
+    celok = Celok.objects.create(nazov="Admin audit celok")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Admin audit prevádzka")
+    date = datetime.date(2099, 8, 4)
+    initial_data = {
+        "breakfast": {},
+        "lunch": {"Dospelý": {"menuCounts": {"A": 1}, "diets": {}}},
+        "olovrant": {},
+    }
+
+    create_response = admin_client.post(
+        reverse("dailyorder-list"),
+        {"date": str(date), "prevadzka": prevadzka.pk, "data": initial_data},
+        format="json",
+    )
+
+    assert create_response.status_code == status.HTTP_201_CREATED
+    created_event = EventLog.objects.get(
+        event_type=EventLog.EventType.ORDER_ADMIN_CREATE
+    )
+    assert created_event.actor == admin_user
+    assert created_event.target_user == admin_user
+    assert created_event.payload["changes"]["lunch.Dospelý.menuCounts.A"] == {
+        "from": None,
+        "to": 1,
+    }
+
+    updated_data = deepcopy(initial_data)
+    updated_data["lunch"]["Dospelý"]["menuCounts"]["A"] = 3
+    update_response = admin_client.patch(
+        reverse("dailyorder-detail", kwargs={"pk": create_response.json()["id"]}),
+        {"data": updated_data},
+        format="json",
+    )
+
+    assert update_response.status_code == status.HTTP_200_OK
+    assert not EventLog.objects.filter(
+        event_type=EventLog.EventType.ORDER_ADMIN_UPDATE
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_admin_order_delete_is_audited(admin_client, admin_user, user):
+    celok = Celok.objects.create(nazov="Delete audit celok")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Delete prevádzka")
+    date = datetime.date(2099, 8, 5)
+    data = {
+        "breakfast": {"Dospelý": {"menuCounts": {"A": 2}, "diets": {}}},
+        "lunch": {},
+        "olovrant": {},
+    }
+    order = DailyOrder.objects.create(
+        user=user, prevadzka=prevadzka, date=date, data=data
+    )
+
+    response = admin_client.delete(
+        reverse("dailyorder-detail", kwargs={"pk": order.pk}) + f"?user_id={user.pk}"
+    )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    event = EventLog.objects.get(event_type=EventLog.EventType.ORDER_ADMIN_DELETE)
+    assert event.actor == admin_user
+    assert event.target_user == user
+    assert event.payload["order_id"] == order.pk
+    assert event.payload["changes"]["breakfast.Dospelý.menuCounts.A"] == {
+        "from": 2,
+        "to": None,
+    }
 
 
 @pytest.mark.django_db
