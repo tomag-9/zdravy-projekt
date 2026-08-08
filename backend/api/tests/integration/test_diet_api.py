@@ -132,6 +132,70 @@ def test_diet_serializer_exposes_base_diet_ids_and_colors(api_client):
 
 
 @pytest.mark.django_db
+def test_diet_api_rejects_composite_diet_as_base_diet(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    base = Diet.objects.create(name="Base")
+    existing_composite = Diet.objects.create(name="Existing composite")
+    existing_composite.base_diets.add(base)
+
+    response = api_client.post(
+        "/api/diets/",
+        {
+            "name": "Nested composite",
+            "base_diets": [existing_composite.id],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["base_diets"] == [
+        "Zložená diéta nemôže byť základnou diétou inej zloženej diéty."
+    ]
+    assert not Diet.objects.filter(name="Nested composite").exists()
+
+
+@pytest.mark.django_db
+def test_diet_api_rejects_adding_base_diets_to_diet_used_as_base(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    new_base = Diet.objects.create(name="New base")
+    existing_base = Diet.objects.create(name="Existing base")
+    parent_composite = Diet.objects.create(name="Parent composite")
+    parent_composite.base_diets.add(existing_base)
+
+    response = api_client.patch(
+        f"/api/diets/{existing_base.id}/",
+        {"base_diets": [new_base.id]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["base_diets"] == [
+        "Zložená diéta nemôže byť základnou diétou inej zloženej diéty."
+    ]
+    assert not existing_base.base_diets.exists()
+
+
+@pytest.mark.django_db
+def test_diet_api_accepts_composite_with_only_non_composite_base_diets(api_client):
+    api_client.force_authenticate(user=AdminUserFactory())
+    first_base = Diet.objects.create(name="First base")
+    second_base = Diet.objects.create(name="Second base")
+
+    response = api_client.post(
+        "/api/diets/",
+        {
+            "name": "Valid composite",
+            "base_diets": [first_base.id, second_base.id],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    composite = Diet.objects.get(name="Valid composite")
+    assert set(composite.base_diets.all()) == {first_base, second_base}
+
+
+@pytest.mark.django_db
 def test_menu_variant_map_defaults_active_diets_to_a_without_meal_plan(api_client):
     api_client.force_authenticate(user=AdminUserFactory())
     Diet.objects.create(name="Bezlepková")

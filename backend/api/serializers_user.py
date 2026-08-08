@@ -34,6 +34,16 @@ class DietSerializer(serializers.ModelSerializer):
     def validate_base_diets(self, value: List[Diet]) -> List[Diet]:
         if self.instance and any(diet.pk == self.instance.pk for diet in value):
             raise serializers.ValidationError("A diet cannot include itself.")
+        if Diet.objects.filter(
+            pk__in=[diet.pk for diet in value], base_diets__isnull=False
+        ).exists():
+            raise serializers.ValidationError(
+                "Zložená diéta nemôže byť základnou diétou inej zloženej diéty."
+            )
+        if value and self.instance and self.instance.composite_of.exists():
+            raise serializers.ValidationError(
+                "Zložená diéta nemôže byť základnou diétou inej zloženej diéty."
+            )
         return value
 
     class Meta:
