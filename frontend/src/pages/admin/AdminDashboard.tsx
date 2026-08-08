@@ -286,51 +286,65 @@ const AdminDashboard: React.FC = () => {
     finally { setFmt(false); }
   }, [apiFetch, date, toastError]);
 
-  const handleCloseDay = useCallback(async () => {
-    setClosing(true);
-    try {
-      const res = await apiFetch(`${API}/admin/closed-days/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error?.message || "close failed");
+  const submitClosedDayAction = useCallback(
+    async (
+      method: "POST" | "DELETE",
+      url: string,
+      setPending: (pending: boolean) => void,
+      nextIsClosed: boolean,
+      successMsg: string,
+      genericFailMsg: string,
+      failMarker: string,
+    ) => {
+      setPending(true);
+      try {
+        const res = await apiFetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          throw new Error(body?.error?.message || failMarker);
+        }
+        setIsClosed(nextIsClosed);
+        toastSuccess(successMsg);
+      } catch (e) {
+        logger.error(e);
+        toastError(e instanceof Error && e.message !== failMarker ? e.message : genericFailMsg);
+        await fetchClosedState();
+      } finally {
+        setPending(false);
       }
-      setIsClosed(true);
-      toastSuccess("Deň bol uzavretý.");
-    } catch (e) {
-      logger.error(e);
-      toastError(e instanceof Error && e.message !== "close failed" ? e.message : "Deň sa nepodarilo uzavrieť.");
-      await fetchClosedState();
-    } finally {
-      setClosing(false);
-    }
-  }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
+    },
+    [apiFetch, date, fetchClosedState, toastError, toastSuccess],
+  );
 
-  const handleUnlockDay = useCallback(async () => {
-    setUnlocking(true);
-    try {
-      const res = await apiFetch(`${API}/admin/closed-days/unlock/`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error?.message || "unlock failed");
-      }
-      setIsClosed(false);
-      toastSuccess("Deň bol odomknutý.");
-    } catch (e) {
-      logger.error(e);
-      toastError(e instanceof Error && e.message !== "unlock failed" ? e.message : "Deň sa nepodarilo odomknúť.");
-      await fetchClosedState();
-    } finally {
-      setUnlocking(false);
-    }
-  }, [apiFetch, date, fetchClosedState, toastError, toastSuccess]);
+  const handleCloseDay = useCallback(
+    () => submitClosedDayAction(
+      "POST",
+      `${API}/admin/closed-days/`,
+      setClosing,
+      true,
+      "Deň bol uzavretý.",
+      "Deň sa nepodarilo uzavrieť.",
+      "close failed",
+    ),
+    [submitClosedDayAction],
+  );
+
+  const handleUnlockDay = useCallback(
+    () => submitClosedDayAction(
+      "DELETE",
+      `${API}/admin/closed-days/unlock/`,
+      setUnlocking,
+      false,
+      "Deň bol odomknutý.",
+      "Deň sa nepodarilo odomknúť.",
+      "unlock failed",
+    ),
+    [submitClosedDayAction],
+  );
 
   const isAtMax = date >= maxDate;
   const hasData = data && (data.rows.length > 0 || data.col_groups.length > 0);
