@@ -64,14 +64,26 @@ class DietViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        requested_ids = [
+            diet_payload.get("id")
+            for diet_payload in diets
+            if diet_payload.get("id") is not None
+        ]
         with transaction.atomic():
+            existing_diets = {
+                diet.pk: diet for diet in Diet.objects.filter(pk__in=requested_ids)
+            }
+            to_update = []
             for diet_index, diet_payload in enumerate(diets, start=1):
-                diet_id = diet_payload.get("id")
-                if diet_id is None:
+                diet = existing_diets.get(diet_payload.get("id"))
+                if diet is None:
                     continue
-                Diet.objects.filter(pk=diet_id).update(
-                    sort_order=diet_payload.get("sort_order", diet_index)
-                )
+                diet.sort_order = diet_payload.get("sort_order", diet_index)
+                to_update.append(diet)
+            if to_update:
+                # bulk_update, like QuerySet.update(), skips save signals — the
+                # explicit cache invalidation below is still required.
+                Diet.objects.bulk_update(to_update, ["sort_order"])
 
         # QuerySet.update() intentionally avoids save signals, so invalidate the
         # cached catalogue explicitly after the transaction commits.
