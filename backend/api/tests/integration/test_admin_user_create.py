@@ -378,6 +378,39 @@ class TestAdminUserCreate:
         ) == [second.pk]
         assert first.pk not in profile.dostupne_prevadzky().values_list("pk", flat=True)
 
+    def test_update_settings_preserves_requested_prevadzka_access(self, admin_client):
+        user = User.objects.create_user(
+            username="settings-reassign@example.com",
+            email="settings-reassign@example.com",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Settings reassignment celok")
+        original = Prevadzka.objects.create(celok=celok, nazov="Original")
+        requested = Prevadzka.objects.create(celok=celok, nazov="Requested")
+        ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=original)
+
+        res = admin_client.patch(
+            f"{API_URL}{user.pk}/",
+            {
+                "celok": celok.pk,
+                "prevadzky": [requested.pk],
+                "settings": {"visible_menus": ["B"]},
+            },
+            format="json",
+        )
+
+        assert res.status_code == status.HTTP_200_OK
+        assert not ProfileCelokAccess.objects.filter(profile=profile).exists()
+        assert list(
+            ProfilePrevadzkaAccess.objects.filter(profile=profile).values_list(
+                "prevadzka_id", flat=True
+            )
+        ) == [requested.pk]
+        original.refresh_from_db()
+        assert original.visible_menus == ["B"]
+
     def test_destroy_user_removes_profile_access(self, admin_client):
         user = User.objects.create_user(
             username="delete-login@example.com",

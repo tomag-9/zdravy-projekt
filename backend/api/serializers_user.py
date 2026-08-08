@@ -531,8 +531,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"settings": "Login nemá profil ani dostupnú prevádzku."}
                 )
-            prevadzky = list(instance.profile.dostupne_prevadzky()[:2])
-            if len(prevadzky) != 1:
+            settings_target_prevadzky = list(instance.profile.dostupne_prevadzky()[:2])
+            if len(settings_target_prevadzky) != 1:
                 raise serializers.ValidationError(
                     {
                         "settings": (
@@ -542,7 +542,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
                     }
                 )
             settings_serializer = AdminPrevadzkaSettingsSerializer(
-                prevadzky[0],
+                settings_target_prevadzky[0],
                 data=settings_data,
                 partial=True,
             )
