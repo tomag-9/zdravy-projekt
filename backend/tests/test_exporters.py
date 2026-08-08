@@ -192,11 +192,15 @@ class TestGramageDashboardExports:
         assert row["diet_summary_rows"] == [
             {
                 "name": "Bezlepková",
+                "color": "#FDE68A",
+                "base_colors": [],
                 "count": 2,
                 "col_grams": [["0.00"], ["400.00"], ["0.00"], ["0.00"]],
             },
             {
                 "name": "Vegan",
+                "color": "#FDE68A",
+                "base_colors": [],
                 "count": 1,
                 "col_grams": [["100.00"], ["0.00"], ["0.00"], ["0.00"]],
             },
