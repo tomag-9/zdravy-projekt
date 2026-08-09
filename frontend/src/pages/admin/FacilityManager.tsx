@@ -110,6 +110,11 @@ const FacilityManager: React.FC = () => {
   });
   const [cSaving, setCSaving] = useState(false);
 
+  // Celok delete
+  const [celokDeleteTarget, setCelokDeleteTarget] = useState<Celok | null>(null);
+  const [celokDeleting, setCelokDeleting] = useState(false);
+  const [celokDeleteError, setCelokDeleteError] = useState("");
+
   // Login list/add/edit/delete at celok level
   const [loginListTarget, setLoginListTarget] = useState<Celok | null>(null);
   const [loginTarget, setLoginTarget] = useState<Celok | null>(null);
@@ -271,6 +276,27 @@ const FacilityManager: React.FC = () => {
       setCSaving(false);
     }
   };
+  const doDeleteCelok = async () => {
+    if (!celokDeleteTarget) return;
+    setCelokDeleting(true);
+    setCelokDeleteError("");
+    try {
+      const res = await apiFetch(`${API}/admin/celky/${celokDeleteTarget.id}/`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        success(`Celok „${celokDeleteTarget.nazov}“ bol odstránený.`);
+        setCelokDeleteTarget(null);
+        fetchCelky();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setCelokDeleteError(data?.error?.message || "Nepodarilo sa odstrániť celok.");
+      }
+    } catch (err) {
+      logger.error(err);
+      setCelokDeleteError("Chyba pri odstraňovaní celku.");
+    } finally {
+      setCelokDeleting(false);
+    }
+  };
 
   // ── Login ──
   const openAddLogin = (celok: Celok) => {
@@ -415,6 +441,16 @@ const FacilityManager: React.FC = () => {
                         <IconButton onClick={() => openEditCelok(celok)} title="Upraviť celok" aria-label="Upraviť celok"><Pencil /></IconButton>
                         <IconButton onClick={() => openAddLogin(celok)} title="Pridať login" aria-label="Pridať login"><UserPlus /></IconButton>
                         <IconButton onClick={() => openAddPrevadzka(celok)} title="Pridať prevádzku" aria-label="Pridať prevádzku"><Plus /></IconButton>
+                        <IconButton
+                          onClick={() => {
+                            setCelokDeleteError("");
+                            setCelokDeleteTarget(celok);
+                          }}
+                          title="Vymazať celok"
+                          aria-label={`Vymazať celok ${celok.nazov}`}
+                        >
+                          <Trash2 />
+                        </IconButton>
                       </div>
                     </div>
 
@@ -524,6 +560,52 @@ const FacilityManager: React.FC = () => {
               </Select>
             </Field>
           </form>
+        </Modal>
+      )}
+
+      {/* Celok delete */}
+      {celokDeleteTarget && (
+        <Modal
+          title="Vymazať celok"
+          onClose={() => {
+            if (!celokDeleting) {
+              setCelokDeleteTarget(null);
+              setCelokDeleteError("");
+            }
+          }}
+          icon={<AlertTriangle />}
+          iconKind="danger"
+          foot={<>
+            <Button
+              variant="ghost"
+              onClick={() => { setCelokDeleteTarget(null); setCelokDeleteError(""); }}
+              disabled={celokDeleting}
+            >
+              Zrušiť
+            </Button>
+            <Button variant="danger" onClick={doDeleteCelok} disabled={celokDeleting}>
+              {celokDeleting ? "Odstraňujem…" : "Odstrániť"}
+            </Button>
+          </>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+              Naozaj odstrániť celok „<strong style={{ color: "var(--green-900)" }}>{celokDeleteTarget.nazov}</strong>“?
+              Táto akcia je nevratná.
+            </p>
+            {celokDeleteTarget.prevadzky_count > 0 && (
+              <p style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                Celok má {celokDeleteTarget.prevadzky_count}{" "}
+                {celokDeleteTarget.prevadzky_count === 1 ? "prevádzku" : "prevádzok"}, ktoré zablokujú jeho odstránenie —
+                najprv ich treba vymazať alebo presunúť.
+              </p>
+            )}
+            {celokDeleteError && (
+              <p role="alert" style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                {celokDeleteError}
+              </p>
+            )}
+          </div>
         </Modal>
       )}
 

@@ -192,3 +192,64 @@ describe("FacilityManager login management", () => {
     });
   });
 });
+
+describe("FacilityManager celok delete", () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+  });
+
+  it("deletes a celok without prevádzky after confirmation", async () => {
+    const emptyCelok = { ...celok, id: 20, nazov: "Prázdny celok", prevadzky_count: 0, prevadzky: [], logins: [] };
+    mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") return { ok: true, status: 204, json: async () => ({}) };
+      if (url.endsWith("/admin/edupage-connections/")) return { ok: true, json: async () => [] };
+      return { ok: true, json: async () => [emptyCelok] };
+    });
+
+    const user = userEvent.setup();
+    renderManager();
+
+    await user.click(await screen.findByRole("button", { name: "Vymazať celok Prázdny celok" }));
+    expect(screen.getByText("Naozaj odstrániť celok", { exact: false })).toHaveTextContent("Prázdny celok");
+
+    await user.click(screen.getByRole("button", { name: /^Odstrániť$/ }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith("/api/admin/celky/20/", { method: "DELETE" });
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("Naozaj odstrániť celok", { exact: false })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows the backend's friendly error when a celok delete is blocked by existing prevádzky", async () => {
+    mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") {
+        return {
+          ok: false,
+          status: 409,
+          json: async () => ({
+            error: {
+              code: "protected_error",
+              message: "Túto položku nie je možné odstrániť, pretože sú na ňu naviazané ďalšie záznamy.",
+              details: {},
+            },
+          }),
+        };
+      }
+      if (url.endsWith("/admin/edupage-connections/")) return { ok: true, json: async () => [] };
+      return { ok: true, json: async () => [celok] };
+    });
+
+    const user = userEvent.setup();
+    renderManager();
+
+    await user.click(await screen.findByRole("button", { name: "Vymazať celok Centrálny celok" }));
+    await user.click(screen.getByRole("button", { name: /^Odstrániť$/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Túto položku nie je možné odstrániť, pretože sú na ňu naviazané ďalšie záznamy.",
+    );
+    expect(screen.getByText("Naozaj odstrániť celok", { exact: false })).toBeInTheDocument();
+  });
+});

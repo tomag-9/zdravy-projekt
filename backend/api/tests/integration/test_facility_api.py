@@ -30,3 +30,34 @@ def test_delete_prevadzka_with_orders_returns_protected_error(admin_client, admi
         }
     }
     assert Prevadzka.objects.filter(pk=prevadzka.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_celok_without_prevadzky_succeeds(admin_client):
+    celok = Celok.objects.create(nazov="Prázdny celok")
+
+    response = admin_client.delete(f"/api/admin/celky/{celok.pk}/")
+
+    assert response.status_code == 204
+    assert not Celok.objects.filter(pk=celok.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_celok_with_prevadzky_returns_protected_error(admin_client):
+    celok = Celok.objects.create(nazov="Chránený celok")
+    Prevadzka.objects.create(celok=celok, nazov="Prevádzka pod celkom")
+
+    response = admin_client.delete(f"/api/admin/celky/{celok.pk}/")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": {
+            "code": "protected_error",
+            "message": (
+                "Túto položku nie je možné odstrániť, pretože sú na ňu naviazané "
+                "ďalšie záznamy."
+            ),
+            "details": {},
+        }
+    }
+    assert Celok.objects.filter(pk=celok.pk).exists()
