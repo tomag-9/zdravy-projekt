@@ -30,6 +30,7 @@ import {
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
 import { PrevadzkaFields, type Prevadzka, type PrevadzkaForm } from "./facility/PrevadzkaFields";
 import { EMPTY_LOGIN, EMPTY_PREVADZKA } from "./facility/constants";
+import { normalizeForSearch } from "../../lib/searchNormalize";
 
 interface EdupageConnection {
   id: number;
@@ -351,12 +352,12 @@ const FacilityManager: React.FC = () => {
     }
   };
 
-  const term = searchTerm.toLowerCase();
+  const term = normalizeForSearch(searchTerm);
   const filtered = celky.filter(
     (c) =>
-      c.nazov.toLowerCase().includes(term) ||
-      (c.billing_name ?? "").toLowerCase().includes(term) ||
-      c.prevadzky.some((p) => p.nazov.toLowerCase().includes(term)),
+      normalizeForSearch(c.nazov).includes(term) ||
+      normalizeForSearch(c.billing_name ?? "").includes(term) ||
+      c.prevadzky.some((p) => normalizeForSearch(p.nazov).includes(term)),
   );
 
   return (

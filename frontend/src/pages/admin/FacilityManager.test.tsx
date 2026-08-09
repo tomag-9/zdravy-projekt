@@ -154,6 +154,24 @@ describe("FacilityManager login management", () => {
     });
   });
 
+  it("finds a celok despite case, diacritics, punctuation and whitespace differences", async () => {
+    const user = userEvent.setup();
+    renderManager();
+
+    const search = await screen.findByPlaceholderText("Hľadať celok alebo prevádzku…");
+
+    await user.type(search, "  CENTRALNY,  celok  ");
+    expect(await screen.findByText("Centrálny celok")).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "prva prevadzka");
+    expect(await screen.findByText("Centrálny celok")).toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, "nothing matches this");
+    expect(screen.queryByText("Centrálny celok")).not.toBeInTheDocument();
+  });
+
   it("deletes a login only after confirmation", async () => {
     const user = userEvent.setup();
     renderManager();
