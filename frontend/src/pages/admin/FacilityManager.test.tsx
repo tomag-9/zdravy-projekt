@@ -107,16 +107,14 @@ describe("FacilityManager login management", () => {
     expect(screen.getByText("prevadzka@example.com")).toBeInTheDocument();
   });
 
-  it("opens a filtered login list from a prevádzka badge", async () => {
+  it("links each prevádzka to its detail page", async () => {
     const user = userEvent.setup();
     renderManager();
 
     await user.click(await screen.findByRole("button", { name: "Centrálny celok 2 prevádzky" }));
-    await user.click(screen.getByRole("button", { name: "Zobraziť loginy prevádzky Prvá prevádzka" }));
-
-    expect(screen.getByText("Loginy — Prvá prevádzka")).toBeInTheDocument();
-    expect(screen.getByText("prevadzka@example.com")).toBeInTheDocument();
-    expect(screen.queryByText("celok@example.com")).not.toBeInTheDocument();
+    const firstFacilityRow = screen.getByText("Prvá prevádzka").closest("tr")!;
+    expect(within(firstFacilityRow).getByRole("link", { name: "Otvoriť detail" }))
+      .toHaveAttribute("href", "/admin/facilities/101");
   });
 
   it("prefills and saves an edited login with PATCH", async () => {

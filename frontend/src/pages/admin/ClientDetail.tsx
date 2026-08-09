@@ -8,6 +8,9 @@ import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
 import { fetchAllPages } from '../../lib/pagination';
 import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
+import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
+import { PrevadzkaFields, type EdupageConnectionOption, type PrevadzkaForm } from "./facility/PrevadzkaFields";
+import { EMPTY_LOGIN } from "./facility/constants";
 
 interface Diet {
   id: number;
@@ -41,7 +44,12 @@ interface FacilityDetail {
   celok_nazov: string;
   nazov: string;
   adresa: string;
+  edupage_connection: number | null;
   edupage_match: string;
+  report_alias: string;
+  delivery_note: string;
+  sort_order: number;
+  is_active: boolean;
   celok_zdroj_objednavok: string;
   visible_menus: string[];
   visible_meals: string[];
@@ -50,6 +58,13 @@ interface FacilityDetail {
   admin_order_note: string;
   client_user_id: number | null;
   pack_separately_enabled: boolean;
+  orders_count: number | null;
+}
+
+interface CelokDetail {
+  id: number;
+  nazov: string;
+  logins: Login[];
 }
 
 interface OrderData {
@@ -69,6 +84,7 @@ interface DailyOrder {
 
 const ALL_MENUS = ["A", "B", "C", "V"];
 const ALL_MEALS = ["breakfast", "lunch", "olovrant"];
+const API = import.meta.env.VITE_API_URL || "/api";
 const MEAL_LABELS: Record<string, string> = {
   breakfast: "Raňajky",
   lunch: "Obed",
@@ -85,9 +101,11 @@ const ClientDetail: React.FC = () => {
   const [user, setUser] = useState<AdminUser | null>(null);
   const [allDiets, setAllDiets] = useState<Diet[]>([]);
   const [portionTypes, setPortionTypes] = useState<PortionType[]>([]);
+  const [connections, setConnections] = useState<EdupageConnectionOption[]>([]);
+  const [celok, setCelok] = useState<CelokDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "order_note">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "logins" | "order_note">("dashboard");
 
   // Settings State
   const [menus, setMenus] = useState<Set<string>>(new Set());
@@ -96,6 +114,28 @@ const ClientDetail: React.FC = () => {
   const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
   const [adminOrderNote, setAdminOrderNote] = useState("");
   const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
+  const [prevadzkaForm, setPrevadzkaForm] = useState<PrevadzkaForm>({
+    nazov: "",
+    adresa: "",
+    edupage_connection: null,
+    edupage_match: "",
+    report_alias: "",
+    delivery_note: "",
+    sort_order: 0,
+    is_active: true,
+  });
+
+  // Login CRUD
+  const [loginTarget, setLoginTarget] = useState<Login | null | undefined>(undefined);
+  const [loginDeleteTarget, setLoginDeleteTarget] = useState<Login | null>(null);
+  const [loginForm, setLoginForm] = useState<LoginForm>(EMPTY_LOGIN);
+  const [loginSaving, setLoginSaving] = useState(false);
+  const [loginDeleting, setLoginDeleting] = useState(false);
+
+  // Prevádzka delete
+  const [showDeleteFacility, setShowDeleteFacility] = useState(false);
+  const [facilityDeleting, setFacilityDeleting] = useState(false);
+  const [facilityDeleteError, setFacilityDeleteError] = useState("");
 
   // Dashboard State
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
@@ -125,11 +165,35 @@ const ClientDetail: React.FC = () => {
     );
     setAdminOrderNote(data.admin_order_note || "");
     setPackSeparatelyEnabled(!!data.pack_separately_enabled);
+    setPrevadzkaForm({
+      nazov: data.nazov,
+      adresa: data.adresa || "",
+      edupage_connection: data.edupage_connection ?? null,
+      edupage_match: data.edupage_match || "",
+      report_alias: data.report_alias || "",
+      delivery_note: data.delivery_note || "",
+      sort_order: data.sort_order || 0,
+      is_active: data.is_active,
+    });
   }, []);
+
+  const fetchCelok = useCallback(async (celokId: number) => {
+    try {
+      const res = await apiFetch(`${API}/admin/celky/${celokId}/`);
+      if (res.ok) {
+        const data = await res.json();
+        setCelok(data);
+        return;
+      }
+    } catch (e) {
+      logger.error(e);
+    }
+    setCelok(null);
+  }, [apiFetch]);
 
   const fetchUser = useCallback(async (userId: number): Promise<AdminUser | null> => {
     try {
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/users/${userId}/`);
+      const res = await apiFetch(`${API}/admin/users/${userId}/`);
       if (res.ok) {
         const data = await res.json();
         return data;
@@ -144,12 +208,14 @@ const ClientDetail: React.FC = () => {
     if (!facilityId) return null;
     const requestSeq = ++facilityRequestSeq.current;
     try {
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facilityId}/`);
+      const res = await apiFetch(`${API}/admin/facility-prevadzky/${facilityId}/`);
       if (res.ok) {
         const data = await res.json();
         if (requestSeq !== facilityRequestSeq.current) return null;
         setFacility(data);
         applyFacilitySettings(data);
+        await fetchCelok(data.celok);
+        if (requestSeq !== facilityRequestSeq.current) return null;
         setUser(null);
         if (data.client_user_id) {
           const userData = await fetchUser(data.client_user_id);
@@ -167,7 +233,19 @@ const ClientDetail: React.FC = () => {
       setFacility(null);
       return null;
     }
-  }, [apiFetch, facilityId, fetchUser, applyFacilitySettings]);
+  }, [apiFetch, facilityId, fetchUser, fetchCelok, applyFacilitySettings]);
+
+  const fetchConnections = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${API}/admin/edupage-connections/`);
+      if (res.ok) {
+        const data = await res.json();
+        setConnections(Array.isArray(data) ? data : data.results || []);
+      }
+    } catch (e) {
+      logger.error(e);
+    }
+  }, [apiFetch]);
 
   const fetchDiets = useCallback(async () => {
     try {
@@ -293,8 +371,9 @@ const ClientDetail: React.FC = () => {
     setRecentOrders([]);
     setExpandedOrderId(null);
     setActiveTab("dashboard");
-    Promise.all([fetchFacility(), fetchDiets(), fetchPortionTypes()]).finally(() => setLoading(false));
-  }, [fetchFacility, fetchDiets, fetchPortionTypes]);
+    setCelok(null);
+    Promise.all([fetchFacility(), fetchDiets(), fetchPortionTypes(), fetchConnections()]).finally(() => setLoading(false));
+  }, [fetchFacility, fetchDiets, fetchPortionTypes, fetchConnections]);
 
   useEffect(() => {
     if (activeTab === "dashboard") {
@@ -307,6 +386,7 @@ const ClientDetail: React.FC = () => {
     setSaving(true);
     try {
       const payload = {
+        ...prevadzkaForm,
         visible_menus: Array.from(menus),
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
@@ -317,7 +397,7 @@ const ClientDetail: React.FC = () => {
         pack_separately_enabled: packSeparatelyEnabled,
       };
 
-      const res = await apiFetch(`${import.meta.env.VITE_API_URL || "/api"}/admin/facility-prevadzky/${facility.id}/`, {
+      const res = await apiFetch(`${API}/admin/facility-prevadzky/${facility.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -342,6 +422,104 @@ const ClientDetail: React.FC = () => {
     }
   };
 
+  const openAddLogin = () => {
+    if (!facility) return;
+    setLoginTarget(null);
+    setLoginForm({ ...EMPTY_LOGIN, company_name: facility.nazov });
+  };
+
+  const openEditLogin = (login: Login) => {
+    setLoginTarget(login);
+    setLoginForm({ email: login.email, company_name: login.company_name });
+  };
+
+  const closeLoginEditor = () => {
+    setLoginTarget(undefined);
+    setLoginForm(EMPTY_LOGIN);
+  };
+
+  const saveLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!facility || !loginForm.company_name.trim() || !loginForm.email.trim()) {
+      toastError("Názov a email loginu sú povinné.");
+      return;
+    }
+    setLoginSaving(true);
+    try {
+      const editing = loginTarget ?? null;
+      const res = await apiFetch(
+        editing ? `${API}/admin/users/${editing.user_id}/` : `${API}/admin/users/`,
+        {
+          method: editing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: loginForm.email,
+            company_name: loginForm.company_name,
+            is_staff: false,
+            is_active: true,
+            celok: facility.celok,
+            prevadzky: editing ? editing.prevadzka_ids : [facility.id],
+          }),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toastError(data?.error?.details?.email?.[0] || data?.email?.[0] || data?.error?.message || "Nepodarilo sa uložiť login.");
+        return;
+      }
+      success(editing ? "Login bol upravený." : "Login bol vytvorený.");
+      closeLoginEditor();
+      await fetchCelok(facility.celok);
+    } catch (e) {
+      logger.error(e);
+      toastError("Chyba pri ukladaní loginu.");
+    } finally {
+      setLoginSaving(false);
+    }
+  };
+
+  const deleteLogin = async () => {
+    if (!facility || !loginDeleteTarget) return;
+    setLoginDeleting(true);
+    try {
+      const res = await apiFetch(`${API}/admin/users/${loginDeleteTarget.user_id}/`, { method: "DELETE" });
+      if (!res.ok && res.status !== 204) {
+        const data = await res.json().catch(() => ({}));
+        toastError(data?.error?.message || "Nepodarilo sa odstrániť login.");
+        return;
+      }
+      success(`Login „${loginDeleteTarget.email}“ bol odstránený.`);
+      setLoginDeleteTarget(null);
+      await fetchCelok(facility.celok);
+    } catch (e) {
+      logger.error(e);
+      toastError("Chyba pri odstraňovaní loginu.");
+    } finally {
+      setLoginDeleting(false);
+    }
+  };
+
+  const deleteFacility = async () => {
+    if (!facility) return;
+    setFacilityDeleting(true);
+    setFacilityDeleteError("");
+    try {
+      const res = await apiFetch(`${API}/admin/facility-prevadzky/${facility.id}/`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        success(`Prevádzka „${facility.nazov}“ bola odstránená.`);
+        navigate("/admin/facilities");
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      setFacilityDeleteError(data?.error?.message || "Nepodarilo sa odstrániť prevádzku.");
+    } catch (e) {
+      logger.error(e);
+      setFacilityDeleteError("Chyba pri odstraňovaní prevádzky.");
+    } finally {
+      setFacilityDeleting(false);
+    }
+  };
+
   const toggleSet = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
     const newSet = new Set(set);
     if (newSet.has(value)) newSet.delete(value);
@@ -360,6 +538,7 @@ const ClientDetail: React.FC = () => {
     .map((item) => item.name);
   const orderEditorMeals = Array.from(meals);
   const orderEditorDiets = Array.from(userDiets);
+  const facilityLogins = (celok?.logins ?? []).filter((login) => login.prevadzka_ids.includes(facility.id));
 
   const mealCount = (data: unknown): number => {
     let count = 0;
@@ -379,6 +558,7 @@ const ClientDetail: React.FC = () => {
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: "dashboard", label: "Prehľad objednávok" },
     { key: "settings", label: "Nastavenia" },
+    { key: "logins", label: "Loginy" },
     { key: "order_note", label: "Poznámka k objednávke" },
   ];
 
@@ -550,6 +730,18 @@ const ClientDetail: React.FC = () => {
 
         {activeTab === "settings" && (
           <div className="zpa-stack">
+            <Card pad>
+              <CardHead title="Údaje prevádzky" desc="Upravte základné údaje a nastavenia prevádzky." />
+              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+                <PrevadzkaFields
+                  form={prevadzkaForm}
+                  setForm={setPrevadzkaForm}
+                  connections={connections}
+                  showEdupage={facility.celok_zdroj_objednavok === "edupage"}
+                />
+              </div>
+            </Card>
+
             <div className="zpa-grid-2">
               <Card pad>
                 <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre obed. Raňajky a olovrant majú vždy len menu A." />
@@ -646,10 +838,68 @@ const ClientDetail: React.FC = () => {
               )}
             </Card>
 
+            <Card pad style={{ borderColor: "var(--coral-300)" }}>
+              <CardHead
+                title="Nebezpečná zóna"
+                desc="Odstránenie prevádzky je nevratné a je možné iba vtedy, ak nemá žiadne objednávky."
+                actions={
+                  <Button
+                    variant="danger"
+                    sm
+                    onClick={() => {
+                      setFacilityDeleteError("");
+                      setShowDeleteFacility(true);
+                    }}
+                  >
+                    <Trash2 /> Odstrániť prevádzku
+                  </Button>
+                }
+              />
+            </Card>
+
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
             </div>
           </div>
+        )}
+
+        {activeTab === "logins" && (
+          <Card pad>
+            <CardHead
+              title="Loginy prevádzky"
+              desc="Spravujte prihlasovacie údaje používateľov tejto prevádzky."
+              actions={<Button sm onClick={openAddLogin}><Plus /> Pridať login</Button>}
+            />
+            {facilityLogins.length === 0 ? (
+              <Empty>Táto prevádzka nemá žiadne loginy.</Empty>
+            ) : (
+              <div>
+                {facilityLogins.map((login) => (
+                  <div key={login.user_id} className="zpa-listrow" style={{ paddingInline: 0 }}>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div className="lr-ttl" style={{ textTransform: "none" }}>{login.company_name || login.email}</div>
+                      <div className="lr-sub">{login.email}</div>
+                    </div>
+                    {login.is_edupage && <Badge tone="teal">EduPage</Badge>}
+                    <IconButton
+                      onClick={() => openEditLogin(login)}
+                      title="Upraviť login"
+                      aria-label={`Upraviť login ${login.email}`}
+                    >
+                      <Pencil />
+                    </IconButton>
+                    <IconButton
+                      onClick={() => setLoginDeleteTarget(login)}
+                      title="Odstrániť login"
+                      aria-label={`Odstrániť login ${login.email}`}
+                    >
+                      <Trash2 />
+                    </IconButton>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         )}
 
         {activeTab === "order_note" && (
@@ -679,6 +929,98 @@ const ClientDetail: React.FC = () => {
         cancelText="Zrušiť"
         variant="warning"
       />
+      )}
+
+      {/* ── Login add/edit ── */}
+      {loginTarget !== undefined && (
+        <Modal
+          title={loginTarget
+            ? `Upraviť login — ${loginTarget.email}`
+            : `Pridať login — ${facility.nazov}`}
+          onClose={closeLoginEditor}
+          foot={
+            <>
+              <Button variant="ghost" onClick={closeLoginEditor} disabled={loginSaving}>Zrušiť</Button>
+              <Button type="submit" form="facility-login-form" disabled={loginSaving}>
+                {loginSaving ? "Ukladám…" : loginTarget ? "Uložiť" : "Vytvoriť login"}
+              </Button>
+            </>
+          }
+        >
+          <form id="facility-login-form" onSubmit={saveLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <LoginFields form={loginForm} setForm={setLoginForm} />
+          </form>
+        </Modal>
+      )}
+
+      {/* ── Login delete confirmation ── */}
+      {loginDeleteTarget && (
+        <Modal
+          title="Odstrániť login"
+          onClose={() => setLoginDeleteTarget(null)}
+          icon={<AlertTriangle />}
+          iconKind="danger"
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setLoginDeleteTarget(null)} disabled={loginDeleting}>Zrušiť</Button>
+              <Button variant="danger" onClick={deleteLogin} disabled={loginDeleting}>
+                {loginDeleting ? "Odstraňujem…" : "Odstrániť"}
+              </Button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            Naozaj odstrániť login <strong style={{ color: "var(--green-900)" }}>{loginDeleteTarget.email}</strong>?
+          </p>
+        </Modal>
+      )}
+
+      {/* ── Facility delete confirmation ── */}
+      {showDeleteFacility && (
+        <Modal
+          title="Odstrániť prevádzku"
+          onClose={() => {
+            if (!facilityDeleting) {
+              setShowDeleteFacility(false);
+              setFacilityDeleteError("");
+            }
+          }}
+          icon={<AlertTriangle />}
+          iconKind="danger"
+          foot={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowDeleteFacility(false);
+                  setFacilityDeleteError("");
+                }}
+                disabled={facilityDeleting}
+              >
+                Zrušiť
+              </Button>
+              <Button variant="danger" onClick={deleteFacility} disabled={facilityDeleting}>
+                {facilityDeleting ? "Odstraňujem…" : "Odstrániť"}
+              </Button>
+            </>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+              Naozaj odstrániť prevádzku „<strong style={{ color: "var(--green-900)" }}>{facility.nazov}</strong>“? Táto akcia je nevratná.
+            </p>
+            {(facility.orders_count ?? 0) > 0 && (
+              <p style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                Prevádzka má existujúce objednávky, ktoré zablokujú jej odstránenie.
+              </p>
+            )}
+            {facilityDeleteError && (
+              <p role="alert" style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                {facilityDeleteError}
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {/* ── Delete order confirmation modal ── */}

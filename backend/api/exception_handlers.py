@@ -8,6 +8,7 @@ import logging
 
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models.deletion import ProtectedError
 from django.http import Http404
 from rest_framework import status
 from rest_framework.exceptions import APIException, Throttled, ValidationError
@@ -85,6 +86,21 @@ def custom_exception_handler(exc, context):
                     }
                 },
                 status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if isinstance(exc, ProtectedError):
+            return Response(
+                {
+                    "error": {
+                        "code": "protected_error",
+                        "message": (
+                            "Túto položku nie je možné odstrániť, pretože sú na ňu "
+                            "naviazané ďalšie záznamy."
+                        ),
+                        "details": {},
+                    }
+                },
+                status=status.HTTP_409_CONFLICT,
             )
 
         # Log unhandled exceptions
