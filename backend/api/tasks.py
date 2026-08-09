@@ -30,6 +30,42 @@ PUSH_REMINDER_MIN_BATCH_SIZE = 25
 PUSH_REMINDER_MAX_BATCHES = 10
 
 
+def _log_cron_skip_event(task_name: str, reason: str, day) -> None:
+    """Record a CRON_SKIPPED EventLog entry for an automatic run that was
+    skipped for `reason` ("weekend" or "configured_day_off", per #442)."""
+    from api.models import EventLog
+    from api.services.event_log_service import log_event
+
+    log_event(
+        EventLog.EventType.CRON_SKIPPED,
+        actor_label="cron",
+        summary=f"{task_name}: preskočené ({reason}) na {day.isoformat()}.",
+        payload={"reason": reason, "date": day.isoformat(), "task": task_name},
+    )
+    logger.info("%s skipped: reason=%s date=%s", task_name, reason, day)
+
+
+def _cron_skip_check(task_name: str) -> str | None:
+    """If today is a weekend or a configured Holiday, log the skip (see
+    `_log_cron_skip_event`) and return the reason so the caller can bail
+    out before any side effects. Returns None when the run should proceed
+    normally.
+
+    Only call this for the Celery-Beat-scheduled path of a task (i.e. when
+    no explicit target date was passed in) — a manually-triggered run for
+    an explicit date is a deliberate admin action, not an automatic cron
+    run, and must not be silently skipped.
+    """
+    from api.scheduling import cron_skip_reason
+
+    today = timezone.localdate()
+    reason = cron_skip_reason(today)
+    if reason is None:
+        return None
+    _log_cron_skip_event(task_name, reason, today)
+    return reason
+
+
 def _push_batch_stagger_seconds() -> float:
     return getattr(settings, "PUSH_REMINDER_BATCH_STAGGER_SECONDS", 0)
 
@@ -95,6 +131,8 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         )
         return {"error": "missing_global_settings", "meal_types": meal_types}
 
+    from api.scheduling import is_configured_day_off
+
     today = timezone.localdate()
 
     # Determine target_date per meal and group by date.
@@ -104,15 +142,19 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
     for meal_type in meal_types:
         is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
         target_date = _next_workday(today) if is_day_before else today
-        if target_date.weekday() < 5:  # skip weekends
+        # Skip weekends and admin-configured days off (Holiday) — #442.
+        if target_date.weekday() < 5 and not is_configured_day_off(target_date):
             date_to_meals.setdefault(target_date, []).append(meal_type)
 
     if not date_to_meals:
+        reason = "weekend" if today.weekday() >= 5 else "configured_day_off"
         logger.info(
-            "send_push_deadline_reminder_task: weekend skip for meal_types=%s",
+            "send_push_deadline_reminder_task: %s skip for meal_types=%s",
+            reason,
             meal_types,
         )
-        return {"skipped": "weekend", "meal_types": meal_types}
+        _log_cron_skip_event("send_push_deadline_reminder_task", reason, today)
+        return {"skipped": reason, "meal_types": meal_types}
 
     meal_labels = {
         "breakfast": "raňajky",
@@ -300,6 +342,8 @@ def apply_auto_orders_task(self, date_str: str | None = None):
         target_date = None
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
+        elif (reason := _cron_skip_check("apply_auto_orders_task")) is not None:
+            return {"skipped": True, "reason": reason}
 
         result = apply_auto_orders(target_date)
         log_event(
@@ -415,6 +459,17 @@ def scrape_edupage_orders_task(
                     "dates": [],
                     "meal_types": meal_types,
                     "disabled": True,
+                }
+
+            if (reason := _cron_skip_check("scrape_edupage_orders_task")) is not None:
+                return {
+                    "scraped": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "dates": [],
+                    "meal_types": meal_types,
+                    "skipped_run": True,
+                    "reason": reason,
                 }
 
             today = timezone.localdate()
@@ -595,6 +650,8 @@ def send_daily_report_task(
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
         else:
+            if (reason := _cron_skip_check("send_daily_report_task")) is not None:
+                return {"skipped": True, "reason": reason}
             target_date = timezone.localdate() - datetime.timedelta(days=1)
 
         # Build meal argument
