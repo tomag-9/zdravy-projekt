@@ -1,9 +1,13 @@
+from contextlib import nullcontext
+from unittest.mock import Mock, call
+
 import pytest
 from django.contrib.auth.models import User
 from django.core import management
 from django_celery_beat.models import PeriodicTask
 
 from api.default_visibility import DEFAULT_VISIBLE_MENUS
+from api.management.commands import deploy_bootstrap, seed_operations
 from api.management.commands.real_initial_seed_prevadzky import (
     EDUPAGE_VISIBLE_MEALS,
     SCHOOLS,
@@ -20,6 +24,46 @@ from api.models import (
 )
 from api.reference_data import DEFAULT_DIET_NAMES
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
+
+
+def test_deploy_bootstrap_calls_only_static_commands_in_order(monkeypatch):
+    call_command = Mock()
+    bootstrap_lock = Mock(return_value=nullcontext())
+    monkeypatch.setattr(deploy_bootstrap.management, "call_command", call_command)
+    monkeypatch.setattr(deploy_bootstrap, "deploy_bootstrap_lock", bootstrap_lock)
+
+    deploy_bootstrap.Command().handle(skip_migrate=False, verbosity=2)
+
+    bootstrap_lock.assert_called_once_with()
+    assert call_command.call_args_list == [
+        call("migrate", verbosity=2),
+        call("init_roles", verbosity=2),
+        call("init_reference_data", verbosity=2),
+        call("ensure_global_settings", verbosity=2),
+        call("sync_periodic_tasks", "--fix", verbosity=2),
+    ]
+
+
+def test_seed_operations_calls_data_seeds_in_order(monkeypatch):
+    call_command = Mock()
+    bootstrap_lock = Mock(return_value=nullcontext())
+    assert (
+        seed_operations.deploy_bootstrap_lock is deploy_bootstrap.deploy_bootstrap_lock
+    )
+    monkeypatch.setattr(seed_operations.management, "call_command", call_command)
+    monkeypatch.setattr(seed_operations, "deploy_bootstrap_lock", bootstrap_lock)
+
+    seed_operations.Command().handle(verbosity=2)
+
+    bootstrap_lock.assert_called_once_with()
+    assert call_command.call_args_list == [
+        call("real_initial_seed_prevadzky", "--allow-prod", verbosity=2),
+        call("seed_prevadzky_edupage", verbosity=2),
+        call("seed_zdrave_brusko", verbosity=2),
+        call("seed_real_delivery_layout", "--allow-prod", verbosity=2),
+        call("seed_merge_celky", verbosity=2),
+        call("seed_new_edupage_2026_08", verbosity=2),
+    ]
 
 
 @pytest.mark.django_db
