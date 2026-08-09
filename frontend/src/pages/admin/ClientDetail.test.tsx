@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import ClientDetail from "./ClientDetail";
@@ -30,7 +30,12 @@ const facility = {
   celok_nazov: "Test celok",
   nazov: "Test prevádzka",
   adresa: "",
+  edupage_connection: null,
   edupage_match: "",
+  report_alias: "",
+  delivery_note: "",
+  sort_order: 0,
+  is_active: true,
   celok_zdroj_objednavok: "app",
   visible_menus: ["A", "B", "C", "V"],
   visible_meals: ["breakfast", "lunch", "olovrant"],
@@ -39,7 +44,53 @@ const facility = {
   admin_order_note: "",
   client_user_id: null,
   pack_separately_enabled: false,
+  orders_count: 0,
 };
+
+const celokWithLogins = {
+  id: 3,
+  nazov: "Test celok",
+  logins: [
+    { user_id: 501, email: "own@example.com", company_name: "Vlastný login", is_edupage: false, prevadzka_ids: [7] },
+    { user_id: 502, email: "other@example.com", company_name: "Login inej prevádzky", is_edupage: false, prevadzka_ids: [8] },
+  ],
+};
+
+type DeleteFacilityResponse = { ok: boolean; status: number; json: () => Promise<unknown> };
+
+function buildFetchMock(overrides: { deleteFacility?: () => DeleteFacilityResponse } = {}) {
+  return vi.fn((url: string, init?: RequestInit) => {
+    const method = init?.method;
+    if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+    if (url.includes("/diets/")) return Promise.resolve(response([]));
+    if (url.includes("/orders/")) return Promise.resolve(response([]));
+    if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+    if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+    if (url.includes("/admin/facility-prevadzky/7/") && method === "PATCH") {
+      return Promise.resolve(response({ ...facility, ...JSON.parse(String(init?.body)) }));
+    }
+    if (url.includes("/admin/facility-prevadzky/7/") && method === "DELETE") {
+      if (overrides.deleteFacility) return Promise.resolve(overrides.deleteFacility());
+      return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+    }
+    if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+    if (url.includes("/admin/users/") && method === "POST") return Promise.resolve({ ok: true, status: 201, json: async () => ({}) });
+    if (url.includes("/admin/users/") && method === "PATCH") return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    if (url.includes("/admin/users/") && method === "DELETE") return Promise.resolve({ ok: true, status: 204, json: async () => ({}) });
+    return Promise.resolve(response([]));
+  });
+}
+
+function renderClientDetail() {
+  return render(
+    <MemoryRouter initialEntries={["/admin/facilities/7"]}>
+      <Routes>
+        <Route path="/admin/facilities/:id" element={<ClientDetail />} />
+        <Route path="/admin/facilities" element={<div>Facilities</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
 
 describe("ClientDetail portion type visibility", () => {
   beforeEach(() => {
@@ -53,6 +104,7 @@ describe("ClientDetail portion type visibility", () => {
       }
       if (url.includes("/diets/")) return Promise.resolve(response([]));
       if (url.includes("/orders/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
       if (url.includes("/admin/facility-prevadzky/7/") && init?.method === "PATCH") {
         return Promise.resolve(response({ ...facility, ...JSON.parse(String(init.body)) }));
       }
@@ -87,5 +139,184 @@ describe("ClientDetail portion type visibility", () => {
       expect(patchCall).toBeDefined();
       expect(JSON.parse(String(patchCall?.[1]?.body)).visible_portion_types).toEqual([2]);
     });
+  });
+});
+
+describe("ClientDetail facility & login management", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders only logins scoped to this facility", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Loginy" }));
+
+    expect(screen.getByText("own@example.com")).toBeInTheDocument();
+    expect(screen.queryByText("other@example.com")).not.toBeInTheDocument();
+  });
+
+  it("adds a login scoped to this facility", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Loginy" }));
+    await user.click(screen.getByRole("button", { name: "Pridať login" }));
+
+    const editor = screen.getByText("Pridať login — Test prevádzka").closest<HTMLElement>(".zpa-modal")!;
+    const nameInput = within(editor).getByLabelText("Názov loginu *");
+    const emailInput = within(editor).getByLabelText("Email *");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Nový login");
+    await user.type(emailInput, "new@example.com");
+    await user.click(within(editor).getByRole("button", { name: "Vytvoriť login" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/users/",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            email: "new@example.com",
+            company_name: "Nový login",
+            is_staff: false,
+            is_active: true,
+            celok: 3,
+            prevadzky: [7],
+          }),
+        }),
+      );
+    });
+  });
+
+  it("edits an existing login and preserves its facility scope", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Loginy" }));
+    await user.click(screen.getByRole("button", { name: "Upraviť login own@example.com" }));
+
+    const editor = screen.getByText("Upraviť login — own@example.com").closest<HTMLElement>(".zpa-modal")!;
+    const nameInput = within(editor).getByLabelText("Názov loginu *");
+    const emailInput = within(editor).getByLabelText("Email *");
+    expect(nameInput).toHaveValue("Vlastný login");
+    expect(emailInput).toHaveValue("own@example.com");
+
+    await user.clear(nameInput);
+    await user.type(nameInput, "Upravený login");
+    await user.clear(emailInput);
+    await user.type(emailInput, "updated@example.com");
+    await user.click(within(editor).getByRole("button", { name: "Uložiť" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/users/501/",
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({
+            email: "updated@example.com",
+            company_name: "Upravený login",
+            is_staff: false,
+            is_active: true,
+            celok: 3,
+            prevadzky: [7],
+          }),
+        }),
+      );
+    });
+  });
+
+  it("deletes a login only after confirmation", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Loginy" }));
+    await user.click(screen.getByRole("button", { name: "Odstrániť login own@example.com" }));
+
+    const confirmation = screen.getByText("Odstrániť login", { selector: "h3" }).closest<HTMLElement>(".zpa-modal")!;
+    await user.click(within(confirmation).getByRole("button", { name: /^Odstrániť$/ }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith("/api/admin/users/501/", { method: "DELETE" });
+    });
+  });
+
+  it("prefills and saves the prevádzka core fields with existing settings", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    const nameInput = screen.getByLabelText("Názov prevádzky *");
+    expect(nameInput).toHaveValue("Test prevádzka");
+
+    await user.clear(nameInput);
+    await user.type(nameInput, "Upravená prevádzka");
+    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.nazov).toBe("Upravená prevádzka");
+      expect(body.visible_menus).toEqual(["A", "B", "C", "V"]);
+    });
+  });
+
+  it("deletes the facility and navigates back to facilities", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(screen.getByRole("button", { name: "Odstrániť prevádzku" }));
+
+    const confirmation = screen.getByText("Odstrániť prevádzku", { selector: "h3" }).closest<HTMLElement>(".zpa-modal")!;
+    await user.click(within(confirmation).getByRole("button", { name: /^Odstrániť$/ }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/facility-prevadzky/7/",
+        { method: "DELETE" },
+      );
+    });
+    expect(await screen.findByText("Facilities")).toBeInTheDocument();
+  });
+
+  it("shows a protected-error message when facility deletion is blocked", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock({
+      deleteFacility: () => ({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: {
+            code: "protected_error",
+            message: "Túto položku nie je možné odstrániť, pretože sú na ňu naviazané ďalšie záznamy.",
+            details: {},
+          },
+        }),
+      }),
+    }));
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(screen.getByRole("button", { name: "Odstrániť prevádzku" }));
+
+    const confirmation = screen.getByText("Odstrániť prevádzku", { selector: "h3" }).closest<HTMLElement>(".zpa-modal")!;
+    await user.click(within(confirmation).getByRole("button", { name: /^Odstrániť$/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Túto položku nie je možné odstrániť, pretože sú na ňu naviazané ďalšie záznamy.",
+    );
+    expect(screen.queryByText("Facilities")).not.toBeInTheDocument();
   });
 });
