@@ -2,7 +2,6 @@ import datetime
 
 import pytest
 
-from api.exporters.prevadzka_overview_exporter import _status_label
 from api.models import Celok, DailyOrder, Prevadzka, ProfileCelokAccess, UserProfile
 
 URL = "/api/admin/summary/prevadzka-overview/"
@@ -110,49 +109,13 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize(
-    "fmt,ctype",
-    [
-        ("xlsx", "spreadsheetml"),
-        ("pdf", "application/pdf"),
-    ],
-)
-def test_overview_export(admin_client, fmt, ctype):
-    _c, prev, user = _celok_with_prevadzka("EduŠkola", is_edupage=True)
-    DailyOrder.objects.create(
-        user=user,
-        prevadzka=prev,
-        date=DATE,
-        data={"lunch": {"EduŠkola": {"menuCounts": {"A": 3}}}},
-    )
+@pytest.mark.parametrize("fmt", ["xlsx", "pdf"])
+def test_overview_export_endpoints_removed(admin_client, fmt):
+    """#447: dodanie podkladov must not offer PDF/XLSX generation anymore."""
     res = admin_client.get(
         f"/api/admin/summary/prevadzka-overview-{fmt}/", {"date": DATE.isoformat()}
     )
-    assert res.status_code == 200
-    assert ctype in res["Content-Type"]
-    assert res["Content-Disposition"].endswith(f'.{fmt}"')
-
-
-def test_overview_export_status_labels_prioritize_warnings():
-    assert _status_label({"delivered": False, "has_warning": False}) == "NEDODANÉ"
-    assert (
-        _status_label(
-            {"delivered": True, "has_warning": True, "delivery_status": "manual"}
-        )
-        == "SKONTROLUJ"
-    )
-    assert (
-        _status_label(
-            {"delivered": True, "has_warning": False, "delivery_status": "manual_zero"}
-        )
-        == "NULA"
-    )
-    assert (
-        _status_label(
-            {"delivered": True, "has_warning": False, "delivery_status": "auto"}
-        )
-        == "AUTO KÓPIA"
-    )
+    assert res.status_code == 404
 
 
 @pytest.mark.django_db
