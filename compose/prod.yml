@@ -2,6 +2,10 @@ services:
   backend:
     image: ${REGISTRY_USERNAME}/zdravy-projekt-backend:${PROD_IMAGE_TAG}
     environment:
+      # Same tag GitHub Actions builds/pushes images under (prod-<git sha>,
+      # see .github/workflows/production.yml) — deploy_bootstrap logs a
+      # "new version" EventLog entry when this changes (#446).
+      APP_VERSION: ${PROD_IMAGE_TAG}
       DJANGO_SETTINGS_MODULE: app.settings.prod
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in Dokploy env}
       POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in Dokploy env}
