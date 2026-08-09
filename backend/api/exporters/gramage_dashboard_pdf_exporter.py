@@ -19,6 +19,7 @@ from .gramage_dashboard_export import (
     flat_client_rows,
     group_label,
     meal_hue,
+    portion_summary,
 )
 from .report_helpers import PDFFontManager
 
@@ -39,6 +40,8 @@ class GramageDashboardPDFExporter:
             Table,
             TableStyle,
         )
+
+        self.rendered_rows: list[dict] = []
 
         font_r, font_b = PDFFontManager.get_fonts()
         brand_green = colors.HexColor(f"#{BRAND['green_800']}")
@@ -157,6 +160,9 @@ class GramageDashboardPDFExporter:
             return cells[:total_cols]
 
         def add_band_row(label, background, text_color=colors.white):
+            self.rendered_rows.append(
+                {"label": label, "count": None, "col_grams": None}
+            )
             row_index = len(table_data)
             table_data.append(
                 [para(label, bold=True, color=text_color)] + [""] * (total_cols - 1)
@@ -170,6 +176,9 @@ class GramageDashboardPDFExporter:
             )
 
         def add_summary_row(label, count, col_grams, background, text_color=None):
+            self.rendered_rows.append(
+                {"label": label, "count": count, "col_grams": col_grams}
+            )
             row_index = len(table_data)
             table_data.append(make_cells(label, count, col_grams))
             style_cmds.append(
@@ -179,6 +188,21 @@ class GramageDashboardPDFExporter:
             if text_color:
                 style_cmds.append(
                     ("TEXTCOLOR", (0, row_index), (-1, row_index), text_color)
+                )
+
+        def add_portion_summary(
+            title,
+            summary_rows,
+            background=brand_green,
+            text_color=colors.white,
+        ):
+            add_band_row(title, background, text_color)
+            for item in summary_rows:
+                add_summary_row(
+                    item["label"],
+                    item["count"],
+                    item["col_grams"],
+                    standard_fill,
                 )
 
         def add_client_row(row, zebra: bool):
@@ -228,12 +252,32 @@ class GramageDashboardPDFExporter:
                     colors.HexColor(f"#{fill_hex}"),
                 )
 
-            if row.get("delivery_note"):
-                note_idx = len(table_data)
-                table_data.append(
-                    [para(f"Poznámka: {row['delivery_note']}")]
-                    + [""] * (total_cols - 1)
+            if row.get("admin_order_note"):
+                note_label = f"Poznámka k objednávke: {row['admin_order_note']}"
+                self.rendered_rows.append(
+                    {"label": note_label, "count": None, "col_grams": None}
                 )
+                note_idx = len(table_data)
+                table_data.append([para(note_label)] + [""] * (total_cols - 1))
+                style_cmds.extend(
+                    [
+                        (
+                            "BACKGROUND",
+                            (0, note_idx),
+                            (-1, note_idx),
+                            colors.HexColor("#EAF0E0"),
+                        ),
+                        ("SPAN", (0, note_idx), (-1, note_idx)),
+                    ]
+                )
+
+            if row.get("delivery_note"):
+                note_label = f"Poznámka: {row['delivery_note']}"
+                self.rendered_rows.append(
+                    {"label": note_label, "count": None, "col_grams": None}
+                )
+                note_idx = len(table_data)
+                table_data.append([para(note_label)] + [""] * (total_cols - 1))
                 style_cmds.extend(
                     [
                         (
@@ -249,7 +293,7 @@ class GramageDashboardPDFExporter:
         blocks = self.data.get("blocks") or []
         unassigned_rows = self.data.get("unassigned_rows") or []
         if blocks:
-            for block in blocks:
+            for block_index, block in enumerate(blocks):
                 add_band_row(block["name"], brand_green_dark)
                 for route in block.get("routes", []):
                     suffix = []
@@ -263,6 +307,15 @@ class GramageDashboardPDFExporter:
                     add_band_row(route_label, brand_green, colors.white)
                     for zebra, row in enumerate(route.get("rows", [])):
                         add_client_row(row, zebra % 2 == 1)
+                block_rows = [
+                    row
+                    for route in block.get("routes", [])
+                    for row in route.get("rows", [])
+                ]
+                add_portion_summary(
+                    f"Súhrn porcií {block_index + 1}",
+                    portion_summary(self.data, block_rows),
+                )
             if unassigned_rows:
                 add_band_row(
                     "Nepriradené prevádzky",
@@ -273,6 +326,12 @@ class GramageDashboardPDFExporter:
         else:
             for zebra, row in enumerate(all_rows):
                 add_client_row(row, zebra % 2 == 1)
+
+        add_portion_summary(
+            "Porcie celkom",
+            portion_summary(self.data),
+            background=brand_green_dark,
+        )
 
         # Totals row
         t_idx = len(table_data)
