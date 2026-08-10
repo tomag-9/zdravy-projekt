@@ -55,7 +55,7 @@ const InboxPage = () => {
 
     const handleMessageClick = (msg: InboxMessage) => {
         if (!msg.is_read) markRead(msg.id);
-        if (msg.url && msg.url !== "/home") {
+        if (msg.url && msg.url !== "/inbox") {
             navigate(msg.url);
         }
     };

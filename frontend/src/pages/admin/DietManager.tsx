@@ -337,7 +337,7 @@ const DietManager: React.FC = () => {
           <Empty>Zatiaľ nie sú vytvorené žiadne diéty.</Empty>
         ) : (
           <div className="zpa-grid-cards">
-            {diets.map((diet) => (
+            {diets.map((diet, dietPosition) => (
               <Card
                 key={diet.id}
                 pad
@@ -357,7 +357,12 @@ const DietManager: React.FC = () => {
                   <DietColorSwatch color={diet.color} baseColors={diet.base_colors} />
                   <div>
                     <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
-                    <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {diet.sort_order}</p>
+                    {/* Display-only 1-based position in the sorted list — the raw
+                        sort_order field is 0-based (and can repeat across diets
+                        that were never explicitly reordered), so showing it
+                        directly reads as "diéta č. 0". The DB value itself is
+                        left untouched; this is purely presentational. */}
+                    <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {dietPosition + 1}</p>
                   {diet.description && (
                     <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
                   )}

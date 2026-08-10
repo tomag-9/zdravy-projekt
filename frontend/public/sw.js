@@ -136,7 +136,11 @@ self.addEventListener('push', (event) => {
 // ── Notification Click ────────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data && event.notification.data.url) || '/home';
+  // Safe default when a push payload omits/has an invalid url (#443) — the
+  // server-side allowlist (api/notification_targets.py) already resolves
+  // this for manually-sent notifications, but automatic ones or malformed
+  // payloads should still land somewhere every authenticated user can open.
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/inbox';
   const absoluteTargetUrl = new URL(targetUrl, self.location.origin).href;
 
   event.waitUntil(

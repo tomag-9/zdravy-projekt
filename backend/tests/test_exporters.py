@@ -8,11 +8,15 @@ import pytest
 from django.contrib.auth.models import User
 from openpyxl import load_workbook
 
+from api.exporters.gramage_dashboard_export import portion_summary
+from api.exporters.gramage_dashboard_pdf_exporter import GramageDashboardPDFExporter
 from api.exporters.gramage_dashboard_xlsx_exporter import GramageDashboardXLSXExporter
 from api.models import (
     Celok,
     DailyMealPlan,
     DailyOrder,
+    DeliveryBlock,
+    DeliveryRoute,
     MealPlanItem,
     MealTemplate,
     PortionType,
@@ -158,3 +162,201 @@ class TestGramageDashboardExports:
             for values in exported_values
             if values[0]
         )
+
+    def test_portion_summaries_export_per_delivery_block_and_globally(self):
+        user = User.objects.create_user(
+            username="delivery-export@example.com",
+            email="delivery-export@example.com",
+        )
+        portion_type = PortionType.objects.create(
+            name="Škôlka", coefficient=Decimal("1.0000"), sort_order=1
+        )
+        plan = DailyMealPlan.objects.create(
+            date=datetime.date(2024, 1, 16),
+            created_by=user,
+        )
+        lunch = MealTemplate.objects.create(
+            category="main_course",
+            name="Obed",
+            weight_label="200g",
+            base_weight_grams=Decimal("200.00"),
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=lunch,
+            category="main_course",
+            menu_variant="A",
+        )
+        plan.enrolled_counts.create(portion_type=portion_type, count=1)
+
+        first_block = DeliveryBlock.objects.create(
+            name="Prvý blok",
+            sort_order=1,
+            is_active=True,
+            include_in_main_summary=True,
+            include_in_extra_summary=False,
+        )
+        second_block = DeliveryBlock.objects.create(
+            name="Druhý blok",
+            sort_order=2,
+            is_active=True,
+            include_in_main_summary=False,
+            include_in_extra_summary=True,
+        )
+        first_route = DeliveryRoute.objects.create(
+            block=first_block,
+            name="Prvá trasa",
+            driver="Vodič 1",
+            departure_time=datetime.time(7, 30),
+            note="Poznámka trasy 1",
+            sort_order=1,
+            is_active=True,
+        )
+        second_route = DeliveryRoute.objects.create(
+            block=second_block,
+            name="Druhá trasa",
+            driver="Vodič 2",
+            departure_time=datetime.time(8, 0),
+            note="Poznámka trasy 2",
+            sort_order=1,
+            is_active=True,
+        )
+        celok = Celok.objects.create(nazov="Rozvozový celok")
+        prevadzky = [
+            Prevadzka.objects.create(
+                celok=celok,
+                nazov="Prevádzka 1",
+                delivery_route=first_route,
+                delivery_sort_order=1,
+            ),
+            Prevadzka.objects.create(
+                celok=celok,
+                nazov="Prevádzka 2",
+                delivery_route=second_route,
+                delivery_sort_order=1,
+            ),
+            Prevadzka.objects.create(
+                celok=celok,
+                nazov="Nepriradená prevádzka",
+                delivery_sort_order=1,
+            ),
+        ]
+        for count, prevadzka in enumerate(prevadzky, start=1):
+            DailyOrder.objects.create(
+                user=user,
+                date=plan.date,
+                prevadzka=prevadzka,
+                data={"lunch": {"Škôlka": {"menuCounts": {"A": count}, "diets": {}}}},
+            )
+
+        data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+        assert len(data["blocks"]) == 2
+        assert len(data["unassigned_rows"]) == 1
+        expected_summaries = [
+            (
+                f"Súhrn porcií {block_index + 1}",
+                portion_summary(
+                    data,
+                    [
+                        row
+                        for route in block.get("routes", [])
+                        for row in route.get("rows", [])
+                    ],
+                ),
+            )
+            for block_index, block in enumerate(data["blocks"])
+        ]
+        expected_summaries.append(("Porcie celkom", portion_summary(data)))
+
+        workbook = load_workbook(BytesIO(GramageDashboardXLSXExporter(data).generate()))
+        exported_values = list(workbook.active.iter_rows(values_only=True))
+        for title, expected_rows in expected_summaries:
+            band_index = next(
+                index
+                for index, values in enumerate(exported_values)
+                if values[0] == title
+            )
+            for offset, expected in enumerate(expected_rows, start=1):
+                values = exported_values[band_index + offset]
+                assert values[0] == expected["label"]
+                assert values[1] == expected["count"]
+                expected_grams = [
+                    float(grams)
+                    for group_grams in expected["col_grams"]
+                    for grams in group_grams
+                ]
+                assert list(values[2 : 2 + len(expected_grams)]) == expected_grams
+
+        pdf_exporter = GramageDashboardPDFExporter(data)
+        pdf_exporter.generate()
+        for title, expected_rows in expected_summaries:
+            band_index = next(
+                index
+                for index, row in enumerate(pdf_exporter.rendered_rows)
+                if row["label"] == title
+            )
+            assert (
+                pdf_exporter.rendered_rows[
+                    band_index + 1 : band_index + 1 + len(expected_rows)
+                ]
+                == expected_rows
+            )
+
+    def test_admin_order_and_delivery_notes_export_to_xlsx_and_pdf(self):
+        user = User.objects.create_user(
+            username="note-export@example.com",
+            email="note-export@example.com",
+        )
+        portion_type = PortionType.objects.create(
+            name="Škôlka", coefficient=Decimal("1.0000"), sort_order=1
+        )
+        plan = DailyMealPlan.objects.create(
+            date=datetime.date(2024, 1, 17),
+            created_by=user,
+        )
+        lunch = MealTemplate.objects.create(
+            category="main_course",
+            name="Obed s poznámkami",
+            weight_label="200g",
+            base_weight_grams=Decimal("200.00"),
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan,
+            template=lunch,
+            category="main_course",
+            menu_variant="A",
+        )
+        plan.enrolled_counts.create(portion_type=portion_type, count=1)
+        celok = Celok.objects.create(nazov="Celok s poznámkami")
+        prevadzka = Prevadzka.objects.create(
+            celok=celok,
+            nazov="Prevádzka s poznámkami",
+            admin_order_note="bez cibule",
+            delivery_note="zadný vchod",
+        )
+        DailyOrder.objects.create(
+            user=user,
+            date=plan.date,
+            prevadzka=prevadzka,
+            data={"lunch": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+
+        data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+        expected_labels = {
+            "Poznámka k objednávke: bez cibule",
+            "Poznámka: zadný vchod",
+        }
+        workbook = load_workbook(BytesIO(GramageDashboardXLSXExporter(data).generate()))
+        xlsx_labels = {
+            values[0]
+            for values in workbook.active.iter_rows(values_only=True)
+            if values[0]
+        }
+        assert expected_labels <= xlsx_labels
+
+        pdf_exporter = GramageDashboardPDFExporter(data)
+        pdf_exporter.generate()
+        pdf_labels = {row["label"] for row in pdf_exporter.rendered_rows}
+        assert expected_labels <= pdf_labels

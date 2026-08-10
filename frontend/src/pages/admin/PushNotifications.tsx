@@ -4,6 +4,7 @@ import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
 import { PageHead, Card, CardHead, Button, Field, Input, Textarea, Select } from './ui';
 import { fetchAllPages } from '../../lib/pagination';
+import { DEFAULT_NOTIFICATION_TARGET, NOTIFICATION_TARGETS } from '../../lib/notificationTargets';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -23,7 +24,7 @@ const PushNotifications: React.FC = () => {
 
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
-    const [url, setUrl] = useState('/home');
+    const [url, setUrl] = useState(DEFAULT_NOTIFICATION_TARGET);
     const [targetUserId, setTargetUserId] = useState<string>('all');
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [sending, setSending] = useState(false);
@@ -121,8 +122,12 @@ const PushNotifications: React.FC = () => {
                             />
                         </Field>
 
-                        <Field label="Cieľová stránka (URL)" hint="kam sa aplikácia otvorí po kliknutí">
-                            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/home" />
+                        <Field label="Cieľová stránka" hint="kam sa aplikácia otvorí po kliknutí na notifikáciu">
+                            <Select value={url} onChange={(e) => setUrl(e.target.value)}>
+                                {NOTIFICATION_TARGETS.map(([value, label]) => (
+                                    <option key={value} value={value}>{label}</option>
+                                ))}
+                            </Select>
                         </Field>
 
                         <div>

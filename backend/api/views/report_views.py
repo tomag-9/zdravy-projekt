@@ -80,8 +80,6 @@ def build_prevadzka_overview(target_date):
     daily_stats=extend_schema(tags=["admin"]),
     daily_report=extend_schema(tags=["admin"]),
     prevadzka_overview=extend_schema(tags=["admin"]),
-    prevadzka_overview_xlsx=extend_schema(tags=["admin"]),
-    prevadzka_overview_pdf=extend_schema(tags=["admin"]),
 )
 class AdminSummaryViewSet(viewsets.ViewSet):
     """
@@ -219,48 +217,3 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         if isinstance(parsed, Response):
             return parsed
         return Response(build_prevadzka_overview(parsed))
-
-    @action(detail=False, methods=["get"], url_path="prevadzka-overview-xlsx")
-    def prevadzka_overview_xlsx(self, request):
-        """Download prehľad dodania podkladov as XLSX."""
-        from django.http import HttpResponse
-
-        from ..exporters import PrevadzkaOverviewXLSXExporter
-
-        parsed = self._parse_date(request)
-        if isinstance(parsed, Response):
-            return parsed
-        payload = build_prevadzka_overview(parsed)
-        xlsx_bytes = PrevadzkaOverviewXLSXExporter(payload).generate()
-
-        response = HttpResponse(
-            xlsx_bytes,
-            content_type=(
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            ),
-        )
-        response["Content-Disposition"] = (
-            f'attachment; filename="dodanie_podkladov_{parsed.isoformat()}.xlsx"'
-        )
-        return response
-
-    @action(detail=False, methods=["get"], url_path="prevadzka-overview-pdf")
-    def prevadzka_overview_pdf(self, request):
-        """Download prehľad dodania podkladov as PDF."""
-        import io
-
-        from django.http import FileResponse
-
-        from ..exporters import PrevadzkaOverviewPDFExporter
-
-        parsed = self._parse_date(request)
-        if isinstance(parsed, Response):
-            return parsed
-        payload = build_prevadzka_overview(parsed)
-        pdf_bytes = PrevadzkaOverviewPDFExporter(payload).generate()
-
-        response = FileResponse(io.BytesIO(pdf_bytes), content_type="application/pdf")
-        response["Content-Disposition"] = (
-            f'attachment; filename="dodanie_podkladov_{parsed.isoformat()}.pdf"'
-        )
-        return response

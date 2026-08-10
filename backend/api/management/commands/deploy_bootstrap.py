@@ -1,3 +1,4 @@
+import os
 from contextlib import contextmanager
 
 from django.core import management
@@ -5,6 +6,10 @@ from django.core.management.base import BaseCommand
 from django.db import connection
 
 BOOTSTRAP_LOCK_ID = 761_420_337
+
+# Set by compose/prod.yml from the same tag GitHub Actions builds and pushes
+# images under (prod-<git sha>) — see .github/workflows/production.yml.
+APP_VERSION_ENV_VAR = "APP_VERSION"
 
 
 @contextmanager
@@ -48,39 +53,38 @@ class Command(BaseCommand):
                 "ensure_global_settings", verbosity=options.get("verbosity", 1)
             )
             management.call_command(
-                "real_initial_seed_prevadzky",
-                "--allow-prod",
-                verbosity=options.get("verbosity", 1),
-            )
-            # Refinement seedy MUSIA bežať pri každom deployi, nie len raz. Základný
-            # `real_initial_seed_prevadzky` vytvorí prevádzky nanovo, čím zhodí splity,
-            # fakturačné koeficienty (Edulienka predškolák 1,25) aj rozdelenie Zdravého
-            # Brúska na 5 subjektov. Bez týchto krokov sa konfigurácia po každom reseede
-            # ticho stráca (žila len v jednorazových data-migráciách). Všetky sú
-            # idempotentné a nepotrebujú externé súbory. Poradie je dôležité: splity
-            # (Jolly 1/2/3, Škôlka MS) musia byť skôr než `seed_real_delivery_layout`,
-            # ktorý existujúce prevádzky iba doplní o rozvoz (a nepresúva ich medzi
-            # celkami — inak by narazil na unique(celok, nazov)).
-            management.call_command(
-                "seed_prevadzky_edupage", verbosity=options.get("verbosity", 1)
-            )
-            management.call_command(
-                "seed_zdrave_brusko", verbosity=options.get("verbosity", 1)
-            )
-            management.call_command(
-                "seed_real_delivery_layout",
-                "--allow-prod",
-                verbosity=options.get("verbosity", 1),
-            )
-            # Zlúčenie samostatných celkov jednej školy do jedného celku s N prevádzkami
-            # (Bystrá, Dubáčik, …). Musí bežať PO delivery layoute, ktorý app-celky
-            # vytvára; opravený `_upsert_prevadzka` ich potom už nerecykluje.
-            management.call_command(
-                "seed_merge_celky", verbosity=options.get("verbosity", 1)
-            )
-            management.call_command(
-                "seed_new_edupage_2026_08", verbosity=options.get("verbosity", 1)
-            )
-            management.call_command(
                 "sync_periodic_tasks", "--fix", verbosity=options.get("verbosity", 1)
             )
+
+        # Only reached once every step above completed without raising — a
+        # failed bootstrap (start-backend.sh runs under `set -eu`) must never
+        # log a "new version" entry (#446).
+        self._log_new_version_if_changed()
+
+    def _log_new_version_if_changed(self) -> None:
+        version = os.environ.get(APP_VERSION_ENV_VAR, "").strip()
+        if not version:
+            # No version identifier available (e.g. local dev) — nothing
+            # meaningful to log.
+            return
+
+        from api.models import EventLog
+        from api.services.event_log_service import log_event
+
+        last_version = (
+            EventLog.objects.filter(event_type=EventLog.EventType.DEPLOY_VERSION)
+            .order_by("-created_at")
+            .values_list("payload__version", flat=True)
+            .first()
+        )
+        if last_version == version:
+            # Same version already logged (e.g. a container restart, or a
+            # second replica coming up) — not a new deploy.
+            return
+
+        log_event(
+            EventLog.EventType.DEPLOY_VERSION,
+            actor_label="deploy",
+            summary=f"Nasadená nová verzia: {version}.",
+            payload={"version": version},
+        )

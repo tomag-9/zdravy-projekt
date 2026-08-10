@@ -1,9 +1,13 @@
+from contextlib import nullcontext
+from unittest.mock import Mock, call
+
 import pytest
 from django.contrib.auth.models import User
 from django.core import management
 from django_celery_beat.models import PeriodicTask
 
 from api.default_visibility import DEFAULT_VISIBLE_MENUS
+from api.management.commands import deploy_bootstrap, seed_operations
 from api.management.commands.real_initial_seed_prevadzky import (
     EDUPAGE_VISIBLE_MEALS,
     SCHOOLS,
@@ -14,12 +18,53 @@ from api.models import (
     DeliveryBlock,
     DeliveryRoute,
     Diet,
+    EventLog,
     GlobalSettings,
     Prevadzka,
     UserProfile,
 )
 from api.reference_data import DEFAULT_DIET_NAMES
 from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX
+
+
+def test_deploy_bootstrap_calls_only_static_commands_in_order(monkeypatch):
+    call_command = Mock()
+    bootstrap_lock = Mock(return_value=nullcontext())
+    monkeypatch.setattr(deploy_bootstrap.management, "call_command", call_command)
+    monkeypatch.setattr(deploy_bootstrap, "deploy_bootstrap_lock", bootstrap_lock)
+
+    deploy_bootstrap.Command().handle(skip_migrate=False, verbosity=2)
+
+    bootstrap_lock.assert_called_once_with()
+    assert call_command.call_args_list == [
+        call("migrate", verbosity=2),
+        call("init_roles", verbosity=2),
+        call("init_reference_data", verbosity=2),
+        call("ensure_global_settings", verbosity=2),
+        call("sync_periodic_tasks", "--fix", verbosity=2),
+    ]
+
+
+def test_seed_operations_calls_data_seeds_in_order(monkeypatch):
+    call_command = Mock()
+    bootstrap_lock = Mock(return_value=nullcontext())
+    assert (
+        seed_operations.deploy_bootstrap_lock is deploy_bootstrap.deploy_bootstrap_lock
+    )
+    monkeypatch.setattr(seed_operations.management, "call_command", call_command)
+    monkeypatch.setattr(seed_operations, "deploy_bootstrap_lock", bootstrap_lock)
+
+    seed_operations.Command().handle(verbosity=2)
+
+    bootstrap_lock.assert_called_once_with()
+    assert call_command.call_args_list == [
+        call("real_initial_seed_prevadzky", "--allow-prod", verbosity=2),
+        call("seed_prevadzky_edupage", verbosity=2),
+        call("seed_zdrave_brusko", verbosity=2),
+        call("seed_real_delivery_layout", "--allow-prod", verbosity=2),
+        call("seed_merge_celky", verbosity=2),
+        call("seed_new_edupage_2026_08", verbosity=2),
+    ]
 
 
 @pytest.mark.django_db
@@ -290,4 +335,78 @@ def test_deploy_bootstrap_does_not_create_demo_logins_in_production(
 
     assert not User.objects.filter(
         email__in=["admin@example.com", "prevadzka@example.com"]
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_logs_new_version_on_success(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "prod-abc123")
+
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    logs = EventLog.objects.filter(event_type=EventLog.EventType.DEPLOY_VERSION)
+    assert logs.count() == 1
+    assert logs.get().payload["version"] == "prod-abc123"
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_does_not_log_again_for_the_same_version(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "prod-abc123")
+
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    assert (
+        EventLog.objects.filter(event_type=EventLog.EventType.DEPLOY_VERSION).count()
+        == 1
+    )
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_logs_again_when_version_changes(monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "prod-abc123")
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    monkeypatch.setenv("APP_VERSION", "prod-def456")
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    logs = EventLog.objects.filter(
+        event_type=EventLog.EventType.DEPLOY_VERSION
+    ).order_by("created_at")
+    assert [log.payload["version"] for log in logs] == ["prod-abc123", "prod-def456"]
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_does_not_log_version_without_env_var(monkeypatch):
+    monkeypatch.delenv("APP_VERSION", raising=False)
+
+    management.call_command("deploy_bootstrap", "--skip-migrate")
+
+    assert not EventLog.objects.filter(
+        event_type=EventLog.EventType.DEPLOY_VERSION
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_deploy_bootstrap_does_not_log_version_when_a_step_fails(monkeypatch):
+    """Call handle() directly (like
+    test_deploy_bootstrap_calls_only_static_commands_in_order) — going through
+    management.call_command("deploy_bootstrap", ...) would itself be
+    intercepted by the mocked call_command below, since deploy_bootstrap.py's
+    `management` import is the same shared django.core.management module."""
+    monkeypatch.setenv("APP_VERSION", "prod-abc123")
+
+    monkeypatch.setattr(
+        deploy_bootstrap.management,
+        "call_command",
+        Mock(
+            side_effect=[None, None, None, RuntimeError("sync_periodic_tasks blew up")]
+        ),
+    )
+
+    with pytest.raises(RuntimeError):
+        deploy_bootstrap.Command().handle(skip_migrate=True, verbosity=1)
+
+    assert not EventLog.objects.filter(
+        event_type=EventLog.EventType.DEPLOY_VERSION
     ).exists()

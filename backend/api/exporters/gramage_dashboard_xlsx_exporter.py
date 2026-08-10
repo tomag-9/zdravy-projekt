@@ -20,6 +20,7 @@ from .gramage_dashboard_export import (
     flat_client_rows,
     group_label,
     meal_hue,
+    portion_summary,
 )
 
 
@@ -213,6 +214,24 @@ class GramageDashboardXLSXExporter:
                     font=font,
                 )
 
+            if row.get("admin_order_note"):
+                ws.cell(
+                    row=DATA_ROW,
+                    column=1,
+                    value=f"Poznámka k objednávke: {row['admin_order_note']}",
+                )
+                ws.merge_cells(
+                    start_row=DATA_ROW,
+                    start_column=1,
+                    end_row=DATA_ROW,
+                    end_column=total_cols,
+                )
+                for c in range(1, total_cols + 1):
+                    ws.cell(row=DATA_ROW, column=c).fill = PatternFill(
+                        "solid", fgColor="EAF0E0"
+                    )
+                DATA_ROW += 1
+
             if row.get("delivery_note"):
                 ws.cell(
                     row=DATA_ROW, column=1, value=f"Poznámka: {row['delivery_note']}"
@@ -244,11 +263,21 @@ class GramageDashboardXLSXExporter:
                 cell.font = font or cat_font
             DATA_ROW += 1
 
+        def write_portion_summary(title, summary_rows, fill=route_fill):
+            write_band(title, fill, band_font)
+            for item in summary_rows:
+                write_summary_row(
+                    item["label"],
+                    item["count"],
+                    item["col_grams"],
+                    standard_fill,
+                )
+
         # ── Data rows ────────────────────────────────────────────────────────
         blocks = self.data.get("blocks") or []
         unassigned_rows = self.data.get("unassigned_rows") or []
         if blocks:
-            for block in blocks:
+            for block_index, block in enumerate(blocks):
                 write_band(block["name"], block_fill, band_font)
                 for route in block.get("routes", []):
                     suffix = []
@@ -262,6 +291,15 @@ class GramageDashboardXLSXExporter:
                     write_band(route_label, route_fill, band_font)
                     for zebra, row in enumerate(route.get("rows", [])):
                         write_client(row, zebra % 2 == 1)
+                block_rows = [
+                    row
+                    for route in block.get("routes", [])
+                    for row in route.get("rows", [])
+                ]
+                write_portion_summary(
+                    f"Súhrn porcií {block_index + 1}",
+                    portion_summary(self.data, block_rows),
+                )
             if unassigned_rows:
                 write_band("Nepriradené prevádzky", unassigned_fill, band_font)
                 for zebra, row in enumerate(unassigned_rows):
@@ -269,6 +307,10 @@ class GramageDashboardXLSXExporter:
         else:
             for zebra, row in enumerate(all_rows):
                 write_client(row, zebra % 2 == 1)
+
+        write_portion_summary(
+            "Porcie celkom", portion_summary(self.data), fill=block_fill
+        )
 
         DATA_START_ROW = HDR_ROW + 2
 

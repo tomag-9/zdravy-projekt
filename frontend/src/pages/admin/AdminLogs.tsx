@@ -22,6 +22,8 @@ const EVENT_TYPES = [
     ['auto_order_run', 'Spustenie auto-objednávok'],
     ['push_broadcast', 'Odoslanie push notifikácie'],
     ['settings_change', 'Zmena nastavení'],
+    ['cron_skipped', 'Cron úloha preskočená (víkend/voľný deň)'],
+    ['deploy_version', 'Nasadená nová verzia'],
 ] as const;
 
 type ActiveTab = 'events' | 'system';

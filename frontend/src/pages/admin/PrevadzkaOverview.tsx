@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Check, AlertTriangle, X, Upload, Smartphone, FileText, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
-import { PageHead, Button, Card, Input } from "./ui";
+import { PageHead, Card, Input } from "./ui";
+import { previousBusinessDay } from "../../lib/businessDay";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -158,41 +159,12 @@ const CategoryCard: React.FC<{
 const PrevadzkaOverview: React.FC = () => {
   const { apiFetch } = useAuth();
   const { error: toastError } = useToast();
-  const [date, setDate] = useState(() => toDateString(new Date()));
+  // "Termín dodania podkladov" nesmie pripadnúť na víkend — pri otvorení cez
+  // víkend zobrazí stav za posledný predchádzajúci pracovný deň (piatok),
+  // keďže cez víkend sa nič nedodáva a nasledujúci pondelok by ešte nemal dáta.
+  const [date, setDate] = useState(() => toDateString(previousBusinessDay(new Date())));
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [xlsxLoading, setXlsxLoading] = useState(false);
-  const [pdfLoading, setPdfLoading] = useState(false);
-
-  const handleExport = useCallback(
-    async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
-      setFmt(true);
-      try {
-        const res = await apiFetch(
-          `${API}/admin/summary/prevadzka-overview-${fmt}/?date=${date}`,
-        );
-        if (!res.ok) {
-          toastError("Chyba pri generovaní súboru.");
-          return;
-        }
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `dodanie_podkladov_${date}.${fmt}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-      } catch (e) {
-        logger.error(e);
-        toastError("Chyba pri generovaní súboru.");
-      } finally {
-        setFmt(false);
-      }
-    },
-    [apiFetch, date, toastError],
-  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -222,15 +194,7 @@ const PrevadzkaOverview: React.FC = () => {
         title="Dodanie podkladov"
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
         actions={
-          <>
-            <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto" }} />
-            <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !data}>
-              {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} PDF
-            </Button>
-            <Button variant="primary" onClick={() => handleExport("xlsx", setXlsxLoading)} disabled={xlsxLoading || loading || !data}>
-              {xlsxLoading ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} XLSX
-            </Button>
-          </>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto" }} />
         }
       />
 

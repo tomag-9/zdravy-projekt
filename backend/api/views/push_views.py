@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from api.models import EventLog, PushSubscription
+from api.notification_targets import resolve_notification_target
 from api.services.event_log_service import log_event
 from api.services.push_notification_service import PushNotificationService
 
@@ -95,7 +96,8 @@ class AdminSendPushView(APIView):
     Body:
       title   (str, required)
       body    (str, required)
-      url     (str, optional, default "/home")
+      url     (str, optional) – one of NOTIFICATION_TARGETS; missing/invalid
+               values fall back to the Inbox default (#443)
       user_id (int, optional) – send to a specific user; omit to send to all
     """
 
@@ -111,7 +113,7 @@ class AdminSendPushView(APIView):
 
         title = request.data.get("title", "").strip()
         body_text = request.data.get("body", "").strip()
-        url = request.data.get("url", "/home").strip() or "/home"
+        url = resolve_notification_target(request.data.get("url"))
         user_id = request.data.get("user_id")
 
         if not title or not body_text:

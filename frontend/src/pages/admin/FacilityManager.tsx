@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ChevronRight,
@@ -24,36 +24,13 @@ import {
   Modal,
   Field,
   Input,
-  Textarea,
   Toggle,
   Select,
 } from "./ui";
-
-interface Login {
-  user_id: number;
-  email: string;
-  company_name: string;
-  is_edupage: boolean;
-  prevadzka_ids: number[];
-}
-
-interface Prevadzka {
-  id: number;
-  celok: number;
-  celok_nazov: string;
-  nazov: string;
-  adresa: string;
-  edupage_connection: number | null;
-  edupage_connection_name: string | null;
-  edupage_match: string;
-  report_alias: string;
-  delivery_note: string;
-  sort_order: number;
-  is_active: boolean;
-  billing_portion_coefficients: Record<string, string>;
-  orders_count: number | null;
-  client_user_id: number | null;
-}
+import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
+import { PrevadzkaFields, type Prevadzka, type PrevadzkaForm } from "./facility/PrevadzkaFields";
+import { EMPTY_LOGIN, EMPTY_PREVADZKA } from "./facility/constants";
+import { normalizeForSearch } from "../../lib/searchNormalize";
 
 interface EdupageConnection {
   id: number;
@@ -92,28 +69,6 @@ interface Celok {
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
-// ── Prevádzka form ──────────────────────────────────────────────
-interface PrevadzkaForm {
-  nazov: string;
-  adresa: string;
-  edupage_connection: number | null;
-  edupage_match: string;
-  report_alias: string;
-  delivery_note: string;
-  sort_order: number;
-  is_active: boolean;
-}
-const EMPTY_PREVADZKA: PrevadzkaForm = {
-  nazov: "",
-  adresa: "",
-  edupage_connection: null,
-  edupage_match: "",
-  report_alias: "",
-  delivery_note: "",
-  sort_order: 0,
-  is_active: true,
-};
-
 // ── Celok form ──────────────────────────────────────────────────
 interface CelokForm {
   nazov: string;
@@ -123,78 +78,6 @@ interface CelokForm {
   dic: string;
   zdroj_objednavok: string;
 }
-
-// ── Login form ──────────────────────────────────────────────────
-interface LoginForm {
-  email: string;
-  company_name: string;
-}
-const EMPTY_LOGIN: LoginForm = {
-  email: "",
-  company_name: "",
-};
-
-const PrevadzkaFields: React.FC<{
-  form: PrevadzkaForm;
-  setForm: React.Dispatch<React.SetStateAction<PrevadzkaForm>>;
-  connections: EdupageConnection[];
-  showEdupage: boolean;
-}> = ({ form, setForm, connections, showEdupage }) => (
-  <>
-    <Field label="Názov prevádzky" req>
-      <Input required value={form.nazov} onChange={(e) => setForm((f) => ({ ...f, nazov: e.target.value }))} />
-    </Field>
-    <Field label="Adresa výdaja">
-      <Input value={form.adresa} onChange={(e) => setForm((f) => ({ ...f, adresa: e.target.value }))} />
-    </Field>
-    {showEdupage && (
-      <Field label="EduPage spojenie">
-        <Select
-          value={form.edupage_connection ?? ""}
-          onChange={(e) => setForm((f) => ({ ...f, edupage_connection: e.target.value ? Number(e.target.value) : null }))}
-        >
-          <option value="">Bez spojenia</option>
-          {connections.map((connection) => (
-            <option key={connection.id} value={connection.id}>
-              {connection.name}{connection.is_active ? "" : " (neaktívne)"}
-            </option>
-          ))}
-        </Select>
-      </Field>
-    )}
-    <Field label="Edupage match" hint="(prefix; ; oddeľuje viac)">
-      <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => setForm((f) => ({ ...f, edupage_match: e.target.value }))} />
-    </Field>
-    <Field label="Report alias" hint="(názov vo výkazoch)">
-      <Input value={form.report_alias} onChange={(e) => setForm((f) => ({ ...f, report_alias: e.target.value }))} />
-    </Field>
-    <Field label="Poznámka k rozvozu">
-      <Textarea rows={2} value={form.delivery_note} onChange={(e) => setForm((f) => ({ ...f, delivery_note: e.target.value }))} />
-    </Field>
-    <div className="zpa-grid-2">
-      <Field label="Poradie">
-        <Input type="number" value={form.sort_order} onChange={(e) => setForm((f) => ({ ...f, sort_order: Number(e.target.value) || 0 }))} />
-      </Field>
-      <Field label="Aktívna">
-        <Toggle on={form.is_active} onChange={(v) => setForm((f) => ({ ...f, is_active: v }))} ariaLabel="Aktívna prevádzka" />
-      </Field>
-    </div>
-  </>
-);
-
-const LoginFields: React.FC<{
-  form: LoginForm;
-  setForm: React.Dispatch<React.SetStateAction<LoginForm>>;
-}> = ({ form, setForm }) => (
-  <>
-    <Field label="Názov loginu" req>
-      <Input required value={form.company_name} onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))} />
-    </Field>
-    <Field label="Email" req>
-      <Input type="email" required value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
-    </Field>
-  </>
-);
 
 const FacilityManager: React.FC = () => {
   const { apiFetch } = useAuth();
@@ -210,15 +93,10 @@ const FacilityManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
 
-  // Prevádzka add/edit
+  // Prevádzka add
   const [modalCelok, setModalCelok] = useState<Celok | null>(null);
-  const [editTarget, setEditTarget] = useState<Prevadzka | null>(null);
   const [pForm, setPForm] = useState<PrevadzkaForm>(EMPTY_PREVADZKA);
   const [pSaving, setPSaving] = useState(false);
-
-  // Prevádzka delete
-  const [deleteTarget, setDeleteTarget] = useState<Prevadzka | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Celok edit
   const [celokEdit, setCelokEdit] = useState<Celok | null>(null);
@@ -232,9 +110,14 @@ const FacilityManager: React.FC = () => {
   });
   const [cSaving, setCSaving] = useState(false);
 
-  // Login list/add/edit/delete (target: celok, optional prevádzka)
-  const [loginListTarget, setLoginListTarget] = useState<{ celok: Celok; prevadzka: Prevadzka | null } | null>(null);
-  const [loginTarget, setLoginTarget] = useState<{ celok: Celok; prevadzka: Prevadzka | null } | null>(null);
+  // Celok delete
+  const [celokDeleteTarget, setCelokDeleteTarget] = useState<Celok | null>(null);
+  const [celokDeleting, setCelokDeleting] = useState(false);
+  const [celokDeleteError, setCelokDeleteError] = useState("");
+
+  // Login list/add/edit/delete at celok level
+  const [loginListTarget, setLoginListTarget] = useState<Celok | null>(null);
+  const [loginTarget, setLoginTarget] = useState<Celok | null>(null);
   const [loginEditTarget, setLoginEditTarget] = useState<Login | null>(null);
   const [loginDeleteTarget, setLoginDeleteTarget] = useState<Login | null>(null);
   const [lForm, setLForm] = useState<LoginForm>(EMPTY_LOGIN);
@@ -322,22 +205,7 @@ const FacilityManager: React.FC = () => {
   // ── Prevádzka ──
   const openAddPrevadzka = (celok: Celok) => {
     setModalCelok(celok);
-    setEditTarget(null);
     setPForm({ ...EMPTY_PREVADZKA });
-  };
-  const openEditPrevadzka = (celok: Celok, p: Prevadzka) => {
-    setModalCelok(celok);
-    setEditTarget(p);
-    setPForm({
-      nazov: p.nazov,
-      adresa: p.adresa,
-      edupage_connection: p.edupage_connection,
-      edupage_match: p.edupage_match,
-      report_alias: p.report_alias,
-      delivery_note: p.delivery_note,
-      sort_order: p.sort_order,
-      is_active: p.is_active,
-    });
   };
   const savePrevadzka = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -347,17 +215,15 @@ const FacilityManager: React.FC = () => {
     }
     setPSaving(true);
     try {
-      const url = editTarget ? `${API}/admin/facility-prevadzky/${editTarget.id}/` : `${API}/admin/facility-prevadzky/`;
-      const res = await apiFetch(url, {
-        method: editTarget ? "PATCH" : "POST",
+      const res = await apiFetch(`${API}/admin/facility-prevadzky/`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editTarget ? pForm : { ...pForm, celok: modalCelok.id }),
+        body: JSON.stringify({ ...pForm, celok: modalCelok.id }),
       });
       if (res.ok) {
-        success(editTarget ? "Prevádzka upravená." : "Prevádzka pridaná.");
+        success("Prevádzka pridaná.");
         setExpanded((prev) => new Set(prev).add(modalCelok.id));
         setModalCelok(null);
-        setEditTarget(null);
         fetchCelky();
       } else {
         const data = await res.json().catch(() => ({}));
@@ -370,26 +236,6 @@ const FacilityManager: React.FC = () => {
       setPSaving(false);
     }
   };
-  const doDeletePrevadzka = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      const res = await apiFetch(`${API}/admin/facility-prevadzky/${deleteTarget.id}/`, { method: "DELETE" });
-      if (res.ok || res.status === 204) {
-        success(`Prevádzka „${deleteTarget.nazov}“ bola odstránená.`);
-        setDeleteTarget(null);
-        fetchCelky();
-      } else {
-        toastError("Nepodarilo sa odstrániť prevádzku.");
-      }
-    } catch (err) {
-      logger.error(err);
-      toastError("Chyba pri odstraňovaní.");
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   // ── Celok edit ──
   const openEditCelok = (celok: Celok) => {
     setCelokEdit(celok);
@@ -430,17 +276,38 @@ const FacilityManager: React.FC = () => {
       setCSaving(false);
     }
   };
+  const doDeleteCelok = async () => {
+    if (!celokDeleteTarget) return;
+    setCelokDeleting(true);
+    setCelokDeleteError("");
+    try {
+      const res = await apiFetch(`${API}/admin/celky/${celokDeleteTarget.id}/`, { method: "DELETE" });
+      if (res.ok || res.status === 204) {
+        success(`Celok „${celokDeleteTarget.nazov}“ bol odstránený.`);
+        setCelokDeleteTarget(null);
+        fetchCelky();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setCelokDeleteError(data?.error?.message || "Nepodarilo sa odstrániť celok.");
+      }
+    } catch (err) {
+      logger.error(err);
+      setCelokDeleteError("Chyba pri odstraňovaní celku.");
+    } finally {
+      setCelokDeleting(false);
+    }
+  };
 
   // ── Login ──
-  const openAddLogin = (celok: Celok, prevadzka: Prevadzka | null) => {
+  const openAddLogin = (celok: Celok) => {
     setLoginEditTarget(null);
-    setLoginTarget({ celok, prevadzka });
-    setLForm({ ...EMPTY_LOGIN, company_name: prevadzka?.nazov || celok.nazov });
+    setLoginTarget(celok);
+    setLForm({ ...EMPTY_LOGIN, company_name: celok.nazov });
   };
-  const openEditLogin = (celok: Celok, prevadzka: Prevadzka | null, login: Login) => {
+  const openEditLogin = (celok: Celok, login: Login) => {
     setLoginListTarget(null);
     setLoginEditTarget(login);
-    setLoginTarget({ celok, prevadzka });
+    setLoginTarget(celok);
     setLForm({ email: login.email, company_name: login.company_name });
   };
   const closeLoginEditor = () => {
@@ -460,12 +327,10 @@ const FacilityManager: React.FC = () => {
         company_name: lForm.company_name,
         is_staff: false,
         is_active: true,
-        celok: loginTarget.celok.id,
+        celok: loginTarget.id,
       };
       if (loginEditTarget) {
         body.prevadzky = loginEditTarget.prevadzka_ids;
-      } else if (loginTarget.prevadzka) {
-        body.prevadzky = [loginTarget.prevadzka.id];
       }
       const res = await apiFetch(
         loginEditTarget ? `${API}/admin/users/${loginEditTarget.user_id}/` : `${API}/admin/users/`,
@@ -477,7 +342,7 @@ const FacilityManager: React.FC = () => {
       );
       if (res.ok) {
         success(loginEditTarget ? "Login bol upravený." : "Login bol vytvorený.");
-        setExpanded((prev) => new Set(prev).add(loginTarget.celok.id));
+        setExpanded((prev) => new Set(prev).add(loginTarget.id));
         closeLoginEditor();
         fetchCelky();
       } else {
@@ -513,32 +378,12 @@ const FacilityManager: React.FC = () => {
     }
   };
 
-  // celok.logins.filter((login) => login.prevadzka_ids.includes(p.id)) inside the
-  // prevádzka row map below would re-scan every login of the celok for every row —
-  // O(prevádzky × logins) on each render. Index once per celok instead.
-  const loginsByPrevadzka = useMemo(() => {
-    const map = new Map<number, Login[]>();
-    for (const celok of celky) {
-      for (const login of celok.logins) {
-        for (const prevadzkaId of login.prevadzka_ids) {
-          const existing = map.get(prevadzkaId);
-          if (existing) {
-            existing.push(login);
-          } else {
-            map.set(prevadzkaId, [login]);
-          }
-        }
-      }
-    }
-    return map;
-  }, [celky]);
-
-  const term = searchTerm.toLowerCase();
+  const term = normalizeForSearch(searchTerm);
   const filtered = celky.filter(
     (c) =>
-      c.nazov.toLowerCase().includes(term) ||
-      (c.billing_name ?? "").toLowerCase().includes(term) ||
-      c.prevadzky.some((p) => p.nazov.toLowerCase().includes(term)),
+      normalizeForSearch(c.nazov).includes(term) ||
+      normalizeForSearch(c.billing_name ?? "").includes(term) ||
+      c.prevadzky.some((p) => normalizeForSearch(p.nazov).includes(term)),
   );
 
   return (
@@ -581,11 +426,11 @@ const FacilityManager: React.FC = () => {
                           tabIndex={0}
                           aria-label={`Zobraziť loginy celku ${celok.nazov}`}
                           style={{ cursor: "pointer" }}
-                          onClick={() => setLoginListTarget({ celok, prevadzka: null })}
+                          onClick={() => setLoginListTarget(celok)}
                           onKeyDown={(event) => {
                             if (event.key === "Enter" || event.key === " ") {
                               event.preventDefault();
-                              setLoginListTarget({ celok, prevadzka: null });
+                              setLoginListTarget(celok);
                             }
                           }}
                         >
@@ -594,8 +439,18 @@ const FacilityManager: React.FC = () => {
                       )}
                       <div className="zpa-celok-actions">
                         <IconButton onClick={() => openEditCelok(celok)} title="Upraviť celok" aria-label="Upraviť celok"><Pencil /></IconButton>
-                        <IconButton onClick={() => openAddLogin(celok, null)} title="Pridať login" aria-label="Pridať login"><UserPlus /></IconButton>
+                        <IconButton onClick={() => openAddLogin(celok)} title="Pridať login" aria-label="Pridať login"><UserPlus /></IconButton>
                         <IconButton onClick={() => openAddPrevadzka(celok)} title="Pridať prevádzku" aria-label="Pridať prevádzku"><Plus /></IconButton>
+                        <IconButton
+                          onClick={() => {
+                            setCelokDeleteError("");
+                            setCelokDeleteTarget(celok);
+                          }}
+                          title="Vymazať celok"
+                          aria-label={`Vymazať celok ${celok.nazov}`}
+                        >
+                          <Trash2 />
+                        </IconButton>
                       </div>
                     </div>
 
@@ -615,31 +470,11 @@ const FacilityManager: React.FC = () => {
                             {celok.prevadzky.length === 0 ? (
                               <tr><td colSpan={5} className="c" style={{ color: "var(--ink-mute)", padding: 16 }}>Žiadne prevádzky</td></tr>
                             ) : (
-                              celok.prevadzky.map((p) => {
-                                const prevadzkaLogins = loginsByPrevadzka.get(p.id) ?? [];
-                                return (
+                              celok.prevadzky.map((p) => (
                                   <tr key={p.id} style={{ opacity: p.is_active ? 1 : 0.5 }}>
                                     <td>
                                       {p.nazov}
                                       {!p.is_active && <Badge tone="gray" style={{ marginLeft: 8 }}>neaktívna</Badge>}
-                                      {prevadzkaLogins.length > 0 && (
-                                        <Badge
-                                          tone="honey"
-                                          role="button"
-                                          tabIndex={0}
-                                          aria-label={`Zobraziť loginy prevádzky ${p.nazov}`}
-                                          style={{ marginLeft: 8, cursor: "pointer" }}
-                                          onClick={() => setLoginListTarget({ celok, prevadzka: p })}
-                                          onKeyDown={(event) => {
-                                            if (event.key === "Enter" || event.key === " ") {
-                                              event.preventDefault();
-                                              setLoginListTarget({ celok, prevadzka: p });
-                                            }
-                                          }}
-                                        >
-                                          <Users size={12} style={{ verticalAlign: "-2px" }} /> {prevadzkaLogins.length}
-                                        </Badge>
-                                      )}
                                     </td>
                                     <td style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.adresa || "—"}</td>
                                     <td style={{ fontSize: 12, color: "var(--ink-3)" }}>{p.edupage_match || "—"}</td>
@@ -649,14 +484,10 @@ const FacilityManager: React.FC = () => {
                                         <Link to={`/admin/facilities/${p.id}`} className="zpa-iconbtn" title="Otvoriť detail" aria-label="Otvoriť detail">
                                           <Eye />
                                         </Link>
-                                        <IconButton onClick={() => openAddLogin(celok, p)} title="Pridať login" aria-label="Pridať login"><UserPlus /></IconButton>
-                                        <IconButton onClick={() => openEditPrevadzka(celok, p)} title="Upraviť" aria-label="Upraviť"><Pencil /></IconButton>
-                                        <IconButton onClick={() => setDeleteTarget(p)} title="Odstrániť" aria-label="Odstrániť"><Trash2 /></IconButton>
                                       </div>
                                     </td>
                                   </tr>
-                                );
-                              })
+                              ))
                             )}
                           </tbody>
                         </table>
@@ -673,14 +504,14 @@ const FacilityManager: React.FC = () => {
         </Card>
       </div>
 
-      {/* Prevádzka add/edit */}
+      {/* Prevádzka add */}
       {modalCelok && (
         <Modal
-          title={editTarget ? `Upraviť prevádzku — ${modalCelok.nazov}` : `Pridať prevádzku — ${modalCelok.nazov}`}
-          onClose={() => { setModalCelok(null); setEditTarget(null); }}
+          title={`Pridať prevádzku — ${modalCelok.nazov}`}
+          onClose={() => setModalCelok(null)}
           foot={<>
-            <Button variant="ghost" onClick={() => { setModalCelok(null); setEditTarget(null); }}>Zrušiť</Button>
-            <Button type="submit" form="prevadzka-form" disabled={pSaving}>{pSaving ? "Ukladám…" : editTarget ? "Uložiť" : "Pridať"}</Button>
+            <Button variant="ghost" onClick={() => setModalCelok(null)}>Zrušiť</Button>
+            <Button type="submit" form="prevadzka-form" disabled={pSaving}>{pSaving ? "Ukladám…" : "Pridať"}</Button>
           </>}
         >
           <form id="prevadzka-form" onSubmit={savePrevadzka} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -732,19 +563,61 @@ const FacilityManager: React.FC = () => {
         </Modal>
       )}
 
+      {/* Celok delete */}
+      {celokDeleteTarget && (
+        <Modal
+          title="Vymazať celok"
+          onClose={() => {
+            if (!celokDeleting) {
+              setCelokDeleteTarget(null);
+              setCelokDeleteError("");
+            }
+          }}
+          icon={<AlertTriangle />}
+          iconKind="danger"
+          foot={<>
+            <Button
+              variant="ghost"
+              onClick={() => { setCelokDeleteTarget(null); setCelokDeleteError(""); }}
+              disabled={celokDeleting}
+            >
+              Zrušiť
+            </Button>
+            <Button variant="danger" onClick={doDeleteCelok} disabled={celokDeleting}>
+              {celokDeleting ? "Odstraňujem…" : "Odstrániť"}
+            </Button>
+          </>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+              Naozaj odstrániť celok „<strong style={{ color: "var(--green-900)" }}>{celokDeleteTarget.nazov}</strong>“?
+              Táto akcia je nevratná.
+            </p>
+            {celokDeleteTarget.prevadzky_count > 0 && (
+              <p style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                Celok má {celokDeleteTarget.prevadzky_count}{" "}
+                {celokDeleteTarget.prevadzky_count === 1 ? "prevádzku" : "prevádzok"}, ktoré zablokujú jeho odstránenie —
+                najprv ich treba vymazať alebo presunúť.
+              </p>
+            )}
+            {celokDeleteError && (
+              <p role="alert" style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
+                {celokDeleteError}
+              </p>
+            )}
+          </div>
+        </Modal>
+      )}
+
       {/* Login list */}
-      {loginListTarget && (() => {
-        const listedLogins = loginListTarget.prevadzka
-          ? loginListTarget.celok.logins.filter((login) => login.prevadzka_ids.includes(loginListTarget.prevadzka!.id))
-          : loginListTarget.celok.logins;
-        return (
+      {loginListTarget && (
           <Modal
-            title={loginListTarget.prevadzka ? `Loginy — ${loginListTarget.prevadzka.nazov}` : `Loginy — ${loginListTarget.celok.nazov}`}
+            title={`Loginy — ${loginListTarget.nazov}`}
             onClose={() => setLoginListTarget(null)}
             wide
             foot={<Button variant="ghost" onClick={() => setLoginListTarget(null)}>Zavrieť</Button>}
           >
-            {listedLogins.map((login) => (
+            {loginListTarget.logins.map((login) => (
               <div key={login.user_id} className="zpa-listrow" style={{ paddingInline: 0 }}>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="lr-ttl" style={{ textTransform: "none" }}>{login.company_name || login.email}</div>
@@ -752,7 +625,7 @@ const FacilityManager: React.FC = () => {
                 </div>
                 {login.is_edupage && <Badge tone="teal">EduPage</Badge>}
                 <IconButton
-                  onClick={() => openEditLogin(loginListTarget.celok, loginListTarget.prevadzka, login)}
+                  onClick={() => openEditLogin(loginListTarget, login)}
                   title="Upraviť login"
                   aria-label={`Upraviť login ${login.email}`}
                 >
@@ -771,17 +644,14 @@ const FacilityManager: React.FC = () => {
               </div>
             ))}
           </Modal>
-        );
-      })()}
+      )}
 
       {/* Login add/edit */}
       {loginTarget && (
         <Modal
           title={loginEditTarget
             ? `Upraviť login — ${loginEditTarget.email}`
-            : loginTarget.prevadzka
-              ? `Pridať login — ${loginTarget.prevadzka.nazov}`
-              : `Pridať login — ${loginTarget.celok.nazov}`}
+            : `Pridať login — ${loginTarget.nazov}`}
           onClose={closeLoginEditor}
           foot={<>
             <Button variant="ghost" onClick={closeLoginEditor}>Zrušiť</Button>
@@ -792,9 +662,7 @@ const FacilityManager: React.FC = () => {
         >
           {!loginEditTarget && (
             <p style={{ margin: "0 0 4px", fontSize: 13, color: "var(--ink-3)" }}>
-              {loginTarget.prevadzka
-                ? `Login bude objednávať len za prevádzku „${loginTarget.prevadzka.nazov}“.`
-                : `Login bude objednávať za celý celok „${loginTarget.celok.nazov}“ (všetky prevádzky).`}
+              Login bude objednávať za celý celok „{loginTarget.nazov}“ (všetky prevádzky).
             </p>
           )}
           <form id="login-form" onSubmit={saveLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -819,27 +687,6 @@ const FacilityManager: React.FC = () => {
         >
           <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
             Naozaj odstrániť login <strong style={{ color: "var(--green-900)" }}>{loginDeleteTarget.email}</strong>?
-          </p>
-        </Modal>
-      )}
-
-      {/* Prevádzka delete */}
-      {deleteTarget && (
-        <Modal
-          title="Odstrániť prevádzku"
-          onClose={() => setDeleteTarget(null)}
-          icon={<AlertTriangle />}
-          iconKind="danger"
-          foot={<>
-            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Zrušiť</Button>
-            <Button variant="danger" onClick={doDeletePrevadzka} disabled={deleting}>{deleting ? "Odstraňujem…" : "Odstrániť"}</Button>
-          </>}
-        >
-          <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
-            Naozaj odstrániť prevádzku <strong style={{ color: "var(--green-900)" }}>{deleteTarget.nazov}</strong>?
-            {(deleteTarget.orders_count ?? 0) > 0 && (
-              <> Táto akcia je nevratná a vymaže aj jej <strong>{deleteTarget.orders_count}</strong> objednávok.</>
-            )}
           </p>
         </Modal>
       )}
