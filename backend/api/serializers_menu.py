@@ -1,7 +1,7 @@
 """Serializers for the Jedálniček (Meal Plan) module."""
 
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rest_framework import serializers
 
@@ -71,15 +71,19 @@ def _weight_label_from_components(
 
 
 def _base_weight_grams_from_components(components: list) -> Decimal:
-    total = sum(
-        (
-            Decimal(str(c["grams"]))
-            for c in components
-            if c.get("unit", "g") in _COMPONENT_NUMERIC_UNITS
-            and c.get("grams") not in (None, "")
-        ),
-        Decimal("0"),
-    )
+    total = Decimal("0")
+    for c in components:
+        if c.get("unit", "g") not in _COMPONENT_NUMERIC_UNITS:
+            continue
+        grams = c.get("grams")
+        if grams in (None, ""):
+            continue
+        try:
+            total += Decimal(str(grams).replace(",", "."))
+        except InvalidOperation as exc:
+            raise serializers.ValidationError(
+                {"components": f"Neplatná gramáž zložky: {grams!r}"}
+            ) from exc
     return total.quantize(Decimal("0.01"))
 
 
