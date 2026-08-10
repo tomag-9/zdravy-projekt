@@ -290,11 +290,11 @@ class TestAdminSendPushView:
         assert response.status_code == status.HTTP_200_OK
         assert response.json()["sent"] == 1
         mock_send.assert_called_once_with(
-            user_id=user.pk, title="Hi", body="Message", url="/home"
+            user_id=user.pk, title="Hi", body="Message", url="/inbox"
         )
 
-    def test_default_url_is_home(self, admin_client):
-        """When url is omitted the default /home is passed to the service."""
+    def test_default_url_is_inbox(self, admin_client):
+        """When url is omitted the default /inbox is passed to the service (#443)."""
         from unittest.mock import patch
 
         with patch(
@@ -309,7 +309,25 @@ class TestAdminSendPushView:
             )
 
         _, kwargs = mock_send.call_args
-        assert kwargs["url"] == "/home"
+        assert kwargs["url"] == "/inbox"
+
+    def test_invalid_url_falls_back_to_inbox(self, admin_client):
+        """An unsupported/arbitrary url must never be forwarded verbatim (#443)."""
+        from unittest.mock import patch
+
+        with patch(
+            "api.views.push_views.PushNotificationService.send_to_all_subscribers"
+        ) as mock_send:
+            mock_send.return_value = {"sent": 0, "failed": 0}
+
+            admin_client.post(
+                ADMIN_SEND_URL,
+                {"title": "Test", "body": "Body", "url": "https://evil.example/"},
+                format="json",
+            )
+
+        _, kwargs = mock_send.call_args
+        assert kwargs["url"] == "/inbox"
 
     def test_returns_503_when_push_dependency_is_unavailable(self, admin_client):
         from unittest.mock import patch

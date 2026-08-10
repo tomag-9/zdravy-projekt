@@ -289,6 +289,46 @@ class TestSendToUser:
         assert result["sent"] == 0
         assert result["stale_removed"] == 0
 
+    def test_guarantees_an_inbox_entry_even_without_any_subscription(self, settings):
+        """#443: Inbox delivery must not depend on push delivery — a user
+        with zero push subscriptions still gets the message in their Inbox."""
+        settings.VAPID_PRIVATE_KEY = "fake-key"
+        settings.VAPID_ADMIN_EMAIL = "admin@example.com"
+        user = UserFactory()
+
+        PushNotificationService.send_to_user(
+            user_id=user.pk, title="Hi", body="Message", url="/inbox"
+        )
+
+        inbox_entry = PushNotificationAttempt.objects.get(
+            user_id=user.pk, subscription__isnull=True
+        )
+        assert inbox_entry.status == PushNotificationAttempt.STATUS_SENT
+        assert inbox_entry.title == "Hi"
+        assert inbox_entry.body == "Message"
+        assert inbox_entry.url == "/inbox"
+
+    def test_guarantees_an_inbox_entry_even_when_push_also_succeeds(self, settings):
+        """The canonical Inbox record is created unconditionally — not
+        skipped just because the user also has an active subscription."""
+        settings.VAPID_PRIVATE_KEY = "fake-key"
+        settings.VAPID_ADMIN_EMAIL = "admin@example.com"
+        user = UserFactory()
+        PushSubscriptionFactory(user=user)
+
+        with patch.object(
+            PushNotificationService,
+            "send_to_subscription",
+            return_value=(True, False),
+        ):
+            PushNotificationService.send_to_user(
+                user_id=user.pk, title="Hi", body="Message"
+            )
+
+        assert PushNotificationAttempt.objects.filter(
+            user_id=user.pk, subscription__isnull=True, status="sent"
+        ).exists()
+
 
 @pytest.mark.django_db
 class TestSendToAllSubscribers:

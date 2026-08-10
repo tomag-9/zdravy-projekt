@@ -107,7 +107,7 @@ class PushNotificationService:
         subscription: Any,
         title: str,
         body: str,
-        url: str = "/home",
+        url: str = "/inbox",
     ) -> tuple[bool, bool]:
         """
         Send a single push message to one subscription.
@@ -233,14 +233,29 @@ class PushNotificationService:
         user_id: int,
         title: str,
         body: str,
-        url: str = "/home",
+        url: str = "/inbox",
     ) -> dict:
         """
-        Send a push notification to all subscriptions of a given user.
+        Send a push notification to all subscriptions of a given user, and
+        guarantee the message lands in their in-app Inbox regardless of
+        whether they have any push subscription at all (#443) — Inbox
+        delivery must not depend on push delivery succeeding, or even being
+        attempted (a user who never granted browser push permission still
+        has an Inbox).
 
         Returns {"sent": int, "stale_removed": int}.
         """
-        from api.models import PushSubscription
+        from api.models import PushNotificationAttempt, PushSubscription
+
+        PushNotificationAttempt.objects.create(
+            user_id=user_id,
+            subscription=None,
+            title=title[:200],
+            body=body,
+            url=url[:500],
+            status=PushNotificationAttempt.STATUS_SENT,
+            attempt_number=1,
+        )
 
         subscriptions = list(PushSubscription.objects.filter(user_id=user_id))
         sent = 0
@@ -261,7 +276,7 @@ class PushNotificationService:
     def send_to_all_subscribers(
         title: str,
         body: str,
-        url: str = "/home",
+        url: str = "/inbox",
     ) -> dict:
         """
         Send a push notification to all stored subscriptions (bulk send).
