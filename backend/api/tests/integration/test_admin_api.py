@@ -348,6 +348,46 @@ class MealTemplateCatalogApiTest(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_admin_can_add_a_template_with_comma_decimal_grams(self):
+        # Slovak decimal notation ("50,5") must not blow up Decimal() parsing
+        # with a raw 500 (ConversionSyntax) — it should be normalized like a dot.
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "soup",
+                "name": "Polievka s desatinnou čiarkou",
+                "components": [
+                    {"label": "Hlavná zložka", "grams": "50,5", "unit": "g"},
+                    {"label": "Extra zložka", "grams": "20", "unit": "g"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        payload = response.json()
+        self.assertEqual(payload["base_weight_grams"], "70.50")
+
+    def test_creating_a_template_with_non_numeric_grams_is_rejected_not_500(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "soup",
+                "name": "Polievka s neplatnou gramážou",
+                "components": [
+                    {"label": "Hlavná zložka", "grams": "abc", "unit": "g"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("components", response.json()["error"]["details"])
+
 
 class AdminPortionTypeApiTest(APITestCase):
     def setUp(self):
