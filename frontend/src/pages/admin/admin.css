@@ -732,7 +732,16 @@
 .zpa-gram .summ-diet td { color: inherit; border-top: 1px solid var(--line-soft); font-weight: 700; }
 .zpa-gram tfoot .band td { background: var(--green-800); color: var(--peach-400); font-family: var(--font-display); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); padding: 9px 16px; }
 .zpa-gram tfoot .total td { background: var(--green-900); color: #fff; font-family: var(--font-display); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
-.zpa-gram tfoot .total .corner { background: var(--green-900); }
+.zpa-gram tfoot .total .corner { background: var(--green-900); text-align: left; }
+
+/* Poznámky pod klientom — predtým inline štýly v JSX, teraz triedy zo spec-u,
+ * aby ich rovnako zafarbilo aj PDF. */
+.zpa-gram .note-admin td,
+.zpa-gram .note-delivery td { font-size: 13px; padding: 10px 20px; }
+.zpa-gram .note-admin td { background: rgba(114,136,75,0.06); color: var(--green-800); }
+.zpa-gram .note-delivery td { background: rgba(255,201,92,0.14); color: var(--mustard-700); }
+.zpa-gram .note-admin strong,
+.zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
 /* ========================================================== *
  * Calendar
