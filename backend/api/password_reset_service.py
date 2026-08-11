@@ -141,10 +141,18 @@ def confirm_password_reset(token: str, new_password: str) -> None:
     try:
         reset_token = PasswordResetToken.objects.select_related("user").get(token=token)
     except PasswordResetToken.DoesNotExist:
-        raise ValueError("Neplatný alebo expirovaný odkaz na obnovu hesla.")
+        # Token neexistuje vôbec (napr. účet bol medzitým zmazaný/nahradený) —
+        # nerozlišujeme prečo, aby sme neprezradili nič o existencii účtu.
+        raise ValueError("Neplatný odkaz.")
 
-    if not reset_token.is_valid:
-        raise ValueError("Neplatný alebo expirovaný odkaz na obnovu hesla.")
+    # Rozlíšené hlášky pre "už použitý" vs. "skutočne expiroval" — obe sú bezpečné
+    # na zobrazenie (neprezrádzajú nič o cieľovom účte), ale pomáhajú admin/klient
+    # diagnostike namiesto jednej generickej hlášky pre všetko (issue #461).
+    if reset_token.used:
+        raise ValueError("Tento odkaz už bol použitý, požiadajte o nový.")
+
+    if reset_token.is_expired:
+        raise ValueError("Odkaz vypršal, požiadajte o nový.")
 
     user = reset_token.user
 

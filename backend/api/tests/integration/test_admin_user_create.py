@@ -428,3 +428,110 @@ class TestAdminUserCreate:
         assert not User.objects.filter(pk=user.pk).exists()
         assert not UserProfile.objects.filter(pk=profile.pk).exists()
         assert not ProfileCelokAccess.objects.filter(profile_id=profile.pk).exists()
+
+    def test_update_email_change_invalidates_password_and_resends_setup(
+        self, admin_client
+    ):
+        """Issue #460: changing a login's email forces a new password (setup
+        link resent) instead of leaving the old password usable under a mail
+        the admin can no longer reach the user at."""
+        user = User.objects.create_user(
+            username="old@example.com",
+            email="old@example.com",
+            password="StrongPass123",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(nazov="Email change celok")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+        assert user.has_usable_password()
+
+        with patch(_SETUP_EMAIL) as mock_email:
+            res = admin_client.patch(
+                f"{API_URL}{user.pk}/",
+                {"email": "new@example.com"},
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_200_OK
+        mock_email.assert_called_once()
+        user.refresh_from_db()
+        assert user.email == "new@example.com"
+        assert user.username == "new@example.com"
+        assert not user.has_usable_password()
+
+    def test_update_without_email_change_keeps_password(self, admin_client):
+        """Updating unrelated fields must not touch the password or resend
+        a setup email — only an actual email change should (issue #460)."""
+        user = User.objects.create_user(
+            username="stable@example.com",
+            email="stable@example.com",
+            password="StrongPass123",
+        )
+        UserProfile.objects.create(user=user)
+
+        with patch(_SETUP_EMAIL) as mock_email:
+            res = admin_client.patch(
+                f"{API_URL}{user.pk}/",
+                {"first_name": "Stable"},
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_200_OK
+        mock_email.assert_not_called()
+        user.refresh_from_db()
+        assert user.has_usable_password()
+
+    def test_update_email_change_case_only_keeps_password(self, admin_client):
+        """A same-address case change (Foo@x.sk -> foo@x.sk) is not a real
+        email change and must not force a password reset."""
+        user = User.objects.create_user(
+            username="case@example.com",
+            email="case@example.com",
+            password="StrongPass123",
+        )
+        UserProfile.objects.create(user=user)
+
+        with patch(_SETUP_EMAIL) as mock_email:
+            res = admin_client.patch(
+                f"{API_URL}{user.pk}/",
+                {"email": "CASE@example.com"},
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_200_OK
+        mock_email.assert_not_called()
+        user.refresh_from_db()
+        assert user.has_usable_password()
+
+    def test_update_email_change_for_edupage_only_login_skips_resend(
+        self, admin_client
+    ):
+        """Edupage-only logins never get a setup email on create either — an
+        email change for them must not suddenly send one."""
+        user = User.objects.create_user(
+            username="edu-old@example.com",
+            email="edu-old@example.com",
+            password="StrongPass123",
+        )
+        profile = UserProfile(user=user)
+        profile._skip_default_facility = True
+        profile.save()
+        celok = Celok.objects.create(
+            nazov="Edupage change celok", zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE
+        )
+        Prevadzka.objects.create(celok=celok, nazov="Edupage prevádzka")
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+        with patch(_SETUP_EMAIL) as mock_email:
+            res = admin_client.patch(
+                f"{API_URL}{user.pk}/",
+                {"email": "edu-new@example.com"},
+                format="json",
+            )
+
+        assert res.status_code == status.HTTP_200_OK
+        mock_email.assert_not_called()
+        user.refresh_from_db()
+        assert user.has_usable_password()

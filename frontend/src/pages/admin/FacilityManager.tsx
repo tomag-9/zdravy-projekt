@@ -98,8 +98,9 @@ const FacilityManager: React.FC = () => {
   const [pForm, setPForm] = useState<PrevadzkaForm>(EMPTY_PREVADZKA);
   const [pSaving, setPSaving] = useState(false);
 
-  // Celok edit
+  // Celok create/edit — rovnaký formulár (cForm), rozlíšené cez celokCreateOpen.
   const [celokEdit, setCelokEdit] = useState<Celok | null>(null);
+  const [celokCreateOpen, setCelokCreateOpen] = useState(false);
   const [cForm, setCForm] = useState<CelokForm>({
     nazov: "",
     billing_name: "",
@@ -109,6 +110,10 @@ const FacilityManager: React.FC = () => {
     zdroj_objednavok: "app",
   });
   const [cSaving, setCSaving] = useState(false);
+  // Onboarding nového celku (issue #463): po vytvorení celku rovno navedieme
+  // admina cez existujúce "pridať prevádzku" a "pridať login" modály, aby
+  // založenie novej škôlky nevyžadovalo prepínanie do django shellu.
+  const [onboardingCelokId, setOnboardingCelokId] = useState<number | null>(null);
 
   // Celok delete
   const [celokDeleteTarget, setCelokDeleteTarget] = useState<Celok | null>(null);
@@ -207,6 +212,10 @@ const FacilityManager: React.FC = () => {
     setModalCelok(celok);
     setPForm({ ...EMPTY_PREVADZKA });
   };
+  const closeAddPrevadzka = () => {
+    if (modalCelok && onboardingCelokId === modalCelok.id) setOnboardingCelokId(null);
+    setModalCelok(null);
+  };
   const savePrevadzka = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!modalCelok || !pForm.nazov.trim()) {
@@ -223,8 +232,15 @@ const FacilityManager: React.FC = () => {
       if (res.ok) {
         success("Prevádzka pridaná.");
         setExpanded((prev) => new Set(prev).add(modalCelok.id));
+        const onboardingTarget = onboardingCelokId === modalCelok.id ? modalCelok : null;
         setModalCelok(null);
-        fetchCelky();
+        await fetchCelky();
+        if (onboardingTarget) {
+          // Onboarding nového celku (issue #463) pokračuje pridaním prvého loginu.
+          openAddLogin(onboardingTarget);
+        } else {
+          setOnboardingCelokId(null);
+        }
       } else {
         const data = await res.json().catch(() => ({}));
         toastError(data?.nazov?.[0] || data?.error?.message || "Nepodarilo sa uložiť prevádzku.");
@@ -236,7 +252,7 @@ const FacilityManager: React.FC = () => {
       setPSaving(false);
     }
   };
-  // ── Celok edit ──
+  // ── Celok create/edit ──
   const openEditCelok = (celok: Celok) => {
     setCelokEdit(celok);
     setCForm({
@@ -248,23 +264,40 @@ const FacilityManager: React.FC = () => {
       zdroj_objednavok: celok.zdroj_objednavok || "app",
     });
   };
+  const openCreateCelok = () => {
+    setCForm({ nazov: "", billing_name: "", adresa: "", ico: "", dic: "", zdroj_objednavok: "app" });
+    setCelokCreateOpen(true);
+  };
+  const closeCelokModal = () => {
+    setCelokEdit(null);
+    setCelokCreateOpen(false);
+  };
   const saveCelok = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!celokEdit || !cForm.nazov.trim()) {
+    if (!cForm.nazov.trim()) {
       toastError("Názov celku je povinný.");
       return;
     }
     setCSaving(true);
     try {
-      const res = await apiFetch(`${API}/admin/celky/${celokEdit.id}/`, {
-        method: "PATCH",
+      const url = celokCreateOpen ? `${API}/admin/celky/` : `${API}/admin/celky/${celokEdit!.id}/`;
+      const res = await apiFetch(url, {
+        method: celokCreateOpen ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cForm),
       });
       if (res.ok) {
-        success("Celok upravený.");
-        setCelokEdit(null);
-        fetchCelky();
+        const data: Celok = await res.json();
+        closeCelokModal();
+        await fetchCelky();
+        if (celokCreateOpen) {
+          success(`Celok „${data.nazov}“ bol vytvorený. Pridajte prvú prevádzku.`);
+          setExpanded((prev) => new Set(prev).add(data.id));
+          setOnboardingCelokId(data.id);
+          openAddPrevadzka(data);
+        } else {
+          success("Celok upravený.");
+        }
       } else {
         const data = await res.json().catch(() => ({}));
         toastError(data?.nazov?.[0] || data?.error?.message || "Nepodarilo sa uložiť celok.");
@@ -311,6 +344,10 @@ const FacilityManager: React.FC = () => {
     setLForm({ email: login.email, company_name: login.company_name });
   };
   const closeLoginEditor = () => {
+    // Zrušenie posledného kroku onboardingu nesmie nechať "zaseknutý" stav —
+    // ďalšie bežné pridanie prevádzky do toho istého celku by inak omylom
+    // znova otvorilo krok "pridať login".
+    if (loginTarget && onboardingCelokId === loginTarget.id) setOnboardingCelokId(null);
     setLoginTarget(null);
     setLoginEditTarget(null);
   };
@@ -341,8 +378,16 @@ const FacilityManager: React.FC = () => {
         },
       );
       if (res.ok) {
-        success(loginEditTarget ? "Login bol upravený." : "Login bol vytvorený.");
+        const wasOnboarding = onboardingCelokId === loginTarget.id;
+        success(
+          wasOnboarding
+            ? "Hotovo — celok, prevádzka aj login sú založené."
+            : loginEditTarget
+              ? "Login bol upravený."
+              : "Login bol vytvorený.",
+        );
         setExpanded((prev) => new Set(prev).add(loginTarget.id));
+        if (wasOnboarding) setOnboardingCelokId(null);
         closeLoginEditor();
         fetchCelky();
       } else {
@@ -392,7 +437,10 @@ const FacilityManager: React.FC = () => {
         eyebrow="Prevádzky"
         title="Správa prevádzok"
         desc="Celky a ich prevádzky — rozbaľte celok pre správu prevádzok"
-        actions={<Button variant="secondary" onClick={() => setConnectionsOpen(true)}>EduPage spojenia</Button>}
+        actions={<>
+          <Button variant="secondary" onClick={() => setConnectionsOpen(true)}>EduPage spojenia</Button>
+          <Button onClick={openCreateCelok}><Plus /> Nový celok</Button>
+        </>}
       />
 
       <div className="zpa-stack">
@@ -508,9 +556,9 @@ const FacilityManager: React.FC = () => {
       {modalCelok && (
         <Modal
           title={`Pridať prevádzku — ${modalCelok.nazov}`}
-          onClose={() => setModalCelok(null)}
+          onClose={closeAddPrevadzka}
           foot={<>
-            <Button variant="ghost" onClick={() => setModalCelok(null)}>Zrušiť</Button>
+            <Button variant="ghost" onClick={closeAddPrevadzka}>Zrušiť</Button>
             <Button type="submit" form="prevadzka-form" disabled={pSaving}>{pSaving ? "Ukladám…" : "Pridať"}</Button>
           </>}
         >
@@ -525,17 +573,24 @@ const FacilityManager: React.FC = () => {
         </Modal>
       )}
 
-      {/* Celok edit */}
-      {celokEdit && (
+      {/* Celok create/edit */}
+      {(celokEdit || celokCreateOpen) && (
         <Modal
-          title={`Upraviť celok — ${celokEdit.nazov}`}
-          onClose={() => setCelokEdit(null)}
+          title={celokCreateOpen ? "Nový celok" : `Upraviť celok — ${celokEdit!.nazov}`}
+          onClose={closeCelokModal}
           foot={<>
-            <Button variant="ghost" onClick={() => setCelokEdit(null)}>Zrušiť</Button>
-            <Button type="submit" form="celok-form" disabled={cSaving}>{cSaving ? "Ukladám…" : "Uložiť"}</Button>
+            <Button variant="ghost" onClick={closeCelokModal}>Zrušiť</Button>
+            <Button type="submit" form="celok-form" disabled={cSaving}>
+              {cSaving ? "Ukladám…" : celokCreateOpen ? "Vytvoriť celok" : "Uložiť"}
+            </Button>
           </>}
         >
           <form id="celok-form" onSubmit={saveCelok} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {celokCreateOpen && (
+              <p style={{ margin: 0, fontSize: 13, color: "var(--ink-mute)" }}>
+                Po vytvorení celku vás rovno prevedieme založením prvej prevádzky a loginu.
+              </p>
+            )}
             <Field label="Názov celku" req>
               <Input required value={cForm.nazov} onChange={(e) => setCForm((f) => ({ ...f, nazov: e.target.value }))} />
             </Field>
@@ -593,12 +648,36 @@ const FacilityManager: React.FC = () => {
               Naozaj odstrániť celok „<strong style={{ color: "var(--green-900)" }}>{celokDeleteTarget.nazov}</strong>“?
               Táto akcia je nevratná.
             </p>
-            {celokDeleteTarget.prevadzky_count > 0 && (
-              <p style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
-                Celok má {celokDeleteTarget.prevadzky_count}{" "}
-                {celokDeleteTarget.prevadzky_count === 1 ? "prevádzku" : "prevádzok"}, ktoré zablokujú jeho odstránenie —
-                najprv ich treba vymazať alebo presunúť.
-              </p>
+            {celokDeleteTarget.prevadzky.length > 0 && (
+              <div
+                style={{
+                  margin: 0,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "var(--coral-50, #fef2f2)",
+                  border: "1px solid var(--coral-200, #fecaca)",
+                  color: "var(--coral-700)",
+                  lineHeight: 1.6,
+                }}
+              >
+                <strong>Zmažú sa aj:</strong>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                  <li>
+                    {celokDeleteTarget.prevadzky.length}{" "}
+                    {celokDeleteTarget.prevadzky.length === 1 ? "prevádzka" : "prevádzok"}
+                  </li>
+                  <li>
+                    {celokDeleteTarget.prevadzky.reduce((sum, p) => sum + (p.orders_count || 0), 0)} objednávok
+                  </li>
+                  {celokDeleteTarget.logins.length > 0 && (
+                    <li>
+                      prístup pre {celokDeleteTarget.logins.length}{" "}
+                      {celokDeleteTarget.logins.length === 1 ? "login" : "loginy/loginov"} (samotné loginy ostanú,
+                      len prídu o prístup k tomuto celku)
+                    </li>
+                  )}
+                </ul>
+              </div>
             )}
             {celokDeleteError && (
               <p role="alert" style={{ margin: 0, color: "var(--coral-700)", lineHeight: 1.6 }}>
