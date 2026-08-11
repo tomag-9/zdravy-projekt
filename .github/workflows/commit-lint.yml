@@ -64,8 +64,7 @@ jobs:
             ### Valid types:
             \`feat\`, \`fix\`, \`docs\`, \`style\`, \`refactor\`, \`test\`, \`chore\`, \`perf\`, \`ci\`, \`build\`, \`revert\`
 
-            ### Valid scopes:
-            \`backend\`, \`frontend\`, \`ci\`, \`docker\`, \`docs\`, \`auth\`, \`api\`, \`tests\`, \`config\`, \`deps\`
+            Scope is free-form (any lowercase word) — no fixed length limit on the title/subject.
 
             Please update your PR title and refer to [CONTRIBUTING.md](../blob/main/CONTRIBUTING.md) for detailed guidelines.`;
 
