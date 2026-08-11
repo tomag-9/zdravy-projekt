@@ -421,7 +421,26 @@ DELIVERY_ROWS = [
     ),
 ]
 
-OBSOLETE_CELKY = ("MŠ Zdravé Bruško",)
+# Zrušené subjekty (klient potvrdil 2026-08-11). Prevádzky s objednávkovou históriou
+# sa len deaktivujú (viď _delete_obsolete_celky), nemažú sa natvrdo.
+OBSOLETE_CELKY = (
+    "MŠ Zdravé Bruško",
+    "Walldom",  # duplicita Waldorf Kukučínova
+    "Predškoláci",
+    "Libellus Camp",
+    "Tábor Balance",
+    "Tábor Big Hug Gym",
+    "Tábor Efka - Spolu do GN",
+    "Tábor Jolly - spolu do GN",
+    "Tábor Lab Café",
+    "Tábor Medzi Stromami",
+    "Tábor Omnibus",
+    "Tábor Paint People",
+    "Tábor VEVE 1",
+    "Tábor Warrior",
+    # Fantastická škôlka je teraz 2. prevádzka pod celkom "Fantastická Škola".
+    "Fantastická Škôlka",
+)
 
 
 class Command(BaseCommand):
