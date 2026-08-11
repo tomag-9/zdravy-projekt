@@ -362,8 +362,12 @@ class PasswordResetConfirmView(APIView):
             confirm_password_reset(token=token, new_password=new_password)
         except ValueError as exc:
             logger.info("Password reset confirmation failed: %s", exc)
+            # `confirm_password_reset` already crafts a message that is safe to
+            # show (does not leak whether an account exists) but distinguishes
+            # *why* it failed — used / expired / invalid — instead of a single
+            # generic string for every case (issue #461).
             return Response(
-                {"detail": PASSWORD_RESET_CONFIRM_ERROR},
+                {"detail": str(exc) or PASSWORD_RESET_CONFIRM_ERROR},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

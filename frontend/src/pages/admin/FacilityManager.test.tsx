@@ -252,4 +252,153 @@ describe("FacilityManager celok delete", () => {
     );
     expect(screen.getByText("Naozaj odstrániť celok", { exact: false })).toBeInTheDocument();
   });
+
+  it("warns about cascade impact (prevádzky/objednávky/loginy) before deleting a non-empty celok", async () => {
+    const withOrders = {
+      ...celok,
+      prevadzky: celok.prevadzky.map((p) => (p.id === 101 ? { ...p, orders_count: 5 } : p)),
+    };
+    mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") return { ok: true, status: 204, json: async () => ({}) };
+      if (url.endsWith("/admin/edupage-connections/")) return { ok: true, json: async () => [] };
+      return { ok: true, json: async () => [withOrders] };
+    });
+
+    const user = userEvent.setup();
+    renderManager();
+
+    await user.click(await screen.findByRole("button", { name: "Vymazať celok Centrálny celok" }));
+
+    expect(screen.getByText("Zmažú sa aj:", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("2 prevádzok")).toBeInTheDocument();
+    expect(screen.getByText("5 objednávok")).toBeInTheDocument();
+    expect(screen.getByText(/prístup pre 2/)).toBeInTheDocument();
+  });
+});
+
+describe("FacilityManager celok create (onboarding)", () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+  });
+
+  it("creates a celok, then chains straight into add-prevádzka and add-login", async () => {
+    const newCelok = {
+      id: 30,
+      nazov: "Nová škôlka",
+      billing_name: "",
+      adresa: "",
+      ico: "",
+      dic: "",
+      zdroj_objednavok: "app",
+      prevadzky_count: 0,
+      prevadzky: [],
+      logins: [],
+    };
+    const newPrevadzka = { id: 301, celok: 30, nazov: "Hlavná budova" };
+    let celkyState = [celok];
+
+    mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url.endsWith("/admin/edupage-connections/")) return { ok: true, json: async () => [] };
+      if (url === "/api/admin/celky/" && options?.method === "POST") {
+        celkyState = [...celkyState, newCelok];
+        return { ok: true, status: 201, json: async () => newCelok };
+      }
+      if (url === "/api/admin/facility-prevadzky/" && options?.method === "POST") {
+        return { ok: true, status: 201, json: async () => newPrevadzka };
+      }
+      if (url === "/api/admin/users/" && options?.method === "POST") {
+        return { ok: true, status: 201, json: async () => ({ id: 601 }) };
+      }
+      return { ok: true, json: async () => celkyState };
+    });
+
+    const user = userEvent.setup();
+    renderManager();
+
+    await user.click(await screen.findByRole("button", { name: "Nový celok" }));
+    expect(screen.getByRole("heading", { name: "Nový celok" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Názov celku *"), "Nová škôlka");
+    await user.click(screen.getByRole("button", { name: "Vytvoriť celok" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/celky/",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    // Chained straight into "add prevádzka" for the freshly created celok.
+    expect(await screen.findByText("Pridať prevádzku — Nová škôlka")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Názov prevádzky *"), "Hlavná budova");
+    await user.click(screen.getByRole("button", { name: "Pridať" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/facility-prevadzky/",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+
+    // Chained straight into "add login" for the same celok.
+    expect(await screen.findByText("Pridať login — Nová škôlka")).toBeInTheDocument();
+  });
+
+  it("does not resume onboarding after cancelling the add-prevádzka step", async () => {
+    const newCelok = {
+      id: 31,
+      nazov: "Zrušená škôlka",
+      billing_name: "",
+      adresa: "",
+      ico: "",
+      dic: "",
+      zdroj_objednavok: "app",
+      prevadzky_count: 0,
+      prevadzky: [],
+      logins: [],
+    };
+    let celkyState = [celok];
+
+    mockApiFetch.mockImplementation(async (url: string, options?: RequestInit) => {
+      if (url.endsWith("/admin/edupage-connections/")) return { ok: true, json: async () => [] };
+      if (url === "/api/admin/celky/" && options?.method === "POST") {
+        celkyState = [...celkyState, newCelok];
+        return { ok: true, status: 201, json: async () => newCelok };
+      }
+      if (url === "/api/admin/facility-prevadzky/" && options?.method === "POST") {
+        return { ok: true, status: 201, json: async () => ({ id: 311, celok: 31, nazov: "Neskorá budova" }) };
+      }
+      return { ok: true, json: async () => celkyState };
+    });
+
+    const user = userEvent.setup();
+    renderManager();
+
+    await user.click(await screen.findByRole("button", { name: "Nový celok" }));
+    await user.type(screen.getByLabelText("Názov celku *"), "Zrušená škôlka");
+    await user.click(screen.getByRole("button", { name: "Vytvoriť celok" }));
+
+    expect(await screen.findByText("Pridať prevádzku — Zrušená škôlka")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Zrušiť" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Pridať prevádzku — Zrušená škôlka")).not.toBeInTheDocument();
+    });
+
+    // Manually adding a prevádzka to that celok afterwards must NOT chain into add-login.
+    const row = (await screen.findByText("Zrušená škôlka")).closest<HTMLElement>(".zpa-celok")!;
+    await user.click(within(row).getAllByRole("button", { name: "Pridať prevádzku" })[0]);
+    expect(screen.getByText("Pridať prevádzku — Zrušená škôlka")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Názov prevádzky *"), "Neskorá budova");
+    await user.click(screen.getByRole("button", { name: "Pridať" }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        "/api/admin/facility-prevadzky/",
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+    expect(screen.queryByText("Pridať login — Zrušená škôlka")).not.toBeInTheDocument();
+  });
 });
