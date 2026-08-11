@@ -285,6 +285,11 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             )
         date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
+        # Hotový popis tabuľky — obrazovka aj PDF ho renderujú z rovnakého spec-u,
+        # aby sa nemali ako rozísť (viď gramage_table_spec).
+        from ..exporters.gramage_table_spec import build_table_spec
+
+        data["spec"] = build_table_spec(data)
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-xlsx")
