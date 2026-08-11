@@ -136,6 +136,32 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 "Failed to send onboarding email for new user %s", user.email
             )
 
+    def perform_update(self, serializer):
+        old_email = serializer.instance.email
+        user = serializer.save()
+
+        # Email zmenený → starý setup/reset odkaz smeruje na účet pod inou
+        # adresou a heslo bolo zvolené (alebo naposledy obnovené) s vedomím
+        # pôvodného mailu. Radšej vynútime nové heslo a rovno pošleme nový
+        # setup e-mail, než aby si to admin musel domýšľať/riešiť ručne
+        # (issue #460 — zistené pri onboardingu, keď sa login preklikol na
+        # iný mail a pôvodný setup-link zostal mŕtvy).
+        if old_email and user.email and old_email.lower() != user.email.lower():
+            try:
+                profile = user.profile
+                if not profile.is_edupage_only():
+                    from ..email_utils import send_account_setup_email
+
+                    user.set_unusable_password()
+                    user.save(update_fields=["password"])
+                    send_account_setup_email(user=user)
+            except Exception:
+                logger.exception(
+                    "Failed to invalidate password / resend setup email after "
+                    "email change for user %s",
+                    user.email,
+                )
+
 
 @extend_schema_view(
     list=extend_schema(tags=["admin"]),

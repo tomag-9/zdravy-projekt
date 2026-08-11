@@ -409,6 +409,9 @@ class TestPasswordResetFlow:
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # Issue #461: token neexistuje vôbec → generická hláška (nemá čo
+        # rozlišovať, iba potvrdiť, že odkaz nie je platný).
+        assert response.data["detail"] == "Neplatný odkaz."
 
     def test_password_reset_confirm_with_expired_token(self, api_client, user):
         PasswordResetToken.objects.create(
@@ -424,6 +427,8 @@ class TestPasswordResetFlow:
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # Issue #461: token skutočne expiroval → odlišná hláška od "neplatný".
+        assert response.data["detail"] == "Odkaz vypršal, požiadajte o nový."
 
     def test_password_reset_confirm_with_already_used_token(self, api_client, user):
         PasswordResetToken.objects.create(
@@ -439,6 +444,41 @@ class TestPasswordResetFlow:
             format="json",
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        # Issue #461: token bol už použitý → odlišná hláška od "expiroval"/"neplatný".
+        assert (
+            response.data["detail"] == "Tento odkaz už bol použitý, požiadajte o nový."
+        )
+
+    def test_password_reset_confirm_error_messages_are_distinguishable(
+        self, api_client, user
+    ):
+        """The three failure causes (issue #461) must not collapse into the
+        same generic string — that was the whole point of the bug report."""
+        PasswordResetToken.objects.create(
+            user=user,
+            token="used-token-distinct",
+            expires_at=timezone.now() + timedelta(hours=1),
+            used=True,
+        )
+        PasswordResetToken.objects.create(
+            user=user,
+            token="expired-token-distinct",
+            expires_at=timezone.now() - timedelta(hours=1),
+            used=False,
+        )
+
+        def confirm(token):
+            return api_client.post(
+                reverse("password_reset_confirm"),
+                {"token": token, "new_password": "NewPassword123"},
+                format="json",
+            ).data["detail"]
+
+        invalid_msg = confirm("does-not-exist-at-all")
+        used_msg = confirm("used-token-distinct")
+        expired_msg = confirm("expired-token-distinct")
+
+        assert len({invalid_msg, used_msg, expired_msg}) == 3
 
     def test_password_reset_confirm_weak_password(self, api_client, user):
         PasswordResetToken.objects.create(
