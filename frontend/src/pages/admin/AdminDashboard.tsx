@@ -647,14 +647,21 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
 
     for (const row of summaryRows) {
       for (const subRow of row.sub_rows) {
-        const groupIndex = col_groups.findIndex((cg) =>
+        const ownIndex = col_groups.findIndex((cg) =>
           cg.meal === subRow.meal &&
           (cg.variant || "") === (subRow.variant || "") &&
           (cg.diet_name ?? "") === (subRow.type === "diet" ? subRow.label : "")
         );
-        if (groupIndex < 0) continue;
-        summaries[groupIndex].count += subRow.count;
-        addGramValues(summaries[groupIndex].col_grams, subRow.col_grams[groupIndex], groupIndex);
+        if (ownIndex < 0) continue;
+        // Menu riadok nesie aj gramáž polievky, ktorá patrí do vlastnej stĺpcovej
+        // skupiny (backend: _merge_soup_into_main_course) — do súhrnu preto ide
+        // každá skupina, v ktorej riadok reálne má čísla.
+        col_groups.forEach((_, groupIndex) => {
+          const grams = subRow.col_grams[groupIndex];
+          if (groupIndex !== ownIndex && (!grams || grams.length === 0)) return;
+          summaries[groupIndex].count += subRow.count;
+          addGramValues(summaries[groupIndex].col_grams, grams, groupIndex);
+        });
       }
     }
 

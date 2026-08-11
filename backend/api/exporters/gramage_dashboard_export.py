@@ -157,6 +157,7 @@ def portion_summary(data: dict, rows: list[dict] | None = None) -> list[dict]:
     ]
     for row in rows:
         for sub_row in row.get("sub_rows") or []:
+            own_index = None
             for group_index, group in enumerate(col_groups):
                 expected_diet = (
                     sub_row.get("label") if sub_row.get("type") == "diet" else ""
@@ -167,13 +168,19 @@ def portion_summary(data: dict, rows: list[dict] | None = None) -> list[dict]:
                     == str(sub_row.get("variant") or "")
                     and str(group.get("diet_name") or "") == str(expected_diet or "")
                 ):
-                    summary[group_index]["count"] += sub_row.get("count") or 0
-                    add_grid(
-                        summary[group_index]["col_grams"],
-                        sub_row.get("col_grams") or [],
-                        group_index,
-                    )
+                    own_index = group_index
                     break
+            if own_index is None:
+                continue
+            sub_row_grams = sub_row.get("col_grams") or []
+            # Menu riadok nesie aj gramáž polievky, ktorá patrí do vlastnej
+            # stĺpcovej skupiny (viď _merge_soup_into_main_course) — do súhrnu
+            # preto ide každá skupina, v ktorej riadok reálne má čísla.
+            for group_index, grams in enumerate(sub_row_grams):
+                if group_index != own_index and not grams:
+                    continue
+                summary[group_index]["count"] += sub_row.get("count") or 0
+                add_grid(summary[group_index]["col_grams"], sub_row_grams, group_index)
     return summary
 
 
