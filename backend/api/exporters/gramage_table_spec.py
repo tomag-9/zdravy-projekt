@@ -28,13 +28,25 @@ from .gramage_dashboard_export import (
 EMPTY = "—"
 
 
-def format_gram(raw: object, component: dict) -> str | None:
-    """Gramáž tak, ako ju píše obrazovka — alebo None, keď sa má zobraziť „—".
+def _decimal_text(value: Decimal) -> str:
+    """Číslo do bunky: bez chvostových núl, s desatinnou čiarkou.
 
-    Nula a záporné hodnoty sa nezobrazujú (tabuľka má byť riedka, nie stena núl).
-    Kusové stĺpce si nechávajú desatiny s desatinnou čiarkou (`1,25`), gramy sa
-    zaokrúhľujú nahor na celé — `ROUND_HALF_UP`, aby to sedelo s `Math.round`
-    v prehliadači (`quantize` inak zaokrúhľuje na párne a `298,5` by vyšlo inak).
+    Zámerne bez `normalize()` — tá zo `2000.00` spraví `2E+3`, čo je v tabuľke
+    nezmysel (rovnaká pasca ako v `_tidy_count`). Celé hodnoty preto idú cez
+    `int`, zvyšku sa chvostové nuly odrežú ručne.
+    """
+    rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    if rounded == rounded.to_integral_value():
+        return str(int(rounded))
+    return format(rounded, "f").rstrip("0").rstrip(".").replace(".", ",")
+
+
+def format_gram(raw: object) -> str | None:
+    """Gramáž do bunky — alebo None, keď sa má zobraziť „—".
+
+    Desatiny sa zobrazujú (`2000,5`), lebo kuchyňa ich potrebuje vidieť; celé
+    hodnoty zostávajú bez chvosta (`2000`). Nula a menej sa nezobrazuje vôbec —
+    tabuľka má byť riedka, nie stena núl.
     """
     if raw is None or raw == "":
         return None
@@ -44,12 +56,7 @@ def format_gram(raw: object, component: dict) -> str | None:
         return None
     if value <= 0:
         return None
-
-    if component.get("is_exception") or component.get("unit") == "ks":
-        rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        text = format(rounded.normalize(), "f")
-        return text.replace(".", ",")
-    return str(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+    return _decimal_text(value)
 
 
 def format_count(count: object) -> str:
@@ -60,9 +67,7 @@ def format_count(count: object) -> str:
         return EMPTY
     if value <= 0:
         return EMPTY
-    if value == value.to_integral_value():
-        return str(int(value))
-    return format(value.normalize(), "f").replace(".", ",")
+    return _decimal_text(value)
 
 
 def _filter_col_groups(col_groups: list[dict], variants: list[str] | None) -> list[int]:
@@ -92,7 +97,7 @@ def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[di
             grams = col_grams[group_index] or []
         for component_index, component in enumerate(group.get("components") or []):
             raw = grams[component_index] if component_index < len(grams) else None
-            text = format_gram(raw, component)
+            text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             if text is None:
                 cells.append({"text": EMPTY, "css": f"cell-empty{separator}"})
@@ -384,7 +389,7 @@ def _totals_row(
         values = totals[group_index] if group_index < len(totals) else []
         for component_index, component in enumerate(group.get("components") or []):
             raw = values[component_index] if component_index < len(values) else None
-            text = format_gram(raw, component)
+            text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             cells.append({"text": text or EMPTY, "css": separator.strip()})
     return {

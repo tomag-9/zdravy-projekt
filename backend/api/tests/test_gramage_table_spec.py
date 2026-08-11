@@ -11,7 +11,6 @@ import pytest
 from api.exporters.gramage_table_spec import build_table_spec, format_count, format_gram
 
 GRAMS = {"label": "Mäso", "base_grams": "300", "unit": "g"}
-PIECES = {"label": "Vajce", "base_grams": "1", "unit": "ks"}
 
 
 def _payload(**overrides):
@@ -91,25 +90,27 @@ def _kinds(spec):
 # ── Formátovanie čísel ───────────────────────────────────────────────────────
 @pytest.mark.parametrize(
     "raw,expected",
-    [("300.00", "300"), ("299.6", "300"), ("298.5", "299"), ("0.4", "0")],
+    [
+        ("300.00", "300"),
+        ("2000.50", "2000,5"),
+        ("299.6", "299,6"),
+        ("1.25", "1,25"),
+        ("0.4", "0,4"),
+    ],
 )
-def test_grams_round_half_up_like_the_browser(raw, expected):
-    """`Math.round` zaokrúhľuje polovicu nahor — `quantize` by dal na párne.
+def test_grams_keep_their_decimals(raw, expected):
+    """Kuchyňa potrebuje vidieť desatiny; celé hodnoty ostávajú bez chvosta."""
+    assert format_gram(raw) == expected
 
-    `0.4` → `"0"`: skryje sa až nula a menej, nie zaokrúhlenie na nulu. Je to
-    vlastnosť obrazovky a spec ju kopíruje zámerne.
-    """
-    assert format_gram(raw, GRAMS) == expected
+
+def test_whole_grams_do_not_turn_into_scientific_notation():
+    """`Decimal("2000.00").normalize()` je `2E+3` — na to sa tu nesmie stúpiť."""
+    assert format_gram("2000.00") == "2000"
 
 
 @pytest.mark.parametrize("raw", ["0", "0.00", "-5", "", None, "abc"])
 def test_nonpositive_and_broken_grams_render_as_dash(raw):
-    assert format_gram(raw, GRAMS) is None
-
-
-def test_piece_columns_keep_decimals_with_a_comma():
-    assert format_gram("1.25", PIECES) == "1,25"
-    assert format_gram("2.00", PIECES) == "2"
+    assert format_gram(raw) is None
 
 
 def test_count_badge_shows_a_dash_at_zero():
