@@ -71,7 +71,7 @@ describe("DayEditorPanel menu variant weights", () => {
     vi.clearAllMocks();
   });
 
-  it("copies the first Menu A selection into empty B/C/V slots once", async () => {
+  it("never pre-fills B/C/V from a Menu A selection", async () => {
     const user = userEvent.setup();
     renderEditor();
 
@@ -79,21 +79,17 @@ describe("DayEditorPanel menu variant weights", () => {
 
     await user.selectOptions(screen.getByLabelText("Menu A"), "10");
 
+    // Každé menu je samostatná gramáž — výber A nesmie nič predvyplniť.
     expect(screen.getByLabelText("Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu B")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu B")).toHaveValue("");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("");
 
     await user.selectOptions(screen.getByLabelText("Menu B"), "11");
     expect(screen.getByLabelText("Menu A")).toHaveValue("10");
     expect(screen.getByLabelText("Menu B")).toHaveValue("11");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
-
-    await user.selectOptions(screen.getByLabelText("Menu A"), "11");
-    expect(screen.getByLabelText("Menu B")).toHaveValue("11");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu C")).toHaveValue("");
+    expect(screen.getByLabelText("Menu V")).toHaveValue("");
 
     await user.click(screen.getByText("Uložiť"));
 
@@ -103,11 +99,10 @@ describe("DayEditorPanel menu variant weights", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+    // Nevybraté varianty sa neukladajú vôbec.
     expect(lastSavedItems()).toEqual([
-      { template_id: 11, menu_variant: "A" },
+      { template_id: 10, menu_variant: "A" },
       { template_id: 11, menu_variant: "B" },
-      { template_id: 10, menu_variant: "C" },
-      { template_id: 10, menu_variant: "V" },
     ]);
   });
 

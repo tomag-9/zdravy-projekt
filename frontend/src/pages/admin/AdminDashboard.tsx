@@ -705,7 +705,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
   const SummaryRow = ({ label, count, col_grams, kind, color, baseColors }: {
     label: string; count: number; col_grams: string[][]; kind: "std" | "diet"; color?: string; baseColors?: string[];
   }) => (
-    <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" && color ? { background: `${color}22` } : undefined}>
+    <tr className={kind === "std" ? "summ-std" : "summ-diet"} style={kind === "diet" ? { color: color || "var(--mustard-700)" } : undefined}>
       <td>
         <span className="lbl-line">
           <span>
@@ -760,7 +760,7 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
         </tr>
 
         {isExpanded && row.sub_rows.map((sr, si) => (
-          <tr key={si} className={`sub-row${sr.type === "diet" ? " diet" : ""}`} style={sr.type === "diet" && sr.diet_color ? { background: `${sr.diet_color}1f` } : undefined}>
+          <tr key={si} className={`sub-row${sr.type === "diet" ? " diet" : ""}`} style={sr.type === "diet" ? { color: sr.diet_color || "var(--mustard-700)" } : undefined}>
             <td className="lbl">
               <span className="lbl-line">
                 <span>

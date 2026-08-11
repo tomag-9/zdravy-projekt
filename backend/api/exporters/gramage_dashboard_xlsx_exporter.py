@@ -15,12 +15,12 @@ from .gramage_dashboard_export import (
     BRAND,
     MEAL_PALETTE,
     component_subtitle,
-    contrast_text_color,
     diet_color,
     flat_client_rows,
     group_label,
     meal_hue,
     portion_summary,
+    readable_text_color,
 )
 
 
@@ -44,7 +44,6 @@ class GramageDashboardXLSXExporter:
         title_font = Font(bold=True, size=13, color=BRAND["green_900"])
         hdr_font = Font(bold=True, color="FFFFFF")
         cat_font = Font(bold=True)
-        cat_fill = PatternFill("solid", fgColor=BRAND["cream_soft"])
         band_font = Font(bold=True, color="FFFFFF")
         block_fill = PatternFill("solid", fgColor=BRAND["green_900"])
         route_fill = PatternFill("solid", fgColor=BRAND["green_700"])
@@ -68,10 +67,12 @@ class GramageDashboardXLSXExporter:
                 PatternFill("solid", fgColor=mid_hex),
             )
 
-        def diet_fill_for(row):
-            hex_color = diet_color(self.data, row)
-            return PatternFill("solid", fgColor=hex_color), Font(
-                color=contrast_text_color(hex_color)
+        # Diéty sa odlišujú farbou písma, nie výplňou riadku (viď admin.css).
+        def diet_font_for(row, bold=False):
+            return Font(
+                bold=bold,
+                italic=True,
+                color=readable_text_color(diet_color(self.data, row)),
             )
 
         # ── Column layout ───────────────────────────────────────────────────
@@ -166,7 +167,7 @@ class GramageDashboardXLSXExporter:
         def write_summary_row(label, count, col_grams, fill, font=None):
             write_row(label, count, col_grams, font=font or cat_font, fill=fill)
 
-        def write_client(row, zebra: bool):
+        def write_client(row):
             nonlocal DATA_ROW
             ws.cell(
                 row=DATA_ROW,
@@ -179,22 +180,22 @@ class GramageDashboardXLSXExporter:
                 end_row=DATA_ROW,
                 end_column=total_cols,
             )
-            client_fill = cat_fill if zebra else PatternFill("solid", fgColor="FFFFFF")
+            # Žltý pás cez celý riadok značí začiatok novej škôlky (viď admin.css).
+            client_fill = PatternFill("solid", fgColor="FFE29B")
+            client_font = Font(bold=True, size=13, color=BRAND["green_900"])
             for c in range(1, total_cols + 1):
                 cell = ws.cell(row=DATA_ROW, column=c)
-                cell.font = cat_font
+                cell.font = client_font
                 cell.fill = client_fill
             DATA_ROW += 1
 
             for sr in row["sub_rows"]:
                 is_diet = sr["type"] in {"diet", "zvlast"}
-                fill, font = diet_fill_for(sr) if is_diet else (None, None)
                 write_row(
                     sr["label"],
                     sr["count"],
                     sr["col_grams"],
-                    font=font,
-                    fill=fill,
+                    font=diet_font_for(sr) if is_diet else None,
                     indent=1 if is_diet else 0,
                 )
 
@@ -205,13 +206,12 @@ class GramageDashboardXLSXExporter:
                 standard_fill,
             )
             for diet_row in row.get("diet_summary_rows", []):
-                fill, font = diet_fill_for(diet_row)
                 write_summary_row(
                     diet_row["name"],
                     diet_row["count"],
                     diet_row["col_grams"],
-                    fill,
-                    font=font,
+                    standard_fill,
+                    font=diet_font_for(diet_row, bold=True),
                 )
 
             if row.get("admin_order_note"):
@@ -289,8 +289,8 @@ class GramageDashboardXLSXExporter:
                     if suffix:
                         route_label = f"{route_label} - {' / '.join(suffix)}"
                     write_band(route_label, route_fill, band_font)
-                    for zebra, row in enumerate(route.get("rows", [])):
-                        write_client(row, zebra % 2 == 1)
+                    for row in route.get("rows", []):
+                        write_client(row)
                 block_rows = [
                     row
                     for route in block.get("routes", [])
@@ -302,11 +302,11 @@ class GramageDashboardXLSXExporter:
                 )
             if unassigned_rows:
                 write_band("Nepriradené prevádzky", unassigned_fill, band_font)
-                for zebra, row in enumerate(unassigned_rows):
-                    write_client(row, zebra % 2 == 1)
+                for row in unassigned_rows:
+                    write_client(row)
         else:
-            for zebra, row in enumerate(all_rows):
-                write_client(row, zebra % 2 == 1)
+            for row in all_rows:
+                write_client(row)
 
         write_portion_summary(
             "Porcie celkom", portion_summary(self.data), fill=block_fill
@@ -386,13 +386,13 @@ class GramageDashboardXLSXExporter:
                         )
                     DATA_ROW += 1
                 for row in section.get("diets", []):
-                    fill, font = diet_fill_for({"name": row["label"]})
+                    font = diet_font_for({"name": row["label"]})
                     ws.cell(row=DATA_ROW, column=1, value=f"  {row['label']}")
                     ws.cell(row=DATA_ROW, column=2, value=row["count"])
                     ws.cell(row=DATA_ROW, column=2).alignment = right_align
                     for c in range(1, 3):
                         cell = ws.cell(row=DATA_ROW, column=c)
-                        cell.fill = fill
+                        cell.fill = PatternFill("solid", fgColor=light_hex)
                         cell.font = font
                     DATA_ROW += 1
 

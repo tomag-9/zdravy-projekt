@@ -20,6 +20,7 @@ from .gramage_dashboard_export import (
     group_label,
     meal_hue,
     portion_summary,
+    readable_text_color,
 )
 from .report_helpers import PDFFontManager
 
@@ -46,7 +47,6 @@ class GramageDashboardPDFExporter:
         font_r, font_b = PDFFontManager.get_fonts()
         brand_green = colors.HexColor(f"#{BRAND['green_800']}")
         brand_green_dark = colors.HexColor(f"#{BRAND['green_900']}")
-        brand_cream = colors.HexColor(f"#{BRAND['cream_soft']}")
         brand_line = colors.HexColor(f"#{BRAND['line']}")
         standard_fill = colors.HexColor(
             f"#{blend_with_white(BRAND['green_500'], 0.16)}"
@@ -137,9 +137,9 @@ class GramageDashboardPDFExporter:
         # ── Data rows ────────────────────────────────────────────────────
         total_cols = 2 + sum(len(cg["components"]) for cg in col_groups)
 
-        def make_cells(label, count, col_grams, is_diet=False):
+        def make_cells(label, count, col_grams, is_diet=False, text_color=None):
             cells = [
-                para("  " + label if is_diet else label),
+                para("  " + label if is_diet else label, color=text_color),
                 str(count) if count else "",
             ]
             # Keep alignment strictly by col_groups index to avoid shifted values.
@@ -180,7 +180,9 @@ class GramageDashboardPDFExporter:
                 {"label": label, "count": count, "col_grams": col_grams}
             )
             row_index = len(table_data)
-            table_data.append(make_cells(label, count, col_grams))
+            table_data.append(
+                make_cells(label, count, col_grams, text_color=text_color)
+            )
             style_cmds.append(
                 ("BACKGROUND", (0, row_index), (-1, row_index), background)
             )
@@ -205,14 +207,17 @@ class GramageDashboardPDFExporter:
                     standard_fill,
                 )
 
-        def add_client_row(row, zebra: bool):
+        def add_client_row(row):
             r_idx = len(table_data)
             client_label = (
                 f"{row['client']}  (spolu porcii {row.get('total_count', 0)})"
             )
-            cat_row = [para(client_label, bold=True)] + [""] * (total_cols - 1)
+            cat_row = [
+                para(client_label, bold=True, size=11, color=brand_green_dark)
+            ] + [""] * (total_cols - 1)
             table_data.append(cat_row)
-            row_bg = brand_cream if zebra else colors.white
+            # Žltý pás cez celý riadok značí začiatok novej škôlky (viď admin.css).
+            row_bg = colors.HexColor("#FFE29B")
             style_cmds.extend(
                 [
                     ("BACKGROUND", (0, r_idx), (-1, r_idx), row_bg),
@@ -223,18 +228,25 @@ class GramageDashboardPDFExporter:
 
             for sr in row["sub_rows"]:
                 is_diet = sr["type"] in {"diet", "zvlast"}
-                cells = make_cells(sr["label"], sr["count"], sr["col_grams"], is_diet)
+                diet_ink = (
+                    colors.HexColor(
+                        f"#{readable_text_color(diet_color(self.data, sr))}"
+                    )
+                    if is_diet
+                    else None
+                )
+                cells = make_cells(
+                    sr["label"],
+                    sr["count"],
+                    sr["col_grams"],
+                    is_diet,
+                    text_color=diet_ink,
+                )
                 sr_idx = len(table_data)
                 table_data.append(cells)
                 if is_diet:
-                    fill_hex = blend_with_white(diet_color(self.data, sr))
                     style_cmds.append(
-                        (
-                            "BACKGROUND",
-                            (0, sr_idx),
-                            (-1, sr_idx),
-                            colors.HexColor(f"#{fill_hex}"),
-                        )
+                        ("TEXTCOLOR", (0, sr_idx), (-1, sr_idx), diet_ink)
                     )
 
             add_summary_row(
@@ -244,12 +256,14 @@ class GramageDashboardPDFExporter:
                 standard_fill,
             )
             for diet_row in row.get("diet_summary_rows", []):
-                fill_hex = blend_with_white(diet_color(self.data, diet_row), 0.22)
                 add_summary_row(
                     diet_row["name"],
                     diet_row["count"],
                     diet_row["col_grams"],
-                    colors.HexColor(f"#{fill_hex}"),
+                    standard_fill,
+                    text_color=colors.HexColor(
+                        f"#{readable_text_color(diet_color(self.data, diet_row))}"
+                    ),
                 )
 
             if row.get("admin_order_note"):
@@ -305,8 +319,8 @@ class GramageDashboardPDFExporter:
                     if suffix:
                         route_label = f"{route_label} - {' / '.join(suffix)}"
                     add_band_row(route_label, brand_green, colors.white)
-                    for zebra, row in enumerate(route.get("rows", [])):
-                        add_client_row(row, zebra % 2 == 1)
+                    for row in route.get("rows", []):
+                        add_client_row(row)
                 block_rows = [
                     row
                     for route in block.get("routes", [])
@@ -321,11 +335,11 @@ class GramageDashboardPDFExporter:
                     "Nepriradené prevádzky",
                     colors.HexColor("#C64545"),
                 )
-                for zebra, row in enumerate(unassigned_rows):
-                    add_client_row(row, zebra % 2 == 1)
+                for row in unassigned_rows:
+                    add_client_row(row)
         else:
-            for zebra, row in enumerate(all_rows):
-                add_client_row(row, zebra % 2 == 1)
+            for row in all_rows:
+                add_client_row(row)
 
         add_portion_summary(
             "Porcie celkom",
@@ -439,19 +453,17 @@ class GramageDashboardPDFExporter:
                     )
                 for row in section.get("diets", []):
                     diet_idx = len(sum_rows)
-                    sum_rows.append(
-                        [para(f"  {row['label']}"), para(f"{row['count']}×")]
+                    diet_ink = colors.HexColor(
+                        f"#{readable_text_color(diet_color(self.data, {'name': row['label']}))}"
                     )
-                    diet_fill_hex = blend_with_white(
-                        diet_color(self.data, {"name": row["label"]}), 0.22
+                    sum_rows.append(
+                        [
+                            para(f"  {row['label']}", color=diet_ink),
+                            para(f"{row['count']}×", color=diet_ink),
+                        ]
                     )
                     sum_style.append(
-                        (
-                            "BACKGROUND",
-                            (0, diet_idx),
-                            (-1, diet_idx),
-                            colors.HexColor(f"#{diet_fill_hex}"),
-                        )
+                        ("TEXTCOLOR", (0, diet_idx), (-1, diet_idx), diet_ink)
                     )
 
             if len(sum_rows) > 1:
