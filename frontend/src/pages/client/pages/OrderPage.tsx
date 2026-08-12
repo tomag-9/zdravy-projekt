@@ -508,7 +508,6 @@ const OrderPage = () => {
             categoryLabel={activeDietModal.category}
             enabledDiets={getAvailableDiets(activeDietModal.category)}
             diets={catData.diets}
-            maxPortions={catData.menuCounts?.["A"] || 0}
             onUpdateDiet={(diet, count) =>
               isFullDay
                 ? updateFullDayDiet(activeDietModal.category, diet, count)

@@ -1191,6 +1191,35 @@ select {
 .zp-menurow .diet-trigger:hover { background: var(--peach-400); }
 .zp-menurow .spacer { flex: 1; }
 
+/* Diéty: pod-riadok naviazaný na Menu A nad ním. */
+.zp-menurow--diet {
+    width: 100%;
+    padding-left: 28px;
+    gap: 6px;
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--line-soft);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: var(--mustard-700);
+}
+.zp-menurow--diet:hover:not(:disabled) { background: var(--peach-300); }
+.zp-menurow--diet:disabled { opacity: 0.5; cursor: default; }
+.zp-menurow--diet .name {
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: var(--mustard-700);
+}
+.zp-menurow--diet-icon { flex: 0 0 auto; }
+.zp-menurow--diet-count {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--ink-3);
+}
+.zp-menurow--diet-count.active { color: var(--mustard-700); }
+
 .zp-menurow--occupied {
     opacity: 0.5;
 }
