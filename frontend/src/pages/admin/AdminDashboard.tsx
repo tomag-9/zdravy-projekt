@@ -161,6 +161,9 @@ interface OrderMealSummary {
 }
 
 interface OrderReportRow {
+  // Riadok je na objednávku, nie na používateľa — EduPage prevádzky zdieľajú
+  // jeden systémový login, takže `user_id` nie je unikátne.
+  order_id: number;
   user_id: number;
   name: string;
   email: string;
@@ -547,7 +550,7 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.user_id}>
+              <tr key={row.order_id}>
                 <td>
                   <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{row.name}</div>
                   <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{row.email}</div>

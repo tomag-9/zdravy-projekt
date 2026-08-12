@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from api.models import (
+    Celok,
     DailyMealPlan,
     DailyOrder,
     Diet,
@@ -15,6 +16,7 @@ from api.models import (
     MealPlanItem,
     MealTemplate,
     PortionType,
+    Prevadzka,
 )
 
 pytestmark = pytest.mark.integration
@@ -507,6 +509,38 @@ class AdminDailyReportTest(APITestCase):
         self.assertEqual(data["totals"]["grand"], 8)
         self.assertEqual(data["totals"]["breakfast"]["total"], 2)
         self.assertEqual(data["totals"]["breakfast"]["diets"]["No Milk"], 1)
+
+    def test_daily_report_rows_are_uniquely_identifiable(self):
+        """EduPage prevádzky zdieľajú jeden systémový login.
+
+        Riadok je na objednávku, nie na používateľa, takže `user_id` sa
+        opakuje — frontend podľa neho kľúčoval riadky a React ich preto
+        mohol zdvojiť alebo vynechať.
+        """
+        celok = Celok.objects.create(nazov="Zdravé Brúško")
+        prevadzky = [
+            Prevadzka.objects.create(celok=celok, nazov=f"Výdajňa {index}")
+            for index in range(2)
+        ]
+        for prevadzka in prevadzky:
+            DailyOrder.objects.create(
+                user=self.client_user,
+                prevadzka=prevadzka,
+                date=self.today,
+                status="submitted",
+                data={"lunch": {"ZŠ": {"menuCounts": {"A": 3}, "diets": {}}}},
+            )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get(
+            f"/api/admin/summary/daily-report/?date={self.today}"
+        )
+        rows = response.json()["rows"]
+
+        order_ids = [row["order_id"] for row in rows]
+        assert len(order_ids) == len(set(order_ids)), "order_id sa musí nezhodovať"
+        # Práve tie dva riadky, kvôli ktorým to padalo, majú rovnaké user_id.
+        assert len({row["user_id"] for row in rows}) < len(rows)
 
     def test_daily_report_requires_date(self):
         self.client.force_authenticate(user=self.admin)
