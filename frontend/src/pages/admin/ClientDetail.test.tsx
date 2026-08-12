@@ -320,3 +320,59 @@ describe("ClientDetail facility & login management", () => {
     expect(screen.queryByText("Facilities")).not.toBeInTheDocument();
   });
 });
+
+describe("ClientDetail order history diets", () => {
+  const order = {
+    id: 91,
+    date: "2026-08-12",
+    status: "submitted",
+    data: {
+      lunch: {
+        "ZŠ 1.stupeň": {
+          menuCounts: { A: 3, V: 2 },
+          diets: { "Vegetariánske": 2, "Bez lepku": 1 },
+        },
+      },
+    },
+  };
+
+  const diets = [
+    { id: 1, name: "Bez lepku", color: "#F59E0B", base_colors: [] },
+    { id: 2, name: "Vegetariánske", color: "#10B981", base_colors: [] },
+  ];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response(diets));
+      if (url.includes("/orders/")) return Promise.resolve(response([order]));
+      if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("rozpíše konkrétne diéty namiesto súhrnu", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByText("2026-08-12"));
+
+    expect(await screen.findByText(/2x Vegetariánske/)).toBeInTheDocument();
+    expect(screen.getByText(/1x Bez lepku/)).toBeInTheDocument();
+    // Starý súhrn „3x Diéta" už nikde nefiguruje.
+    expect(screen.queryByText(/x Diéta/)).not.toBeInTheDocument();
+  });
+
+  it("dokreslí k diéte farbu z katalógu", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByText("2026-08-12"));
+    await screen.findByText(/2x Vegetariánske/);
+
+    expect(screen.getAllByTestId("diet-color-swatch").length).toBeGreaterThanOrEqual(2);
+  });
+});

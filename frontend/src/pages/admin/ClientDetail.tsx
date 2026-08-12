@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/auth";
@@ -11,10 +11,13 @@ import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, E
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
 import { PrevadzkaFields, type EdupageConnectionOption, type PrevadzkaForm } from "./facility/PrevadzkaFields";
 import { EMPTY_LOGIN } from "./facility/constants";
+import { DietColorSwatch } from "./DietColorSwatch";
 
 interface Diet {
   id: number;
   name: string;
+  color?: string;
+  base_colors?: string[];
 }
 
 interface PortionType {
@@ -153,6 +156,13 @@ const ClientDetail: React.FC = () => {
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+
+  // Objednávka si diéty pamätá pod názvom, nie pod ID. Katalóg preto hľadáme
+  // podľa mena, aby sme k nemu vedeli dokresliť farbu ako inde v admine.
+  const dietByName = useMemo(
+    () => new Map(allDiets.map((diet) => [diet.name, diet])),
+    [allDiets],
+  );
 
   const applyFacilitySettings = useCallback((data: FacilityDetail) => {
     setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ALL_MENUS));
@@ -688,12 +698,25 @@ const ClientDetail: React.FC = () => {
                                           const menuCounts = category.menuCounts || {};
                                           const diets = category.diets || {};
                                           const totalPortions = Object.values(menuCounts).reduce((a, b) => a + Number(b), 0);
-                                          const totalDiets = Object.values(diets).reduce((a, b) => a + Number(b), 0);
+                                          // Súhrn „5x Diéta" nepovedal, o ktoré diéty ide. Rozpíš ich
+                                          // po jednej — dáta na to v objednávke sú.
+                                          const dietEntries = Object.entries(diets)
+                                            .filter(([, count]) => Number(count) > 0)
+                                            .sort(([a], [b]) => a.localeCompare(b, "sk"));
                                           if (Number(totalPortions) > 0) {
                                             items.push(
                                               <div key={catName} style={{ display: "flex", flexDirection: "column", marginBottom: 4, borderBottom: "1px solid var(--line-soft)", paddingBottom: 4 }}>
                                                 <span style={{ fontWeight: 600, color: "var(--ink-1)" }}>{String(totalPortions)}x {catName}</span>
-                                                {Number(totalDiets) > 0 && <span style={{ fontSize: 12, color: "var(--green-600)", paddingLeft: 8 }}>• {String(totalDiets)}x Diéta</span>}
+                                                {dietEntries.map(([dietName, count]) => {
+                                                  const diet = dietByName.get(dietName);
+                                                  return (
+                                                    <span key={dietName} style={{ fontSize: 12, color: "var(--green-600)", paddingLeft: 8, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                                      <span aria-hidden="true">•</span>
+                                                      <DietColorSwatch color={diet?.color} baseColors={diet?.base_colors} size={9} />
+                                                      <span>{String(count)}x {dietName}</span>
+                                                    </span>
+                                                  );
+                                                })}
                                               </div>,
                                             );
                                           }
