@@ -44,6 +44,68 @@ describe('OrderService', () => {
             expect(result).not.toHaveProperty('unknownMeal');
             expect(result.lunch['Škôlka'].menuCounts).not.toHaveProperty('unexpected');
         });
+
+        it('keeps admin-defined diet names that are not in the DIETS constant', () => {
+            const schema = OrderService.createEmptyOrder();
+            const result = OrderService.enforceStructure<DailyOrder>(
+                {
+                    lunch: {
+                        Škôlka: {
+                            menuCounts: { A: 13 },
+                            // Mená z `Diet` modelu — konštanta DIETS ich nepozná.
+                            diets: { HISTAMIN: 3, 'NO EGG': 2 },
+                        },
+                    },
+                },
+                schema
+            );
+
+            const cat = result.lunch['Škôlka'];
+            expect(cat.diets['HISTAMIN']).toBe(3);
+            expect(cat.diets['NO EGG']).toBe(2);
+            // Známe diéty ostávajú ako defaulty na nule
+            expect(cat.diets['Bez lepku']).toBe(0);
+            // A odvodený počet bežných porcií tým pádom sedí: 13 − 5 = 8
+            expect(OrderService.getPlainMenuACount(cat)).toBe(8);
+        });
+
+        it('ignores non-numeric or negative diet counts', () => {
+            const schema = OrderService.createEmptyOrder();
+            const result = OrderService.enforceStructure<DailyOrder>(
+                {
+                    lunch: {
+                        Škôlka: {
+                            menuCounts: { A: 2 },
+                            diets: { HISTAMIN: 2, BROKEN: 'x', NEGATIVE: -3, FLAGGED: true },
+                        },
+                    },
+                },
+                schema
+            );
+
+            const diets = result.lunch['Škôlka'].diets;
+            expect(diets['HISTAMIN']).toBe(2);
+            expect(diets).not.toHaveProperty('BROKEN');
+            expect(diets).not.toHaveProperty('NEGATIVE');
+            expect(diets).not.toHaveProperty('FLAGGED');
+        });
+
+        it('keeps custom diet names through a full save/load round trip', () => {
+            let order = OrderService.createEmptyOrder();
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 10);
+            order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'HISTAMIN', 3);
+            expect(order.lunch['Škôlka'].menuCounts.A).toBe(13);
+
+            // Presne to, čo robí useOrder pri odpovedi zo servera / localStorage.
+            const reloaded = OrderService.enforceStructure<DailyOrder>(
+                JSON.parse(JSON.stringify(order)),
+                OrderService.createEmptyOrder()
+            );
+
+            expect(reloaded.lunch['Škôlka'].diets['HISTAMIN']).toBe(3);
+            expect(reloaded.lunch['Škôlka'].menuCounts.A).toBe(13);
+            expect(OrderService.getPlainMenuACount(reloaded.lunch['Škôlka'])).toBe(10);
+        });
     });
 
     describe('updateMenuCount', () => {

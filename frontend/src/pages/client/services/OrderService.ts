@@ -265,6 +265,36 @@ class OrderService {
         }, 0);
     }
 
+    /**
+     * Kľúče, ktorých obsah je mapa počtov s OTVORENOU množinou názvov.
+     *
+     * Diéty si definuje admin (`Diet` model → `prevadzka.visible_diets`), takže
+     * ich mená nevie konštanta `DIETS` poznať — tá je len default pre prázdnu
+     * objednávku. Keby ich `enforceStructure` filtrovala schémou, vlastná diéta
+     * by sa pri načítaní ticho zahodila, prepísala do `currentOrder` aj
+     * localStorage, a najbližšie odoslanie by ju vynulovalo aj v DB.
+     *
+     * `menuCounts` zámerne NIE je v zozname: tam je filtrovanie podľa
+     * `GROUP_CONFIG` úmyselné (kategória má pevnú množinu menu variantov).
+     */
+    private static readonly OPEN_COUNT_MAP_KEYS = new Set(['diets']);
+
+    /** Zlúči mapu počtov: defaulty zo schémy + všetky platné počty z dát. */
+    private static enforceCountMap(
+        data: unknown,
+        schema: Record<string, unknown>
+    ): Record<string, number> {
+        const result = { ...schema } as Record<string, number>;
+        if (!data || typeof data !== 'object' || Array.isArray(data)) return result;
+
+        Object.entries(data as Record<string, unknown>).forEach(([key, value]) => {
+            if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return;
+            result[key] = value;
+        });
+
+        return result;
+    }
+
     static enforceStructure<T>(data: unknown, schema: T): T {
         if (!data) return schema;
         if (typeof data !== 'object') return schema;
@@ -287,7 +317,12 @@ class OrderService {
         Object.keys(schemaRecord).forEach(key => {
             if (Object.prototype.hasOwnProperty.call(dataRecord, key)) {
                 const schemaValue = schemaRecord[key];
-                if (typeof schemaValue === 'object' && schemaValue !== null && !Array.isArray(schemaValue)) {
+                if (this.OPEN_COUNT_MAP_KEYS.has(key)) {
+                    result[key] = this.enforceCountMap(
+                        dataRecord[key],
+                        (schemaValue ?? {}) as Record<string, unknown>
+                    );
+                } else if (typeof schemaValue === 'object' && schemaValue !== null && !Array.isArray(schemaValue)) {
                     result[key] = this.enforceStructure(dataRecord[key], schemaValue);
                 } else {
                     result[key] = dataRecord[key];
