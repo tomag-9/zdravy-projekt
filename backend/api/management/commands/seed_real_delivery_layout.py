@@ -107,7 +107,6 @@ DELIVERY_ROWS = [
     DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Záhradka"),
     DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Mimi&Monty"),
     DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Chrobáčikovo"),
-    DeliverySeedRow("1.Trasa - Pezinská - Heňo/Ivan", "Tábor Jolly - spolu do GN"),
     DeliverySeedRow(
         "trasa 2 - 9:25 - Ivan/Heňo", "Nova Tulipa", address="Orgovánová 3, Kvetoslavov"
     ),
@@ -193,9 +192,6 @@ DELIVERY_ROWS = [
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "dragon kids 1"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "mozart", address="Hrebendova 9"),
     DeliverySeedRow(
-        "trasa 5 - RADKO - 10:00", "Fantastická Škôlka", alias="Fantastická"
-    ),
-    DeliverySeedRow(
         "trasa 5 - RADKO - 10:00",
         "SZŠ FAN",
         alias="Fantastická škola",
@@ -207,14 +203,8 @@ DELIVERY_ROWS = [
     ),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Ostravská"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Stromček"),
-    DeliverySeedRow("trasa 5 - RADKO - 10:00", "Predškoláci"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Naša škola poznania A"),
     DeliverySeedRow("trasa 5 - RADKO - 10:00", "Naša škola poznania B"),
-    DeliverySeedRow(
-        "trasa 5 - RADKO - 10:00",
-        "Tábor Medzi Stromami",
-        address="Pruger-Wallnerova Záhrada, Nekrasovova",
-    ),
     DeliverySeedRow(
         "trasa 5 - RADKO - 10:00",
         "Zvlášť!!! Tábor Lab Café",
@@ -253,9 +243,6 @@ DELIVERY_ROWS = [
         "MŠ Libellus",
         alias="Libellus",
         address="Mokrohájska 3",
-    ),
-    DeliverySeedRow(
-        "TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Libellus Camp", address="Mokrohájska 3"
     ),
     DeliverySeedRow(
         "TRASA EXTRA 2 - MIŠO a IGOR 9:15",
@@ -327,13 +314,7 @@ DELIVERY_ROWS = [
         address="Pod Klepáčom 8, BA",
     ),
     DeliverySeedRow("TRASA EXTRA 2 - MIŠO a IGOR 9:15", "Krok za krokom"),
-    DeliverySeedRow(
-        "TRASA EXTRA 3 - DUŠAN - 9:45",
-        "Tábor VEVE 1",
-        address="Narcisova 5, Bratislava",
-    ),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Zvlášť!!! Tábor VEVE 2"),
-    DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Tábor Balance"),
     DeliverySeedRow(
         "TRASA EXTRA 3 - DUŠAN - 9:45", "Veselý Úľ 1", address="Stalicova 2"
     ),
@@ -352,7 +333,6 @@ DELIVERY_ROWS = [
     ),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Včielka"),
     DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Malí šampióni"),
-    DeliverySeedRow("TRASA EXTRA 3 - DUŠAN - 9:45", "Tábor Efka - Spolu do GN"),
     DeliverySeedRow(
         "TRASA 4 - MAJO - 10:00", "Dobré Jasle", address="Nejedlého 73, Bratislava"
     ),
@@ -423,6 +403,10 @@ DELIVERY_ROWS = [
 
 # Zrušené subjekty (klient potvrdil 2026-08-11). Prevádzky s objednávkovou históriou
 # sa len deaktivujú (viď _delete_obsolete_celky), nemažú sa natvrdo.
+#
+# Mená tu zostávajú aj po tom, čo zmizli z DELIVERY_ROWS: úlohou zoznamu je
+# upratať databázy, kde tieto prevádzky vznikli skoršími behmi seedu.
+# Vyradenie z DELIVERY_ROWS ich odtiaľ samo neodstráni.
 OBSOLETE_CELKY = (
     "MŠ Zdravé Bruško",
     "Walldom",  # duplicita Waldorf Kukučínova

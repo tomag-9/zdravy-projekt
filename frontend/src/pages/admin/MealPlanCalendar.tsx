@@ -186,20 +186,7 @@ export const DayEditorPanel: React.FC<{
       value={selected[selectionKey]}
       onChange={(e) => {
         const nextValue = e.target.value ? Number(e.target.value) : "";
-        setSelected((current) => {
-          const next = { ...current, [selectionKey]: nextValue };
-          if (
-            selectionKey === "main_course_A" &&
-            current.main_course_A === "" &&
-            nextValue !== ""
-          ) {
-            for (const variant of MAIN_COURSE_VARIANTS) {
-              const key: SelectionKey = `main_course_${variant}`;
-              if (next[key] === "") next[key] = nextValue;
-            }
-          }
-          return next;
-        });
+        setSelected((current) => ({ ...current, [selectionKey]: nextValue }));
       }}
     >
       <option value="">— nevybraté —</option>
@@ -233,7 +220,7 @@ export const DayEditorPanel: React.FC<{
                 <div>
                   <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>Obed</div>
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--ink-3)" }}>
-                    Menu A/B/C/V sú samostatné gramáže. Prvý výber Menu A sa skopíruje do prázdnych variantov; ďalšie zmeny sú nezávislé.
+                    Menu A/B/C/V sú samostatné gramáže — každé menu treba vybrať zvlášť, nič sa nepredvypĺňa.
                   </p>
                 </div>
                 <label className="zpa-field">

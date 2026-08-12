@@ -414,3 +414,98 @@ class TestOrderDeadlines:
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert DailyOrder.objects.filter(user=user, date=friday).count() == 0
+
+    def test_reshaped_but_unchanged_locked_meal_does_not_block_other_meals(
+        self, authenticated_client, user
+    ):
+        """Regression for a real incident: breakfast deadline is 21:00 the day
+        before, lunch deadline is same-day 07:30. The frontend re-normalizes
+        every meal it resubmits (fills in zero-count keys the current schema
+        knows about, even ones absent from the originally stored JSON). That
+        reshaping must not make an untouched, already-locked breakfast look
+        "changed" and block a still-open lunch edit.
+        """
+        self._set_global_deadlines(
+            deadline_breakfast=time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=time(7, 30),
+            deadline_lunch_is_day_before=False,
+        )
+        today = date(2026, 3, 13)
+        DailyOrder.objects.create(
+            user=user,
+            date=today,
+            status="submitted",
+            data={
+                "breakfast": {"menuCounts": {"A": 3}, "diets": {}},
+                "lunch": {"menuCounts": {"A": 1}, "diets": {}},
+            },
+        )
+        payload = {
+            "date": str(today),
+            "status": "submitted",
+            "data": {
+                # Same content as stored, but reshaped: extra zero-count keys
+                # the frontend's schema normalization would add.
+                "breakfast": {
+                    "menuCounts": {"A": 3, "B": 0},
+                    "diets": {"Bez lepku": 0},
+                },
+                "lunch": {"menuCounts": {"A": 2}, "diets": {}},
+            },
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 7, 20),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        order = DailyOrder.objects.get(user=user, date=today)
+        assert order.data["lunch"]["menuCounts"]["A"] == 2
+        assert order.data["breakfast"]["menuCounts"]["A"] == 3
+
+    def test_genuinely_changed_locked_meal_is_still_rejected(
+        self, authenticated_client, user
+    ):
+        self._set_global_deadlines(
+            deadline_breakfast=time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=time(7, 30),
+            deadline_lunch_is_day_before=False,
+        )
+        today = date(2026, 3, 13)
+        DailyOrder.objects.create(
+            user=user,
+            date=today,
+            status="submitted",
+            data={
+                "breakfast": {"menuCounts": {"A": 3}, "diets": {}},
+                "lunch": {"menuCounts": {"A": 1}, "diets": {}},
+            },
+        )
+        payload = {
+            "date": str(today),
+            "status": "submitted",
+            "data": {
+                # Genuine content change to the locked meal.
+                "breakfast": {"menuCounts": {"A": 5}, "diets": {}},
+                "lunch": {"menuCounts": {"A": 2}, "diets": {}},
+            },
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 7, 20),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        order = DailyOrder.objects.get(user=user, date=today)
+        assert order.data["breakfast"]["menuCounts"]["A"] == 3
+        assert order.data["lunch"]["menuCounts"]["A"] == 1

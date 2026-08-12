@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime
 import unicodedata
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any, List
 
 from django.db import transaction
@@ -124,10 +124,94 @@ def _merge_billed_sub_rows(sub_rows: list[dict]) -> list[dict]:
             order.append(key)
             continue
         existing["count"] = _tidy_count(existing["count"] + sub_row["count"])
+        existing["_heads"] = existing.get("_heads", 0) + sub_row.get("_heads", 0)
         existing["col_grams"] = _sum_col_grams(
             existing["col_grams"], sub_row["col_grams"]
         )
     return [merged[key] for key in order]
+
+
+def _soup_merge_key(sub_row: dict) -> tuple:
+    """Polievka patrí k obedu tej istej porcie a tej istej diéty."""
+    return (
+        sub_row["type"],
+        sub_row.get("portion_name", ""),
+        sub_row.get("diet_name", ""),
+    )
+
+
+def _distribute_soup_grams(soup_row: dict, targets: list[dict]) -> None:
+    """Rozpíše gramáž jedného polievkového riadku do menu riadkov.
+
+    Gramáž je v počte hláv lineárna, takže delenie v pomere hláv dá presne tie
+    isté čísla, aké by vyšli pri samostatnom výpočte per variant. Zvyšok po
+    zaokrúhlení pripadne poslednému riadku, aby stĺpcový súčet sedel na gram.
+    """
+    heads = [Decimal(str(target.get("_heads") or 0)) for target in targets]
+    total_heads = sum(heads)
+    last_index = len(targets) - 1
+
+    for group_index, values in enumerate(soup_row["col_grams"]):
+        if not values:
+            continue
+        # Menu riadok má na polievkovom stĺpci prázdne miesto — obsadí sa ním.
+        for target in targets:
+            cells = target["col_grams"][group_index]
+            if len(cells) < len(values):
+                cells.extend(["0"] * (len(values) - len(cells)))
+
+        for comp_index, raw in enumerate(values):
+            try:
+                total = Decimal(str(raw))
+            except (InvalidOperation, TypeError, ValueError):
+                continue
+            running = Decimal("0")
+            for target_index, target in enumerate(targets):
+                if target_index == last_index:
+                    share = total - running
+                elif total_heads > 0:
+                    share = (total * heads[target_index] / total_heads).quantize(
+                        Decimal("0.01")
+                    )
+                    running += share
+                else:
+                    share = Decimal("0")
+                cells = target["col_grams"][group_index]
+                cells[comp_index] = str(
+                    (Decimal(cells[comp_index]) + share).quantize(Decimal("0.01"))
+                )
+
+
+def _merge_soup_into_main_course(sub_rows: list[dict]) -> list[dict]:
+    """Vykáže polievku v riadku hlavného jedla namiesto samostatného riadku.
+
+    Polievka aj hlavné jedlo sa pripravujú z tej istej obedovej hlavy, takže
+    vlastný polievkový riadok len zdvojoval každú porciu a každú diétu. Stĺpec
+    polievky zostáva; mení sa iba to, do ktorého riadku je rozpísaný.
+    """
+    main_by_key: dict[tuple, list[dict]] = {}
+    for sub_row in sub_rows:
+        if sub_row["meal"] == "main_course":
+            main_by_key.setdefault(_soup_merge_key(sub_row), []).append(sub_row)
+
+    result: list[dict] = []
+    for sub_row in sub_rows:
+        if sub_row["meal"] != "soup":
+            result.append(sub_row)
+            continue
+        targets = main_by_key.get(_soup_merge_key(sub_row))
+        if not targets:
+            # Polievka bez hlavného jedla (napr. prevádzka berie len polievku)
+            # nemá kam spadnúť — ostáva samostatným riadkom.
+            result.append(sub_row)
+            continue
+        _distribute_soup_grams(sub_row, targets)
+        for target in targets:
+            # Riadok teraz zastupuje aj polievku. Bez tejto stopy by súhrn
+            # počtov (`_std_agg`) o polievke nevedel — počíta zo sub_rows a
+            # polievkový riadok už neexistuje.
+            target.setdefault("absorbed_meals", []).append(sub_row["meal"])
+    return result
 
 
 def _extract_pack_counts(raw_value: Any) -> dict[str, int]:
@@ -934,6 +1018,7 @@ class MealPlanService:
                                     "portion_name": display_portion_name,
                                     "label": label,
                                     "count": billed_count,
+                                    "_heads": count,
                                     "col_grams": grams,
                                 }
                             )
@@ -964,6 +1049,7 @@ class MealPlanService:
                                         diet_name, []
                                     ),
                                     "count": billed_diet_count,
+                                    "_heads": diet_count,
                                     "col_grams": diet_grams,
                                 }
                             )
@@ -1001,6 +1087,7 @@ class MealPlanService:
                                         f"{'Menu ' + variant if variant else MEAL_LABELS[meal]} - zvlášť"
                                     ),
                                     "count": _billed_count(pack_count, billing_coeff),
+                                    "_heads": pack_count,
                                     "col_grams": pack_grams,
                                 }
                             )
@@ -1025,6 +1112,7 @@ class MealPlanService:
                                         diet_name, "#FDE68A"
                                     ),
                                     "count": _billed_count(pack_count, billing_coeff),
+                                    "_heads": pack_count,
                                     "col_grams": pack_diet_grams,
                                 }
                             )
@@ -1049,6 +1137,12 @@ class MealPlanService:
 
             if billing_coeffs:
                 sub_rows = _merge_billed_sub_rows(sub_rows)
+
+            # Až po zlúčení fakturačných riadkov — polievka sa má rozdeliť
+            # medzi finálne menu riadky, nie medzi tie pred premenovaním.
+            sub_rows = _merge_soup_into_main_course(sub_rows)
+            for sub_row in sub_rows:
+                sub_row.pop("_heads", None)
 
             if sub_rows:
                 admin_order_note = str(
@@ -1211,20 +1305,32 @@ class MealPlanService:
                 _pname = _sr.get("portion_name", "")
                 if not _pname:
                     continue
+                # Zlúčený riadok zastupuje viac jedál (obed nesie aj polievku),
+                # takže sa započíta do každého z nich.
+                _meals = [_sr["meal"], *(_sr.get("absorbed_meals") or [])]
                 if _sr["type"] == "standard":
-                    _mv = (_sr["meal"], _sr.get("variant", ""))
-                    if _mv not in _std_agg:
-                        _std_agg[_mv] = {}
-                    _std_agg[_mv][_pname] = _std_agg[_mv].get(_pname, 0) + _sr["count"]
+                    for _meal in _meals:
+                        # Polievka nemá varianty — nesmie sa rozpadnúť na A/B.
+                        _variant = (
+                            _sr.get("variant", "") if _meal == _sr["meal"] else ""
+                        )
+                        _mv = (_meal, _variant)
+                        if _mv not in _std_agg:
+                            _std_agg[_mv] = {}
+                        _std_agg[_mv][_pname] = (
+                            _std_agg[_mv].get(_pname, 0) + _sr["count"]
+                        )
                 else:
                     _dname = _sr.get("diet_name", "")
                     if not _dname:
                         continue
-                    _m = _sr["meal"]
-                    if _m not in _diet_agg:
-                        _diet_agg[_m] = {}
-                    _k = (_pname, _dname)
-                    _diet_agg[_m][_k] = _diet_agg[_m].get(_k, 0) + _sr["count"]
+                    for _meal in _meals:
+                        if _meal not in _diet_agg:
+                            _diet_agg[_meal] = {}
+                        _k = (_pname, _dname)
+                        _diet_agg[_meal][_k] = (
+                            _diet_agg[_meal].get(_k, 0) + _sr["count"]
+                        )
 
         count_summary: list[dict] = []
         _added_default_diet_meals: set = set()

@@ -1,16 +1,18 @@
-"""Tests for Report Exporters."""
+"""Tabuľka „Gramáž jedál" — dáta z MealPlanService až po vykreslené HTML.
+
+HTML je to isté, z ktorého WeasyPrint robí PDF, a stavia sa z rovnakého spec-u
+ako obrazovka — takže čo je overené tu, platí pre oba výstupy.
+"""
 
 import datetime
 from decimal import Decimal
-from io import BytesIO
 
 import pytest
 from django.contrib.auth.models import User
-from openpyxl import load_workbook
 
 from api.exporters.gramage_dashboard_export import portion_summary
-from api.exporters.gramage_dashboard_pdf_exporter import GramageDashboardPDFExporter
-from api.exporters.gramage_dashboard_xlsx_exporter import GramageDashboardXLSXExporter
+from api.exporters.gramage_table_html import render_table
+from api.exporters.gramage_table_spec import build_table_spec, format_count
 from api.models import (
     Celok,
     DailyMealPlan,
@@ -23,6 +25,16 @@ from api.models import (
     Prevadzka,
 )
 from api.services.meal_plan_service import MealPlanService
+
+
+def _rendered_rows(data: dict) -> list[tuple[str, str]]:
+    """(label, počet) pre každý riadok vykresleného HTML, v poradí tabuľky."""
+    spec = build_table_spec(data)
+    rows = []
+    for row in [*spec["rows"], *spec["footer"]]:
+        cells = row["cells"]
+        rows.append((str(cells[0].get("text") or ""), cells[0].get("count") or ""))
+    return rows
 
 
 @pytest.mark.django_db
@@ -143,25 +155,10 @@ class TestGramageDashboardExports:
         ]
         assert data["totals"] == [["300.00"], ["600.00"], ["500.00"], ["150.00"]]
 
-        workbook = load_workbook(BytesIO(GramageDashboardXLSXExporter(data).generate()))
-        worksheet = workbook.active
-        exported_values = [row for row in worksheet.iter_rows(values_only=True)]
-
-        assert any(
-            values[0] == "Súčet bez diét" and values[1] == 11
-            for values in exported_values
-            if values[0]
-        )
-        assert any(
-            values[0] == "Bezlepková" and values[1] == 2
-            for values in exported_values
-            if values[0]
-        )
-        assert any(
-            values[0] == "Vegan" and values[1] == 1
-            for values in exported_values
-            if values[0]
-        )
+        rendered = _rendered_rows(data)
+        assert ("Súčet bez diét", "11") in rendered
+        assert ("Bezlepková", "2") in rendered
+        assert ("Vegan", "1") in rendered
 
     def test_portion_summaries_export_per_delivery_block_and_globally(self):
         user = User.objects.create_user(
@@ -269,39 +266,15 @@ class TestGramageDashboardExports:
         ]
         expected_summaries.append(("Porcie celkom", portion_summary(data)))
 
-        workbook = load_workbook(BytesIO(GramageDashboardXLSXExporter(data).generate()))
-        exported_values = list(workbook.active.iter_rows(values_only=True))
+        rendered = _rendered_rows(data)
         for title, expected_rows in expected_summaries:
             band_index = next(
-                index
-                for index, values in enumerate(exported_values)
-                if values[0] == title
+                index for index, (label, _) in enumerate(rendered) if label == title
             )
             for offset, expected in enumerate(expected_rows, start=1):
-                values = exported_values[band_index + offset]
-                assert values[0] == expected["label"]
-                assert values[1] == expected["count"]
-                expected_grams = [
-                    float(grams)
-                    for group_grams in expected["col_grams"]
-                    for grams in group_grams
-                ]
-                assert list(values[2 : 2 + len(expected_grams)]) == expected_grams
-
-        pdf_exporter = GramageDashboardPDFExporter(data)
-        pdf_exporter.generate()
-        for title, expected_rows in expected_summaries:
-            band_index = next(
-                index
-                for index, row in enumerate(pdf_exporter.rendered_rows)
-                if row["label"] == title
-            )
-            assert (
-                pdf_exporter.rendered_rows[
-                    band_index + 1 : band_index + 1 + len(expected_rows)
-                ]
-                == expected_rows
-            )
+                label, count = rendered[band_index + offset]
+                assert label == expected["label"]
+                assert count == format_count(expected["count"])
 
     def test_admin_order_and_delivery_notes_export_to_xlsx_and_pdf(self):
         user = User.objects.create_user(
@@ -344,19 +317,7 @@ class TestGramageDashboardExports:
         )
 
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
-        expected_labels = {
-            "Poznámka k objednávke: bez cibule",
-            "Poznámka: zadný vchod",
-        }
-        workbook = load_workbook(BytesIO(GramageDashboardXLSXExporter(data).generate()))
-        xlsx_labels = {
-            values[0]
-            for values in workbook.active.iter_rows(values_only=True)
-            if values[0]
-        }
-        assert expected_labels <= xlsx_labels
+        html = render_table(build_table_spec(data))
 
-        pdf_exporter = GramageDashboardPDFExporter(data)
-        pdf_exporter.generate()
-        pdf_labels = {row["label"] for row in pdf_exporter.rendered_rows}
-        assert expected_labels <= pdf_labels
+        assert "<strong>Poznámka k objednávke:</strong> bez cibule" in html
+        assert "<strong>Rozvoz:</strong> zadný vchod" in html

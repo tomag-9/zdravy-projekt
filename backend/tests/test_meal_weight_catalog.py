@@ -239,10 +239,24 @@ def test_gramage_dashboard_does_not_double_count_headcount_for_soup_and_main_cou
     # because two dishes (soup + main_course) are prepared from this order.
     assert row["standard_total_count"] == 4
     assert row["diet_summary_rows"][0]["count"] == 1
-    # Two sub_rows (one per dish) still carry the correct per-dish count each.
+
+    # Polievka sa vykazuje v riadku hlavného jedla, nie vo vlastnom, takže na
+    # obed pripadá jeden štandardný riadok — a nesie gramáž oboch jedál.
     standard_rows = [sr for sr in row["sub_rows"] if sr["type"] == "standard"]
-    assert {sr["meal"] for sr in standard_rows} == {"soup", "main_course"}
+    assert {sr["meal"] for sr in standard_rows} == {"main_course"}
     assert all(sr["count"] == 4 for sr in standard_rows)
+
+    soup_index, main_index = (
+        next(
+            index
+            for index, group in enumerate(data["col_groups"])
+            if group["meal"] == meal
+        )
+        for meal in ("soup", "main_course")
+    )
+    lunch_row = standard_rows[0]
+    assert lunch_row["col_grams"][soup_index], "polievka musí byť v riadku obeda"
+    assert lunch_row["col_grams"][main_index]
 
 
 @pytest.mark.django_db
@@ -323,15 +337,12 @@ def test_gramage_dashboard_shows_unit_exception_as_its_own_column():
     # Škôlka gulička count is 1 ks/person * 4 people = 4, NOT multiplied by coefficient
     assert main_row["col_grams"][group_index][exception_index] == "4.00"
 
-    # Both dashboard exporters must not crash on a component with
-    # base_grams=None (the exception column has no gram value).
-    from api.exporters.gramage_dashboard_pdf_exporter import GramageDashboardPDFExporter
-    from api.exporters.gramage_dashboard_xlsx_exporter import (
-        GramageDashboardXLSXExporter,
-    )
+    # Vykreslenie nesmie spadnúť na komponente s base_grams=None (výnimkový
+    # stĺpec nemá gramáž).
+    from api.exporters.gramage_table_html import render_table
+    from api.exporters.gramage_table_spec import build_table_spec
 
-    assert GramageDashboardXLSXExporter(data).generate()
-    assert GramageDashboardPDFExporter(data).generate()
+    assert render_table(build_table_spec(data))
 
 
 @pytest.mark.django_db
