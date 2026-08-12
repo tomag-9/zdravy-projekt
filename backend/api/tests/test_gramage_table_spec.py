@@ -240,6 +240,40 @@ def test_variant_filter_keeps_soup_and_drops_the_other_menu():
     assert spec["total_columns"] == 1 + 2
 
 
+def test_variant_filter_drops_breakfast_and_afternoon_snack():
+    """Výber variantu je podklad na obed — raňajky a olovrant naň nepatria."""
+    payload = _payload()
+    payload["col_groups"].extend(
+        [
+            {
+                "meal": "breakfast_snack",
+                "variant": "",
+                "label": "Raňajky",
+                "template_name": "Chlieb",
+                "components": [GRAMS],
+            },
+            {
+                "meal": "afternoon_snack",
+                "variant": "",
+                "label": "Olovrant",
+                "template_name": "Jogurt",
+                "components": [GRAMS],
+            },
+        ]
+    )
+
+    assert [g["text"] for g in build_table_spec(payload)["header"]["groups"]] == [
+        "Polievka",
+        "Menu A",
+        "Menu B",
+        "Raňajky",
+        "Olovrant",
+    ]
+    assert [
+        g["text"] for g in build_table_spec(payload, variants=["A"])["header"]["groups"]
+    ] == ["Polievka", "Menu A"]
+
+
 def test_variant_filter_also_trims_the_portion_summary():
     spec = build_table_spec(_payload(), variants=["A"])
 
@@ -259,3 +293,43 @@ def test_no_filter_means_the_complete_table():
         "Menu A",
         "Menu B",
     ]
+
+
+def test_variant_filter_drops_rows_that_lose_all_their_numbers():
+    """Olovrantový riadok pri tlači obeda nemá čo ukázať — nepatrí tam."""
+    payload = _payload()
+    payload["col_groups"].append(
+        {
+            "meal": "afternoon_snack",
+            "variant": "",
+            "label": "Olovrant",
+            "template_name": "Jogurt",
+            "components": [GRAMS],
+        }
+    )
+    for row in payload["rows"]:
+        for value in (*row["sub_rows"], row):
+            if isinstance(value, dict) and "col_grams" in value:
+                value["col_grams"].append([])
+        row["standard_col_grams"].append([])
+        row["diet_summary_rows"][0]["col_grams"].append([])
+        row["sub_rows"].append(
+            {
+                "type": "standard",
+                "meal": "afternoon_snack",
+                "variant": "",
+                "label": "Škôlka - Olovrant",
+                "count": 8,
+                "col_grams": [[], [], [], ["1000.00"]],
+            }
+        )
+    payload["totals"].append(["1000.00"])
+
+    complete = [r["cells"][0]["text"] for r in build_table_spec(payload)["rows"]]
+    assert "Škôlka - Olovrant" in complete
+
+    lunch_only = [
+        r["cells"][0]["text"] for r in build_table_spec(payload, variants=["A"])["rows"]
+    ]
+    assert "Škôlka - Olovrant" not in lunch_only
+    assert "Škôlka - Obed Menu A" in lunch_only

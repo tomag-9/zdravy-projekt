@@ -70,21 +70,30 @@ def format_count(count: object) -> str:
     return _decimal_text(value)
 
 
+# Čo sa varí k obedu. Polievka patrí k menu (je z tej istej hlavy), raňajky
+# a olovrant sú samostatné jedlá.
+LUNCH_MEALS = {"soup", "main_course"}
+
+
 def _filter_col_groups(col_groups: list[dict], variants: list[str] | None) -> list[int]:
     """Indexy stĺpcových skupín, ktoré sa majú vykresliť.
 
-    `variants=None` znamená kompletnú tabuľku. Filter sa týka len menu variantov —
-    polievka, raňajky a olovrant ostávajú vždy, lebo sa varia bez ohľadu na to,
-    ktoré menu sa tlačí.
+    `variants=None` znamená kompletnú tabuľku. Vybrať variant znamená vytlačiť
+    podklad pre obed — teda polievku a zvolené menu, bez raňajok a olovrantu;
+    tie sa pripravujú inde a na takomto výtlačku by len zavadzali.
     """
     if not variants:
         return list(range(len(col_groups)))
     wanted = {str(v).upper() for v in variants}
     keep = []
     for index, group in enumerate(col_groups):
+        meal = group.get("meal")
+        if meal not in LUNCH_MEALS:
+            continue
         variant = str(group.get("variant") or "").upper()
-        if group.get("meal") != "main_course" or not variant or variant in wanted:
-            keep.append(index)
+        if meal == "main_course" and variant and variant not in wanted:
+            continue
+        keep.append(index)
     return keep
 
 
@@ -274,6 +283,11 @@ def _client_rows(
     ]
 
     for sub_row in row.get("sub_rows") or []:
+        gram_cells = _gram_cells(sub_row.get("col_grams") or [], groups, hues)
+        # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať —
+        # vzniká pri filtri variantov (olovrant a raňajky pri tlači obeda).
+        if not any("cell-num" in cell["css"] for cell in gram_cells):
+            continue
         is_diet = sub_row.get("type") == "diet"
         label = sub_row.get("label") or ""
         cell = _label_cell(
@@ -296,8 +310,7 @@ def _client_rows(
                     if is_diet
                     else None
                 ),
-                "cells": [cell]
-                + _gram_cells(sub_row.get("col_grams") or [], groups, hues),
+                "cells": [cell] + gram_cells,
             }
         )
 
