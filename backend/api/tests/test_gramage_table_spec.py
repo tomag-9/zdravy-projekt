@@ -18,6 +18,7 @@ def _payload(**overrides):
         "date": "2026-07-28",
         "col_groups": [
             {
+                "key": "soup",
                 "meal": "soup",
                 "variant": "",
                 "label": "Polievka",
@@ -25,6 +26,7 @@ def _payload(**overrides):
                 "components": [{"label": "Polievka", "base_grams": "200", "unit": "g"}],
             },
             {
+                "key": "main_course_A",
                 "meal": "main_course",
                 "variant": "A",
                 "label": "Obed",
@@ -32,6 +34,7 @@ def _payload(**overrides):
                 "components": [GRAMS],
             },
             {
+                "key": "main_course_B",
                 "meal": "main_course",
                 "variant": "B",
                 "label": "Obed",
@@ -232,20 +235,13 @@ def test_totals_row_uses_a_dash_for_empty_columns():
     assert spec["footer"][-1]["cells"][-1]["text"] == "—"
 
 
-# ── Filter variantov (základ pre bod 7 — verzie tlače) ───────────────────────
-def test_variant_filter_keeps_soup_and_drops_the_other_menu():
-    spec = build_table_spec(_payload(), variants=["A"])
-
-    assert [g["text"] for g in spec["header"]["groups"]] == ["Polievka", "Menu A"]
-    assert spec["total_columns"] == 1 + 2
-
-
-def test_variant_filter_drops_breakfast_and_afternoon_snack():
-    """Výber variantu je podklad na obed — raňajky a olovrant naň nepatria."""
+# ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
+def _with_breakfast_and_snack():
     payload = _payload()
     payload["col_groups"].extend(
         [
             {
+                "key": "breakfast_snack",
                 "meal": "breakfast_snack",
                 "variant": "",
                 "label": "Raňajky",
@@ -253,6 +249,7 @@ def test_variant_filter_drops_breakfast_and_afternoon_snack():
                 "components": [GRAMS],
             },
             {
+                "key": "afternoon_snack",
                 "meal": "afternoon_snack",
                 "variant": "",
                 "label": "Olovrant",
@@ -261,21 +258,64 @@ def test_variant_filter_drops_breakfast_and_afternoon_snack():
             },
         ]
     )
+    for row in payload["rows"]:
+        row["standard_col_grams"].extend([[], []])
+        row["diet_summary_rows"][0]["col_grams"].extend([[], []])
+        for sub_row in row["sub_rows"]:
+            sub_row["col_grams"].extend([[], []])
+        row["sub_rows"].append(
+            {
+                "type": "standard",
+                "meal": "afternoon_snack",
+                "variant": "",
+                "label": "Škôlka - Olovrant",
+                "count": 8,
+                "col_grams": [[], [], [], [], ["1000.00"]],
+            }
+        )
+    payload["totals"].extend([[], ["1000.00"]])
+    return payload
 
-    assert [g["text"] for g in build_table_spec(payload)["header"]["groups"]] == [
+
+def _group_labels(spec):
+    return [group["text"] for group in spec["header"]["groups"]]
+
+
+def test_no_filter_means_the_complete_table():
+    assert _group_labels(build_table_spec(_with_breakfast_and_snack())) == [
         "Polievka",
         "Menu A",
         "Menu B",
         "Raňajky",
         "Olovrant",
     ]
-    assert [
-        g["text"] for g in build_table_spec(payload, variants=["A"])["header"]["groups"]
-    ] == ["Polievka", "Menu A"]
 
 
-def test_variant_filter_also_trims_the_portion_summary():
-    spec = build_table_spec(_payload(), variants=["A"])
+def test_sections_select_exactly_what_was_ticked():
+    """Každý prepínač platí sám za seba — polievka sa k menu nedoťahuje."""
+    payload = _with_breakfast_and_snack()
+
+    assert _group_labels(
+        build_table_spec(payload, sections=["soup", "main_course_A"])
+    ) == [
+        "Polievka",
+        "Menu A",
+    ]
+    assert _group_labels(build_table_spec(payload, sections=["breakfast_snack"])) == [
+        "Raňajky"
+    ]
+    assert _group_labels(build_table_spec(payload, sections=["afternoon_snack"])) == [
+        "Olovrant"
+    ]
+    assert _group_labels(
+        build_table_spec(payload, sections=["main_course_A", "main_course_B"])
+    ) == ["Menu A", "Menu B"]
+
+
+def test_filter_also_trims_the_portion_summary():
+    spec = build_table_spec(
+        _with_breakfast_and_snack(), sections=["soup", "main_course_A"]
+    )
 
     labels = [
         row["cells"][0]["text"]
@@ -285,51 +325,37 @@ def test_variant_filter_also_trims_the_portion_summary():
     assert labels == ["Polievka", "Menu A"]
 
 
-def test_no_filter_means_the_complete_table():
-    spec = build_table_spec(_payload())
-
-    assert [g["text"] for g in spec["header"]["groups"]] == [
-        "Polievka",
-        "Menu A",
-        "Menu B",
-    ]
-
-
-def test_variant_filter_drops_rows_that_lose_all_their_numbers():
+def test_filter_drops_rows_that_lose_all_their_numbers():
     """Olovrantový riadok pri tlači obeda nemá čo ukázať — nepatrí tam."""
-    payload = _payload()
-    payload["col_groups"].append(
-        {
-            "meal": "afternoon_snack",
-            "variant": "",
-            "label": "Olovrant",
-            "template_name": "Jogurt",
-            "components": [GRAMS],
-        }
-    )
-    for row in payload["rows"]:
-        for value in (*row["sub_rows"], row):
-            if isinstance(value, dict) and "col_grams" in value:
-                value["col_grams"].append([])
-        row["standard_col_grams"].append([])
-        row["diet_summary_rows"][0]["col_grams"].append([])
-        row["sub_rows"].append(
-            {
-                "type": "standard",
-                "meal": "afternoon_snack",
-                "variant": "",
-                "label": "Škôlka - Olovrant",
-                "count": 8,
-                "col_grams": [[], [], [], ["1000.00"]],
-            }
-        )
-    payload["totals"].append(["1000.00"])
+    payload = _with_breakfast_and_snack()
 
-    complete = [r["cells"][0]["text"] for r in build_table_spec(payload)["rows"]]
+    complete = [row["cells"][0]["text"] for row in build_table_spec(payload)["rows"]]
     assert "Škôlka - Olovrant" in complete
 
-    lunch_only = [
-        r["cells"][0]["text"] for r in build_table_spec(payload, variants=["A"])["rows"]
+    lunch = [
+        row["cells"][0]["text"]
+        for row in build_table_spec(payload, sections=["soup", "main_course_A"])["rows"]
     ]
-    assert "Škôlka - Olovrant" not in lunch_only
-    assert "Škôlka - Obed Menu A" in lunch_only
+    assert "Škôlka - Olovrant" not in lunch
+    assert "Škôlka - Obed Menu A" in lunch
+
+
+def test_spec_lists_every_section_with_its_state():
+    """Prepínače musia obsahovať aj odškrtnuté, inak sa už nedajú zapnúť späť."""
+    spec = build_table_spec(_with_breakfast_and_snack(), sections=["main_course_A"])
+
+    assert [(s["key"], s["selected"]) for s in spec["sections"]] == [
+        ("soup", False),
+        ("main_course_A", True),
+        ("main_course_B", False),
+        ("breakfast_snack", False),
+        ("afternoon_snack", False),
+    ]
+
+
+def test_unknown_or_empty_selection_falls_back_to_everything():
+    """Preklep v URL nesmie vrátiť prázdnu stranu."""
+    payload = _with_breakfast_and_snack()
+
+    assert len(_group_labels(build_table_spec(payload, sections=["nezmysel"]))) == 5
+    assert len(_group_labels(build_table_spec(payload, sections=[]))) == 5

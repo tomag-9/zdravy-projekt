@@ -70,31 +70,26 @@ def format_count(count: object) -> str:
     return _decimal_text(value)
 
 
-# Čo sa varí k obedu. Polievka patrí k menu (je z tej istej hlavy), raňajky
-# a olovrant sú samostatné jedlá.
-LUNCH_MEALS = {"soup", "main_course"}
-
-
-def _filter_col_groups(col_groups: list[dict], variants: list[str] | None) -> list[int]:
+def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> list[int]:
     """Indexy stĺpcových skupín, ktoré sa majú vykresliť.
 
-    `variants=None` znamená kompletnú tabuľku. Vybrať variant znamená vytlačiť
-    podklad pre obed — teda polievku a zvolené menu, bez raňajok a olovrantu;
-    tie sa pripravujú inde a na takomto výtlačku by len zavadzali.
+    Sekcia je kľúč stĺpcovej skupiny (`breakfast_snack`, `soup`,
+    `main_course_A`, `afternoon_snack` …). `sections=None` znamená kompletnú
+    tabuľku; inak sa vykreslí presne to, čo si používateľ vybral — polievka
+    ani menu sa navzájom nedoťahujú, každý prepínač platí sám za seba.
+
+    Neznáme kľúče sa ignorujú a prázdny výber padne späť na kompletnú tabuľku,
+    aby sa preklep v URL neprejavil prázdnou stranou.
     """
-    if not variants:
+    if not sections:
         return list(range(len(col_groups)))
-    wanted = {str(v).upper() for v in variants}
-    keep = []
-    for index, group in enumerate(col_groups):
-        meal = group.get("meal")
-        if meal not in LUNCH_MEALS:
-            continue
-        variant = str(group.get("variant") or "").upper()
-        if meal == "main_course" and variant and variant not in wanted:
-            continue
-        keep.append(index)
-    return keep
+    wanted = {str(section) for section in sections}
+    keep = [
+        index
+        for index, group in enumerate(col_groups)
+        if str(group.get("key") or "") in wanted
+    ]
+    return keep or list(range(len(col_groups)))
 
 
 def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[dict]:
@@ -126,10 +121,10 @@ def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     return cell
 
 
-def build_table_spec(data: dict, variants: list[str] | None = None) -> dict:
+def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky."""
     all_groups = data.get("col_groups") or []
-    keep = _filter_col_groups(all_groups, variants)
+    keep = _filter_col_groups(all_groups, sections)
     groups = [(index, all_groups[index]) for index in keep]
     hues = [meal_hue(g.get("meal"), g.get("variant")) for _, g in groups]
 
@@ -193,6 +188,16 @@ def build_table_spec(data: dict, variants: list[str] | None = None) -> dict:
         "header": header,
         "rows": rows,
         "footer": footer,
+        # Prepínače pre UI — zo VŠETKÝCH skupín, nie z filtrovaných, inak by
+        # sa odškrtnutá sekcia už nedala zapnúť späť.
+        "sections": [
+            {
+                "key": str(group.get("key") or ""),
+                "label": group_label(group),
+                "selected": index in set(keep),
+            }
+            for index, group in enumerate(all_groups)
+        ],
     }
 
 

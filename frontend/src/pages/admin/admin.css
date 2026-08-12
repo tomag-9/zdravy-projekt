@@ -773,3 +773,32 @@
     overflow-x: auto;
 }
 .zpa-celok-body .zpa-table { background: transparent; }
+
+/* ========================================================== *
+ * Filter sekcií gramáže (raňajky / polievka / menu / olovrant)
+ * ========================================================== */
+.zpa-section-filter {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    margin-bottom: 14px;
+}
+.zpa-section-filter .lbl {
+    font-family: var(--font-display); font-weight: 700; font-size: 11px;
+    text-transform: uppercase; letter-spacing: var(--tracking-caps);
+    color: var(--ink-3); margin-right: 4px;
+}
+.zpa-section-filter .chip {
+    padding: 6px 14px; border-radius: var(--radius-pill); cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-3);
+    font-family: var(--font-display); font-weight: 600; font-size: 13px;
+    transition: all 160ms;
+}
+.zpa-section-filter .chip:hover { border-color: var(--green-500); color: var(--green-800); }
+.zpa-section-filter .chip.on {
+    background: var(--green-700); border-color: var(--green-700);
+    color: var(--bg-cream); box-shadow: var(--shadow-sm);
+}
+.zpa-section-filter .reset {
+    border: 0; background: transparent; cursor: pointer; padding: 6px 4px;
+    font-size: 13px; font-weight: 600; color: var(--green-700);
+    text-decoration: underline;
+}

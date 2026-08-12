@@ -289,7 +289,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         # aby sa nemali ako rozísť (viď gramage_table_spec).
         from ..exporters.gramage_table_spec import build_table_spec
 
-        data["spec"] = build_table_spec(data)
+        sections = request.query_params.getlist("section") or None
+        data["spec"] = build_table_spec(data, sections=sections)
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-pdf")
@@ -310,8 +311,8 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         from ..exporters.gramage_table_html import render_document
         from ..exporters.gramage_table_spec import build_table_spec
 
-        variants = request.query_params.getlist("variant") or None
-        spec = build_table_spec(data, variants=variants)
+        sections = request.query_params.getlist("section") or None
+        spec = build_table_spec(data, sections=sections)
         pdf_bytes = HTML(string=render_document(spec)).write_pdf()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"

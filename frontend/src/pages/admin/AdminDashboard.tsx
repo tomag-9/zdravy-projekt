@@ -121,8 +121,15 @@ interface SpecRow {
   color?: string | null;
 }
 
+interface SpecSection {
+  key: string;
+  label: string;
+  selected: boolean;
+}
+
 interface TableSpec {
   total_columns: number;
+  sections: SpecSection[];
   header: {
     corner: string;
     groups: Array<{ text: string; sub: string; css: string; colspan: number }>;
@@ -235,13 +242,22 @@ const AdminDashboard: React.FC = () => {
   const [closing, setClosing] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
+  const [sections, setSections] = useState<string[]>([]);
+
+  // Ktoré sekcie (raňajky / polievka / menu / olovrant) sa zobrazujú. Prázdny
+  // výber = kompletná tabuľka. Rovnaký filter dostane obrazovka aj PDF, takže
+  // vytlačíš presne to, čo vidíš.
+  const sectionQuery = useMemo(
+    () => sections.map((key) => `&section=${encodeURIComponent(key)}`).join(""),
+    [sections],
+  );
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setData(null);
     setOrderReport(null);
     try {
-      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}`);
+      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}${sectionQuery}`);
       if (res.ok) {
         const gramage: GramageDashboard = await res.json();
         setData(gramage);
@@ -256,7 +272,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (e) { logger.error(e); }
     finally { setLoading(false); }
-  }, [apiFetch, date]);
+  }, [apiFetch, date, sectionQuery]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -286,7 +302,7 @@ const AdminDashboard: React.FC = () => {
   const handleExport = useCallback(async (fmt: "pdf", setFmt: (v: boolean) => void) => {
     setFmt(true);
     try {
-      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard-${fmt}/?date=${date}`);
+      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard-${fmt}/?date=${date}${sectionQuery}`);
       if (!res.ok) { toastError("Chyba pri generovaní súboru."); return; }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -299,7 +315,7 @@ const AdminDashboard: React.FC = () => {
       URL.revokeObjectURL(url);
     } catch (e) { logger.error(e); toastError("Chyba pri generovaní súboru."); }
     finally { setFmt(false); }
-  }, [apiFetch, date, toastError]);
+  }, [apiFetch, date, sectionQuery, toastError]);
 
   const submitClosedDayAction = useCallback(
     async (
@@ -446,7 +462,28 @@ const AdminDashboard: React.FC = () => {
           </Empty>
         )}
 
-        {!loading && data && hasData && <GramageTable data={data} />}
+        {!loading && data && hasData && (
+          <>
+            <SectionFilter
+              sections={data.spec.sections}
+              onToggle={(key) =>
+                setSections((current) => {
+                  // Prázdny výber znamená „všetko", takže prvé odkliknutie musí
+                  // vychádzať zo skutočne zobrazených sekcií, nie z prázdna.
+                  const base = current.length
+                    ? current
+                    : data.spec.sections.map((section) => section.key);
+                  const next = base.includes(key)
+                    ? base.filter((item) => item !== key)
+                    : [...base, key];
+                  return next.length === data.spec.sections.length ? [] : next;
+                })
+              }
+              onReset={() => setSections([])}
+            />
+            <GramageTable data={data} />
+          </>
+        )}
         {!loading && data && !hasData && hasOrderCounts && orderReport && (
           <OrderCountsTable report={orderReport} />
         )}
@@ -593,6 +630,38 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
         </table>
       </div>
     </Card>
+  );
+};
+
+// ── Filter sekcií ─────────────────────────────────────────────────────────────
+// Rovnaký výber ide na obrazovku aj do PDF — čo vidíš, to vytlačíš.
+
+const SectionFilter: React.FC<{
+  sections: SpecSection[];
+  onToggle: (key: string) => void;
+  onReset: () => void;
+}> = ({ sections, onToggle, onReset }) => {
+  const allSelected = sections.every((section) => section.selected);
+  return (
+    <div className="zpa-section-filter">
+      <span className="lbl">Zobraziť</span>
+      {sections.map((section) => (
+        <button
+          key={section.key}
+          type="button"
+          className={`chip${section.selected ? " on" : ""}`}
+          aria-pressed={section.selected}
+          onClick={() => onToggle(section.key)}
+        >
+          {section.label}
+        </button>
+      ))}
+      {!allSelected && (
+        <button type="button" className="reset" onClick={onReset}>
+          Zobraziť všetko
+        </button>
+      )}
+    </div>
   );
 };
 

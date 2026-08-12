@@ -54,6 +54,7 @@ const mockDashboardRequests = (
 // ho musí niesť tiež, inak testuje niečo, čo v aplikácii nikdy nenastane.
 const emptySpec = (columns = 0) => ({
   total_columns: 1 + columns,
+  sections: [],
   header: { corner: "Prevádzka / Riadok", groups: [], components: [] },
   rows: [],
   footer: [],
@@ -300,6 +301,11 @@ const GRAMAGE_WITH_ROWS = {
   ...EMPTY_GRAMAGE,
   spec: {
     total_columns: 2,
+    sections: [
+      { key: "soup", label: "Polievka", selected: true },
+      { key: "main_course_A", label: "Menu A", selected: true },
+      { key: "afternoon_snack", label: "Olovrant", selected: true },
+    ],
     header: {
       corner: "Prevádzka / Riadok",
       groups: [{ text: "Menu A", sub: "Kuracie", css: "grp mh-menuA-1", colspan: 1 }],
@@ -361,7 +367,9 @@ describe("GramageTable renders straight from the spec", () => {
     render(<AdminDashboard />);
 
     expect(await screen.findByText("MŠ Testovacia")).toBeInTheDocument();
-    expect(screen.getByText("Menu A")).toBeInTheDocument();
+    // "Menu A" je aj chip filtra, preto hľadaj hlavičku vnútri tabuľky.
+    const table = document.querySelector("table.zpa-gram")!;
+    expect(within(table as HTMLElement).getByText("Menu A")).toBeInTheDocument();
     expect(screen.getByText("300g")).toBeInTheDocument();
     // Desatiny musia byť vidno — kuchyňa ich potrebuje.
     expect(screen.getByText("3000,5")).toBeInTheDocument();
@@ -395,5 +403,55 @@ describe("GramageTable renders straight from the spec", () => {
     const subRow = screen.getByText("Škôlka - Obed Menu A").closest("tr")!;
     expect(within(subRow).getByText("8")).toHaveClass("count-badge");
     expect(subRow.querySelectorAll("td")).toHaveLength(2);
+  });
+});
+
+
+describe("Filter sekcií", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("re-fetches with the ticked sections and passes them to the export", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    // Odklik jednej sekcie pošle zvyšné dve — nie prázdny (= všetko) filter.
+    fireEvent.click(await screen.findByRole("button", { name: "Olovrant" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /gramage-dashboard\/\?date=[\d-]+&section=soup&section=main_course_A$/,
+        ),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /gramage-dashboard-pdf\/\?date=[\d-]+&section=soup&section=main_course_A$/,
+        ),
+      );
+    });
+  });
+
+  it("drops the filter entirely once everything is ticked again", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    const olovrant = await screen.findByRole("button", { name: "Olovrant" });
+    fireEvent.click(olovrant);
+    await waitFor(() => expect(olovrant).toHaveAttribute("aria-pressed", "true"));
+
+    // Fixture hlási všetky sekcie ako zapnuté, takže druhý klik ich má zapnúť
+    // späť a filter úplne zahodiť — inak by v URL zostal zbytočný balast.
+    fireEvent.click(olovrant);
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+$/),
+      );
+    });
   });
 });
