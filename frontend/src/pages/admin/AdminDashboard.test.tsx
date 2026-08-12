@@ -50,6 +50,16 @@ const mockDashboardRequests = (
   });
 };
 
+// Tabuľku renderuje hotový `spec` z backendu (gramage_table_spec.py) — fixture
+// ho musí niesť tiež, inak testuje niečo, čo v aplikácii nikdy nenastane.
+const emptySpec = (columns = 0) => ({
+  total_columns: 1 + columns,
+  sections: [],
+  header: { corner: "Prevádzka / Riadok", groups: [], components: [] },
+  rows: [],
+  footer: [],
+});
+
 const EMPTY_GRAMAGE = {
   date: "2026-07-03",
   meal_plan_id: null,
@@ -57,6 +67,7 @@ const EMPTY_GRAMAGE = {
   rows: [],
   totals: [],
   count_summary: [],
+  spec: emptySpec(),
 };
 
 const ORDER_REPORT = {
@@ -141,6 +152,14 @@ const GRAMAGE_WITH_PLAN = {
   rows: [],
   totals: [["0.00"]],
   count_summary: [],
+  spec: {
+    ...emptySpec(1),
+    header: {
+      corner: "Prevádzka / Riadok",
+      groups: [{ text: "Menu B", sub: "Hlavny chod 1", css: "grp mh-menuB-1", colspan: 1 }],
+      components: [{ text: "jedlo", sub: "100g", css: "comp mh-menuB-2" }],
+    },
+  },
 };
 
 describe("AdminDashboard", () => {
@@ -269,5 +288,170 @@ describe("AdminDashboard", () => {
     });
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(mockToastSuccess).toHaveBeenCalledWith("Deň bol odomknutý.");
+  });
+});
+
+// ── Tabuľka sa renderuje z hotového spec-u ───────────────────────────────────
+// Rovnaký spec vykresľuje aj PDF (gramage_table_html.py), takže tieto testy
+// zamykajú, že React zo spec-u nič nedomýšľa ani nevynecháva.
+
+const cell = (text: string, css = "") => ({ text, css });
+
+const GRAMAGE_WITH_ROWS = {
+  ...EMPTY_GRAMAGE,
+  spec: {
+    total_columns: 2,
+    sections: [
+      { key: "soup", label: "Polievka", selected: true },
+      { key: "main_course_A", label: "Menu A", selected: true },
+      { key: "afternoon_snack", label: "Olovrant", selected: true },
+    ],
+    header: {
+      corner: "Prevádzka / Riadok",
+      groups: [{ text: "Menu A", sub: "Kuracie", css: "grp mh-menuA-1", colspan: 1 }],
+      components: [{ text: "Mäso", sub: "300g", css: "comp mh-menuA-2" }],
+    },
+    rows: [
+      {
+        kind: "client",
+        css: "client-row",
+        group_id: "k1",
+        cells: [
+          {
+            text: "MŠ Testovacia",
+            meta: "štandard 8, diéty 2",
+            meta_right: "spolu porcií 10",
+            colspan: 2,
+          },
+        ],
+      },
+      {
+        kind: "sub-row",
+        css: "sub-row",
+        group_id: "k1",
+        collapsible: true,
+        cells: [
+          { text: "Škôlka - Obed Menu A", css: "lbl", count: "8" },
+          cell("2400", "cell-num mh-menuA-cell"),
+        ],
+      },
+      {
+        kind: "summary-diet",
+        css: "summ-diet",
+        group_id: "k1",
+        collapsible: true,
+        color: "#966107",
+        cells: [
+          { text: "No Milk", css: "lbl", count: "2" },
+          cell("600,5", "cell-num mh-menuA-cell"),
+        ],
+      },
+    ],
+    footer: [
+      {
+        kind: "total",
+        css: "total",
+        cells: [cell("CELKOM (g / ml)", "corner"), cell("3000,5")],
+      },
+    ],
+  },
+};
+
+describe("GramageTable renders straight from the spec", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("shows the header and footer but keeps client detail collapsed", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    expect(await screen.findByText("MŠ Testovacia")).toBeInTheDocument();
+    // "Menu A" je aj chip filtra, preto hľadaj hlavičku vnútri tabuľky.
+    const table = document.querySelector("table.zpa-gram")!;
+    expect(within(table as HTMLElement).getByText("Menu A")).toBeInTheDocument();
+    expect(screen.getByText("300g")).toBeInTheDocument();
+    // Desatiny musia byť vidno — kuchyňa ich potrebuje.
+    expect(screen.getByText("3000,5")).toBeInTheDocument();
+
+    // Podriadky sú zbalené, kým klienta nerozklikneš.
+    expect(screen.queryByText("Škôlka - Obed Menu A")).not.toBeInTheDocument();
+  });
+
+  it("reveals the sub-rows with their spec classes and colour on expand", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /MŠ Testovacia/ }));
+
+    const subRow = screen.getByText("Škôlka - Obed Menu A").closest("tr");
+    expect(subRow).toHaveClass("sub-row");
+    expect(screen.getByText("2400")).toHaveClass("cell-num", "mh-menuA-cell");
+
+    // Diéta sa odlišuje farbou písma, nie výplňou riadku.
+    const dietRow = screen.getByText("No Milk").closest("tr");
+    expect(dietRow).toHaveClass("summ-diet");
+    expect(dietRow).toHaveStyle({ color: "#966107" });
+  });
+
+  it("renders the count as a badge, not as its own column", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /MŠ Testovacia/ }));
+
+    const subRow = screen.getByText("Škôlka - Obed Menu A").closest("tr")!;
+    expect(within(subRow).getByText("8")).toHaveClass("count-badge");
+    expect(subRow.querySelectorAll("td")).toHaveLength(2);
+  });
+});
+
+
+describe("Filter sekcií", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("re-fetches with the ticked sections and passes them to the export", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    // Odklik jednej sekcie pošle zvyšné dve — nie prázdny (= všetko) filter.
+    fireEvent.click(await screen.findByRole("button", { name: "Olovrant" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /gramage-dashboard\/\?date=[\d-]+&section=soup&section=main_course_A$/,
+        ),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(
+          /gramage-dashboard-pdf\/\?date=[\d-]+&section=soup&section=main_course_A$/,
+        ),
+      );
+    });
+  });
+
+  it("drops the filter entirely once everything is ticked again", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<AdminDashboard />);
+
+    const olovrant = await screen.findByRole("button", { name: "Olovrant" });
+    fireEvent.click(olovrant);
+    await waitFor(() => expect(olovrant).toHaveAttribute("aria-pressed", "true"));
+
+    // Fixture hlási všetky sekcie ako zapnuté, takže druhý klik ich má zapnúť
+    // späť a filter úplne zahodiť — inak by v URL zostal zbytočný balast.
+    fireEvent.click(olovrant);
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+$/),
+      );
+    });
   });
 });

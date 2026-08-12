@@ -157,6 +157,7 @@ def portion_summary(data: dict, rows: list[dict] | None = None) -> list[dict]:
     ]
     for row in rows:
         for sub_row in row.get("sub_rows") or []:
+            own_index = None
             for group_index, group in enumerate(col_groups):
                 expected_diet = (
                     sub_row.get("label") if sub_row.get("type") == "diet" else ""
@@ -167,13 +168,19 @@ def portion_summary(data: dict, rows: list[dict] | None = None) -> list[dict]:
                     == str(sub_row.get("variant") or "")
                     and str(group.get("diet_name") or "") == str(expected_diet or "")
                 ):
-                    summary[group_index]["count"] += sub_row.get("count") or 0
-                    add_grid(
-                        summary[group_index]["col_grams"],
-                        sub_row.get("col_grams") or [],
-                        group_index,
-                    )
+                    own_index = group_index
                     break
+            if own_index is None:
+                continue
+            sub_row_grams = sub_row.get("col_grams") or []
+            # Menu riadok nesie aj gramáž polievky, ktorá patrí do vlastnej
+            # stĺpcovej skupiny (viď _merge_soup_into_main_course) — do súhrnu
+            # preto ide každá skupina, v ktorej riadok reálne má čísla.
+            for group_index, grams in enumerate(sub_row_grams):
+                if group_index != own_index and not grams:
+                    continue
+                summary[group_index]["count"] += sub_row.get("count") or 0
+                add_grid(summary[group_index]["col_grams"], sub_row_grams, group_index)
     return summary
 
 
@@ -195,6 +202,30 @@ def blend_with_white(hex_color: str, opacity: float = 0.14) -> str:
     return "".join(f"{channel:02X}" for channel in mixed)
 
 
+def readable_text_color(hex_color: str) -> str:
+    """Darken a diet colour until it is legible as text on a light background.
+
+    Diet colours were picked as row *fills*, where a pale yellow reads fine.
+    Since diets are now distinguished by font colour instead, the pale end of
+    the palette has to be pulled down or it disappears on the cream table.
+    """
+    value = hex_color.lstrip("#").upper()
+    if len(value) != 6:
+        value = "FDE68A"
+    rgb = [int(value[index : index + 2], 16) for index in (0, 2, 4)]
+
+    def luminance(channels):
+        r, g, b = (channel / 255 for channel in channels)
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+    # Multiplicative darkening keeps the hue; ~10 steps is plenty to cross 0.40.
+    for _ in range(10):
+        if luminance(rgb) <= 0.40:
+            break
+        rgb = [round(channel * 0.85) for channel in rgb]
+    return "".join(f"{channel:02X}" for channel in rgb)
+
+
 def flat_client_rows(data: dict) -> list[dict]:
     """All per-client rows, whether or not the day has a delivery-block layout.
 
@@ -214,13 +245,3 @@ def flat_client_rows(data: dict) -> list[dict]:
     ]
     flat.extend(data.get("unassigned_rows") or [])
     return flat
-
-
-def contrast_text_color(hex_color: str) -> str:
-    """Return '000000' or 'FFFFFF' for readable text on ``hex_color``."""
-    value = hex_color.lstrip("#")
-    if len(value) != 6:
-        value = "FDE68A"
-    red, green, blue = (int(value[index : index + 2], 16) for index in (0, 2, 4))
-    luminance = (299 * red + 587 * green + 114 * blue) / 1000
-    return "000000" if luminance >= 140 else "FFFFFF"

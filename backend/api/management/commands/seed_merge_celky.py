@@ -35,18 +35,23 @@ MERGES: dict[str, list[str]] = {
     # Pozn.: klient spomínal „1,2,4", v dátach však existujú Dubáčik 1/3/4 (žiadny 2).
     "Dubáčik": ["Dubáčik 1", "Dubáčik 3", "Dubáčik 4"],
     "Kidsparadise": ["KIDSPARADISE", "Kidsparadise 1", "Kidsparadise 2"],
-    "Múdre": [
+    # Pozn.: pôvodne omylom zlúčené do jedného "Múdre" celku vrátane Včielok
+    # (samostatný subjekt) — klient 2026-08-11 potvrdil, že ide o 3 rôzne subjekty.
+    "Múdre Hlavičky": [
         "Múdre Hlavičky Nová",
         "Múdre Hlavičky Stará",
+    ],
+    "Montessori Hranie": [
         "Múdre Hranie Škola",
         "Múdre Hranie Škôlka",
-        "Múdre Včielky",
         "Múdre hranie JASLE",
     ],
     "Naša škola poznania": [
         "Naša škola poznania A",
         "Naša škola poznania B",
     ],
+    "Ostravská": ["Stromček"],
+    "Šidielko": ["tučniačik"],
     # Edupage škôlka (MŠ Rozmanitá, má login + objednávky) + app škola pod jeden celok.
     "Rozmanitá": ["MŠ Rozmanitá", "Rozmanita Škola"],
     "Benjamín": ["benjamín pezinok", "benjamín senec"],

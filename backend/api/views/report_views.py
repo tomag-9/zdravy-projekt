@@ -186,6 +186,10 @@ class AdminSummaryViewSet(viewsets.ViewSet):
             ]
             rows.append(
                 {
+                    # Riadok je na objednávku (teda na prevádzku), nie na
+                    # používateľa — EduPage prevádzky zdieľajú jeden systémový
+                    # login, takže `user_id` riadky nerozlíši.
+                    "order_id": order.id,
                     "user_id": user.id,
                     "name": order_row_label(order),
                     "email": user.email,

@@ -285,30 +285,13 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             )
         date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
+        # Hotový popis tabuľky — obrazovka aj PDF ho renderujú z rovnakého spec-u,
+        # aby sa nemali ako rozísť (viď gramage_table_spec).
+        from ..exporters.gramage_table_spec import build_table_spec
+
+        sections = request.query_params.getlist("section") or None
+        data["spec"] = build_table_spec(data, sections=sections)
         return Response(data)
-
-    @action(detail=False, methods=["get"], url_path="gramage-dashboard-xlsx")
-    def gramage_dashboard_xlsx(self, request):
-        """GET /api/admin/meal-plans/gramage-dashboard-xlsx/?date=YYYY-MM-DD"""
-        date_str = request.query_params.get("date")
-        if not date_str:
-            return Response(
-                {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
-            )
-        date = parse_date_param(date_str)
-        data = MealPlanService.gramage_dashboard(date.isoformat())
-        from ..exporters.gramage_dashboard_xlsx_exporter import (
-            GramageDashboardXLSXExporter,
-        )
-
-        xlsx_bytes = GramageDashboardXLSXExporter(data).generate()
-        response = HttpResponse(
-            xlsx_bytes,
-            content_type=_XLSX_CONTENT_TYPE,
-        )
-        fname = f"gramaz_{date}.xlsx"
-        response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
-        return response
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-pdf")
     def gramage_dashboard_pdf(self, request):
@@ -320,11 +303,17 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
             )
         date = parse_date_param(date_str)
         data = MealPlanService.gramage_dashboard(date.isoformat())
-        from ..exporters.gramage_dashboard_pdf_exporter import (
-            GramageDashboardPDFExporter,
-        )
+        # Tá istá tabuľka ako na obrazovke: rovnaký spec, rovnaké CSS, len
+        # namiesto Reactu ju do HTML zloží gramage_table_html a WeasyPrint
+        # z toho spraví papier.
+        from weasyprint import HTML
 
-        pdf_bytes = GramageDashboardPDFExporter(data).generate()
+        from ..exporters.gramage_table_html import render_document
+        from ..exporters.gramage_table_spec import build_table_spec
+
+        sections = request.query_params.getlist("section") or None
+        spec = build_table_spec(data, sections=sections)
+        pdf_bytes = HTML(string=render_document(spec)).write_pdf()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
