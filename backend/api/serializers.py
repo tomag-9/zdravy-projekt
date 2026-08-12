@@ -191,6 +191,40 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         )
 
     @classmethod
+    def _meal_signature(cls, meal_data: Any) -> frozenset:
+        """Content fingerprint of a meal, independent of JSON shape.
+
+        The frontend re-normalizes meals it re-sends (``enforceStructure``
+        fills in every category/diet key known to the current schema, even
+        ones absent from what was actually stored). Comparing raw dicts would
+        then flag an untouched, already-locked meal as "changed" whenever the
+        schema gained a key after it was last submitted — which re-triggers
+        its (possibly long-expired) deadline check and blocks the whole
+        order. Compare by non-zero (category, kind, key) -> count instead, so
+        only real content changes count as a change.
+        """
+        od = OrderData({"_": meal_data})
+        entries: list[tuple[Any, str, str, int]] = []
+        for cat in od.iter_categories("_"):
+            prefix = (cat.prevadzka, cat.name)
+            for menu, count in cat.menu_counts.items():
+                c = safe_count(count)
+                if c:
+                    entries.append((prefix, "menu", menu, c))
+            for diet, count in cat.diets.items():
+                c = safe_count(count)
+                if c:
+                    entries.append((prefix, "diet", diet, c))
+            for kind, counts in cat.pack_separately.items():
+                if not isinstance(counts, dict):
+                    continue
+                for key, count in counts.items():
+                    c = safe_count(count)
+                    if c:
+                        entries.append((prefix, "pack", f"{kind}:{key}", c))
+        return frozenset(entries)
+
+    @classmethod
     def _changed_meals(
         cls,
         new_data: Dict[str, Any],
@@ -206,7 +240,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 if cls._meal_has_content(previous) or cls._meal_has_content(current):
                     changed.append(meal_key)
                 continue
-            if previous != current and (
+            if cls._meal_signature(previous) != cls._meal_signature(current) and (
                 cls._meal_has_content(previous) or cls._meal_has_content(current)
             ):
                 changed.append(meal_key)
