@@ -32,7 +32,6 @@ PUSH_REMINDER_OFFSET_MINUTES = 30
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
-EDUPAGE_SCRAPE_OFFSET_MINUTES = 30
 
 
 def _capture_signal_failure(exc: Exception, area: str) -> None:
@@ -323,8 +322,12 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
 
 def _sync_edupage_scrape_schedule(settings_instance) -> None:
     """
-    Create or update Celery Beat PeriodicTasks that fire EDUPAGE_SCRAPE_OFFSET_MINUTES
-    before each distinct meal deadline, Monday–Friday.
+    Create or update Celery Beat PeriodicTasks that fire exactly at each distinct
+    meal deadline, Monday–Friday.
+
+    The scrape runs *at* the deadline, not before it: anything imported earlier
+    would miss the orders placed in the remaining minutes and the counts would
+    go out to the kitchen short.
 
     Meals sharing the same deadline and target-day rule are grouped.
     Orphaned tasks from previous configurations are deleted automatically.
@@ -367,19 +370,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
         new_task_names: set[str] = set()
 
         for (deadline, is_day_before), meal_types_group in groups.items():
-            dt = datetime.datetime.combine(datetime.date.today(), deadline)
-            scrape_dt = dt - datetime.timedelta(minutes=EDUPAGE_SCRAPE_OFFSET_MINUTES)
-
-            if scrape_dt.date() < dt.date():
-                logger.warning(
-                    "edupage-scrape for %s: deadline %s is less than %d min from midnight, clamping to 00:00.",
-                    meal_types_group,
-                    deadline,
-                    EDUPAGE_SCRAPE_OFFSET_MINUTES,
-                )
-                scrape_time = datetime.time(0, 0)
-            else:
-                scrape_time = scrape_dt.time()
+            scrape_time = deadline
 
             meal_label = "-".join(sorted(meal_types_group))
             task_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}{meal_label}"
@@ -403,8 +394,8 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                     "kwargs": json.dumps({"meal_types": sorted(meal_types_group)}),
                     "enabled": True,
                     "description": (
-                        f"Edupage scrape: import order counts {EDUPAGE_SCRAPE_OFFSET_MINUTES} min "
-                        f"before {'/'.join(sorted(meal_types_group))} deadline "
+                        f"Edupage scrape: import order counts at the "
+                        f"{'/'.join(sorted(meal_types_group))} deadline "
                         f"(deadline: {deadline.strftime('%H:%M')}, "
                         f"target: {'next workday' if is_day_before else 'today'}, "
                         f"fires at {scrape_time.strftime('%H:%M')})."

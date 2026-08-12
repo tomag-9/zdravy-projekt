@@ -90,6 +90,47 @@ class TestStartupSync:
         assert "next workday" in breakfast_task.description
         assert "today" in lunch_task.description
 
+    def test_edupage_scrape_fires_exactly_at_the_deadline(self):
+        """
+        Scrape musí bežať presne v čase deadlinu — nie skôr. Import spustený
+        pred deadlinom by minul objednávky zadané v zvyšných minútach a do
+        kuchyne by odišli podhodnotené počty.
+        """
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 30),
+            deadline_olovrant=datetime.time(7, 30),
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+
+        breakfast = PeriodicTask.objects.get(name="edupage-scrape-breakfast")
+        assert (breakfast.crontab.hour, breakfast.crontab.minute) == ("21", "0")
+
+        lunch = PeriodicTask.objects.get(name="edupage-scrape-lunch-olovrant")
+        assert (lunch.crontab.hour, lunch.crontab.minute) == ("7", "30")
+
+    def test_edupage_scrape_handles_deadline_near_midnight(self):
+        """
+        Bez offsetu už nie je čo orezávať na 00:00 — deadline tesne po polnoci
+        sa prenesie 1:1.
+        """
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(0, 10),
+            deadline_lunch=datetime.time(0, 10),
+            deadline_olovrant=datetime.time(0, 10),
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+
+        task = PeriodicTask.objects.get(name="edupage-scrape-breakfast-lunch-olovrant")
+        assert (task.crontab.hour, task.crontab.minute) == ("0", "10")
+
     def test_weekly_reminder_task_created_on_startup(self):
         """Startup sync also self-heals the Sunday weekly reminder."""
         from api.signals import _sync_weekly_reminder_schedule
