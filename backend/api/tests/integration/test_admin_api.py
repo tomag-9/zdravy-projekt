@@ -1274,17 +1274,6 @@ class AdminMealPlanApiTest(APITestCase):
             },
         )
 
-        xlsx_response = self.client.get(
-            "/api/admin/meal-plans/gramage-dashboard-xlsx/?date=2026-03-16"
-        )
-        self.assertEqual(xlsx_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(
-            xlsx_response["Content-Type"],
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        workbook = openpyxl.load_workbook(io.BytesIO(xlsx_response.content))
-        self.assertEqual(workbook.active["A1"].value, "Gramáž jedál — 2026-03-16")
-
         pdf_response = self.client.get(
             "/api/admin/meal-plans/gramage-dashboard-pdf/?date=2026-03-16"
         )

@@ -1,0 +1,94 @@
+/* Čo obrazovke dáva prehliadač a stránke musíme dodať sami.
+ *
+ * Premenné sú kópiou palety z frontend/src/index.css — tam sú zdrojom pravdy
+ * pre celú appku, sem sa dostávajú ručne, lebo backend na jej súbory nevidí.
+ * Zoznam je zámerne len taký, aký gramage-table.css naozaj používa.
+ */
+
+:root {
+    --green-600: #72884B;
+    --green-800: #2A3315;
+    --green-900: #173505;
+    --ink-1: #173505;
+    --ink-2: #425422;
+    --ink-3: #7C9853;
+    --line: rgba(23, 53, 5, 0.16);
+    --line-soft: rgba(23, 53, 5, 0.08);
+    --mustard-700: #C48116;
+    --peach-400: #F7D09A;
+    --bg-cream: #FBF7E4;
+    --bg-cream-soft: #F5F1CD;
+    --radius-pill: 999px;
+    --tracking-caps: 0.16em;
+    --font-display: "DejaVu Sans", sans-serif;
+    --font-sans: "DejaVu Sans", sans-serif;
+}
+
+@page {
+    size: A3 landscape;
+    margin: 10mm 8mm;
+    @bottom-right {
+        content: counter(page) " / " counter(pages);
+        font-family: "DejaVu Sans", sans-serif;
+        font-size: 8pt;
+        color: #7C9853;
+    }
+}
+
+body {
+    margin: 0;
+    font-family: "DejaVu Sans", sans-serif;
+    font-size: 8pt;
+    color: var(--ink-1);
+    background: #fff;
+}
+
+h1 {
+    margin: 0 0 6mm;
+    font-size: 14pt;
+    color: var(--green-900);
+}
+
+h1 small {
+    display: block;
+    margin-top: 1mm;
+    font-size: 9pt;
+    font-weight: 400;
+    color: var(--ink-3);
+    text-transform: capitalize;
+}
+
+/* Obrazovka tabuľku scrolluje, stránka ju musí zalomiť — hlavička sa preto
+ * opakuje a riadok sa nesmie roztrhnúť cez dve strany. */
+.zpa-gram { width: 100%; font-size: 7.5pt; }
+.zpa-gram thead { display: table-header-group; }
+.zpa-gram tr { page-break-inside: avoid; }
+
+/* `tfoot` je štandardne table-footer-group a zopakoval by sa na konci každej
+ * strany — celkový súčet by potom vyzeral ako medzisúčet. Patrí raz, na koniec. */
+.zpa-gram tfoot { display: table-row-group; }
+
+/* Sticky a tiene sú pre papier bezvýznamné a WeasyPrintu len prekážajú. */
+.zpa-gram thead th,
+.zpa-gram .corner { position: static; }
+.zpa-gram .meal-sep { box-shadow: none; border-left: 1px solid rgba(23, 53, 5, 0.35); }
+
+/* Na obrazovke je to rozbaľovacie tlačidlo; na papieri obyčajný riadok. */
+.zpa-gram .client-toggle {
+    display: flex;
+    width: 100%;
+    justify-content: space-between;
+    border: 0;
+    background: transparent;
+    padding: 2mm 3mm;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 10pt;
+    color: var(--green-900);
+}
+.zpa-gram .chev { display: none; }
+/* Obrazovka odsadzuje metadáta flex `gap`-om; na papieri to musí byť margin. */
+.zpa-gram .client-toggle .meta { margin-left: 8px; }
+
+/* WeasyPrint nepozná `box-shadow` — obrys bodky diéty spraví border. */
+.zpa-gram .diet-dot { border: 0.5pt solid rgba(39, 52, 34, 0.35); }

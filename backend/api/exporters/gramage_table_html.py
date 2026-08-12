@@ -1,0 +1,182 @@
+"""Spec → HTML. Druhý z dvoch hlúpych rendererov (prvý je GramageTable.tsx).
+
+Nesmie tu padnúť žiadne rozhodnutie o vzhľade — poradie riadkov, texty, čísla
+aj CSS triedy prichádzajú hotové z `gramage_table_spec.build_table_spec()`.
+Ak sa niečo má zobraziť inak, patrí to do spec-u, nie sem; inak sa obrazovka
+a tlač znova rozídu.
+"""
+
+from __future__ import annotations
+
+import pathlib
+from html import escape
+
+ASSETS = pathlib.Path(__file__).parent / "assets"
+
+# Slovenské názvy dní a mesiacov — `strftime` ich dá v locale kontajnera (C).
+_DAYS = [
+    "Pondelok",
+    "Utorok",
+    "Streda",
+    "Štvrtok",
+    "Piatok",
+    "Sobota",
+    "Nedeľa",
+]
+_MONTHS = [
+    "januára",
+    "februára",
+    "marca",
+    "apríla",
+    "mája",
+    "júna",
+    "júla",
+    "augusta",
+    "septembra",
+    "októbra",
+    "novembra",
+    "decembra",
+]
+
+
+def _stylesheet() -> str:
+    table = (ASSETS / "gramage-table.css").read_text(encoding="utf-8")
+    page = (ASSETS / "gramage-pdf.css").read_text(encoding="utf-8")
+    return f"{page}\n{table}"
+
+
+def format_date(iso_date: str) -> str:
+    import datetime
+
+    try:
+        value = datetime.date.fromisoformat(str(iso_date))
+    except (TypeError, ValueError):
+        return str(iso_date or "")
+    return (
+        f"{_DAYS[value.weekday()]} {value.day}. {_MONTHS[value.month - 1]} {value.year}"
+    )
+
+
+def _attrs(**pairs) -> str:
+    parts = []
+    for name, value in pairs.items():
+        if value in (None, "", 0):
+            continue
+        parts.append(f' {name}="{escape(str(value), quote=True)}"')
+    return "".join(parts)
+
+
+def _swatch(swatch: dict) -> str:
+    """Farebná bodka pred názvom diéty; viac farieb = koláč, ako na obrazovke."""
+    colors = [c for c in (swatch.get("base_colors") or []) if c]
+    if not colors:
+        background = escape(str(swatch.get("color") or "#FDE68A"), quote=True)
+    elif len(colors) == 1:
+        background = escape(colors[0], quote=True)
+    else:
+        step = 100 / len(colors)
+        stops = ", ".join(
+            f"{escape(color, quote=True)} {index * step:.0f}% {(index + 1) * step:.0f}%"
+            for index, color in enumerate(colors)
+        )
+        background = f"conic-gradient({stops})"
+    return f'<span class="diet-dot" style="background: {background}"></span>'
+
+
+def _cell(cell: dict) -> str:
+    attrs = _attrs(**{"class": cell.get("css"), "colspan": cell.get("colspan")})
+    text = escape(str(cell.get("text") or ""))
+
+    if cell.get("count") is not None:
+        inner = text
+        if cell.get("swatch"):
+            inner = _swatch(cell["swatch"]) + inner
+        count = escape(str(cell["count"]))
+        body = (
+            f'<span class="lbl-line"><span>{inner}</span>'
+            f'<span class="count-badge">{count}</span></span>'
+        )
+    else:
+        body = text
+    return f"<td{attrs}>{body}</td>"
+
+
+def _row(row: dict) -> str:
+    kind = row.get("kind")
+    cells = row.get("cells") or []
+    style = (
+        f' style="color: {escape(str(row["color"]), quote=True)}"'
+        if row.get("color")
+        else ""
+    )
+    attrs = _attrs(**{"class": row.get("css")})
+
+    if kind == "client":
+        cell = cells[0]
+        return (
+            f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
+            f'<span class="client-toggle"><span>{escape(str(cell.get("text") or ""))}'
+            f'<span class="meta">{escape(str(cell.get("meta") or ""))}</span></span>'
+            f'<span class="meta">{escape(str(cell.get("meta_right") or ""))}</span>'
+            f"</span></td></tr>"
+        )
+
+    if kind == "route":
+        cell = cells[0]
+        sub = cell.get("sub")
+        sub_html = f"<small>{escape(str(sub))}</small>" if sub else ""
+        return (
+            f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
+            f'<span class="route-pill"><span>{escape(str(cell.get("text") or ""))}</span>'
+            f"{sub_html}</span></td></tr>"
+        )
+
+    if kind in ("note-admin", "note-delivery"):
+        cell = cells[0]
+        return (
+            f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
+            f"<strong>{escape(str(cell.get('label') or ''))}</strong> "
+            f"{escape(str(cell.get('text') or ''))}</td></tr>"
+        )
+
+    return f"<tr{attrs}{style}>" + "".join(_cell(cell) for cell in cells) + "</tr>"
+
+
+def render_table(spec: dict) -> str:
+    header = spec.get("header") or {}
+    groups = "".join(
+        f"<th{_attrs(**{'class': group.get('css'), 'colspan': group.get('colspan')})}>"
+        f"{escape(str(group.get('text') or ''))}<small>{escape(str(group.get('sub') or ''))}</small></th>"
+        for group in header.get("groups") or []
+    )
+    components = "".join(
+        f"<th{_attrs(**{'class': component.get('css')})}>"
+        f"{escape(str(component.get('text') or ''))}"
+        f"<small>{escape(str(component.get('sub') or ''))}</small></th>"
+        for component in header.get("components") or []
+    )
+    body = "".join(_row(row) for row in spec.get("rows") or [])
+    footer = "".join(_row(row) for row in spec.get("footer") or [])
+
+    return (
+        '<table class="zpa-gram">'
+        f'<thead><tr><th class="corner" rowspan="2">'
+        f"{escape(str(header.get('corner') or ''))}</th>{groups}</tr>"
+        f"<tr>{components}</tr></thead>"
+        f"<tbody>{body}</tbody>"
+        f"<tfoot>{footer}</tfoot>"
+        "</table>"
+    )
+
+
+def render_document(spec: dict) -> str:
+    """Celá stránka vrátane štýlov — vstup pre WeasyPrint."""
+    date_text = format_date(spec.get("date") or "")
+    return (
+        "<!DOCTYPE html><html lang='sk'><head><meta charset='utf-8'>"
+        f"<title>Gramáž jedál — {escape(str(spec.get('date') or ''))}</title>"
+        f"<style>{_stylesheet()}</style></head><body>"
+        f"<h1>Gramáž jedál<small>{escape(date_text)}</small></h1>"
+        f"{render_table(spec)}"
+        "</body></html>"
+    )

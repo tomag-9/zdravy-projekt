@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, FileText, FileSpreadsheet, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
@@ -227,7 +227,6 @@ const AdminDashboard: React.FC = () => {
   const [data, setData] = useState<GramageDashboard | null>(null);
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
   const [loading, setLoading] = useState(false);
-  const [xlsxLoading, setXlsxLoading] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [closedLoading, setClosedLoading] = useState(true);
   const [isClosed, setIsClosed] = useState(false);
@@ -284,7 +283,7 @@ const AdminDashboard: React.FC = () => {
     void fetchClosedState();
   }, [fetchClosedState]);
 
-  const handleExport = useCallback(async (fmt: "xlsx" | "pdf", setFmt: (v: boolean) => void) => {
+  const handleExport = useCallback(async (fmt: "pdf", setFmt: (v: boolean) => void) => {
     setFmt(true);
     try {
       const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard-${fmt}/?date=${date}`);
@@ -379,9 +378,6 @@ const AdminDashboard: React.FC = () => {
           <>
             <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
               {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} Stiahnuť PDF
-            </Button>
-            <Button variant="primary" onClick={() => handleExport("xlsx", setXlsxLoading)} disabled={xlsxLoading || loading || !hasData}>
-              {xlsxLoading ? <Loader2 className="zpa-spin" /> : <FileSpreadsheet />} Stiahnuť XLSX
             </Button>
             {!closedLoading && !isClosed && (
               <Button variant="secondary" onClick={() => setCloseConfirmOpen(true)} disabled={closing}>
