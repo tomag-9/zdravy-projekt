@@ -10,7 +10,6 @@ interface DietSelectorProps {
     diets: Record<string, number>;
     enabledDiets: string[];
     onUpdateDiet: (diet: string, count: number) => void;
-    maxPortions: number;
 }
 
 const DietSelector = ({
@@ -20,13 +19,12 @@ const DietSelector = ({
     diets,
     enabledDiets,
     onUpdateDiet,
-    maxPortions
 }: DietSelectorProps) => {
     useScrollLock(isOpen);
     if (!isOpen) return null;
 
+    // Diéty sa pripočítavajú k Menu A, takže tu nie je žiadny strop.
     const currentDietSum = Object.values(diets || {}).reduce((a: number, b: number) => a + b, 0);
-    const remaining = maxPortions - currentDietSum;
 
     return createPortal(
         <div className="zp-sheet-scrim" onClick={onClose}>
@@ -36,7 +34,7 @@ const DietSelector = ({
                     <div>
                         <h3>Diéty · {categoryLabel}</h3>
                         <p className="sub">
-                            Dostupné: <span className="num">{remaining}</span> z {maxPortions} porcií Menu A
+                            Spolu diét: <span className="num">{currentDietSum}</span>
                         </p>
                     </div>
                     <button className="zp-sheet-close" aria-label="Zavrieť" onClick={onClose}>
@@ -74,7 +72,6 @@ const DietSelector = ({
                                         />
                                         <button
                                             className="plus"
-                                            disabled={remaining <= 0}
                                             aria-label="+"
                                             onClick={() => onUpdateDiet(diet, count + 1)}
                                         >

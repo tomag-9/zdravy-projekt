@@ -58,25 +58,53 @@ describe('OrderService', () => {
             expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(5);
         });
 
-        it('should reduce diets if menu count drops below total diets', () => {
+        it('should leave diets untouched when the plain menu A count drops', () => {
             let order: DailyOrder = {
                 breakfast: OrderService.createEmptyMeal(),
                 lunch: OrderService.createEmptyMeal(),
                 olovrant: OrderService.createEmptyMeal()
             };
 
-            // Set initial state: 5 menus, 5 diets
+            // 5 bežných porcií + 5 diét => celkovo 10 porcií Menu A
             order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 5);
             order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
             order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez laktózy', 2);
+            expect(order.lunch['Škôlka'].menuCounts.A).toBe(10);
 
-            // Reduce menu count to 3. Diets should sum to max 3. 
+            // Zníženie bežných porcií na 3 diéty nekráti — celkovo 3 + 5 = 8
             const updatedOrder = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 3);
 
-            const newDiets = updatedOrder.lunch['Škôlka'].diets;
-            const totalDiets = (Object.values(newDiets) as number[]).reduce((a: number, b: number) => a + b, 0);
+            expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(3);
+            expect(updatedOrder.lunch['Škôlka'].diets['Bez laktózy']).toBe(2);
+            expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(8);
+            expect(OrderService.getPlainMenuACount(updatedOrder.lunch['Škôlka'])).toBe(3);
+        });
 
-            expect(totalDiets).toBe(3);
+        it('should store plain menu A count plus the diet total', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+
+            order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 2);
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 4);
+
+            expect(order.lunch['Škôlka'].menuCounts.A).toBe(6);
+            expect(OrderService.getPlainMenuACount(order.lunch['Škôlka'])).toBe(4);
+        });
+
+        it('should not fold diets into menus other than A', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+
+            order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 2);
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'B', 4);
+
+            expect(order.lunch['Škôlka'].menuCounts.B).toBe(4);
         });
     });
 
@@ -93,16 +121,66 @@ describe('OrderService', () => {
             expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(3);
         });
 
-        it('should not update diet count if it exceeds menu A count', () => {
+        it('should add diets on top of menu A without any cap', () => {
             let order: DailyOrder = {
                 breakfast: OrderService.createEmptyMeal(),
                 lunch: OrderService.createEmptyMeal(),
                 olovrant: OrderService.createEmptyMeal()
             };
-            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 2);
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 10);
 
             const updatedOrder = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
-            expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(0); // Should remain 0
+
+            expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(3);
+            expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(13);
+            // Bežné porcie sa pridaním diét nesmú zmeniť
+            expect(OrderService.getPlainMenuACount(updatedOrder.lunch['Škôlka'])).toBe(10);
+        });
+
+        it('should allow diets with no plain menu A portions at all', () => {
+            const order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+
+            const updatedOrder = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
+
+            expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(3);
+            expect(OrderService.getPlainMenuACount(updatedOrder.lunch['Škôlka'])).toBe(0);
+        });
+
+        it('should shrink menu A back when a diet is removed', () => {
+            let order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+            order = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 10);
+            order = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 3);
+
+            const updatedOrder = OrderService.updateDiet(order, 'lunch', 'Škôlka', 'Bez lepku', 0);
+
+            expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(10);
+            expect(OrderService.getPlainMenuACount(updatedOrder.lunch['Škôlka'])).toBe(10);
+        });
+
+        it('reads a legacy order (diets carved out of menu A) as plain + diets', () => {
+            // Stará objednávka: A=10 znamenalo „7 bežných + 3 diétne“.
+            const order: DailyOrder = {
+                breakfast: OrderService.createEmptyMeal(),
+                lunch: OrderService.createEmptyMeal(),
+                olovrant: OrderService.createEmptyMeal()
+            };
+            order.lunch['Škôlka'].menuCounts.A = 10;
+            order.lunch['Škôlka'].diets['Bez lepku'] = 3;
+
+            expect(OrderService.getPlainMenuACount(order.lunch['Škôlka'])).toBe(7);
+
+            // Úprava bežných porcií na 8 => 8 + 3 = 11
+            const updatedOrder = OrderService.updateMenuCount(order, 'lunch', 'Škôlka', 'A', 8);
+            expect(updatedOrder.lunch['Škôlka'].menuCounts.A).toBe(11);
+            expect(updatedOrder.lunch['Škôlka'].diets['Bez lepku']).toBe(3);
         });
 
         it('should reduce pack separately diets when diet count drops', () => {

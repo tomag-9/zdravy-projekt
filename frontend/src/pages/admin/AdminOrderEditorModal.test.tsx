@@ -337,6 +337,75 @@ describe('AdminOrderEditorModal', () => {
         });
     });
 
+    it('shows the plain menu A count and opens diets from their own row', async () => {
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{
+                    id: 7,
+                    date: '2026-07-30',
+                    // Stará objednávka: A=10 znamenalo „7 bežných + 3 diétne“.
+                    data: {
+                        lunch: {
+                            Škôlka: {
+                                menuCounts: { A: 10 },
+                                diets: { 'Bez lepku': 3 },
+                            },
+                        },
+                    },
+                }}
+            />,
+        );
+
+        const lunchCard = getMealCard('Obed');
+        const skolkaCard = within(lunchCard).getByText('Škôlka').closest('.zp-cat') as HTMLElement;
+
+        const menuAInput = within(skolkaCard).getByLabelText('Počet porcií pre menu A');
+        expect((menuAInput as HTMLInputElement).value).toBe('7');
+
+        const dietButton = within(skolkaCard).getByRole('button', { name: /Diéty/ });
+        expect(dietButton).toHaveTextContent('3');
+
+        fireEvent.click(dietButton);
+        expect(await screen.findByTestId('diet-selector')).toBeInTheDocument();
+    });
+
+    it('adds diets on top of the plain menu A count in the payload', async () => {
+        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
+
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{
+                    id: 7,
+                    date: '2026-07-30',
+                    data: {
+                        lunch: {
+                            Škôlka: { menuCounts: { A: 4 }, diets: { 'Bez lepku': 1 } },
+                        },
+                    },
+                }}
+            />,
+        );
+
+        const lunchCard = getMealCard('Obed');
+        const skolkaCard = within(lunchCard).getByText('Škôlka').closest('.zp-cat') as HTMLElement;
+
+        // 3 bežné porcie (4 − 1 diéta) navýšime na 4 => uloží sa 4 + 1 = 5.
+        const menuAInput = within(skolkaCard).getByLabelText('Počet porcií pre menu A');
+        expect((menuAInput as HTMLInputElement).value).toBe('3');
+        fireEvent.change(menuAInput, { target: { value: '4' } });
+        fireEvent.blur(menuAInput);
+
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
+
+        await waitFor(() => {
+            const body = getRequestBody();
+            expect(body.data.lunch.Škôlka.menuCounts.A).toBe(5);
+            expect(body.data.lunch.Škôlka.diets['Bez lepku']).toBe(1);
+        });
+    });
+
     it('preserves special_diet_note in the PATCH payload when saving without editing it', async () => {
         mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 7 }, true));
 
