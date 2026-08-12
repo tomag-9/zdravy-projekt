@@ -618,11 +618,6 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                             ? fullDayData[activeDietModal.category]?.diets ?? {}
                             : order[activeDietModal.meal]?.[activeDietModal.category]?.diets ?? {}
                     }
-                    maxPortions={
-                        activeDietModal.meal === 'fullDay'
-                            ? fullDayData[activeDietModal.category]?.menuCounts?.A || 0
-                            : order[activeDietModal.meal]?.[activeDietModal.category]?.menuCounts?.A || 0
-                    }
                     onUpdateDiet={(diet, count) =>
                         activeDietModal.meal === 'fullDay'
                             ? updateFullDayDiet(activeDietModal.category, diet, count)

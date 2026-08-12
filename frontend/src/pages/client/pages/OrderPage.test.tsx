@@ -471,7 +471,7 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
-  it("typed diet input uses the same cap as the +/- path", async () => {
+  it("typed diet input has no cap and adds on top of menu A", async () => {
     const date = localDateStr();
     localStorageMock.setItem(
       `order_${date}`,
@@ -495,17 +495,50 @@ describe("OrderPage Logic & Triggers", () => {
 
     const lunchCard = getMealCard("Obed");
     const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
-    fireEvent.click(await within(skolkaRow).findByText("1 diét"));
+    fireEvent.click(await within(skolkaRow).findByRole("button", { name: /Diéty/ }));
 
     const dietInput = await screen.findByLabelText("Počet diéty Bez lepku");
-    // Cap je menuCounts.A = 2, takže napísaná 5 sa nesmie uložiť — rovnako ako
-    // by ju neprepustilo klikanie na +.
+    // Diéty už nemajú strop — napísaná 5 sa uloží a pripočíta sa k bežným porciám.
     fireEvent.change(dietInput, { target: { value: "5" } });
     fireEvent.blur(dietInput);
 
     await waitFor(() => {
-      expect(getOrderData(date).lunch["Škôlka"].diets["Bez lepku"]).toBe(1);
+      expect(getOrderData(date).lunch["Škôlka"].diets["Bez lepku"]).toBe(5);
     });
+    // Pôvodne A=2 s 1 diétou => 1 bežná porcia; po zmene 1 + 5 = 6.
+    expect(getOrderData(date).lunch["Škôlka"].menuCounts.A).toBe(6);
+  });
+
+  it("shows the plain menu A count with diets broken out into their own row", async () => {
+    const date = localDateStr();
+    // Stará objednávka: A=10 znamenalo „7 bežných + 3 diétne“.
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 10 }, diets: { "Bez lepku": 3 } } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+    (OrderService.getAvailableDiets as Mock).mockReturnValue(["Bez lepku"]);
+
+    renderPage();
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+
+    const menuAInput = await within(skolkaRow).findByLabelText(
+      "Počet porcií pre menu A",
+    );
+    expect((menuAInput as HTMLInputElement).value).toBe("7");
+
+    const dietButton = within(skolkaRow).getByRole("button", { name: /Diéty/ });
+    expect(dietButton).toHaveTextContent("3");
   });
 
   it("hides breakfast and olovrant menu choices configured to only menu A", async () => {

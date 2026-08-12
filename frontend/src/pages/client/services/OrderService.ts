@@ -87,35 +87,42 @@ class OrderService {
         return enabledDiets;
     }
 
+    /** Súčet všetkých diétnych porcií v kategórii. */
+    static getDietTotal(categoryData: Pick<CategoryData, 'diets'>): number {
+        return (Object.values(categoryData.diets || {}) as number[])
+            .reduce((a, b) => a + b, 0);
+    }
+
+    /**
+     * Počet bežných (nediétnych) porcií Menu A — to, čo klient vidí a edituje.
+     *
+     * `menuCounts.A` drží CELKOVÝ počet porcií Menu A vrátane diétnych (diéta je
+     * naďalej podmnožina Menu A, tak ako to čaká backend, gramáž aj exporty).
+     * UI ale zadáva bežné porcie zvlášť a diéty sa k nim pripočítavajú, takže
+     * na vstupe/výstupe formulára prevádzame medzi týmito dvoma pohľadmi.
+     */
+    static getPlainMenuACount(categoryData: CategoryData): number {
+        return Math.max(0, (categoryData.menuCounts?.['A'] || 0) - this.getDietTotal(categoryData));
+    }
+
     static updateMenuCount(currentOrder: DailyOrder, mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number): DailyOrder {
         const newCount = Math.max(0, count);
         const categoryData = currentOrder[mealKey][category];
 
+        // Pri Menu A je `count` počet BEŽNÝCH porcií — diéty sa k nemu pripočítajú.
+        // Znižovanie Menu A preto (na rozdiel od minulosti) diéty nekráti.
+        const storedCount = menuType === 'A'
+            ? newCount + this.getDietTotal(categoryData)
+            : newCount;
+
         const newMenuCounts = {
             ...categoryData.menuCounts,
-            [menuType]: newCount
+            [menuType]: storedCount
         };
-
-        const newDiets = { ...categoryData.diets };
-        if (menuType === 'A') {
-            const totalDiets = (Object.values(newDiets) as number[]).reduce((a: number, b: number) => a + b, 0);
-            if (newCount < totalDiets) {
-                let diff = totalDiets - newCount;
-                for (const diet of DIETS) {
-                    if (diff <= 0) break;
-                    if (newDiets[diet] > 0) {
-                        const toRemove = Math.min(newDiets[diet], diff);
-                        newDiets[diet] -= toRemove;
-                        diff -= toRemove;
-                    }
-                }
-            }
-        }
 
         const nextCategoryData = this.withClampedPackSeparately({
             ...categoryData,
-            menuCounts: newMenuCounts,
-            diets: newDiets
+            menuCounts: newMenuCounts
         });
 
         return {
@@ -129,18 +136,21 @@ class OrderService {
 
     static updateDiet(currentOrder: DailyOrder, mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number): DailyOrder {
         const categoryData = currentOrder[mealKey][category];
-        const menuACount = categoryData.menuCounts?.['A'] || 0;
+
+        // Diéty sa pripočítavajú bez limitu: bežné (nediétne) porcie ostávajú
+        // konštantné a celkové `menuCounts.A` rastie/klesá spolu s počtom diét.
+        const plainMenuACount = this.getPlainMenuACount(categoryData);
 
         const newCount = Math.max(0, count);
-        const totalOtherDiets = Object.entries(categoryData.diets)
-            .filter(([d]) => d !== diet)
-            .reduce((sum, [, c]) => sum + (c as number), 0);
-
-        if (totalOtherDiets + newCount > menuACount) return currentOrder;
+        const newDiets = { ...categoryData.diets, [diet]: newCount };
 
         const nextCategoryData = this.withClampedPackSeparately({
             ...categoryData,
-            diets: { ...categoryData.diets, [diet]: newCount }
+            menuCounts: {
+                ...categoryData.menuCounts,
+                A: plainMenuACount + this.getDietTotal({ diets: newDiets })
+            },
+            diets: newDiets
         });
 
         return {

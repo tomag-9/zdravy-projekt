@@ -1,17 +1,16 @@
-import { Minus, Plus, Utensils } from 'lucide-react';
+import { Fragment } from 'react';
+import { ChevronRight, Minus, Plus, Utensils } from 'lucide-react';
 import NumericCountInput from './NumericCountInput';
 
 interface MenuCounterProps {
     type: string;
     count: number;
     onChange: (val: number) => void;
-    onOpenDiets: (() => void) | null;
-    dietCount: number;
     disabled?: boolean;
     isOccupied?: boolean;
 }
 
-const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled, isOccupied }: MenuCounterProps) => {
+const MenuCounter = ({ type, count, onChange, disabled, isOccupied }: MenuCounterProps) => {
     if (isOccupied) {
         return (
             <div className="zp-menurow zp-menurow--occupied">
@@ -25,12 +24,6 @@ const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled, 
     return (
         <div className="zp-menurow">
             <span className="name">Menu {type}</span>
-            {type === 'A' && onOpenDiets && (
-                <button className="diet-trigger" onClick={onOpenDiets} disabled={disabled}>
-                    <Utensils style={{ width: 10, height: 10 }} />
-                    {dietCount > 0 ? `${dietCount} diét` : 'Diéty'}
-                </button>
-            )}
             <span className="spacer"></span>
             <div className="zp-counter">
                 <button
@@ -58,6 +51,31 @@ const MenuCounter = ({ type, count, onChange, onOpenDiets, dietCount, disabled, 
         </div>
     );
 };
+
+interface DietRowProps {
+    dietCount: number;
+    onOpenDiets: () => void;
+    disabled?: boolean;
+}
+
+/**
+ * Diéty sú samostatná položka hneď pod Menu A — nie výrez z jeho počtu.
+ * Klik otvorí modál, v ktorom sa diéty pripočítavajú bez limitu.
+ */
+const DietRow = ({ dietCount, onOpenDiets, disabled }: DietRowProps) => (
+    <button
+        type="button"
+        className="zp-menurow zp-menurow--diet"
+        onClick={onOpenDiets}
+        disabled={disabled}
+    >
+        <Utensils className="zp-menurow--diet-icon" style={{ width: 12, height: 12 }} />
+        <span className="name">Diéty</span>
+        <span className="spacer"></span>
+        <span className={`zp-menurow--diet-count${dietCount > 0 ? " active" : ""}`}>{dietCount}</span>
+        <ChevronRight style={{ width: 14, height: 14 }} />
+    </button>
+);
 
 interface CategoryRowProps {
     label: string;
@@ -98,18 +116,33 @@ const CategoryRow = ({
     return (
         <div data-tour-id={tourId} className="zp-cat">
             <div className="zp-cat-head">{label}</div>
-            {menus.map(menuType => (
-                <MenuCounter
-                    key={menuType}
-                    type={menuType}
-                    count={menuCounts[menuType]}
-                    onChange={(val) => !disabled && onMenuCountChange(menuType, val)}
-                    onOpenDiets={hasDietsEnabled && menuType === 'A' && !disabled ? onOpenDiets : null}
-                    dietCount={dietCount}
-                    disabled={disabled}
-                    isOccupied={occupiedMenus?.has(menuType)}
-                />
-            ))}
+            {menus.map(menuType => {
+                const isOccupied = occupiedMenus?.has(menuType);
+                // Menu A drží celkový počet vrátane diétnych porcií; klient edituje
+                // len bežné porcie, takže diéty od zobrazenej hodnoty odrátame.
+                const shownCount = menuType === 'A'
+                    ? Math.max(0, (menuCounts[menuType] || 0) - dietCount)
+                    : menuCounts[menuType];
+
+                return (
+                    <Fragment key={menuType}>
+                        <MenuCounter
+                            type={menuType}
+                            count={shownCount}
+                            onChange={(val) => !disabled && onMenuCountChange(menuType, val)}
+                            disabled={disabled}
+                            isOccupied={isOccupied}
+                        />
+                        {menuType === 'A' && hasDietsEnabled && !isOccupied && (
+                            <DietRow
+                                dietCount={dietCount}
+                                onOpenDiets={onOpenDiets}
+                                disabled={disabled}
+                            />
+                        )}
+                    </Fragment>
+                );
+            })}
         </div>
     );
 };
