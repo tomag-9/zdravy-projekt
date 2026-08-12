@@ -206,6 +206,11 @@ def _merge_soup_into_main_course(sub_rows: list[dict]) -> list[dict]:
             result.append(sub_row)
             continue
         _distribute_soup_grams(sub_row, targets)
+        for target in targets:
+            # Riadok teraz zastupuje aj polievku. Bez tejto stopy by súhrn
+            # počtov (`_std_agg`) o polievke nevedel — počíta zo sub_rows a
+            # polievkový riadok už neexistuje.
+            target.setdefault("absorbed_meals", []).append(sub_row["meal"])
     return result
 
 
@@ -1300,20 +1305,32 @@ class MealPlanService:
                 _pname = _sr.get("portion_name", "")
                 if not _pname:
                     continue
+                # Zlúčený riadok zastupuje viac jedál (obed nesie aj polievku),
+                # takže sa započíta do každého z nich.
+                _meals = [_sr["meal"], *(_sr.get("absorbed_meals") or [])]
                 if _sr["type"] == "standard":
-                    _mv = (_sr["meal"], _sr.get("variant", ""))
-                    if _mv not in _std_agg:
-                        _std_agg[_mv] = {}
-                    _std_agg[_mv][_pname] = _std_agg[_mv].get(_pname, 0) + _sr["count"]
+                    for _meal in _meals:
+                        # Polievka nemá varianty — nesmie sa rozpadnúť na A/B.
+                        _variant = (
+                            _sr.get("variant", "") if _meal == _sr["meal"] else ""
+                        )
+                        _mv = (_meal, _variant)
+                        if _mv not in _std_agg:
+                            _std_agg[_mv] = {}
+                        _std_agg[_mv][_pname] = (
+                            _std_agg[_mv].get(_pname, 0) + _sr["count"]
+                        )
                 else:
                     _dname = _sr.get("diet_name", "")
                     if not _dname:
                         continue
-                    _m = _sr["meal"]
-                    if _m not in _diet_agg:
-                        _diet_agg[_m] = {}
-                    _k = (_pname, _dname)
-                    _diet_agg[_m][_k] = _diet_agg[_m].get(_k, 0) + _sr["count"]
+                    for _meal in _meals:
+                        if _meal not in _diet_agg:
+                            _diet_agg[_meal] = {}
+                        _k = (_pname, _dname)
+                        _diet_agg[_meal][_k] = (
+                            _diet_agg[_meal].get(_k, 0) + _sr["count"]
+                        )
 
         count_summary: list[dict] = []
         _added_default_diet_meals: set = set()

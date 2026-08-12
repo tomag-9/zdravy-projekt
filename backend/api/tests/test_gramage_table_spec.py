@@ -72,6 +72,7 @@ def _payload(**overrides):
                         "type": "diet",
                         "meal": "main_course",
                         "label": "No Milk",
+                        "diet_name": "No Milk",
                         "diet_color": "#F59E0B",
                         "count": 2,
                         "col_grams": [["400.00"], ["600.00"], []],
@@ -359,3 +360,41 @@ def test_unknown_or_empty_selection_falls_back_to_everything():
 
     assert len(_group_labels(build_table_spec(payload, sections=["nezmysel"]))) == 5
     assert len(_group_labels(build_table_spec(payload, sections=[]))) == 5
+
+
+def test_subtotals_count_only_the_visible_sections():
+    """Na obedovom hárku nesmie „Súčet bez diét" rátať raňajky a olovrant."""
+    payload = _with_breakfast_and_snack()
+
+    complete = build_table_spec(payload)
+    std = next(r for r in complete["rows"] if r["kind"] == "summary-std")
+    # 8 obedov (Menu A) + 8 olovrantov.
+    assert std["cells"][0]["count"] == "16"
+    assert (
+        next(r for r in complete["rows"] if r["kind"] == "client")["cells"][0]["meta"]
+        == "štandard 16, diéty 2"
+    )
+
+    lunch = build_table_spec(payload, sections=["soup", "main_course_A"])
+    std = next(r for r in lunch["rows"] if r["kind"] == "summary-std")
+    assert std["cells"][0]["count"] == "8"
+    assert (
+        next(r for r in lunch["rows"] if r["kind"] == "client")["cells"][0]["meta"]
+        == "štandard 8, diéty 2"
+    )
+
+
+def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
+    """Diéta bez viditeľného riadku nemá čo sumarizovať."""
+    payload = _with_breakfast_and_snack()
+
+    lunch = build_table_spec(payload, sections=["afternoon_snack"])
+    assert not [r for r in lunch["rows"] if r["kind"] == "summary-diet"]
+    # Poznámky sú na prevádzku, nie na jedlo — tie tam ostávajú.
+    assert [r["kind"] for r in lunch["rows"]] == [
+        "client",
+        "sub-row",
+        "note-admin",
+        "note-delivery",
+        "summary-std",
+    ]

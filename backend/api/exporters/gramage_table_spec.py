@@ -115,6 +115,17 @@ def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[di
     return cells
 
 
+def _as_decimal(value: object) -> Decimal:
+    try:
+        return Decimal(str(value or 0))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal("0")
+
+
+def _sum_counts(sub_rows) -> Decimal:
+    return sum((_as_decimal(sr.get("count")) for sr in sub_rows), Decimal("0"))
+
+
 def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     cell = {"text": text, "css": css, "count": format_count(count)}
     cell.update(extra)
@@ -264,12 +275,32 @@ def _client_rows(
 ) -> list[dict]:
     """Klientsky pás, jeho podriadky, poznámky a medzisúčty — v poradí obrazovky."""
     key = str(row.get("row_key") or row.get("client_id") or row.get("client") or "")
-    diet_total = sum(
-        (diet.get("count") or 0) for diet in row.get("diet_summary_rows") or []
+
+    # Počty sa sčítavajú z riadkov, ktoré filter naozaj nechal — inak by na
+    # obedovom hárku svietil súčet vrátane raňajok a olovrantu.
+    visible: list[tuple[dict, list[dict]]] = []
+    for sub_row in row.get("sub_rows") or []:
+        gram_cells = _gram_cells(sub_row.get("col_grams") or [], groups, hues)
+        # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať.
+        if any("cell-num" in cell["css"] for cell in gram_cells):
+            visible.append((sub_row, gram_cells))
+
+    standard_count = _sum_counts(
+        sub_row for sub_row, _ in visible if sub_row.get("type") == "standard"
     )
-    meta = f"štandard {row.get('standard_total_count', 0)}"
+    diet_counts: dict[str, Decimal] = {}
+    for sub_row, _ in visible:
+        if sub_row.get("type") != "diet":
+            continue
+        name = str(sub_row.get("diet_name") or "")
+        diet_counts[name] = diet_counts.get(name, Decimal("0")) + _as_decimal(
+            sub_row.get("count")
+        )
+    diet_total = sum(diet_counts.values(), Decimal("0"))
+
+    meta = f"štandard {format_count(standard_count)}"
     if diet_total:
-        meta += f", diéty {diet_total}"
+        meta += f", diéty {format_count(diet_total)}"
 
     out: list[dict] = [
         {
@@ -280,19 +311,16 @@ def _client_rows(
                 {
                     "text": row.get("client") or "",
                     "meta": meta,
-                    "meta_right": f"spolu porcií {row.get('total_count', 0)}",
+                    "meta_right": (
+                        f"spolu porcií {format_count(standard_count + diet_total)}"
+                    ),
                     "colspan": total_columns,
                 }
             ],
         }
     ]
 
-    for sub_row in row.get("sub_rows") or []:
-        gram_cells = _gram_cells(sub_row.get("col_grams") or [], groups, hues)
-        # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať —
-        # vzniká pri filtri variantov (olovrant a raňajky pri tlači obeda).
-        if not any("cell-num" in cell["css"] for cell in gram_cells):
-            continue
+    for sub_row, gram_cells in visible:
         is_diet = sub_row.get("type") == "diet"
         label = sub_row.get("label") or ""
         cell = _label_cell(
@@ -341,15 +369,20 @@ def _client_rows(
                 }
             )
 
-    out.append(
-        {
-            "kind": "summary-std",
-            "css": "summ-std",
-            "cells": [_label_cell("Súčet bez diét", row.get("standard_total_count"))]
-            + _gram_cells(row.get("standard_col_grams") or [], groups, hues),
-        }
-    )
+    if standard_count:
+        out.append(
+            {
+                "kind": "summary-std",
+                "css": "summ-std",
+                "cells": [_label_cell("Súčet bez diét", standard_count)]
+                + _gram_cells(row.get("standard_col_grams") or [], groups, hues),
+            }
+        )
     for diet in row.get("diet_summary_rows") or []:
+        name = str(diet.get("name") or "")
+        # Diéta, ktorá vo viditeľných jedlách nie je, nemá čo sumarizovať.
+        if name not in diet_counts:
+            continue
         hex_color = diet_color(data, diet)
         out.append(
             {
@@ -358,8 +391,8 @@ def _client_rows(
                 "color": f"#{readable_text_color(hex_color)}",
                 "cells": [
                     _label_cell(
-                        diet.get("name") or "",
-                        diet.get("count"),
+                        name,
+                        diet_counts[name],
                         swatch={
                             "color": f"#{hex_color}",
                             "base_colors": diet.get("base_colors") or [],
