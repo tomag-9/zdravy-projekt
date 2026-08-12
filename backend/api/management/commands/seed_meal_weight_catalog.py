@@ -8,7 +8,8 @@ Admins pick one of these per day/slot instead of uploading a weekly xlsx.
 Data is hardcoded here (not read from any xlsx file at runtime) — it mirrors
 `test/jedalnicky/Váhy jedál - apka ZP.xlsx`.
 
-Uses update_or_create keyed by `name`, so it is safe to run repeatedly.
+Matches existing rows by `name` (oldest wins), so it is safe to run repeatedly
+even when an admin has created a row that shares a catalog name.
 
 Usage:
     python manage.py seed_meal_weight_catalog
@@ -250,21 +251,31 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         created_count = 0
         for category, name, components, unit_exception in CATALOG:
-            _, created = MealTemplate.objects.update_or_create(
-                name=name,
-                defaults={
-                    "category": category,
-                    "components": components,
-                    "unit_exception": unit_exception,
-                    "weight_label": _weight_label(components, unit_exception),
-                    "base_weight_grams": _base_weight_grams(components),
-                    "menu_variant": "",
-                    "is_active": True,
-                },
-            )
-            if created:
+            defaults = {
+                "category": category,
+                "components": components,
+                "unit_exception": unit_exception,
+                "weight_label": _weight_label(components, unit_exception),
+                "base_weight_grams": _base_weight_grams(components),
+                "menu_variant": "",
+                "is_active": True,
+            }
+            # Deliberately not update_or_create(name=...): `name` has no unique
+            # constraint and admins may add their own catalog rows through
+            # /api/admin/meal-templates, so a name can occur more than once and
+            # get() would raise MultipleObjectsReturned — killing the whole
+            # deploy bootstrap. Keep the oldest (lowest-id) row as the seeded
+            # one and leave any admin-created namesakes untouched.
+            existing = MealTemplate.objects.filter(name=name).order_by("id").first()
+            if existing is None:
+                MealTemplate.objects.create(name=name, **defaults)
                 created_count += 1
                 self.stdout.write(f"  MealTemplate created: {name}")
+                continue
+
+            for field, value in defaults.items():
+                setattr(existing, field, value)
+            existing.save(update_fields=[*defaults, "updated_at"])
 
         if created_count:
             self.stdout.write(

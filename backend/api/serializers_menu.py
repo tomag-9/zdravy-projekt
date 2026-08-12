@@ -117,6 +117,18 @@ class MealTemplateSerializer(serializers.ModelSerializer):
     def get_diet_name(self, obj) -> str | None:
         return obj.diet.name if obj.diet_id else None
 
+    def validate_name(self, value: str) -> str:
+        # `name` has no DB unique constraint (prod already carries a duplicate
+        # from before this check), but a duplicate breaks seed_meal_weight_catalog
+        # and with it the whole deploy bootstrap — so block it at the API edge.
+        name = value.strip()
+        clash = MealTemplate.objects.filter(name__iexact=name)
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        if clash.exists():
+            raise serializers.ValidationError("Šablóna s týmto názvom už existuje.")
+        return name
+
     def validate(self, attrs: dict) -> dict:
         # A weight description is required from either the structured
         # `components` list (preferred — supports g/ml/text units) or a
