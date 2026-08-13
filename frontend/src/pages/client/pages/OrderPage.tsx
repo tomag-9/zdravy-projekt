@@ -13,7 +13,6 @@ import OrderService, { CategoryData, DailyOrder } from "../services/OrderService
 import { useToast } from "../../../context/ToastContext";
 import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
-import { TOUR_STEPS } from "../components/onboarding/tourSteps";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
 import { buildPackSeparatelyItems } from "../components/order/packSeparately";
@@ -73,7 +72,7 @@ const OrderPage = () => {
     return new Set(getVisibleMenusForMeal(mealKey as MealKey).filter((m: string) => !available.has(m)));
   };
 
-  const { isTourActive, currentStep } = useOnboarding();
+  const { isTourActive, currentStep, steps: tourSteps } = useOnboarding();
 
   const [activeDietModal, setActiveDietModal] = useState<{
     meal: "breakfast" | "lunch" | "olovrant" | "fullDay";
@@ -166,8 +165,27 @@ const OrderPage = () => {
     }
   }, [fullDayOrder, isFullDayDeadlineOpen, toggleFullDay]);
 
+  // A multi-prevádzka login lands on the chooser, which has none of the tour's
+  // targets on it — the tour would dead-end there for exactly the logins the
+  // switcher step is meant for (issue #476). Pick the first prevádzka for them;
+  // the step that follows shows where to change it.
   useEffect(() => {
-    if (!isTourActive || TOUR_STEPS[currentStep]?.targetId !== "tour-category-row") return;
+    if (!isTourActive || !needsChoice || chosenPrevadzka) return;
+    if (tourSteps[currentStep]?.page !== "/order") return;
+    const first = prevadzky[0];
+    if (first) setChosenPrevadzka(first);
+  }, [
+    isTourActive,
+    currentStep,
+    tourSteps,
+    needsChoice,
+    chosenPrevadzka,
+    prevadzky,
+    setChosenPrevadzka,
+  ]);
+
+  useEffect(() => {
+    if (!isTourActive || tourSteps[currentStep]?.targetId !== "tour-category-row") return;
     const firstMeal = visibleMealsList[0];
     if (!firstMeal) return;
     const key = firstMeal.key as "breakfast" | "lunch" | "olovrant";
@@ -175,7 +193,7 @@ const OrderPage = () => {
     if (isEditable && !activeMeals[key]) {
       toggleMeal(key);
     }
-  }, [isTourActive, currentStep, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
+  }, [isTourActive, currentStep, tourSteps, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (error instanceof OrderRequestError && error.code === "order_deadline_passed") {
@@ -499,7 +517,7 @@ const OrderPage = () => {
   // Pri viac-prevádzkovom celku musí byť stále vidieť, za koho sa objednáva,
   // a musí sa dať prepnúť — inak výber ostane zaseknutý na prvej voľbe.
   const prevadzkaStrip = needsChoice && activePrevadzka ? (
-    <div className="zp-order-context">
+    <div className="zp-order-context" data-tour-id="tour-prevadzka-switch">
       <span className="ic">
         <Store style={{ width: 16, height: 16, strokeWidth: 2 }} />
       </span>

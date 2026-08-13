@@ -4,11 +4,20 @@ import { Home, BookOpen, Plus, Settings, LogOut, Mail } from 'lucide-react';
 import { useAuth } from '../../../context/auth';
 import ConfirmationModal from './ui/ConfirmationModal';
 
-const NAV: { to: string; label: string; icon: React.ComponentType<{ style?: React.CSSProperties }>; cta?: boolean }[] = [
+const NAV: {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ style?: React.CSSProperties }>;
+  cta?: boolean;
+  tourId?: string;
+}[] = [
   { to: '/home', label: 'Domov', icon: Home },
   { to: '/order', label: 'Nová objednávka', icon: Plus, cta: true },
   { to: '/menu', label: 'Jedálniček', icon: BookOpen },
-  { to: '/settings', label: 'Nastavenia', icon: Settings },
+  // The tour's "Profil a nastavenia" step points here on desktop; on mobile the
+  // same id sits on the topbar gear in HomePage (issue #477 — the desktop step
+  // had no target at all and rendered a tooltip pointing at nothing).
+  { to: '/settings', label: 'Nastavenia', icon: Settings, tourId: 'tour-profile-btn' },
 ];
 
 const PAGE_TITLES: Record<string, { eye: string; h1: string }> = {
@@ -39,10 +48,11 @@ export default function ClientLayoutPC() {
         </div>
         <div className="pc-nav-label">Navigácia</div>
         <nav className="pc-nav">
-          {NAV.map(({ to, label, icon: Icon, cta }) => (
+          {NAV.map(({ to, label, icon: Icon, cta, tourId }) => (
             <NavLink
               key={to}
               to={to}
+              data-tour-id={tourId}
               className={({ isActive }) =>
                 'pc-navbtn' + (cta ? ' pc-navbtn--cta' : '') + (isActive ? ' active' : '')
               }

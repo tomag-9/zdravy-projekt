@@ -2,88 +2,20 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { useOnboarding } from "../../../../context/OnboardingContext";
-import { TOUR_STEPS, TourStep } from "./tourSteps";
 import TourTooltip from "./TourTooltip";
-
-const TOOLTIP_WIDTH = 288; // matches .zp-tour-tooltip width
-const TOOLTIP_HEIGHT_ESTIMATE = 190; // used only for the first render, before we can measure
-const OFFSET = 12; // gap between target and tooltip
-const VIEWPORT_PADDING = 8;
-
-interface TooltipPos {
-  top: number;
-  left: number;
-  arrowPlacement: TourStep["placement"];
-}
-
-function calcPosition(
-  rect: DOMRect,
-  preferredPlacement: TourStep["placement"],
-  tooltipHeight: number,
-): TooltipPos {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  const placements: TourStep["placement"][] = [
-    preferredPlacement,
-    "bottom",
-    "top",
-    "right",
-    "left",
-  ];
-
-  for (const p of placements) {
-    let top = 0;
-    let left = 0;
-
-    if (p === "bottom") {
-      top = rect.bottom + OFFSET;
-      left = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
-    } else if (p === "top") {
-      top = rect.top - tooltipHeight - OFFSET;
-      left = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
-    } else if (p === "right") {
-      top = rect.top + rect.height / 2 - tooltipHeight / 2;
-      left = rect.right + OFFSET;
-    } else {
-      top = rect.top + rect.height / 2 - tooltipHeight / 2;
-      left = rect.left - TOOLTIP_WIDTH - OFFSET;
-    }
-
-    // Clamp to viewport
-    left = Math.max(
-      VIEWPORT_PADDING,
-      Math.min(left, vw - TOOLTIP_WIDTH - VIEWPORT_PADDING),
-    );
-    top = Math.max(
-      VIEWPORT_PADDING,
-      Math.min(top, vh - tooltipHeight - VIEWPORT_PADDING),
-    );
-
-    const fitsVertically =
-      top >= VIEWPORT_PADDING && top + tooltipHeight <= vh - VIEWPORT_PADDING;
-    const fitsHorizontally =
-      left >= VIEWPORT_PADDING &&
-      left + TOOLTIP_WIDTH <= vw - VIEWPORT_PADDING;
-    if (fitsVertically && fitsHorizontally) {
-      return { top, left, arrowPlacement: p };
-    }
-  }
-
-  // Fallback: center below
-  return {
-    top: rect.bottom + OFFSET,
-    left: Math.max(VIEWPORT_PADDING, vw / 2 - TOOLTIP_WIDTH / 2),
-    arrowPlacement: "top",
-  };
-}
+import {
+  calcPosition,
+  TOOLTIP_HEIGHT_ESTIMATE,
+  TooltipPos,
+} from "./tourPosition";
 
 const TourOverlay: React.FC = () => {
-  const { isTourActive, currentStep } = useOnboarding();
+  const { isTourActive, currentStep, steps } = useOnboarding();
   const location = useLocation();
   const [tooltipPos, setTooltipPos] = useState<TooltipPos | null>(null);
   const highlightedEl = useRef<Element | null>(null);
   const targetRectRef = useRef<DOMRect | null>(null);
+  const targetElRef = useRef<Element | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const hasRemeasured = useRef(false);
 
@@ -102,7 +34,11 @@ const TourOverlay: React.FC = () => {
       return;
     }
 
-    const step = TOUR_STEPS[currentStep];
+    const step = steps[currentStep];
+    if (!step) {
+      setTooltipPos(null);
+      return;
+    }
 
     // Only render on the page this step belongs to
     if (!location.pathname.startsWith(step.page)) {
@@ -131,8 +67,11 @@ const TourOverlay: React.FC = () => {
         return;
       }
 
-      // Scroll into view first, then measure
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      // Scroll instantly, not smoothly: a smooth scroll is still animating when
+      // we measure, so the rect we position against is where the target *was*.
+      // That is how the mobile profile step ended up with the tooltip parked on
+      // top of the gear it points at (issue #477).
+      el.scrollIntoView({ behavior: "auto", block: "center" });
 
       const measure = () => {
         const rect = el.getBoundingClientRect();
@@ -140,6 +79,7 @@ const TourOverlay: React.FC = () => {
           setTooltipPos(null);
           return;
         }
+        targetElRef.current = el;
         targetRectRef.current = rect;
         const pos = calcPosition(rect, step.placement, TOOLTIP_HEIGHT_ESTIMATE);
         setTooltipPos(pos);
@@ -157,7 +97,7 @@ const TourOverlay: React.FC = () => {
       clearTimeout(pollTimer);
       clearTimeout(settleTimer);
     };
-  }, [isTourActive, currentStep, location.pathname]);
+  }, [isTourActive, currentStep, steps, location.pathname]);
 
   // Once the tooltip has actually rendered, re-position using its real
   // height instead of the estimate (long step text otherwise overlaps
@@ -168,13 +108,19 @@ const TourOverlay: React.FC = () => {
     hasRemeasured.current = true;
 
     const actualHeight = tooltipRef.current.getBoundingClientRect().height;
-    if (Math.abs(actualHeight - TOOLTIP_HEIGHT_ESTIMATE) < 1) return;
+    // Re-read the target too: anything that shifted the page since the first
+    // measurement (late images, a reflow) would otherwise leave the tooltip
+    // anchored to a position the target no longer occupies.
+    const rect =
+      targetElRef.current?.getBoundingClientRect() ?? targetRectRef.current;
+    if (
+      Math.abs(actualHeight - TOOLTIP_HEIGHT_ESTIMATE) < 1 &&
+      rect.top === targetRectRef.current.top
+    ) {
+      return;
+    }
 
-    const pos = calcPosition(
-      targetRectRef.current,
-      tooltipPos.arrowPlacement,
-      actualHeight,
-    );
+    const pos = calcPosition(rect, tooltipPos.arrowPlacement, actualHeight);
     setTooltipPos(pos);
   }, [tooltipPos]);
 

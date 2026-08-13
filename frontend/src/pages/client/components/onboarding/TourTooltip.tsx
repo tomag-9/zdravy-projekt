@@ -1,6 +1,5 @@
 import { forwardRef } from "react";
 import { useOnboarding } from "../../../../context/OnboardingContext";
-import { TOUR_STEPS } from "./tourSteps";
 
 interface Props {
   top: number;
@@ -19,11 +18,20 @@ const arrowEdgeForPlacement: Record<string, string> = {
 
 const TourTooltip = forwardRef<HTMLDivElement, Props>(
   ({ top, left, arrowPlacement }, ref) => {
-    const { currentStep, totalSteps, nextStep, prevStep, completeTour, skipTour } =
-      useOnboarding();
-    const step = TOUR_STEPS[currentStep];
+    const {
+      currentStep,
+      totalSteps,
+      steps,
+      nextStep,
+      prevStep,
+      completeTour,
+      skipTour,
+    } = useOnboarding();
+    const step = steps[currentStep];
     const isLast = currentStep === totalSteps - 1;
     const isFirst = currentStep === 0;
+
+    if (!step) return null;
 
     return (
       <div

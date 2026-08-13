@@ -2,6 +2,7 @@ import { act, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboarding } from "../../../../context/OnboardingContext";
+import { getTourSteps } from "./tourSteps";
 import TourOverlay from "./TourOverlay";
 
 vi.mock("../../../../context/OnboardingContext", () => ({
@@ -15,10 +16,12 @@ vi.mock("./TourTooltip", () => ({
 const mockUseOnboarding = vi.mocked(useOnboarding);
 
 function tourState(isTourActive: boolean) {
+  const steps = getTourSteps({ hasMultiplePrevadzky: false });
   return {
     isTourActive,
     currentStep: 0,
-    totalSteps: 10,
+    totalSteps: steps.length,
+    steps,
     startTour: vi.fn(),
     nextStep: vi.fn(),
     prevStep: vi.fn(),
