@@ -8,7 +8,33 @@ from django.utils import timezone
 
 from ..models import DailyOrder, Holiday
 from ..order_data import MEAL_KEYS, OrderData
-from .auto_order_service import _build_auto_data, _is_order_empty, _last_non_empty_order
+from .auto_order_service import _build_auto_data, _is_order_empty
+from .prevadzka_service import dostupne_prevadzky
+
+
+def _merge_meal_data(target: Dict[str, Any], addition: Dict[str, Any]) -> None:
+    """Prirátaj `addition` do `target` (tvar {jedlo: {kategória: {menuCounts, diets}}}).
+
+    Kategórie sa medzi prevádzkami opakujú (Škôlka, Jasle…), takže deň za celok
+    je súčet ich počtov — nie zoznam samostatných blokov.
+    """
+    for meal_key, categories in addition.items():
+        if not isinstance(categories, dict):
+            continue
+        target_meal = target.setdefault(meal_key, {})
+        for category, details in categories.items():
+            if not isinstance(details, dict):
+                continue
+            target_category = target_meal.setdefault(category, {})
+            for group in ("menuCounts", "diets"):
+                counts = details.get(group)
+                if not isinstance(counts, dict):
+                    continue
+                target_counts = target_category.setdefault(group, {})
+                for key, value in counts.items():
+                    if isinstance(value, bool) or not isinstance(value, int):
+                        continue
+                    target_counts[key] = target_counts.get(key, 0) + value
 
 
 class OrderService:
@@ -61,8 +87,10 @@ class OrderService:
         meal_counts: Dict[str, int] = {"breakfast": 0, "lunch": 0, "olovrant": 0}
         total = 0
 
+        # Per prevádzku, nie per login: súhrn za celok musí zahrnúť aj to, čo
+        # zadal iný login toho istého celku.
         orders = DailyOrder.objects.filter(
-            user=user,
+            prevadzka__in=dostupne_prevadzky(user),
             date__gte=start,
             date__lt=end,
         ).only("data")
@@ -116,6 +144,12 @@ class OrderService:
         For days without an order the predicted totals from the last
         non-empty template are provided.
 
+        Objednávka patrí prevádzke, nie loginu — deň sa preto skladá zo
+        všetkých prevádzok, ku ktorým má login prístup, a karta dňa ukazuje
+        súčet za celok. Predikcia beží per prevádzka rovnako ako
+        `apply_auto_orders`, inak by celok s piatimi prevádzkami videl
+        pätinu toho, čo mu auto-objednávka naozaj vytvorí.
+
         This method executes a small, constant number of DB queries regardless
         of the number of planned days (no N+1 queries).
         """
@@ -126,42 +160,81 @@ class OrderService:
         )
         workdays = OrderService.next_workdays(today, 5, holiday_set)
 
-        existing: Dict[datetime.date, DailyOrder] = {
-            o.date: o
-            for o in DailyOrder.objects.filter(user=user, date__in=workdays)
+        # Ako poddotaz, nie materializovaný zoznam — inak by prehľad stál dotaz navyše.
+        prevadzky = dostupne_prevadzky(user)
+
+        existing: Dict[datetime.date, List[DailyOrder]] = {}
+        for order in (
+            DailyOrder.objects.filter(prevadzka__in=prevadzky, date__in=workdays)
             .select_related("prevadzka")
             .prefetch_related("prevadzka__visible_portion_types")
-        }
+        ):
+            existing.setdefault(order.date, []).append(order)
 
-        # Pre-fetch a single historical template to avoid per-day DB queries.
-        historical_template: Optional[DailyOrder] = _last_non_empty_order(
-            user, workdays[0]
+        # Najlepšia (posledná neprázdna) šablóna per prevádzka — 1 dotaz, bez N+1.
+        # Rovnaké pravidlo ako v `apply_auto_orders`, aby sedel odhad aj výsledok.
+        # Prevádzka bez šablóny do odhadu nič nepridá, takže stačia tieto kľúče.
+        templates_by_prevadzka: Dict[int, DailyOrder] = {}
+        for order in (
+            DailyOrder.objects.filter(prevadzka__in=prevadzky, date__lt=workdays[0])
+            .select_related("prevadzka")
+            .prefetch_related("prevadzka__visible_portion_types")
+            .order_by("prevadzka_id", "-date")
+        ):
+            if order.prevadzka_id in templates_by_prevadzka:
+                continue
+            if not _is_order_empty(order.data or {}):
+                templates_by_prevadzka[order.prevadzka_id] = order
+
+        # Prevádzka vie prispieť do odhadu buď historickou šablónou, alebo
+        # objednávkou skôr v okne (kaskáda) — oboje je už načítané v pamäti.
+        predictable_prevadzka_ids = sorted(
+            set(templates_by_prevadzka)
+            | {
+                order.prevadzka_id
+                for day_orders in existing.values()
+                for order in day_orders
+            }
         )
 
-        def _template_for_day(day: datetime.date) -> Optional[DailyOrder]:
+        def _template_for(
+            day: datetime.date, prevadzka_id: int
+        ) -> Optional[DailyOrder]:
             """
-            Return the best template for a missing day.
+            Return the best template for a prevádzka on a missing day.
 
-            Checks in-memory cascade (already-placed orders earlier in the
-            planned window) before falling back to the historical template.
-            No additional DB queries are made.
+            Checks the in-memory cascade (orders already placed earlier in the
+            planned window for that same prevádzka) before falling back to the
+            historical template. No additional DB queries are made.
             """
             for prev_day in reversed([d for d in workdays if d < day]):
-                prev = existing.get(prev_day)
-                if prev and not _is_order_empty(prev.data or {}):
-                    return prev
-            return historical_template
+                for prev in existing.get(prev_day, []):
+                    if prev.prevadzka_id != prevadzka_id:
+                        continue
+                    if not _is_order_empty(prev.data or {}):
+                        return prev
+            return templates_by_prevadzka.get(prevadzka_id)
 
         result: List[Dict[str, Any]] = []
         for day in workdays:
-            order = existing.get(day)
-            if order:
-                total, meal_count = OrderService.order_total(order.data or {})
+            orders = existing.get(day, [])
+            if orders:
+                total = 0
+                meal_count = {meal: 0 for meal in MEAL_KEYS}
+                for order in orders:
+                    order_total, order_meals = OrderService.order_total(
+                        order.data or {}
+                    )
+                    total += order_total
+                    for meal_key, count in order_meals.items():
+                        meal_count[meal_key] = meal_count.get(meal_key, 0) + count
                 result.append(
                     {
                         "date": str(day),
                         "exists": True,
-                        "is_auto": order.is_auto,
+                        # Deň je „automatický" len keď ho tak dostali všetky
+                        # prevádzky — inak doň zasiahol človek.
+                        "is_auto": all(o.is_auto for o in orders),
                         "is_empty": total == 0,
                         "totalPortions": total,
                         "mealCount": meal_count,
@@ -173,43 +246,42 @@ class OrderService:
                         },
                     }
                 )
-            else:
-                tmpl = _template_for_day(day)
-                if tmpl:
-                    allowed_meals = visible_meals
-                    if allowed_meals is None:
-                        allowed_meals = list(
-                            getattr(tmpl.prevadzka, "visible_meals", []) or []
-                        )
-                    visible_portion_types = [
-                        portion_type.name
-                        for portion_type in tmpl.prevadzka.visible_portion_types.all()
-                        if portion_type.is_active
-                    ]
-                    predicted_data = _build_auto_data(
-                        tmpl,
-                        allowed_meals,
-                        visible_portion_types,
+                continue
+
+            predicted_data: Dict[str, Any] = {meal: {} for meal in MEAL_KEYS}
+            for prevadzka_id in predictable_prevadzka_ids:
+                tmpl = _template_for(day, prevadzka_id)
+                if tmpl is None:
+                    continue
+                allowed_meals = visible_meals
+                if allowed_meals is None:
+                    allowed_meals = list(
+                        getattr(tmpl.prevadzka, "visible_meals", []) or []
                     )
-                    predicted_total, predicted_meal_count = OrderService.order_total(
-                        predicted_data
-                    )
-                else:
-                    predicted_data = {meal: {} for meal in MEAL_KEYS}
-                    predicted_total = 0
-                    predicted_meal_count = {meal: 0 for meal in MEAL_KEYS}
-                result.append(
-                    {
-                        "date": str(day),
-                        "exists": False,
-                        "is_auto": None,
-                        "is_empty": None,
-                        "totalPortions": 0,
-                        "mealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
-                        "predictedTotal": predicted_total,
-                        "predictedMealCount": predicted_meal_count,
-                        "predictedData": predicted_data,
-                    }
+                visible_portion_types = [
+                    portion_type.name
+                    for portion_type in tmpl.prevadzka.visible_portion_types.all()
+                    if portion_type.is_active
+                ]
+                _merge_meal_data(
+                    predicted_data,
+                    _build_auto_data(tmpl, allowed_meals, visible_portion_types),
                 )
+            predicted_total, predicted_meal_count = OrderService.order_total(
+                predicted_data
+            )
+            result.append(
+                {
+                    "date": str(day),
+                    "exists": False,
+                    "is_auto": None,
+                    "is_empty": None,
+                    "totalPortions": 0,
+                    "mealCount": {"breakfast": 0, "lunch": 0, "olovrant": 0},
+                    "predictedTotal": predicted_total,
+                    "predictedMealCount": predicted_meal_count,
+                    "predictedData": predicted_data,
+                }
+            )
 
         return result

@@ -302,16 +302,25 @@ const HomePage = () => {
 
   const handleZeroPredicted = async (day: PlannedDay) => {
     try {
-      const res = await apiFetch(`${API_URL}/orders/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date: day.date,
-          status: "submitted",
-          data: { breakfast: {}, lunch: {}, olovrant: {} },
-        }),
-      });
-      if (!res.ok) await parseOrderActionError(res);
+      // Karta dňa je súčet za celok, takže vynulovanie platí pre každú
+      // prevádzku. Bez `prevadzka` by backend pri viacerých ani nevedel,
+      // ktorej deň vynulovať, a vrátil by 400.
+      const targets: (number | undefined)[] = prevadzky.length
+        ? prevadzky.map((p) => p.id)
+        : [activePrevadzka?.id];
+      for (const prevadzkaId of targets) {
+        const res = await apiFetch(`${API_URL}/orders/`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date: day.date,
+            status: "submitted",
+            ...(prevadzkaId ? { prevadzka: prevadzkaId } : {}),
+            data: { breakfast: {}, lunch: {}, olovrant: {} },
+          }),
+        });
+        if (!res.ok) await parseOrderActionError(res);
+      }
       setPlannedDays((prev) =>
         prev.map((d) =>
           d.date === day.date
