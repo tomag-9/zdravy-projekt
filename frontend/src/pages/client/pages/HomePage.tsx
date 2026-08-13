@@ -81,7 +81,7 @@ const HomePage = () => {
     null,
   );
 
-  const { globalDeadlines } = useApp();
+  const { globalDeadlines, activePrevadzka } = useApp();
   const { apiFetch, user } = useAuth();
   const toast = useToast();
   const getFriendlyOrderErrorMessage = (error: unknown) => {
@@ -223,7 +223,10 @@ const HomePage = () => {
 
   const openDayModal = async (date: string) => {
     try {
-      const r = await apiFetch(`${API_URL}/orders/by-date/${date}/`);
+      // Bez prevádzky vráti backend 400, keď má login objednávku vo viac
+      // prevádzkach naraz — rovnaký suffix ako v useOrder.
+      const suffix = activePrevadzka?.id ? `?prevadzka=${activePrevadzka.id}` : "";
+      const r = await apiFetch(`${API_URL}/orders/by-date/${date}/${suffix}`);
       if (r.ok) {
         const rec = await r.json();
         setModalOrderData(rec.data || {});

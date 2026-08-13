@@ -65,6 +65,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     }
 
     _ALLOWED_MEAL_KEYS = frozenset({"breakfast", "lunch", "olovrant"})
+    # Poznámka k špeciálnej diéte sedí v `data` vedľa jedál (tak ju posiela klient
+    # aj admin editor a tak ju číta admin UI), takže musí prejsť allowlistom —
+    # nie je to jedlo, preto sa validuje zvlášť a preskakuje traverzáciu kategórií.
+    _SPECIAL_DIET_NOTE_KEY = "special_diet_note"
+    _ALLOWED_DATA_KEYS = _ALLOWED_MEAL_KEYS | {_SPECIAL_DIET_NOTE_KEY}
+    _MAX_NOTE_CHARS = 1000
     _MAX_DATA_BYTES = 10 * 1024  # 10 KB
     _MAX_COUNT = 9999
 
@@ -78,12 +84,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         if not isinstance(data, dict):
             raise serializers.ValidationError("Order data must be an object.")
 
-        unknown_keys = set(data) - self._ALLOWED_MEAL_KEYS
+        unknown_keys = set(data) - self._ALLOWED_DATA_KEYS
         if unknown_keys:
-            allowed = ", ".join(sorted(self._ALLOWED_MEAL_KEYS))
+            allowed = ", ".join(sorted(self._ALLOWED_DATA_KEYS))
             raise serializers.ValidationError(
                 f"Unknown meal keys: {sorted(unknown_keys)}. Allowed keys are: {allowed}."
             )
+
+        if self._SPECIAL_DIET_NOTE_KEY in data:
+            self._validate_special_diet_note(data[self._SPECIAL_DIET_NOTE_KEY])
 
         raw_size = len(
             json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -94,6 +103,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         for meal_key, meal in data.items():
+            if meal_key == self._SPECIAL_DIET_NOTE_KEY:
+                continue
             if not isinstance(meal, dict):
                 raise serializers.ValidationError(f"'{meal_key}' must be an object.")
             if self._is_leaf_payload(meal):
@@ -118,6 +129,20 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                         )
 
         return data
+
+    @classmethod
+    def _validate_special_diet_note(cls, note: Any) -> None:
+        if note is None:
+            return
+        if not isinstance(note, str):
+            raise serializers.ValidationError(
+                f"'{cls._SPECIAL_DIET_NOTE_KEY}' musí byť text."
+            )
+        if len(note) > cls._MAX_NOTE_CHARS:
+            raise serializers.ValidationError(
+                f"'{cls._SPECIAL_DIET_NOTE_KEY}' môže mať najviac "
+                f"{cls._MAX_NOTE_CHARS} znakov."
+            )
 
     @staticmethod
     def _is_leaf_payload(value: Any) -> bool:

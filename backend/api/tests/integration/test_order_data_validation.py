@@ -105,6 +105,44 @@ class TestOrderDataValidation:
         )
 
     # ------------------------------------------------------------------ #
+    # special_diet_note (klient aj admin editor ju posielajú vnútri `data`)
+    # ------------------------------------------------------------------ #
+
+    def test_special_diet_note_accepted(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {**VALID_DATA, "special_diet_note": "Bez orechov a zeleru"},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["data"]["special_diet_note"] == "Bez orechov a zeleru"
+
+    def test_special_diet_note_alone_accepted(self, authenticated_client):
+        response = self._post(authenticated_client, {"special_diet_note": "Bez sóje"})
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_special_diet_note_must_be_text(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {**VALID_DATA, "special_diet_note": {"text": "nope"}},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_special_diet_note_is_not_a_meal_change(self):
+        """Zmena samotnej poznámky nesmie znovu spustiť deadline pre jedlá."""
+        from api.serializers import DailyOrderSerializer
+
+        previous = {**VALID_DATA, "special_diet_note": "Bez orechov"}
+        current = {**VALID_DATA, "special_diet_note": "Bez orechov a zeleru"}
+        assert DailyOrderSerializer._changed_meals(current, previous) == []
+
+    def test_special_diet_note_length_capped(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {**VALID_DATA, "special_diet_note": "x" * 1001},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    # ------------------------------------------------------------------ #
     # Flat shape compatibility
     # ------------------------------------------------------------------ #
 
