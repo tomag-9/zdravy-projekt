@@ -7,7 +7,7 @@ import DietSelector from "../components/order/DietSelector";
 import PackSeparatelySelector from "../components/order/PackSeparatelySelector";
 import OrderSummary from "../components/order/OrderSummary";
 import OrderFormBody from "../components/order/OrderFormBody";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, Store } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -266,6 +266,9 @@ const OrderPage = () => {
       await submitOrder(selectedDate, activePrevadzka?.id);
       const total = getTotalPortions();
       const dietCount = getTotalDiets();
+      // Pri viacerých prevádzkach je bežné hlásiť ten istý deň za obe, tak sa
+      // ďalšia objednávka vždy začne výberom namiesto tichého zdedenia tej predošlej.
+      if (needsChoice) setChosenPrevadzka(null);
       navigate(`/success?date=${selectedDate}&total=${total}&dietCount=${dietCount}`);
     } catch (e) {
       logger.error(e);
@@ -493,6 +496,27 @@ const OrderPage = () => {
     </div>
   );
 
+  // Pri viac-prevádzkovom celku musí byť stále vidieť, za koho sa objednáva,
+  // a musí sa dať prepnúť — inak výber ostane zaseknutý na prvej voľbe.
+  const prevadzkaStrip = needsChoice && activePrevadzka ? (
+    <div className="zp-order-context">
+      <span className="ic">
+        <Store style={{ width: 16, height: 16, strokeWidth: 2 }} />
+      </span>
+      <div className="body">
+        <div className="l">Objednávate za</div>
+        <div className="v">{activePrevadzka.nazov}</div>
+      </div>
+      <button
+        className="zp-btn zp-btn--secondary zp-btn--sm"
+        style={{ marginLeft: "auto", flex: "0 0 auto" }}
+        onClick={() => setChosenPrevadzka(null)}
+      >
+        Zmeniť
+      </button>
+    </div>
+  ) : null;
+
   const modals = (
     <>
       {activeDietModal && (() => {
@@ -556,9 +580,55 @@ const OrderPage = () => {
     </>
   );
 
+  // Počas načítavania nič neblokujeme: celok s jednou prevádzkou (drvivá väčšina)
+  // by inak videl prázdnu obrazovku. Chooser sa zobrazí, až keď vieme, že treba.
+  // Musí byť nad `isPC` vetvou, inak by ho desktop nikdy nezobrazil.
+  if (needsChoice && !chosenPrevadzka) {
+    return (
+      <div className={isPC ? "pc-wrap" : "zp-app"}>
+        <div className="zp-orderpage">
+          {/* Na PC vlastnú hlavičku aj späť nesie ClientLayoutPC. */}
+          {!isPC && (
+            <div className="zp-orderbar">
+              <button className="zp-iconbtn" aria-label="Späť" onClick={() => navigate("/home")}>
+                <ArrowLeft size={20} />
+              </button>
+              <h1 className="zp-orderbar__title">Vyberte prevádzku</h1>
+            </div>
+          )}
+
+          <div className="zp-card" style={{ margin: "1rem", padding: "1rem" }}>
+            <p style={{ marginBottom: "1rem", opacity: 0.8 }}>
+              Za ktorú prevádzku nahlasujete objednávku?
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              {prevadzky.map((p) => (
+                <button
+                  key={p.id}
+                  className="zp-btn zp-btn--secondary"
+                  style={{ justifyContent: "flex-start", textAlign: "left" }}
+                  onClick={() => setChosenPrevadzka(p)}
+                >
+                  <span style={{ fontWeight: 600 }}>{p.nazov}</span>
+                  {p.adresa && (
+                    <span style={{ marginLeft: "0.5rem", opacity: 0.7, fontSize: "0.875rem" }}>
+                      {p.adresa}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isPC) {
     return (
       <div className="pc-wrap">
+        {prevadzkaStrip}
+
         {/* PC day selector */}
         <div className="pc-daysel-pc" data-tour-id="tour-day-selector">
           <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
@@ -596,46 +666,6 @@ const OrderPage = () => {
     );
   }
 
-  // Počas načítavania nič neblokujeme: celok s jednou prevádzkou (drvivá väčšina)
-  // by inak videl prázdnu obrazovku. Chooser sa zobrazí, až keď vieme, že treba.
-  if (needsChoice && !chosenPrevadzka) {
-    return (
-      <div className="zp-app">
-        <div className="zp-orderpage">
-          <div className="zp-orderbar">
-            <button className="zp-iconbtn" aria-label="Späť" onClick={() => navigate("/")}>
-              <ArrowLeft size={20} />
-            </button>
-            <h1 className="zp-orderbar__title">Vyberte prevádzku</h1>
-          </div>
-
-          <div className="zp-card" style={{ margin: "1rem", padding: "1rem" }}>
-            <p style={{ marginBottom: "1rem", opacity: 0.8 }}>
-              Za ktorú prevádzku nahlasujete objednávku?
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-              {prevadzky.map((p) => (
-                <button
-                  key={p.id}
-                  className="zp-btn zp-btn--secondary"
-                  style={{ justifyContent: "flex-start", textAlign: "left" }}
-                  onClick={() => setChosenPrevadzka(p)}
-                >
-                  <span style={{ fontWeight: 600 }}>{p.nazov}</span>
-                  {p.adresa && (
-                    <span style={{ marginLeft: "0.5rem", opacity: 0.7, fontSize: "0.875rem" }}>
-                      {p.adresa}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="zp-app">
       <div className="zp-orderpage">
@@ -661,6 +691,8 @@ const OrderPage = () => {
             <Settings style={{ width: 18, height: 18, strokeWidth: 2 }} />
           </button>
         </div>
+
+        {prevadzkaStrip}
 
         {/* Top context strip */}
         <div className="zp-order-context">

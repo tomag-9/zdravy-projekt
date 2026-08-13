@@ -188,6 +188,8 @@ describe("OrderPage Logic & Triggers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorageMock.clear();
+    // AppProvider si vybranú prevádzku pamätá v sessionStorage cez celý beh súboru.
+    sessionStorage.clear();
     (OrderService.checkDeadline as Mock).mockReturnValue(true);
     mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
       if (url.includes("/admin/global-settings/")) {
@@ -365,6 +367,78 @@ describe("OrderPage Logic & Triggers", () => {
       expect(within(getMealCard("Obed")).getByText("Jasle")).toBeInTheDocument();
       expect(within(getMealCard("Obed")).getByText("Škôlka")).toBeInTheDocument();
     });
+  });
+
+  /** Celok s dvoma prevádzkami (napr. Šidielko + tučniačik) → klient musí vyberať. */
+  const mockTwoPrevadzky = () => {
+    const original = mockApiFetch.getMockImplementation()!;
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/prevadzky/")) {
+        return Promise.resolve(makeMockResponse(
+          [
+            { id: 21, nazov: "Šidielko", adresa: "Cablkova 6" },
+            { id: 22, nazov: "tučniačik", adresa: "Cablkova 6" },
+          ].map((p) => ({
+            ...p,
+            celok: "Šidielko",
+            visible_menus: ["A", "B", "C", "V"],
+            visible_meals: ["breakfast", "lunch", "olovrant"],
+            visible_diets: [],
+            pack_separately_enabled: false,
+          })),
+        ));
+      }
+      return original(url, init);
+    });
+  };
+
+  it("lets the client switch prevádzka after the first choice", async () => {
+    mockTwoPrevadzky();
+
+    renderPage();
+
+    // Najprv chooser…
+    const sidielko = await screen.findByRole("button", { name: /Šidielko/ });
+    fireEvent.click(sidielko);
+
+    // …potom je v objednávke vidieť, za koho sa hlási.
+    const strip = await screen.findByText("Objednávate za");
+    expect(strip.parentElement).toHaveTextContent("Šidielko");
+
+    // A dá sa prepnúť späť na výber — toto predtým chýbalo a výber ostal zaseknutý.
+    fireEvent.click(screen.getByRole("button", { name: "Zmeniť" }));
+    fireEvent.click(await screen.findByRole("button", { name: /tučniačik/ }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Objednávate za").parentElement).toHaveTextContent("tučniačik");
+    });
+  });
+
+  it("remembers the chosen prevádzka across a remount (page refresh)", async () => {
+    mockTwoPrevadzky();
+
+    const { unmount } = renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: /tučniačik/ }));
+    await screen.findByText("Objednávate za");
+    unmount();
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("Objednávate za").parentElement).toHaveTextContent("tučniačik");
+    });
+    expect(screen.queryByText("Za ktorú prevádzku nahlasujete objednávku?")).not.toBeInTheDocument();
+  });
+
+  it("drops a stored prevádzka the login no longer has access to", async () => {
+    sessionStorage.setItem("chosenPrevadzkaId", "999");
+    mockTwoPrevadzky();
+
+    renderPage();
+
+    expect(
+      await screen.findByText("Za ktorú prevádzku nahlasujete objednávku?"),
+    ).toBeInTheDocument();
   });
 
   it("Copy Olovrant: Copies data from Lunch when triggered", async () => {

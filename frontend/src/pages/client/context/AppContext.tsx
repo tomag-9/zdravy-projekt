@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, ReactNode, useState, Dispatch, SetStateAction } from 'react';
+import { createContext, useContext, ReactNode, useState, useCallback } from 'react';
 import { useOrder } from '../hooks/useOrder';
 import usePrevadzky, { Prevadzka } from '../hooks/usePrevadzky';
 import { CATEGORIES, DIETS, GROUP_CONFIG } from '../config/constants';
@@ -10,7 +10,7 @@ type OrderContextType = ReturnType<typeof useOrder> &
     ReturnType<typeof usePrevadzky> & {
         activePrevadzka: Prevadzka | null;
         chosenPrevadzka: Prevadzka | null;
-        setChosenPrevadzka: Dispatch<SetStateAction<Prevadzka | null>>;
+        setChosenPrevadzka: (prevadzka: Prevadzka | null) => void;
         logout: () => void;
     };
 
@@ -25,9 +25,37 @@ export const useApp = () => {
 // Re-export constants for backward compatibility or direct import usage
 export { CATEGORIES, DIETS, GROUP_CONFIG };
 
+const CHOSEN_PREVADZKA_KEY = 'chosenPrevadzkaId';
+
+const readStoredPrevadzkaId = (): number | null => {
+    try {
+        const raw = sessionStorage.getItem(CHOSEN_PREVADZKA_KEY);
+        if (raw === null) return null;
+        const id = Number(raw);
+        return Number.isFinite(id) ? id : null;
+    } catch {
+        return null;
+    }
+};
+
 export const AppProvider = ({ children }: { children: ReactNode }) => {
     const prevadzkaState = usePrevadzky();
-    const [chosenPrevadzka, setChosenPrevadzka] = useState<Prevadzka | null>(null);
+    // Držíme len id: výber tak prežije refresh (sessionStorage) a zároveň sa
+    // sám zneplatní, keď login o prístup na prevádzku príde.
+    const [chosenPrevadzkaId, setChosenPrevadzkaId] = useState<number | null>(readStoredPrevadzkaId);
+    const chosenPrevadzka =
+        prevadzkaState.prevadzky.find((p) => p.id === chosenPrevadzkaId) ?? null;
+
+    const setChosenPrevadzka = useCallback((prevadzka: Prevadzka | null) => {
+        setChosenPrevadzkaId(prevadzka?.id ?? null);
+        try {
+            if (prevadzka) sessionStorage.setItem(CHOSEN_PREVADZKA_KEY, String(prevadzka.id));
+            else sessionStorage.removeItem(CHOSEN_PREVADZKA_KEY);
+        } catch {
+            // Súkromný režim / zakázané úložisko — výber ostane len v pamäti.
+        }
+    }, []);
+
     const activePrevadzka = prevadzkaState.single ?? chosenPrevadzka;
     const orderState = useOrder(
         activePrevadzka?.id,
