@@ -188,6 +188,175 @@ class TestGetPlannedOrders:
 
 
 # ---------------------------------------------------------------------------
+# Celok s viacerými prevádzkami — deň je súčet, nie jedna z objednávok
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestPlannedOrdersAcrossPrevadzky:
+    """Objednávka patrí prevádzke, takže deň musí zahrnúť všetky prevádzky."""
+
+    def _celok_user(self, email="viac@example.com", pocet=2):
+        from api.models import Celok, Prevadzka, ProfileCelokAccess, UserProfile
+
+        celok = Celok.objects.create(nazov="Celok s viac prevádzkami")
+        prevadzky = [
+            Prevadzka.objects.create(celok=celok, nazov=f"Prevádzka {i}", sort_order=i)
+            for i in range(1, pocet + 1)
+        ]
+        user = User.objects.create_user(username=email, email=email, password="pw")
+        profile = UserProfile(user=user, company_name=email)
+        profile._skip_default_facility = True
+        profile.save()
+        ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+        return user, prevadzky
+
+    @staticmethod
+    def _data(count):
+        return {
+            "breakfast": {"Dospelý": {"menuCounts": {"A": count}, "diets": {}}},
+            "lunch": {},
+            "olovrant": {},
+        }
+
+    @patch("api.services.order_service.timezone")
+    def test_day_sums_every_prevadzka(self, mock_tz):
+        mock_tz.localdate.return_value = MONDAY
+        user, prevadzky = self._celok_user()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[0],
+            date=MONDAY,
+            data=self._data(2),
+            status="submitted",
+        )
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[1],
+            date=MONDAY,
+            data=self._data(3),
+            status="submitted",
+        )
+
+        result = OrderService.get_planned_orders(user, [])
+
+        monday = next(r for r in result if r["date"] == str(MONDAY))
+        assert monday["exists"] is True
+        # Predtým tu vyhrala posledná objednávka (3) a zvyšok sa stratil.
+        assert monday["totalPortions"] == 5
+        assert monday["mealCount"]["breakfast"] == 5
+
+    @patch("api.services.order_service.timezone")
+    def test_prediction_covers_every_prevadzka(self, mock_tz):
+        mock_tz.localdate.return_value = MONDAY
+        user, prevadzky = self._celok_user()
+        historical = datetime.date(2025, 1, 5)
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[0],
+            date=historical,
+            data=self._data(2),
+            status="submitted",
+        )
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[1],
+            date=historical,
+            data=self._data(3),
+            status="submitted",
+        )
+
+        result = OrderService.get_planned_orders(user, [])
+
+        monday = next(r for r in result if r["date"] == str(MONDAY))
+        assert monday["exists"] is False
+        # Auto-objednávka vytvorí obom prevádzkam, odhad to musí ukázať tiež.
+        assert monday["predictedTotal"] == 5
+        assert monday["predictedData"]["breakfast"]["Dospelý"]["menuCounts"]["A"] == 5
+
+    @patch("api.services.order_service.timezone")
+    def test_day_is_auto_only_when_every_prevadzka_is_auto(self, mock_tz):
+        mock_tz.localdate.return_value = MONDAY
+        user, prevadzky = self._celok_user()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[0],
+            date=MONDAY,
+            data=self._data(1),
+            status="submitted",
+            is_auto=True,
+        )
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[1],
+            date=MONDAY,
+            data=self._data(1),
+            status="submitted",
+            is_auto=False,
+        )
+
+        result = OrderService.get_planned_orders(user, [])
+
+        monday = next(r for r in result if r["date"] == str(MONDAY))
+        assert monday["is_auto"] is False
+
+    @patch("api.services.order_service.timezone")
+    def test_monthly_summary_sums_every_prevadzka(self, mock_tz):
+        mock_tz.localdate.return_value = MONDAY
+        user, prevadzky = self._celok_user()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[0],
+            date=MONDAY,
+            data=self._data(2),
+            status="submitted",
+        )
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzky[1],
+            date=MONDAY,
+            data=self._data(3),
+            status="submitted",
+        )
+
+        summary = OrderService.monthly_summary(
+            user, MONDAY.year, MONDAY.month, through_date=MONDAY
+        )
+
+        assert summary["total"] == 5
+
+    @patch("api.services.order_service.timezone")
+    def test_sees_order_placed_by_another_login_of_the_celok(self, mock_tz):
+        """Login je len audit — druhé prihlásenie celku vidí tú istú objednávku."""
+        from api.models import ProfileCelokAccess, UserProfile
+
+        mock_tz.localdate.return_value = MONDAY
+        user, prevadzky = self._celok_user()
+        celok = prevadzky[0].celok
+        other = User.objects.create_user(
+            username="druhy@example.com", email="druhy@example.com", password="pw"
+        )
+        other_profile = UserProfile(user=other, company_name="druhy")
+        other_profile._skip_default_facility = True
+        other_profile.save()
+        ProfileCelokAccess.objects.create(profile=other_profile, celok=celok)
+
+        DailyOrder.objects.create(
+            user=other,
+            prevadzka=prevadzky[0],
+            date=MONDAY,
+            data=self._data(4),
+            status="submitted",
+        )
+
+        result = OrderService.get_planned_orders(user, [])
+
+        monday = next(r for r in result if r["date"] == str(MONDAY))
+        assert monday["exists"] is True
+        assert monday["totalPortions"] == 4
+
+
+# ---------------------------------------------------------------------------
 # ReportService.aggregate_daily_stats
 # ---------------------------------------------------------------------------
 

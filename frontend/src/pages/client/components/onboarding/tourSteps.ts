@@ -4,9 +4,20 @@ export interface TourStep {
   body: string;
   placement: "top" | "bottom" | "left" | "right";
   page: "/home" | "/order";
+  /**
+   * Steps that only make sense for some logins. A step whose requirement is not
+   * met is dropped from the tour entirely — showing a tooltip pointing at an
+   * element that does not exist would just stall the tour on a blank overlay.
+   */
+  requires?: "multiplePrevadzky";
 }
 
-export const TOUR_STEPS: TourStep[] = [
+export interface TourContext {
+  /** The celok has more than one prevádzka, so the switcher is on screen. */
+  hasMultiplePrevadzky: boolean;
+}
+
+const ALL_TOUR_STEPS: TourStep[] = [
   // ── Home page (steps 0–4) ────────────────────────────────────────────────
   {
     targetId: "tour-new-order-btn",
@@ -44,7 +55,15 @@ export const TOUR_STEPS: TourStep[] = [
     page: "/home",
   },
 
-  // ── Order page (steps 5–9) ───────────────────────────────────────────────
+  // ── Order page ───────────────────────────────────────────────────────────
+  {
+    targetId: "tour-prevadzka-switch",
+    title: "Za ktorú prevádzku objednávate",
+    body: "Váš login má na starosti viac prevádzok. Tu vidíte, za ktorú z nich práve objednávate — tlačidlom „Zmeniť“ sa prepnete na inú. Objednávky sa vedú zvlášť pre každú prevádzku, takže si tento riadok pred zadávaním porcií vždy skontrolujte.",
+    placement: "bottom",
+    page: "/order",
+    requires: "multiplePrevadzky",
+  },
   {
     targetId: "tour-day-selector",
     title: "Výber dátumu",
@@ -69,8 +88,8 @@ export const TOUR_STEPS: TourStep[] = [
   {
     targetId: "tour-category-row",
     title: "Počet porcií a diéty",
-    body: "Pre každú vekovú skupinu (napr. Škôlka, ZŠ 1. stupeň) nastavte počet porcií pomocou tlačidiel + a –. Menu A/B sú varianty obeda. Ak dieťa potrebuje diétu, kliknite na tlačidlo „Diéty“ pri Menu A a vyberte konkrétnu diétu a počet porcií (diéty sa dajú priradiť len v rámci porcií Menu A).",
-    placement: "right",
+    body: "Pre každú vekovú skupinu (napr. Škôlka, ZŠ 1. stupeň) nastavte počet porcií pomocou tlačidiel + a –. Menu A/B sú varianty obeda. Diétne porcie zadávate osobitne: kliknite na riadok „Diéty“ hneď pod Menu A, vyberte diétu a počet. Diéty sú samostatná položka – k počtu Menu A sa pripočítavajú, neuberajú sa z neho.",
+    placement: "bottom",
     page: "/order",
   },
   {
@@ -81,3 +100,18 @@ export const TOUR_STEPS: TourStep[] = [
     page: "/order",
   },
 ];
+
+/** The steps that apply to this login, in order. */
+export function getTourSteps(context: TourContext): TourStep[] {
+  return ALL_TOUR_STEPS.filter((step) => {
+    if (step.requires === "multiplePrevadzky") {
+      return context.hasMultiplePrevadzky;
+    }
+    return true;
+  });
+}
+
+/** Base tour: single-prevádzka login. Prefer `getTourSteps` where context exists. */
+export const TOUR_STEPS: TourStep[] = getTourSteps({
+  hasMultiplePrevadzky: false,
+});

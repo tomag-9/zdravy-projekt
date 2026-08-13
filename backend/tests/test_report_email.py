@@ -277,7 +277,12 @@ class TestSendDailyReportEmail:
 
 @pytest.mark.django_db
 class TestPeriodicTaskSync:
-    """Test that PeriodicTasks are created when recipients are configured."""
+    """Standalone report PeriodicTasks — the fallback for when scraping is off.
+
+    With the EduPage auto-scrape enabled the reports are chained after it
+    instead of getting their own crontab (issue #474), so these tests turn the
+    scrape off to reach the standalone path.
+    """
 
     def test_periodic_tasks_created_when_recipients_set(self, global_settings):
         """Saving GlobalSettings with recipients should create PeriodicTasks."""
@@ -297,6 +302,7 @@ class TestPeriodicTaskSync:
         ).delete()
 
         # Set recipients and save
+        global_settings.edupage_auto_scrape_enabled = False
         global_settings.report_email_recipients = ["report@example.com"]
         global_settings.save()
 
@@ -361,6 +367,7 @@ class TestPeriodicTaskSync:
             PERIODIC_TASK_NAME_REPORT_BREAKFAST,
         )
 
+        global_settings.edupage_auto_scrape_enabled = False
         global_settings.report_email_recipients = ["test@example.com"]
         global_settings.save()
 

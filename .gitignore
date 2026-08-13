@@ -114,3 +114,9 @@ tasks.md
 feedback.md
 test/
 prevadzky.md
+
+# Playwright E2E artefakty
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/

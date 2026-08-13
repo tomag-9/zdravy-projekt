@@ -221,6 +221,13 @@ class GlobalSettings(models.Model):
         default=True,
         help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
     )
+    daily_report_enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "When disabled, the daily report periodic tasks are removed without "
+            "touching report_email_recipients."
+        ),
+    )
     report_email_recipients = models.JSONField(
         default=list,
         blank=True,

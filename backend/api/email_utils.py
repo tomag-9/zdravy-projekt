@@ -96,6 +96,7 @@ def send_daily_report_email(
     attachment_bytes: bytes,
     attachment_filename: str,
     meals: list[str] | None = None,
+    data_may_be_stale: bool = False,
 ) -> None:
     """Send the daily order report as an XLSX attachment to *recipients*.
 
@@ -105,6 +106,9 @@ def send_daily_report_email(
         attachment_bytes: XLSX file bytes
         attachment_filename: Name of the attachment file
         meals: List of meals included in report (breakfast, lunch, olovrant)
+        data_may_be_stale: The EduPage import that should have preceded this
+            report failed. The report still goes out — the kitchen needs
+            numbers — but says the counts may not be final (issue #474).
     """
     from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
 
@@ -116,8 +120,19 @@ def send_daily_report_email(
     else:
         subject = f"Denný prehľad objednávok — {report_date}"
 
+    if data_may_be_stale:
+        subject = f"[NEÚPLNÉ DÁTA] {subject}"
+        warning = (
+            "UPOZORNENIE: Import objednávok z EduPage pred týmto prehľadom "
+            "zlyhal, počty preto nemusia byť finálne. Pred spracovaním ich "
+            "prosím overte.\n\n"
+        )
+    else:
+        warning = ""
+
     body = (
         f"Dobrý deň,\n\n"
+        f"{warning}"
         f"V prílohe nájdete denný prehľad objednávok za {report_date}.\n\n"
         "S pozdravom, Tím Zdravý projekt"
     )

@@ -29,5 +29,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/__tests__/setup.ts',
+    // e2e/ patrí Playwrightu (`npm run test:e2e`) — vitest by tie špecky
+    // spustil v jsdom bez prehliadača a spadli by na chýbajúcom `test` importe.
+    exclude: ['node_modules/**', 'dist/**', 'e2e/**'],
   },
 });

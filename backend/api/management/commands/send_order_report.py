@@ -156,6 +156,14 @@ class Command(BaseCommand):
             default="breakfast,lunch,olovrant",
             help="Comma-separated list of meals to include (breakfast, lunch, olovrant). Default: all.",
         )
+        parser.add_argument(
+            "--data-may-be-stale",
+            action="store_true",
+            help=(
+                "Mark the email as built from possibly incomplete data — set by "
+                "the chaining scrape when its retries ran out (issue #474)."
+            ),
+        )
 
     def handle(self, *args, **options):
         # ── Resolve target date ───────────────────────────────────────────────
@@ -228,6 +236,7 @@ class Command(BaseCommand):
                 attachment_bytes=report_bytes,
                 attachment_filename=filename,
                 meals=meals,
+                data_may_be_stale=options.get("data_may_be_stale", False),
             )
         except Exception:
             self.stderr.write(self.style.ERROR("Failed to send daily report email."))

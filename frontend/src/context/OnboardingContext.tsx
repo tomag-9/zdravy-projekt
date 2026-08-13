@@ -3,12 +3,18 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
-import { TOUR_STEPS } from "../pages/client/components/onboarding/tourSteps";
+import { useApp } from "../pages/client/context/AppContext";
+import {
+  getTourSteps,
+  TOUR_STEPS,
+  TourStep,
+} from "../pages/client/components/onboarding/tourSteps";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -19,6 +25,8 @@ interface OnboardingContextType {
   isTourActive: boolean;
   currentStep: number;
   totalSteps: number;
+  /** Steps applicable to this login — may be shorter than the full catalogue. */
+  steps: TourStep[];
   startTour: () => void;
   nextStep: () => void;
   prevStep: () => void;
@@ -31,6 +39,7 @@ const OnboardingContext = createContext<OnboardingContextType | undefined>(
   undefined,
 );
 
+/** Length of the base (single-prevádzka) tour. Logins with more get one extra. */
 export const TOTAL_STEPS = TOUR_STEPS.length;
 
 /** Returns the first workday strictly after today (Mon–Fri). */
@@ -48,11 +57,27 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { user, isLoading, apiFetch, updateProfile } = useAuth();
+  // `loading` z AppContextu je stav načítania prevádzok (`usePrevadzky`).
+  const { prevadzky, loading: prevadzkyLoading } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [isTourActive, setIsTourActive] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const hasAutoStarted = useRef(false);
+
+  // The prevádzka-switcher step only exists for logins that actually have a
+  // switcher on screen (issue #476).
+  const steps = useMemo(
+    () => getTourSteps({ hasMultiplePrevadzky: prevadzky.length > 1 }),
+    [prevadzky.length],
+  );
+  const totalSteps = steps.length;
+
+  // The step list can shrink while the tour runs (e.g. prevádzky load in late),
+  // so never leave the index pointing past the end.
+  useEffect(() => {
+    setCurrentStep((step) => Math.min(step, Math.max(0, totalSteps - 1)));
+  }, [totalSteps]);
 
   const markOnServer = useCallback(
     async (completed: boolean) => {
@@ -74,33 +99,29 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
     setIsTourActive(true);
   }, []);
 
-  const nextStep = useCallback(() => {
-    const next = Math.min(currentStep + 1, TOTAL_STEPS - 1);
-    const prevPage = TOUR_STEPS[currentStep].page;
-    const nextPage = TOUR_STEPS[next].page;
-    setCurrentStep(next);
-    if (next !== currentStep && nextPage !== prevPage) {
-      if (nextPage === "/order") {
-        navigate(`/order?date=${getFirstNextWorkday()}`);
-      } else if (nextPage === "/home") {
-        navigate("/home");
+  const goToStep = useCallback(
+    (next: number) => {
+      const prevPage = steps[currentStep]?.page;
+      const nextPage = steps[next]?.page;
+      setCurrentStep(next);
+      if (next !== currentStep && nextPage !== prevPage) {
+        if (nextPage === "/order") {
+          navigate(`/order?date=${getFirstNextWorkday()}`);
+        } else if (nextPage === "/home") {
+          navigate("/home");
+        }
       }
-    }
-  }, [currentStep, navigate]);
+    },
+    [currentStep, navigate, steps],
+  );
+
+  const nextStep = useCallback(() => {
+    goToStep(Math.min(currentStep + 1, totalSteps - 1));
+  }, [currentStep, goToStep, totalSteps]);
 
   const prevStep = useCallback(() => {
-    const next = Math.max(currentStep - 1, 0);
-    const prevPage = TOUR_STEPS[currentStep].page;
-    const nextPage = TOUR_STEPS[next].page;
-    setCurrentStep(next);
-    if (next !== currentStep && nextPage !== prevPage) {
-      if (nextPage === "/order") {
-        navigate(`/order?date=${getFirstNextWorkday()}`);
-      } else if (nextPage === "/home") {
-        navigate("/home");
-      }
-    }
-  }, [currentStep, navigate]);
+    goToStep(Math.max(currentStep - 1, 0));
+  }, [currentStep, goToStep]);
 
   const completeTour = useCallback(async () => {
     setIsTourActive(false);
@@ -124,9 +145,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
     await markOnServer(false);
   }, [updateProfile, markOnServer]);
 
-  // Auto-start on /home when not yet completed
+  // Auto-start on /home when not yet completed.
+  //
+  // Čaká sa aj na načítanie prevádzok: kým nie sú známe, `steps` obsahuje
+  // krátku (jednoprevádzkovú) verziu tour a počítadlo by preblo z „z 10“ na
+  // „z 11“ hneď po dobehnutí requestu.
   useEffect(() => {
-    if (isLoading || !user) return;
+    if (isLoading || !user || prevadzkyLoading) return;
     if (
       user.onboarding_completed === false &&
       location.pathname === "/home" &&
@@ -135,7 +160,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
       hasAutoStarted.current = true;
       startTour();
     }
-  }, [user, isLoading, location.pathname, startTour]);
+  }, [user, isLoading, prevadzkyLoading, location.pathname, startTour]);
 
   // Complete tour silently when user navigates to a page outside the tour
   useEffect(() => {
@@ -153,7 +178,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
       value={{
         isTourActive,
         currentStep,
-        totalSteps: TOTAL_STEPS,
+        totalSteps,
+        steps,
         startTour,
         nextStep,
         prevStep,

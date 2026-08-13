@@ -2,23 +2,43 @@ import { act, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useOnboarding } from "../../../../context/OnboardingContext";
+import { getTourSteps } from "./tourSteps";
 import TourOverlay from "./TourOverlay";
 
 vi.mock("../../../../context/OnboardingContext", () => ({
   useOnboarding: vi.fn(),
 }));
 
-vi.mock("./TourTooltip", () => ({
-  default: () => <div data-testid="tour-tooltip" />,
-}));
+/**
+ * Prepínač pre vetvu, v ktorej sa výška tooltipu zmerať nedá.
+ * Štandardne ref prepúšťame — bez neho by testy bežali cez iný kód než appka.
+ */
+const tooltipMock = { forwardRef: true };
+
+vi.mock("./TourTooltip", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    default: forwardRef<HTMLDivElement, { hidden?: boolean }>(
+      ({ hidden }, ref) => (
+        <div
+          ref={tooltipMock.forwardRef ? ref : undefined}
+          data-testid="tour-tooltip"
+          data-hidden={hidden ? "true" : "false"}
+        />
+      ),
+    ),
+  };
+});
 
 const mockUseOnboarding = vi.mocked(useOnboarding);
 
-function tourState(isTourActive: boolean) {
+function tourState(isTourActive: boolean, currentStep = 0) {
+  const steps = getTourSteps({ hasMultiplePrevadzky: false });
   return {
     isTourActive,
-    currentStep: 0,
-    totalSteps: 10,
+    currentStep,
+    totalSteps: steps.length,
+    steps,
     startTour: vi.fn(),
     nextStep: vi.fn(),
     prevStep: vi.fn(),
@@ -30,6 +50,7 @@ function tourState(isTourActive: boolean) {
 
 describe("TourOverlay", () => {
   beforeEach(() => {
+    tooltipMock.forwardRef = true;
     vi.useFakeTimers();
     Element.prototype.scrollIntoView = vi.fn();
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
@@ -101,5 +122,66 @@ describe("TourOverlay", () => {
 
     expect(view.container.querySelector('[data-testid="tour-tooltip"]')).toBeNull();
     expect(document.body.querySelector('[data-testid="tour-tooltip"]')).not.toBeNull();
+  });
+
+  it("nezobrazí nový krok na pozícii toho predošlého", () => {
+    // Text tooltipu sa prepne hneď (číta `currentStep`), ale prepočet pozície
+    // čaká na dohľadanie a nascrollovanie nového cieľa. Kým to nedobehne, musí
+    // ostať skrytý — inak nový text prebleskne na starých súradniciach.
+    mockUseOnboarding.mockReturnValue(tourState(true, 0));
+    const view = render(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <div data-tour-id="tour-today-section">Today</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+
+    const tooltip = () => document.body.querySelector('[data-testid="tour-tooltip"]');
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(tooltip()).toHaveAttribute("data-hidden", "false");
+
+    // Prepnutie na ďalší krok: tooltip ostáva v DOM (aby sa dal zmerať), ale
+    // skrytý, kým nemá vlastnú pozíciu.
+    mockUseOnboarding.mockReturnValue(tourState(true, 1));
+    view.rerender(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <div data-tour-id="tour-today-section">Today</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+    expect(tooltip()).toHaveAttribute("data-hidden", "true");
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(tooltip()).toHaveAttribute("data-hidden", "false");
+  });
+
+  it("ukáže tooltip aj keď sa jeho výška nedá zmerať", () => {
+    // Skrytie do doby, než je pozícia hotová, stojí na zmeraní skutočnej výšky.
+    // Keby sa nedala zistiť, sprievodca by ostal navždy neviditeľný — čo je
+    // horšie než tooltip na odhadovanej pozícii.
+    tooltipMock.forwardRef = false;
+    mockUseOnboarding.mockReturnValue(tourState(true));
+
+    render(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(
+      document.body.querySelector('[data-testid="tour-tooltip"]'),
+    ).toHaveAttribute("data-hidden", "false");
   });
 });

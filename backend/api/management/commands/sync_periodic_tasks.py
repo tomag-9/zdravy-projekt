@@ -157,7 +157,18 @@ class Command(BaseCommand):
             name=PERIODIC_TASK_NAME_REPORT_ALL
         ).first()
 
-        if not gs.report_email_recipients:
+        reports_enabled = getattr(gs, "daily_report_enabled", True)
+        if not reports_enabled:
+            self.stdout.write(
+                self.style.WARNING(
+                    "\n⚠ Daily reports are switched off "
+                    "(GlobalSettings.daily_report_enabled = False)"
+                )
+            )
+            self.stdout.write(
+                "  → Tasks SHOULD NOT exist; recipients stay configured for later."
+            )
+        elif not gs.report_email_recipients:
             self.stdout.write(
                 self.style.WARNING(
                     "\n⚠ No recipients configured in GlobalSettings.report_email_recipients"
@@ -166,12 +177,28 @@ class Command(BaseCommand):
             self.stdout.write(
                 "  → Tasks SHOULD NOT exist (email would be sent to nobody)"
             )
+        elif getattr(gs, "edupage_auto_scrape_enabled", True):
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"✓ {len(gs.report_email_recipients)} recipient(s) configured"
+                )
+            )
+            self.stdout.write(
+                "  → Reports are chained after the EduPage scrape (issue #474); "
+                "standalone tasks SHOULD NOT exist."
+            )
         else:
             self.stdout.write(
                 self.style.SUCCESS(
                     f"✓ {len(gs.report_email_recipients)} recipient(s) configured"
                 )
             )
+
+        standalone_expected = (
+            reports_enabled
+            and bool(gs.report_email_recipients)
+            and not getattr(gs, "edupage_auto_scrape_enabled", True)
+        )
 
         if task_breakfast:
             self.stdout.write(
@@ -184,7 +211,7 @@ class Command(BaseCommand):
                     f"    Schedule: {_format_crontab_time(task_breakfast.crontab)} "
                     f"Mon–Fri (tz: {task_breakfast.crontab.timezone})"
                 )
-        else:
+        elif standalone_expected:
             self.stdout.write(
                 self.style.ERROR(
                     f"✗ Breakfast task MISSING: {PERIODIC_TASK_NAME_REPORT_BREAKFAST}"
@@ -202,53 +229,68 @@ class Command(BaseCommand):
                     f"    Schedule: {_format_crontab_time(task_all.crontab)} "
                     f"Mon–Fri (tz: {task_all.crontab.timezone})"
                 )
-        else:
+        elif standalone_expected:
             self.stdout.write(
                 self.style.ERROR(
                     f"✗ Full report task MISSING: {PERIODIC_TASK_NAME_REPORT_ALL}"
                 )
             )
 
-        if gs.report_email_recipients and (not task_breakfast or not task_all):
+        if standalone_expected:
+            if task_breakfast and task_all:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        "\n✓ All tasks properly configured and recipients set. "
+                        "System is ready!"
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.ERROR(
+                        "\n❌ Tasks are missing but recipients are configured!"
+                    )
+                )
+                self.stdout.write(
+                    "   Run 'python manage.py sync_periodic_tasks --fix' to recreate them."
+                )
+        elif task_breakfast or task_all:
             self.stdout.write(
                 self.style.ERROR(
-                    "\n❌ Tasks are missing but recipients are configured!"
+                    "\n❌ Standalone report tasks exist but should not "
+                    "(reports are off, have no recipients, or are chained "
+                    "after the scrape)."
                 )
             )
             self.stdout.write(
-                "   Run 'python manage.py sync_periodic_tasks --fix' to recreate them."
-            )
-        elif not gs.report_email_recipients and (task_breakfast or task_all):
-            self.stdout.write(
-                self.style.WARNING(
-                    "\n⚠ Tasks exist but no recipients configured. "
-                    "They will not send emails (email backend safeguard)."
-                )
-            )
-        elif gs.report_email_recipients and task_breakfast and task_all:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    "\n✓ All tasks properly configured and recipients set. System is ready!"
-                )
+                "   Run 'python manage.py sync_periodic_tasks --fix' to remove them."
             )
         else:
-            self.stdout.write(
-                "\n✓ System is in expected state (no recipients, no tasks)."
-            )
+            self.stdout.write("\n✓ System is in expected state.")
 
     def _sync_tasks(self, gs):
         from api.signals import _sync_daily_report_schedule
 
         self.stdout.write("\n--- Syncing PeriodicTasks ---")
 
-        if not gs.report_email_recipients:
+        if not getattr(gs, "daily_report_enabled", True):
             self.stdout.write(
                 self.style.WARNING(
-                    "⚠ No recipients configured. Skipping task creation.\n"
+                    "⚠ Daily reports are switched off. Removing any leftover tasks.\n"
+                    "  Recipients stay configured; flip daily_report_enabled to re-enable."
+                )
+            )
+        elif not gs.report_email_recipients:
+            self.stdout.write(
+                self.style.WARNING(
+                    "⚠ No recipients configured. Removing any leftover tasks.\n"
                     "  Add recipients to GlobalSettings to enable automatic email sending."
                 )
             )
-            return
+        elif getattr(gs, "edupage_auto_scrape_enabled", True):
+            self.stdout.write(
+                "ℹ Reports are chained after the EduPage scrape (issue #474); "
+                "removing any standalone tasks."
+            )
 
         try:
             _sync_daily_report_schedule(gs)
