@@ -85,8 +85,8 @@ class TestStartupSync:
         breakfast_task = PeriodicTask.objects.get(name="edupage-scrape-breakfast")
         lunch_task = PeriodicTask.objects.get(name="edupage-scrape-lunch")
 
-        assert json.loads(breakfast_task.kwargs) == {"meal_types": ["breakfast"]}
-        assert json.loads(lunch_task.kwargs) == {"meal_types": ["lunch"]}
+        assert json.loads(breakfast_task.kwargs)["meal_types"] == ["breakfast"]
+        assert json.loads(lunch_task.kwargs)["meal_types"] == ["lunch"]
         assert "next workday" in breakfast_task.description
         assert "today" in lunch_task.description
 
@@ -131,21 +131,18 @@ class TestStartupSync:
         task = PeriodicTask.objects.get(name="edupage-scrape-breakfast-lunch-olovrant")
         assert (task.crontab.hour, task.crontab.minute) == ("0", "10")
 
-    def test_daily_reports_land_after_the_scrape(self):
+    def test_daily_reports_are_chained_after_the_scrape_not_scheduled(self):
         """
         Report sa musí odoslať až po scrape, inak ide do kuchyne s počtami,
-        ktoré import ešte nestihol zapísať. Cron poradie negarantuje — drží ho
-        len odstup DAILY_REPORT_OFFSET_MINUTES.
+        ktoré import ešte nestihol zapísať. Časový odstup to negarantoval —
+        preto report visí na scrape tasku, nie na vlastnom crontabe (#474).
         """
         from api.signals import (
-            DAILY_REPORT_OFFSET_MINUTES,
             PERIODIC_TASK_NAME_REPORT_ALL,
             PERIODIC_TASK_NAME_REPORT_BREAKFAST,
             _sync_daily_report_schedule,
             _sync_edupage_scrape_schedule,
         )
-
-        assert DAILY_REPORT_OFFSET_MINUTES == 10
 
         gs = _make_settings(
             deadline_breakfast=datetime.time(21, 0),
@@ -158,26 +155,66 @@ class TestStartupSync:
         _sync_edupage_scrape_schedule(gs)
         _sync_daily_report_schedule(gs)
 
-        def _minutes(task):
-            return int(task.crontab.hour) * 60 + int(task.crontab.minute)
+        assert not PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).exists()
 
-        breakfast_report = PeriodicTask.objects.get(
-            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
-        )
         breakfast_scrape = PeriodicTask.objects.get(name="edupage-scrape-breakfast")
-        assert (breakfast_report.crontab.hour, breakfast_report.crontab.minute) == (
-            "21",
-            "10",
-        )
-        assert _minutes(breakfast_report) - _minutes(breakfast_scrape) == 10
+        assert json.loads(breakfast_scrape.kwargs)["chained_reports"] == [["breakfast"]]
 
-        all_report = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_REPORT_ALL)
         lunch_scrape = PeriodicTask.objects.get(name="edupage-scrape-lunch-olovrant")
-        assert (all_report.crontab.hour, all_report.crontab.minute) == ("7", "40")
-        assert _minutes(all_report) - _minutes(lunch_scrape) == 10
+        assert json.loads(lunch_scrape.kwargs)["chained_reports"] == [
+            ["breakfast", "lunch", "olovrant"]
+        ]
+
+    def test_shared_deadline_chains_both_reports_off_one_scrape(self):
+        """Keď raňajky aj olovrant zdieľajú uzávierku, jeden scrape ťahá oba reporty."""
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(10, 0),
+            deadline_lunch=datetime.time(10, 0),
+            deadline_olovrant=datetime.time(10, 0),
+            report_email_recipients=["report@example.com"],
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+
+        task = PeriodicTask.objects.get(name="edupage-scrape-breakfast-lunch-olovrant")
+        assert json.loads(task.kwargs)["chained_reports"] == [
+            ["breakfast"],
+            ["breakfast", "lunch", "olovrant"],
+        ]
+
+    def test_no_reports_chained_when_reports_are_off(self):
+        """Vypnuté reporty (alebo prázdni príjemcovia) nesmú visieť na scrape."""
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(10, 0),
+            deadline_lunch=datetime.time(10, 0),
+            deadline_olovrant=datetime.time(10, 0),
+            report_email_recipients=[],
+        )
+        _sync_edupage_scrape_schedule(gs)
+        task = PeriodicTask.objects.get(name="edupage-scrape-breakfast-lunch-olovrant")
+        assert json.loads(task.kwargs)["chained_reports"] == []
+
+        gs.report_email_recipients = ["report@example.com"]
+        gs.daily_report_enabled = False
+        _sync_edupage_scrape_schedule(gs)
+        task.refresh_from_db()
+        assert json.loads(task.kwargs)["chained_reports"] == []
 
     def test_report_offset_wraps_around_midnight(self):
-        """Deadline tesne pred polnocou posunie report do ďalšieho dňa, nie mimo rozsah."""
+        """Deadline tesne pred polnocou posunie report do ďalšieho dňa, nie mimo rozsah.
+
+        Vlastný crontab má report už len keď je EduPage scrape vypnutý — inak
+        je zreťazený za scrape a odstup nerieši (#474).
+        """
         from api.signals import (
             PERIODIC_TASK_NAME_REPORT_ALL,
             _sync_daily_report_schedule,
@@ -186,6 +223,7 @@ class TestStartupSync:
         gs = _make_settings(
             deadline_olovrant=datetime.time(23, 55),
             report_email_recipients=["report@example.com"],
+            edupage_auto_scrape_enabled=False,
         )
 
         _sync_daily_report_schedule(gs)
@@ -234,3 +272,112 @@ class TestStartupSync:
 
         with django_assert_num_queries(0):
             ApiConfig("api", api).ready()
+
+
+@pytest.mark.django_db
+class TestDailyReportEnabledFlag:
+    """`daily_report_enabled` switches the reports off without losing recipients.
+
+    The standalone crontabs these exercise only exist while the EduPage
+    auto-scrape is off; with it on, the reports hang off the scrape task
+    instead (#474, covered in `TestStartupSync`).
+    """
+
+    def test_disabled_flag_removes_report_tasks_but_keeps_recipients(self):
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+            _sync_daily_report_schedule,
+        )
+
+        gs = _make_settings(
+            report_email_recipients=["report@example.com"],
+            edupage_auto_scrape_enabled=False,
+        )
+        _sync_daily_report_schedule(gs)
+        assert (
+            PeriodicTask.objects.filter(
+                name__in=[
+                    PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                    PERIODIC_TASK_NAME_REPORT_ALL,
+                ]
+            ).count()
+            == 2
+        )
+
+        gs.daily_report_enabled = False
+        gs.save()
+
+        assert not PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).exists()
+        gs.refresh_from_db()
+        assert gs.report_email_recipients == ["report@example.com"]
+
+    def test_re_enabling_recreates_the_tasks_from_the_kept_recipients(self):
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+            _sync_daily_report_schedule,
+        )
+
+        gs = _make_settings(
+            report_email_recipients=["report@example.com"],
+            daily_report_enabled=False,
+            edupage_auto_scrape_enabled=False,
+        )
+        _sync_daily_report_schedule(gs)
+        assert not PeriodicTask.objects.filter(
+            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
+        ).exists()
+
+        gs.daily_report_enabled = True
+        _sync_daily_report_schedule(gs)
+
+        assert (
+            PeriodicTask.objects.filter(
+                name__in=[
+                    PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                    PERIODIC_TASK_NAME_REPORT_ALL,
+                ]
+            ).count()
+            == 2
+        )
+
+    def test_clearing_recipients_also_drops_stale_tasks(self):
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+            _sync_daily_report_schedule,
+        )
+
+        gs = _make_settings(
+            report_email_recipients=["report@example.com"],
+            edupage_auto_scrape_enabled=False,
+        )
+        _sync_daily_report_schedule(gs)
+
+        gs.report_email_recipients = []
+        _sync_daily_report_schedule(gs)
+
+        assert not PeriodicTask.objects.filter(
+            name__in=[
+                PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+                PERIODIC_TASK_NAME_REPORT_ALL,
+            ]
+        ).exists()
+
+    def test_scheduled_task_run_skips_when_reports_are_disabled(self):
+        from api.tasks import send_daily_report_task
+
+        _make_settings(
+            report_email_recipients=["report@example.com"],
+            daily_report_enabled=False,
+        )
+
+        result = send_daily_report_task()
+
+        assert result == {"skipped": True, "reason": "daily_report_disabled"}

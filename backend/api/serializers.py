@@ -504,6 +504,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "deadline_olovrant",
             "deadline_olovrant_is_day_before",
             "edupage_auto_scrape_enabled",
+            "daily_report_enabled",
             "report_email_recipients",
             "client_contact_name",
             "client_contact_role",

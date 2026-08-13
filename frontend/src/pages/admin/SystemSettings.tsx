@@ -13,6 +13,7 @@ interface GlobalSettings {
     deadline_olovrant: string;
     deadline_olovrant_is_day_before: boolean;
     edupage_auto_scrape_enabled: boolean;
+    daily_report_enabled: boolean;
     report_email_recipients: string[];
     client_contact_name: string;
     client_contact_role: string;
@@ -31,6 +32,7 @@ const SystemSettings: React.FC = () => {
         deadline_olovrant: '10:00',
         deadline_olovrant_is_day_before: false,
         edupage_auto_scrape_enabled: true,
+        daily_report_enabled: true,
         report_email_recipients: [],
         client_contact_name: '',
         client_contact_role: '',
@@ -192,6 +194,29 @@ const SystemSettings: React.FC = () => {
         }
     };
 
+    const toggleDailyReport = async (enabled: boolean) => {
+        setSettings({ ...settings, daily_report_enabled: enabled });
+
+        // Auto-save only the flag; the recipient list stays untouched.
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/global-settings/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ daily_report_enabled: enabled }),
+            });
+            if (res.ok) {
+                success(enabled ? 'Denné reporty sú zapnuté' : 'Denné reporty sú vypnuté');
+            } else {
+                error('Chyba pri ukladaní nastavenia');
+                await fetchSettings();
+            }
+        } catch (e) {
+            logger.error(e);
+            error('Chyba pripojenia');
+            await fetchSettings();
+        }
+    };
+
     const deadlineField = (
         label: string,
         timeKey: 'deadline_breakfast' | 'deadline_lunch' | 'deadline_olovrant',
@@ -302,7 +327,24 @@ const SystemSettings: React.FC = () => {
                 {/* Report email recipients */}
                 <Card pad>
                     <CardHead title="Príjemcovia denného reportu" desc="Na tieto e-mailové adresy bude automaticky zasielaný denný prehľad objednávok (XLSX)." />
-                    <div style={{ display: 'flex', gap: 12, margin: '8px 0 16px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginTop: 8 }}>
+                        <div>
+                            <p style={{ fontSize: 14, color: 'var(--ink-3)', margin: 0 }}>
+                                Automatické odosielanie denného reportu
+                            </p>
+                            <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', marginTop: 8 }}>
+                                Keď je vypnuté, report sa neodosiela, ale zoznam príjemcov
+                                nižšie zostáva zachovaný.
+                            </p>
+                        </div>
+                        <Toggle
+                            on={settings.daily_report_enabled}
+                            onChange={toggleDailyReport}
+                            ariaLabel="Automatické odosielanie denného reportu"
+                        />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: 12, margin: '20px 0 16px', borderTop: '1px solid var(--line)', paddingTop: 20 }}>
                         <Input
                             type="email"
                             value={newRecipient}

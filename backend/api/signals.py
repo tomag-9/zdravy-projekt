@@ -4,9 +4,10 @@ Django signals for the api app.
 GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
 - auto-orders: fires at max(deadline_breakfast, deadline_lunch,
   deadline_olovrant)
-- daily reports: fires 10 min after the breakfast deadline (breakfast only)
-  and 10 min after the olovrant deadline (all meals), so the Edupage scrape
-  has landed first
+- daily reports: chained after the Edupage scrape that feeds them (issue #474).
+  Only when the auto-scrape is switched off do they get their own crontabs,
+  10 min after the breakfast deadline (breakfast only) and 10 min after the
+  olovrant deadline (all meals).
 - edupage scrape: fires exactly at each meal deadline (one task per group of
   meals sharing a deadline)
 - push reminders: fires 30 min before each meal deadline (one task per
@@ -123,6 +124,45 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         _capture_signal_failure(exc, "auto_order_schedule")
 
 
+def _delete_daily_report_tasks(periodic_task_model, reason: str) -> None:
+    """Drop both daily-report periodic tasks, logging why."""
+    deleted_count, _ = periodic_task_model.objects.filter(
+        name__in=[PERIODIC_TASK_NAME_REPORT_BREAKFAST, PERIODIC_TASK_NAME_REPORT_ALL]
+    ).delete()
+    logger.info(
+        "Daily report periodic tasks removed (%s); deleted %d task(s)",
+        reason,
+        deleted_count,
+    )
+
+
+def _reports_are_wanted(settings_instance) -> bool:
+    """True when a daily report should be produced at all."""
+    return bool(
+        getattr(settings_instance, "daily_report_enabled", True)
+        and settings_instance.report_email_recipients
+    )
+
+
+def _chained_report_specs(settings_instance, meal_types_group) -> list[list[str]]:
+    """Reports the scrape of ``meal_types_group`` must trigger once it lands.
+
+    Mirrors the standalone schedule this replaces (issue #474): the breakfast
+    deadline produces the breakfast-only report, the olovrant deadline the full
+    one. When both meals share a deadline the single scrape triggers both — the
+    same two emails cron used to send at that minute.
+    """
+    if not _reports_are_wanted(settings_instance):
+        return []
+
+    specs: list[list[str]] = []
+    if "breakfast" in meal_types_group:
+        specs.append(["breakfast"])
+    if "olovrant" in meal_types_group:
+        specs.append(["breakfast", "lunch", "olovrant"])
+    return specs
+
+
 def _sync_daily_report_schedule(settings_instance) -> None:
     """
     Create or update two Celery Beat PeriodicTasks for daily reports:
@@ -132,11 +172,17 @@ def _sync_daily_report_schedule(settings_instance) -> None:
     2. Full report (all meals) DAILY_REPORT_OFFSET_MINUTES after the olovrant
        deadline (Monday–Friday)
 
-    The offset keeps the report behind the Edupage scrape, which fires at the
-    deadline itself — see DAILY_REPORT_OFFSET_MINUTES.
+    These standalone crontabs are the **fallback path only**, used when the
+    EduPage auto-scrape is switched off. With the scrape running, cron ordering
+    is no guarantee that the import has landed — a slow or retrying scrape would
+    let the report leave with stale counts. So in that case the report is not
+    scheduled here at all; `scrape_edupage_orders_task` chains it after itself
+    (issue #474, see `_chained_report_specs`).
 
-    Tasks are only created if report_email_recipients is configured
-    (non-empty).
+    Tasks are only created when ``daily_report_enabled`` is on *and*
+    report_email_recipients is configured (non-empty). Otherwise any existing
+    tasks are removed — the recipient list itself is never touched, so the
+    reports can be switched back on without re-entering it.
     """
     try:
         from django.conf import settings
@@ -147,12 +193,18 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         )
         return
 
+    if not getattr(settings_instance, "daily_report_enabled", True):
+        _delete_daily_report_tasks(PeriodicTask, "daily reports disabled")
+        return
+
     # Safety check: only create tasks if recipients are configured
     if not settings_instance.report_email_recipients:
-        logger.debug(
-            "Skipping daily report task creation: no recipients configured. "
-            "Add recipients to GlobalSettings.report_email_recipients to "
-            "enable automatic email sending."
+        _delete_daily_report_tasks(PeriodicTask, "no recipients configured")
+        return
+
+    if getattr(settings_instance, "edupage_auto_scrape_enabled", True):
+        _delete_daily_report_tasks(
+            PeriodicTask, "reports are chained after the EduPage scrape"
         )
         return
 
@@ -412,20 +464,33 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                 timezone=settings.TIME_ZONE,
             )
 
+            chained_reports = _chained_report_specs(settings_instance, meal_types_group)
+            report_note = (
+                f" Chains {len(chained_reports)} daily report(s) once the import "
+                f"lands."
+                if chained_reports
+                else ""
+            )
+
             PeriodicTask.objects.update_or_create(
                 name=task_name,
                 defaults={
                     "task": "api.tasks.scrape_edupage_orders_task",
                     "crontab": schedule,
                     "args": json.dumps([]),
-                    "kwargs": json.dumps({"meal_types": sorted(meal_types_group)}),
+                    "kwargs": json.dumps(
+                        {
+                            "meal_types": sorted(meal_types_group),
+                            "chained_reports": chained_reports,
+                        }
+                    ),
                     "enabled": True,
                     "description": (
                         f"Edupage scrape: import order counts at the "
                         f"{'/'.join(sorted(meal_types_group))} deadline "
                         f"(deadline: {deadline.strftime('%H:%M')}, "
                         f"target: {'next workday' if is_day_before else 'today'}, "
-                        f"fires at {scrape_time.strftime('%H:%M')})."
+                        f"fires at {scrape_time.strftime('%H:%M')}).{report_note}"
                     ),
                 },
             )

@@ -394,15 +394,128 @@ def _apply_scrape(existing_data, imported_data, requested_meals):
     return result
 
 
+def _dispatch_chained_reports(
+    chained_reports: list[list[str]] | None,
+    date_strs: list[str],
+    scrape_failed: bool,
+) -> list[dict]:
+    """Queue the daily reports that were waiting on this scrape (issue #474).
+
+    One report per (meal set × imported date), addressed to the exact date the
+    scrape just wrote — not to a date guessed from the clock. Returns what was
+    dispatched so the scrape summary can carry it.
+    """
+    if not chained_reports or not date_strs:
+        return []
+
+    dispatched = []
+    for meals in chained_reports:
+        for date_str in date_strs:
+            send_daily_report_task.apply_async(
+                kwargs={
+                    "meals": list(meals),
+                    "date_str": date_str,
+                    "scrape_failed": scrape_failed,
+                }
+            )
+            dispatched.append({"meals": list(meals), "date": date_str})
+
+    logger.info(
+        "Chained %d daily report(s) after the scrape (scrape_failed=%s): %s",
+        len(dispatched),
+        scrape_failed,
+        dispatched,
+    )
+    return dispatched
+
+
+def _scrape_target_dates(date_str: str | None, meal_types: list[str] | None):
+    """Best-effort resolution of the dates a scrape run targets.
+
+    Used on the give-up path, where the run blew up before (or while) computing
+    them. Returns an empty list when even this cannot be determined.
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    from api.models import GlobalSettings
+    from api.services import _next_workday
+
+    if date_str:
+        return [date_str]
+
+    try:
+        gs = GlobalSettings.objects.get(pk=1)
+    except Exception:
+        logger.exception("Cannot resolve scrape target dates without GlobalSettings")
+        return []
+
+    today = timezone.localdate()
+    if not meal_types:
+        return [today.isoformat()]
+
+    dates = set()
+    for meal_type in meal_types:
+        is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
+        target: datetime.date = _next_workday(today) if is_day_before else today
+        dates.add(target.isoformat())
+    return sorted(dates)
+
+
+def _handle_scrape_give_up(
+    exc: Exception,
+    date_str: str | None,
+    meal_types: list[str] | None,
+    chained_reports: list[list[str]] | None,
+) -> None:
+    """Record an exhausted scrape and still send its chained reports, flagged."""
+    from api.models import EventLog
+    from api.services.event_log_service import log_event
+
+    date_strs = _scrape_target_dates(date_str, meal_types)
+
+    try:
+        log_event(
+            EventLog.EventType.CRON_SKIPPED,
+            summary=(
+                "EduPage scrape zlyhal aj po opakovaniach — denný report ide "
+                "von s upozornením, že počty nemusia byť finálne."
+            ),
+            payload={
+                "task": "scrape_edupage_orders_task",
+                "error": str(exc),
+                "meal_types": meal_types,
+                "dates": date_strs,
+                "chained_reports": chained_reports or [],
+            },
+        )
+    except Exception:
+        logger.exception("Failed to log the exhausted EduPage scrape")
+
+    _dispatch_chained_reports(chained_reports, date_strs, scrape_failed=True)
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def scrape_edupage_orders_task(
-    self, date_str: str | None = None, meal_types: list[str] | None = None
+    self,
+    date_str: str | None = None,
+    meal_types: list[str] | None = None,
+    chained_reports: list[list[str]] | None = None,
 ):
     """
     Scrape mealsGuest HTML for all Edupage operations and upsert DailyOrder records.
 
     Called by Celery Beat before each meal deadline so order counts are ready when
     the kitchen needs them. Can also be triggered manually via the admin API.
+
+    ``chained_reports`` holds the meal sets whose daily report must go out once
+    this import has landed (issue #474). Chaining replaces the old arrangement of
+    two independent crontabs separated by a 10-minute gap, which was an
+    assumption rather than a guarantee: a slow or retrying scrape let the report
+    leave with counts the import had not written yet. Each report is dispatched
+    for the exact date(s) this run imported, so the report can no longer describe
+    a different day than the one that was just scraped.
     """
     try:
         import datetime
@@ -619,26 +732,49 @@ def scrape_edupage_orders_task(
             "dates": [str(target_date) for target_date in date_to_meals],
             "meal_types": meal_types,
         }
+        dispatched = _dispatch_chained_reports(
+            chained_reports,
+            [str(target_date) for target_date in date_to_meals],
+            scrape_failed=False,
+        )
+        if dispatched:
+            summary["chained_reports_dispatched"] = dispatched
         logger.info("scrape_edupage_orders_task result: %s", summary)
         return summary
 
     except Exception as exc:
         logger.exception("scrape_edupage_orders_task failed, retrying...")
-        raise self.retry(exc=exc)
+        try:
+            raise self.retry(exc=exc)
+        except self.MaxRetriesExceededError:
+            # Retries are spent. The kitchen still needs numbers, so the chained
+            # report goes out — but explicitly marked as possibly not final,
+            # instead of quietly looking like a normal day (issue #474).
+            _handle_scrape_give_up(exc, date_str, meal_types, chained_reports)
+            raise
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def send_daily_report_task(
-    self, meals: list[str] | None = None, date_str: str | None = None
+    self,
+    meals: list[str] | None = None,
+    date_str: str | None = None,
+    scrape_failed: bool = False,
 ):
     """
     Celery task: send daily order report.
-    Called by Celery Beat at scheduled times (breakfast deadline and olovrant deadline).
+
+    Normally chained after `scrape_edupage_orders_task` (issue #474), which
+    passes the exact date it imported. The standalone Celery Beat schedule is
+    only used when the EduPage auto-scrape is off; there the date defaults to
+    yesterday.
 
     Args:
         meals: List of meals to include (breakfast, lunch, olovrant).
                If None, includes all meals.
         date_str: Target date in YYYY-MM-DD format. Defaults to yesterday.
+        scrape_failed: Set by the chaining scrape when its retries were
+               exhausted — the report still goes out, but says so.
     """
     try:
         import datetime
@@ -646,10 +782,17 @@ def send_daily_report_task(
         from django.core import management
         from django.utils import timezone
 
+        from api.models import GlobalSettings
+
         # Determine target date
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
         else:
+            gs = GlobalSettings.objects.filter(pk=1).first()
+            if gs is not None and not getattr(gs, "daily_report_enabled", True):
+                logger.info("send_daily_report_task: daily reports are disabled")
+                return {"skipped": True, "reason": "daily_report_disabled"}
+
             if (reason := _cron_skip_check("send_daily_report_task")) is not None:
                 return {"skipped": True, "reason": reason}
             target_date = timezone.localdate() - datetime.timedelta(days=1)
@@ -657,17 +800,21 @@ def send_daily_report_task(
         # Build meal argument
         meals_arg = ",".join(meals) if meals else "breakfast,lunch,olovrant"
 
-        # Call the management command
-        management.call_command(
-            "send_order_report",
+        command_args = [
             f"--date={target_date.isoformat()}",
             f"--meals={meals_arg}",
-        )
+        ]
+        if scrape_failed:
+            command_args.append("--data-may-be-stale")
+
+        # Call the management command
+        management.call_command("send_order_report", *command_args)
 
         logger.info(
-            "Daily report sent for %s (meals: %s)",
+            "Daily report sent for %s (meals: %s, scrape_failed=%s)",
             target_date.isoformat(),
             meals_arg,
+            scrape_failed,
         )
         return f"Report sent for {target_date} with meals: {meals_arg}"
     except Exception as exc:
