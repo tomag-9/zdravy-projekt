@@ -4,12 +4,16 @@ Django signals for the api app.
 GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
 - auto-orders: fires at max(deadline_breakfast, deadline_lunch,
   deadline_olovrant)
-- daily reports: fires at breakfast deadline (breakfast only) and
-  olovrant deadline (all meals)
+- daily reports: fires 10 min after the breakfast deadline (breakfast only)
+  and 10 min after the olovrant deadline (all meals), so the Edupage scrape
+  has landed first
+- edupage scrape: fires exactly at each meal deadline (one task per group of
+  meals sharing a deadline)
 - push reminders: fires 30 min before each meal deadline (one task per
   meal type)
 """
 
+import datetime
 import json
 import logging
 
@@ -21,6 +25,11 @@ logger = logging.getLogger(__name__)
 PERIODIC_TASK_NAME_AUTO_ORDER = "auto-order-daily"
 PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
+# Reports must land *after* the Edupage scrape, which now runs exactly at the
+# deadline — otherwise the kitchen gets a report built from counts the import
+# has not written yet. Cron gives no ordering guarantee, so the gap is what
+# separates the two.
+DAILY_REPORT_OFFSET_MINUTES = 10
 
 PUSH_REMINDER_TASK_PREFIX = "push-reminder-"
 # Widened from 15 to 30 min: with the login being CPU-bound (see
@@ -32,6 +41,12 @@ PUSH_REMINDER_OFFSET_MINUTES = 30
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
+
+
+def _shift_time(value: datetime.time, minutes: int) -> datetime.time:
+    """Move a wall-clock time by `minutes`, wrapping around midnight."""
+    base = datetime.datetime.combine(datetime.date(2000, 1, 1), value)
+    return (base + datetime.timedelta(minutes=minutes)).time()
 
 
 def _capture_signal_failure(exc: Exception, area: str) -> None:
@@ -112,8 +127,13 @@ def _sync_daily_report_schedule(settings_instance) -> None:
     """
     Create or update two Celery Beat PeriodicTasks for daily reports:
 
-    1. Breakfast-only report at breakfast deadline (Monday–Friday)
-    2. Full report (all meals) at olovrant deadline (Monday–Friday)
+    1. Breakfast-only report DAILY_REPORT_OFFSET_MINUTES after the breakfast
+       deadline (Monday–Friday)
+    2. Full report (all meals) DAILY_REPORT_OFFSET_MINUTES after the olovrant
+       deadline (Monday–Friday)
+
+    The offset keeps the report behind the Edupage scrape, which fires at the
+    deadline itself — see DAILY_REPORT_OFFSET_MINUTES.
 
     Tasks are only created if report_email_recipients is configured
     (non-empty).
@@ -137,8 +157,10 @@ def _sync_daily_report_schedule(settings_instance) -> None:
         return
 
     try:
-        # ── Task 1: Breakfast-only report at breakfast deadline ──────────────────
-        breakfast_time = settings_instance.deadline_breakfast
+        # ── Task 1: Breakfast-only report after the breakfast deadline ───────────
+        breakfast_time = _shift_time(
+            settings_instance.deadline_breakfast, DAILY_REPORT_OFFSET_MINUTES
+        )
         breakfast_schedule, _ = CrontabSchedule.objects.get_or_create(
             minute=breakfast_time.minute,
             hour=breakfast_time.hour,
@@ -157,7 +179,9 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"meals": ["breakfast"]}),
                 "enabled": True,
                 "description": (
-                    "Daily report: breakfast only, sent at breakfast deadline."
+                    f"Daily report: breakfast only, sent "
+                    f"{DAILY_REPORT_OFFSET_MINUTES} min after the breakfast "
+                    f"deadline (fires at {breakfast_time.strftime('%H:%M')})."
                 ),
             },
         )
@@ -169,8 +193,10 @@ def _sync_daily_report_schedule(settings_instance) -> None:
             settings.TIME_ZONE,
         )
 
-        # ── Task 2: Full report (all meals) at olovrant deadline ─────────────────
-        olovrant_time = settings_instance.deadline_olovrant
+        # ── Task 2: Full report (all meals) after the olovrant deadline ──────────
+        olovrant_time = _shift_time(
+            settings_instance.deadline_olovrant, DAILY_REPORT_OFFSET_MINUTES
+        )
         olovrant_schedule, _ = CrontabSchedule.objects.get_or_create(
             minute=olovrant_time.minute,
             hour=olovrant_time.hour,
@@ -189,8 +215,9 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"meals": ["breakfast", "lunch", "olovrant"]}),
                 "enabled": True,
                 "description": (
-                    "Daily report: all meals (breakfast, lunch, olovrant), "
-                    "sent at olovrant deadline."
+                    f"Daily report: all meals (breakfast, lunch, olovrant), "
+                    f"sent {DAILY_REPORT_OFFSET_MINUTES} min after the olovrant "
+                    f"deadline (fires at {olovrant_time.strftime('%H:%M')})."
                 ),
             },
         )
