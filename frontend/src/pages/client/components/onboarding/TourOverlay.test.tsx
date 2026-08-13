@@ -9,17 +9,30 @@ vi.mock("../../../../context/OnboardingContext", () => ({
   useOnboarding: vi.fn(),
 }));
 
-vi.mock("./TourTooltip", () => ({
-  default: () => <div data-testid="tour-tooltip" />,
-}));
+vi.mock("./TourTooltip", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    // Ref sa musí prepustiť ďalej — overlay cezeň meria skutočnú výšku
+    // tooltipu a bez neho by testoval inú vetvu, než beží v aplikácii.
+    default: forwardRef<HTMLDivElement, { hidden?: boolean }>(
+      ({ hidden }, ref) => (
+        <div
+          ref={ref}
+          data-testid="tour-tooltip"
+          data-hidden={hidden ? "true" : "false"}
+        />
+      ),
+    ),
+  };
+});
 
 const mockUseOnboarding = vi.mocked(useOnboarding);
 
-function tourState(isTourActive: boolean) {
+function tourState(isTourActive: boolean, currentStep = 0) {
   const steps = getTourSteps({ hasMultiplePrevadzky: false });
   return {
     isTourActive,
-    currentStep: 0,
+    currentStep,
     totalSteps: steps.length,
     steps,
     startTour: vi.fn(),
@@ -104,5 +117,43 @@ describe("TourOverlay", () => {
 
     expect(view.container.querySelector('[data-testid="tour-tooltip"]')).toBeNull();
     expect(document.body.querySelector('[data-testid="tour-tooltip"]')).not.toBeNull();
+  });
+
+  it("nezobrazí nový krok na pozícii toho predošlého", () => {
+    // Text tooltipu sa prepne hneď (číta `currentStep`), ale prepočet pozície
+    // čaká na dohľadanie a nascrollovanie nového cieľa. Kým to nedobehne, musí
+    // ostať skrytý — inak nový text prebleskne na starých súradniciach.
+    mockUseOnboarding.mockReturnValue(tourState(true, 0));
+    const view = render(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <div data-tour-id="tour-today-section">Today</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+
+    const tooltip = () => document.body.querySelector('[data-testid="tour-tooltip"]');
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(tooltip()).toHaveAttribute("data-hidden", "false");
+
+    // Prepnutie na ďalší krok: tooltip ostáva v DOM (aby sa dal zmerať), ale
+    // skrytý, kým nemá vlastnú pozíciu.
+    mockUseOnboarding.mockReturnValue(tourState(true, 1));
+    view.rerender(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <div data-tour-id="tour-today-section">Today</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+    expect(tooltip()).toHaveAttribute("data-hidden", "true");
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(tooltip()).toHaveAttribute("data-hidden", "false");
   });
 });

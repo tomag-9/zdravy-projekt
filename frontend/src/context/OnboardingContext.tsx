@@ -57,7 +57,8 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const { user, isLoading, apiFetch, updateProfile } = useAuth();
-  const { prevadzky } = useApp();
+  // `loading` z AppContextu je stav načítania prevádzok (`usePrevadzky`).
+  const { prevadzky, loading: prevadzkyLoading } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [isTourActive, setIsTourActive] = useState(false);
@@ -144,9 +145,13 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
     await markOnServer(false);
   }, [updateProfile, markOnServer]);
 
-  // Auto-start on /home when not yet completed
+  // Auto-start on /home when not yet completed.
+  //
+  // Čaká sa aj na načítanie prevádzok: kým nie sú známe, `steps` obsahuje
+  // krátku (jednoprevádzkovú) verziu tour a počítadlo by preblo z „z 10“ na
+  // „z 11“ hneď po dobehnutí requestu.
   useEffect(() => {
-    if (isLoading || !user) return;
+    if (isLoading || !user || prevadzkyLoading) return;
     if (
       user.onboarding_completed === false &&
       location.pathname === "/home" &&
@@ -155,7 +160,7 @@ export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({
       hasAutoStarted.current = true;
       startTour();
     }
-  }, [user, isLoading, location.pathname, startTour]);
+  }, [user, isLoading, prevadzkyLoading, location.pathname, startTour]);
 
   // Complete tour silently when user navigates to a page outside the tour
   useEffect(() => {

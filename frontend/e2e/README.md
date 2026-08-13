@@ -45,7 +45,9 @@ kde vznikali chyby (objednávky sa vedú per prevádzka).
   dáta zámerne renderuje plný formulár, a až potom ho vymení za chooser.
   Podmienený klik „ak tam chooser je“ v tom okne nespraví nič. Použi
   `openOrderPage()`.
-- **Tour pozicuje tooltip dvojfázovo** a text kroku sa prepne skôr než pozícia.
-  Merať rámec tooltipu treba až keď je zvýraznený nový cieľ (`.tour-highlight`)
-  — a cez `stableBoundingBox()`, ktorý počká na ustálenie.
+- **Tour pozicuje tooltip dvojfázovo** (odhad výšky → skutočná). Overlay ho
+  drží skrytý, kým nemá finálnu pozíciu, takže `toBeVisible()` je spoľahlivý
+  signál. Rámec aj tak meraj až po objavení `.tour-highlight` a cez
+  `stableBoundingBox()` — cieľom je nezávisieť na tom, ako je odhalenie
+  načasované vnútri komponentu.
 - **Dnešok býva po uzávierke.** Na objednávanie použi `firstNextWorkday()`.

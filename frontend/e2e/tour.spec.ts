@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect, test } from "@playwright/test";
 import {
   login,
@@ -37,6 +39,10 @@ test.describe("onboarding tour", () => {
     const total = Number(counter.match(/z (\d+)/)![1]);
     expect(total).toBeGreaterThan(0);
 
+    if (process.env.TOUR_SHOT_DIR) {
+      await mkdir(process.env.TOUR_SHOT_DIR, { recursive: true });
+    }
+
     const viewport = page.viewportSize()!;
     const titles: string[] = [];
 
@@ -54,9 +60,8 @@ test.describe("onboarding tour", () => {
       const where = `krok ${step}/${total} („${title}“)`;
 
       // Cieľ musí existovať a byť zvýraznený. Čaká sa naň *pred* meraním:
-      // text tooltipu sa prepne hneď, ale prepočet pozície beží až po tom, čo
-      // overlay nájde a nascrolluje cieľ — a zvýraznenie pribudne v tej istej
-      // chvíli ako nová pozícia. Merať skôr by čítalo polohu z minulého kroku.
+      // zvýraznenie pribudne v tej istej chvíli ako nová pozícia tooltipu,
+      // takže je to najskorší bod, kedy má meranie zmysel.
       const target = page.locator(".tour-highlight").first();
       await expect(
         target,
@@ -86,10 +91,21 @@ test.describe("onboarding tour", () => {
         `${where}: tooltip zakrýva ${(coverage * 100).toFixed(0)} % cieľa`,
       ).toBeLessThanOrEqual(MAX_TARGET_COVERAGE);
 
+      const shot = await page.screenshot();
       await testInfo.attach(`${testInfo.project.name}-${step}-${title}`, {
-        body: await page.screenshot(),
+        body: shot,
         contentType: "image/png",
       });
+      // Na vizuálnu kontrolu po ruke: TOUR_SHOT_DIR=/tmp/shots npm run test:e2e
+      if (process.env.TOUR_SHOT_DIR) {
+        await writeFile(
+          join(
+            process.env.TOUR_SHOT_DIR,
+            `${testInfo.project.name}-${String(step).padStart(2, "0")}.png`,
+          ),
+          shot,
+        );
+      }
 
       await page
         .locator(".zp-tour-nav button")
