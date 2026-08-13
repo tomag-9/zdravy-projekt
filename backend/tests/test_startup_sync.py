@@ -131,6 +131,68 @@ class TestStartupSync:
         task = PeriodicTask.objects.get(name="edupage-scrape-breakfast-lunch-olovrant")
         assert (task.crontab.hour, task.crontab.minute) == ("0", "10")
 
+    def test_daily_reports_land_after_the_scrape(self):
+        """
+        Report sa musí odoslať až po scrape, inak ide do kuchyne s počtami,
+        ktoré import ešte nestihol zapísať. Cron poradie negarantuje — drží ho
+        len odstup DAILY_REPORT_OFFSET_MINUTES.
+        """
+        from api.signals import (
+            DAILY_REPORT_OFFSET_MINUTES,
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            PERIODIC_TASK_NAME_REPORT_BREAKFAST,
+            _sync_daily_report_schedule,
+            _sync_edupage_scrape_schedule,
+        )
+
+        assert DAILY_REPORT_OFFSET_MINUTES == 10
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 30),
+            deadline_olovrant=datetime.time(7, 30),
+            report_email_recipients=["report@example.com"],
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+        _sync_daily_report_schedule(gs)
+
+        def _minutes(task):
+            return int(task.crontab.hour) * 60 + int(task.crontab.minute)
+
+        breakfast_report = PeriodicTask.objects.get(
+            name=PERIODIC_TASK_NAME_REPORT_BREAKFAST
+        )
+        breakfast_scrape = PeriodicTask.objects.get(name="edupage-scrape-breakfast")
+        assert (breakfast_report.crontab.hour, breakfast_report.crontab.minute) == (
+            "21",
+            "10",
+        )
+        assert _minutes(breakfast_report) - _minutes(breakfast_scrape) == 10
+
+        all_report = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_REPORT_ALL)
+        lunch_scrape = PeriodicTask.objects.get(name="edupage-scrape-lunch-olovrant")
+        assert (all_report.crontab.hour, all_report.crontab.minute) == ("7", "40")
+        assert _minutes(all_report) - _minutes(lunch_scrape) == 10
+
+    def test_report_offset_wraps_around_midnight(self):
+        """Deadline tesne pred polnocou posunie report do ďalšieho dňa, nie mimo rozsah."""
+        from api.signals import (
+            PERIODIC_TASK_NAME_REPORT_ALL,
+            _sync_daily_report_schedule,
+        )
+
+        gs = _make_settings(
+            deadline_olovrant=datetime.time(23, 55),
+            report_email_recipients=["report@example.com"],
+        )
+
+        _sync_daily_report_schedule(gs)
+
+        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_REPORT_ALL)
+        assert (task.crontab.hour, task.crontab.minute) == ("0", "5")
+
     def test_weekly_reminder_task_created_on_startup(self):
         """Startup sync also self-heals the Sunday weekly reminder."""
         from api.signals import _sync_weekly_reminder_schedule
