@@ -9,15 +9,19 @@ vi.mock("../../../../context/OnboardingContext", () => ({
   useOnboarding: vi.fn(),
 }));
 
+/**
+ * Prepínač pre vetvu, v ktorej sa výška tooltipu zmerať nedá.
+ * Štandardne ref prepúšťame — bez neho by testy bežali cez iný kód než appka.
+ */
+const tooltipMock = { forwardRef: true };
+
 vi.mock("./TourTooltip", async () => {
   const { forwardRef } = await import("react");
   return {
-    // Ref sa musí prepustiť ďalej — overlay cezeň meria skutočnú výšku
-    // tooltipu a bez neho by testoval inú vetvu, než beží v aplikácii.
     default: forwardRef<HTMLDivElement, { hidden?: boolean }>(
       ({ hidden }, ref) => (
         <div
-          ref={ref}
+          ref={tooltipMock.forwardRef ? ref : undefined}
           data-testid="tour-tooltip"
           data-hidden={hidden ? "true" : "false"}
         />
@@ -46,6 +50,7 @@ function tourState(isTourActive: boolean, currentStep = 0) {
 
 describe("TourOverlay", () => {
   beforeEach(() => {
+    tooltipMock.forwardRef = true;
     vi.useFakeTimers();
     Element.prototype.scrollIntoView = vi.fn();
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
@@ -155,5 +160,28 @@ describe("TourOverlay", () => {
       vi.advanceTimersByTime(350);
     });
     expect(tooltip()).toHaveAttribute("data-hidden", "false");
+  });
+
+  it("ukáže tooltip aj keď sa jeho výška nedá zmerať", () => {
+    // Skrytie do doby, než je pozícia hotová, stojí na zmeraní skutočnej výšky.
+    // Keby sa nedala zistiť, sprievodca by ostal navždy neviditeľný — čo je
+    // horšie než tooltip na odhadovanej pozícii.
+    tooltipMock.forwardRef = false;
+    mockUseOnboarding.mockReturnValue(tourState(true));
+
+    render(
+      <MemoryRouter initialEntries={["/home"]}>
+        <div data-tour-id="tour-new-order-btn">New order</div>
+        <TourOverlay />
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(350);
+    });
+
+    expect(
+      document.body.querySelector('[data-testid="tour-tooltip"]'),
+    ).toHaveAttribute("data-hidden", "false");
   });
 });
