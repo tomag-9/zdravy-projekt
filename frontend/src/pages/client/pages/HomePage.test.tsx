@@ -44,8 +44,21 @@ vi.mock("../../../context/ToastContext", () => ({
   }),
 }));
 
+// Stub namiesto celého modalu: testy histórie ho nepotrebujú, ale vynulovanie
+// sa inak nedá spustiť — `onZero` visí len na ňom.
 vi.mock("../components/order/OrderSummaryModal", () => ({
-  default: () => null,
+  default: ({
+    isOpen,
+    onZero,
+  }: {
+    isOpen?: boolean;
+    onZero?: () => void;
+  }) =>
+    isOpen && onZero ? (
+      <button data-testid="zero-order" onClick={onZero}>
+        Vynulovať
+      </button>
+    ) : null,
 }));
 
 vi.mock("../components/onboarding/TourOverlay", () => ({
@@ -160,5 +173,64 @@ describe("HomePage history", () => {
     expect(screen.getByText("Jasle · Bez laktózy · 1x")).toBeInTheDocument();
     expect(screen.getByText("4")).toBeInTheDocument();
     expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("zeroes a predicted day for every prevádzka of the celok", async () => {
+    mockPrevadzky.push({ id: 7, nazov: "Sever" }, { id: 9, nazov: "Juh" });
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const posts: unknown[] = [];
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.endsWith("/orders/") && init?.method === "POST") {
+        posts.push(JSON.parse(String(init.body)));
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+      }
+      if (url.includes("/orders/planned/monthly-summary/")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ total: 0, items: [] }) });
+      }
+      if (url.endsWith("/orders/planned/")) {
+        return Promise.resolve({
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              {
+                date: today,
+                exists: false,
+                is_auto: null,
+                is_empty: null,
+                totalPortions: 0,
+                mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+                predictedTotal: 6,
+                predictedMealCount: { breakfast: 0, lunch: 6, olovrant: 0 },
+                predictedData: { lunch: { "Škôlka": { menuCounts: { A: 6 }, diets: {} } } },
+              },
+            ]),
+        });
+      }
+      if (url.endsWith("/orders/")) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve([]) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) });
+    });
+
+    render(
+      <MemoryRouter>
+        <HomePage />
+      </MemoryRouter>,
+    );
+
+    // Karta dnešného dňa s predikciou otvorí modal vynulovania.
+    const todayCard = await screen.findByText("Dnešná objednávka");
+    fireEvent.click(todayCard.closest(".zp-section")!.querySelector('[role="button"]')!);
+
+    fireEvent.click(await screen.findByTestId("zero-order"));
+
+    await waitFor(() => expect(posts).toHaveLength(2));
+    expect(posts).toEqual([
+      expect.objectContaining({ date: today, prevadzka: 7, status: "submitted" }),
+      expect.objectContaining({ date: today, prevadzka: 9, status: "submitted" }),
+    ]);
   });
 });

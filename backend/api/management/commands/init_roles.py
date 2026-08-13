@@ -3,12 +3,17 @@ import os
 from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand
 
-from api.models import UserProfile
+from api.models import Prevadzka, UserProfile
 
 DEMO_ADMIN_EMAIL = "admin@example.com"
 DEMO_ADMIN_PASSWORD = "admin"
 DEMO_OPERATION_EMAIL = "prevadzka@example.com"
 DEMO_OPERATION_PASSWORD = "prevadzka"
+DEMO_OPERATION_CELOK = "Demo prevádzka"
+# Demo login je zámerne viac-prevádzkový: jedno-prevádzkový celok nikdy
+# neodhalí, že objednávka patrí prevádzke a nie prihláseniu — práve tam vznikali
+# chyby (výber prevádzky pri odosielaní, história a súčty za celok).
+DEMO_EXTRA_PREVADZKY = ["Demo jasle", "Demo škola"]
 
 
 class Command(BaseCommand):
@@ -93,12 +98,13 @@ class Command(BaseCommand):
         profile.save()
         celok = profile.primary_celok()
         if celok:
-            celok.nazov = "Demo prevádzka"
+            celok.nazov = DEMO_OPERATION_CELOK
             if not celok.billing_name:
                 celok.billing_name = "Demo prevádzka, s.r.o."
             celok.save(update_fields=["nazov", "billing_name"])
             if profile.dostupne_prevadzky().count() == 1:
-                profile.dostupne_prevadzky().update(nazov="Demo prevádzka")
+                profile.dostupne_prevadzky().update(nazov=DEMO_OPERATION_CELOK)
+            self._ensure_demo_prevadzky(celok)
 
         if created:
             self.stdout.write(self.style.SUCCESS('Created operation user "prevadzka"'))
@@ -109,6 +115,35 @@ class Command(BaseCommand):
             )
         else:
             self.stdout.write(f'Operation user "{DEMO_OPERATION_EMAIL}" already exists')
+
+    def _ensure_demo_prevadzky(self, celok) -> None:
+        """Dorob demo celku ďalšie prevádzky (idempotentne).
+
+        Nastavenia sa kopírujú z prvej prevádzky, aby sa dalo objednávať za
+        každú z nich — inak by nové prevádzky nemali viditeľné menu ani jedlá
+        a v objednávkovom formulári by boli prázdne.
+        """
+        primary = celok.prevadzky.order_by("sort_order", "pk").first()
+        if primary is None:
+            return
+
+        for offset, nazov in enumerate(DEMO_EXTRA_PREVADZKY, start=1):
+            prevadzka, created = Prevadzka.objects.get_or_create(
+                celok=celok,
+                nazov=nazov,
+                defaults={
+                    "sort_order": primary.sort_order + offset,
+                    "visible_menus": list(primary.visible_menus or []),
+                    "visible_meals": list(primary.visible_meals or []),
+                },
+            )
+            if created:
+                prevadzka.visible_diets.set(primary.visible_diets.all())
+                self.stdout.write(
+                    self.style.SUCCESS(f'  Demo prevádzka vytvorená: "{nazov}"')
+                )
+            else:
+                self.stdout.write(f'  Demo prevádzka existuje: "{nazov}"')
 
     def _get_or_create_demo_user(
         self,
