@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useIsPC } from "../../../hooks/useIsPC";
 import {
@@ -41,12 +41,24 @@ interface PlannedDay {
   predictedData?: DailyOrder;
 }
 
-// Past submitted orders for the history strip
+type HistoryData = Record<string, Record<string, { menuCounts: Record<string, number>; diets?: Record<string, number> }>>;
+
+// Jedna odoslaná objednávka = jedna prevádzka za daný deň.
+interface HistoryPrevadzka {
+  prevadzkaId: number | null;
+  name: string;
+  totalPortions: number;
+  mealCount: { breakfast: number; lunch: number; olovrant: number };
+  data: HistoryData;
+}
+
+// Riadok histórie je deň za celý celok; detail sa rozpadá na prevádzky.
 interface HistoryOrder {
   date: string;
   totalPortions: number;
   mealCount: { breakfast: number; lunch: number; olovrant: number };
-  data: Record<string, Record<string, { menuCounts: Record<string, number>; diets?: Record<string, number> }>>;
+  data: HistoryData;
+  prevadzky: HistoryPrevadzka[];
 }
 
 interface MonthlySummary {
@@ -69,6 +81,7 @@ const HomePage = () => {
   const [historyOrders, setHistoryOrders] = useState<HistoryOrder[]>([]);
   const [allHistoryOrders, setAllHistoryOrders] = useState<HistoryOrder[]>([]);
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [expandedHistoryDate, setExpandedHistoryDate] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
@@ -81,7 +94,11 @@ const HomePage = () => {
     null,
   );
 
-  const { globalDeadlines, activePrevadzka } = useApp();
+  const { globalDeadlines, activePrevadzka, prevadzky } = useApp();
+  const prevadzkaNameById = useMemo(
+    () => new Map(prevadzky.map((p) => [p.id, p.nazov])),
+    [prevadzky],
+  );
   const { apiFetch, user } = useAuth();
   const toast = useToast();
   const getFriendlyOrderErrorMessage = (error: unknown) => {
@@ -158,13 +175,14 @@ const HomePage = () => {
       try {
         const items = await fetchAllPages<Record<string, unknown>>(apiFetch, `${API_URL}/orders/`);
         const today = OrderService.toLocalDateString(OrderService.getServerNow());
-        const history: HistoryOrder[] = [];
-        const toSeed: { date: string; data: HistoryOrder["data"] }[] = [];
+        // Deň môže mať objednávku vo viacerých prevádzkach jedného celku —
+        // riadok histórie je deň, prevádzky sú jeho detail.
+        const byDate = new Map<string, HistoryOrder>();
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         items.forEach((rec: any) => {
           if (rec.status !== "submitted" || rec.date >= today) return;
-          const mealData: HistoryOrder["data"] = rec.data || {};
+          const mealData: HistoryData = rec.data || {};
           let total = 0;
           const counts = { breakfast: 0, lunch: 0, olovrant: 0 };
           ["breakfast", "lunch", "olovrant"].forEach((meal) => {
@@ -177,13 +195,40 @@ const HomePage = () => {
               counts[meal as keyof typeof counts] += c;
             });
           });
-          if (total > 0) {
-            const historyItem = { date: rec.date, totalPortions: total, mealCount: counts, data: mealData };
-            history.push(historyItem);
-            toSeed.push({ date: rec.date, data: mealData });
-          }
+          if (total <= 0) return;
+
+          const prevadzkaId = typeof rec.prevadzka === "number" ? rec.prevadzka : null;
+          const day: HistoryOrder = byDate.get(rec.date) ?? {
+            date: rec.date,
+            totalPortions: 0,
+            mealCount: { breakfast: 0, lunch: 0, olovrant: 0 },
+            data: {},
+            prevadzky: [],
+          };
+          day.totalPortions += total;
+          (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
+            day.mealCount[meal] += counts[meal];
+          });
+          day.prevadzky.push({
+            prevadzkaId,
+            name: prevadzkaNameById.get(prevadzkaId ?? -1) ?? "Prevádzka",
+            totalPortions: total,
+            mealCount: counts,
+            data: mealData,
+          });
+          byDate.set(rec.date, day);
         });
 
+        const history = Array.from(byDate.values());
+        // Pri jednej prevádzke je detail dňa priamo jej objednávka (ako doteraz).
+        history.forEach((day) => {
+          if (day.prevadzky.length === 1) day.data = day.prevadzky[0].data;
+        });
+        // Cache kľúč `order_<dátum>` prevádzku nerozlišuje, takže deň rozdelený
+        // medzi viac prevádzok by si navzájom prepísal dáta — seeduj len jednoznačné dni.
+        const toSeed = history
+          .filter((day) => day.prevadzky.length === 1)
+          .map((day) => ({ date: day.date, data: day.data }));
         history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setAllHistoryOrders(history);
         setHistoryOrders(history.slice(0, 5));
@@ -219,7 +264,7 @@ const HomePage = () => {
       }
     };
     fetchHistory();
-  }, [user, apiFetch]);
+  }, [user, apiFetch, prevadzkaNameById]);
 
   const openDayModal = async (date: string) => {
     try {
@@ -576,50 +621,107 @@ const HomePage = () => {
           <p style={{ margin: "8px 0 0", fontSize: 14 }}>História je prázdna</p>
         </div>
       ) : (
-        (showAllHistory ? allHistoryOrders : historyOrders).map((order) => (
-          <div
-            key={order.date}
-            className="zp-day"
-            style={{ background: "var(--bg-cream-soft)", marginBottom: 8 }}
-            onClick={() => {
-              setModalOrderData(order.data);
-              setSelectedDate(order.date);
-            }}
-            role="button"
-          >
-            <div className="zp-day-top">
-              <div className="zp-day-left">
-                <div
-                  className="zp-day-icon"
-                  style={{ background: "rgba(114,136,75,0.12)", color: "var(--green-700)" }}
-                >
-                  <Calendar style={{ width: 20, height: 20 }} />
+        (showAllHistory ? allHistoryOrders : historyOrders).map((order) => {
+          const isSplit = order.prevadzky.length > 1;
+          const isExpanded = expandedHistoryDate === order.date;
+          return (
+            <div key={order.date} style={{ marginBottom: 8 }}>
+              <div
+                className="zp-day"
+                style={{ background: "var(--bg-cream-soft)" }}
+                onClick={() => {
+                  // Jedna prevádzka → rovno detail dňa. Viac → rozbaľ prevádzky.
+                  if (isSplit) {
+                    setExpandedHistoryDate(isExpanded ? null : order.date);
+                    return;
+                  }
+                  setModalOrderData(order.data);
+                  setSelectedDate(order.date);
+                }}
+                role="button"
+                aria-expanded={isSplit ? isExpanded : undefined}
+              >
+                <div className="zp-day-top">
+                  <div className="zp-day-left">
+                    <div
+                      className="zp-day-icon"
+                      style={{ background: "rgba(114,136,75,0.12)", color: "var(--green-700)" }}
+                    >
+                      <Calendar style={{ width: 20, height: 20 }} />
+                    </div>
+                    <div className="pc-hist-body">
+                      <div className="zp-day-title">{formatDate(order.date)}</div>
+                      <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
+                        Vybavená
+                      </span>
+                      {isSplit ? (
+                        <div style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>
+                          {order.prevadzky.length} prevádzky · {isExpanded ? "skry rozpis" : "zobraz rozpis"}
+                        </div>
+                      ) : (
+                        (["breakfast", "lunch", "olovrant"] as const).flatMap((meal) =>
+                          Object.entries(order.data?.[meal] || {}).flatMap(([category, categoryData]) =>
+                            Object.entries(categoryData?.diets || {})
+                              .filter(([, count]) => count > 0)
+                              .map(([dietName, count]) => (
+                                <div key={`${order.date}-${meal}-${category}-${dietName}`} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>
+                                  {category} · {dietName} · {count}x
+                                </div>
+                              ))
+                          )
+                        )
+                      )}
+                    </div>
+                  </div>
+                  <div className="zp-day-count" style={{ fontSize: 19 }}>
+                    {order.totalPortions}
+                    <small>porcií</small>
+                  </div>
                 </div>
-                <div className="pc-hist-body">
-                  <div className="zp-day-title">{formatDate(order.date)}</div>
-                  <span className="zp-pill" style={{ background: "rgba(114,136,75,0.16)", color: "var(--green-700)" }}>
-                    Vybavená
-                  </span>
-                  {(["breakfast", "lunch", "olovrant"] as const).flatMap((meal) =>
-                    Object.entries(order.data?.[meal] || {}).flatMap(([category, categoryData]) =>
-                      Object.entries(categoryData?.diets || {})
-                        .filter(([, count]) => count > 0)
-                        .map(([dietName, count]) => (
-                          <div key={`${order.date}-${meal}-${category}-${dietName}`} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>
-                            {category} · {dietName} · {count}x
+              </div>
+
+              {isSplit && isExpanded && (
+                <div style={{ marginTop: 4, paddingLeft: 12 }}>
+                  {order.prevadzky.map((p) => (
+                    <div
+                      key={`${order.date}-${p.prevadzkaId ?? p.name}`}
+                      className="zp-day"
+                      style={{ background: "var(--bg-cream-soft)", marginTop: 4 }}
+                      onClick={() => {
+                        setModalOrderData(p.data);
+                        setSelectedDate(order.date);
+                      }}
+                      role="button"
+                    >
+                      <div className="zp-day-top">
+                        <div className="zp-day-left">
+                          <div className="pc-hist-body">
+                            <div className="zp-day-title" style={{ fontSize: 14 }}>{p.name}</div>
+                            {(["breakfast", "lunch", "olovrant"] as const).flatMap((meal) =>
+                              Object.entries(p.data?.[meal] || {}).flatMap(([category, categoryData]) =>
+                                Object.entries(categoryData?.diets || {})
+                                  .filter(([, count]) => count > 0)
+                                  .map(([dietName, count]) => (
+                                    <div key={`${order.date}-${p.prevadzkaId}-${meal}-${category}-${dietName}`} style={{ fontSize: 12, color: "var(--ink-3)", marginTop: 4 }}>
+                                      {category} · {dietName} · {count}x
+                                    </div>
+                                  ))
+                              )
+                            )}
                           </div>
-                        ))
-                    )
-                  )}
+                        </div>
+                        <div className="zp-day-count" style={{ fontSize: 16 }}>
+                          {p.totalPortions}
+                          <small>porcií</small>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-              <div className="zp-day-count" style={{ fontSize: 19 }}>
-                {order.totalPortions}
-                <small>porcií</small>
-              </div>
+              )}
             </div>
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
