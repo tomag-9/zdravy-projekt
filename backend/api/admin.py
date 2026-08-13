@@ -236,7 +236,9 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         "deadline_lunch",
         "deadline_olovrant",
         "edupage_auto_scrape_enabled",
+        "daily_report_enabled",
     )
+    readonly_fields = ("change_history",)
 
     def has_add_permission(self, request):
         """Only allow one GlobalSettings instance."""
@@ -245,3 +247,46 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         """Prevent deletion of GlobalSettings."""
         return False
+
+    def save_model(self, request, obj, form, change):
+        """Persist the change and record who moved which setting (issue #472)."""
+        from .services.event_log_service import build_model_diff
+        from .services.global_settings_audit import log_global_settings_change
+
+        changes = {}
+        if change and form.changed_data:
+            previous = GlobalSettings.objects.filter(pk=obj.pk).first()
+            if previous is not None:
+                changes = build_model_diff(
+                    previous,
+                    {name: getattr(obj, name) for name in form.changed_data},
+                )
+
+        super().save_model(request, obj, form, change)
+        log_global_settings_change(changes, actor=request.user)
+
+    @admin.display(description="História zmien")
+    def change_history(self, obj):
+        """Last 20 audited changes, newest first."""
+        from django.utils.html import format_html, format_html_join
+
+        events = EventLog.objects.filter(
+            event_type=EventLog.EventType.SETTINGS_CHANGE,
+            payload__model=GlobalSettings._meta.label_lower,
+        )[:20]
+        if not events:
+            return "Zatiaľ žiadne zaznamenané zmeny."
+
+        rows = format_html_join(
+            "",
+            "<li><strong>{}</strong> — {} <br><code>{}</code></li>",
+            (
+                (
+                    event.created_at.strftime("%d.%m.%Y %H:%M"),
+                    event.actor_label or "system",
+                    event.payload.get("changes", {}),
+                )
+                for event in events
+            ),
+        )
+        return format_html("<ul style='margin:0;padding-left:1em'>{}</ul>", rows)

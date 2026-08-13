@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..serializers_user import UserProfileSerializer
+from ..services.event_log_service import build_model_diff
 
 
 @extend_schema_view(
@@ -84,15 +85,22 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         the single GlobalSettings row (pk=1).  Accepts partial updates so
         callers can change individual fields.  The cache is automatically
         invalidated via signal handlers when the settings instance is saved.
+
+        Every effective change is written to the audit log (issue #472) — the
+        deadlines steer both the order cut-off and the EduPage scrape schedule,
+        so "who moved it and when" has to be answerable after the fact.
         """
         from ..models import GlobalSettings
         from ..serializers import GlobalSettingsSerializer
+        from ..services.global_settings_audit import log_global_settings_change
 
         settings, _ = GlobalSettings.objects.get_or_create(pk=1)
         serializer = GlobalSettingsSerializer(
             settings, data=request.data, partial=True, context={"request": request}
         )
         if serializer.is_valid():
+            changes = build_model_diff(settings, serializer.validated_data)
             serializer.save()
+            log_global_settings_change(changes, actor=request.user)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
