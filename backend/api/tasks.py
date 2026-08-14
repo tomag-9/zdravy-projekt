@@ -45,6 +45,38 @@ def _log_cron_skip_event(task_name: str, reason: str, day) -> None:
     logger.info("%s skipped: reason=%s date=%s", task_name, reason, day)
 
 
+def _log_cron_run(task_name: str, summary: str, payload: dict) -> None:
+    """Zapíš, že cron úloha dobehla — aj keď nič neurobila.
+
+    Preskočené behy sa zapisovali (`_log_cron_skip_event`), tie úspešné nie, takže
+    v Udalostiach sa nedalo overiť, či scrape či report vôbec bežal — muselo sa
+    liezť do logov `celery` kontajnera, kde ich prvý reštart prepíše. Ticho v
+    audite navyše vyzerá rovnako ako výpadok.
+    """
+    from api.models import EventLog
+    from api.services.event_log_service import log_event
+
+    log_event(
+        EventLog.EventType.CRON_RUN,
+        actor_label="cron",
+        summary=summary,
+        payload={"task": task_name, **payload},
+    )
+
+
+def _log_cron_failure(task_name: str, exc: BaseException, payload: dict) -> None:
+    """Zapíš pád cron úlohy. Bez toho po sebe zlyhanie nenechá stopu v audite."""
+    from api.models import EventLog
+    from api.services.event_log_service import log_event
+
+    log_event(
+        EventLog.EventType.CRON_FAILED,
+        actor_label="cron",
+        summary=f"{task_name}: zlyhalo — {type(exc).__name__}: {exc}".strip(),
+        payload={"task": task_name, "error": f"{type(exc).__name__}: {exc}", **payload},
+    )
+
+
 def _cron_skip_check(task_name: str) -> str | None:
     """If today is a weekend or a configured Holiday, log the skip (see
     `_log_cron_skip_event`) and return the reason so the caller can bail
@@ -212,16 +244,33 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         logger.exception(
             "send_push_deadline_reminder_task: database error, retrying..."
         )
+        _log_cron_failure(
+            "send_push_deadline_reminder_task", exc, {"meal_types": meal_types}
+        )
         raise self.retry(exc=exc)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "send_push_deadline_reminder_task failed with non-transient error, no retry"
+        )
+        _log_cron_failure(
+            "send_push_deadline_reminder_task", exc, {"meal_types": meal_types}
         )
         raise
 
     # "date" keeps the first date for backward compatibility with callers that
     # only expect a single date (the common case where all meals share one deadline).
     first_date = next(iter(date_to_meals))
+    _log_cron_run(
+        "send_push_deadline_reminder_task",
+        f"Cron poslal {total_sent} push pripomienok "
+        f"({', '.join(meal_types)}) na {first_date}.",
+        {
+            "sent": total_sent,
+            "meal_types": meal_types,
+            "date": str(first_date),
+            "sent_per_date": {str(k): v for k, v in sent_per_date.items()},
+        },
+    )
     return {
         "sent": total_sent,
         "meal_types": meal_types,
@@ -282,6 +331,16 @@ def send_weekly_order_reminder_task(self):
             logger.info(
                 "send_weekly_order_reminder_task: all users already ordered, skip"
             )
+            _log_cron_run(
+                "send_weekly_order_reminder_task",
+                f"Cron: týždenná pripomienka na {next_monday} neposlaná — "
+                "všetci už objednali.",
+                {
+                    "sent": 0,
+                    "skipped_ordered": len(already_ordered),
+                    "next_week": str(next_monday),
+                },
+            )
             return {"skipped": "all_ordered", "next_week": str(next_monday)}
 
         week_label = (
@@ -309,6 +368,15 @@ def send_weekly_order_reminder_task(self):
             sent,
             len(already_ordered),
         )
+        _log_cron_run(
+            "send_weekly_order_reminder_task",
+            f"Cron poslal {sent} týždenných pripomienok na {next_monday}.",
+            {
+                "sent": sent,
+                "skipped_ordered": len(already_ordered),
+                "next_week": str(next_monday),
+            },
+        )
         return {
             "sent": sent,
             "skipped_ordered": len(already_ordered),
@@ -317,10 +385,16 @@ def send_weekly_order_reminder_task(self):
 
     except DatabaseError as exc:
         logger.exception("send_weekly_order_reminder_task: database error, retrying...")
+        _log_cron_failure(
+            "send_weekly_order_reminder_task", exc, {"next_week": str(next_monday)}
+        )
         raise self.retry(exc=exc)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "send_weekly_order_reminder_task: non-transient error, no retry"
+        )
+        _log_cron_failure(
+            "send_weekly_order_reminder_task", exc, {"next_week": str(next_monday)}
         )
         raise
 
@@ -476,8 +550,12 @@ def _handle_scrape_give_up(
     date_strs = _scrape_target_dates(date_str, meal_types)
 
     try:
+        # CRON_FAILED, nie CRON_SKIPPED: preskočenie znamená „víkend alebo voľný
+        # deň, nemalo sa čo diať". Vyčerpaný scrape je zlyhanie a v tabuľke
+        # udalostí musí vyzerať inak, inak sa stratí medzi bežnými víkendmi.
         log_event(
-            EventLog.EventType.CRON_SKIPPED,
+            EventLog.EventType.CRON_FAILED,
+            actor_label="cron",
             summary=(
                 "EduPage scrape zlyhal aj po opakovaniach — denný report ide "
                 "von s upozornením, že počty nemusia byť finálne."
@@ -740,6 +818,13 @@ def scrape_edupage_orders_task(
         if dispatched:
             summary["chained_reports_dispatched"] = dispatched
         logger.info("scrape_edupage_orders_task result: %s", summary)
+        scraped_dates = ", ".join(str(target_date) for target_date in date_to_meals)
+        _log_cron_run(
+            "scrape_edupage_orders_task",
+            f"Cron stiahol EduPage objednávky ({scraped_dates}): "
+            f"{scraped} prevádzok, {errors} chýb, {skipped} preskočených.",
+            summary,
+        )
         return summary
 
     except Exception as exc:
@@ -791,6 +876,13 @@ def send_daily_report_task(
             gs = GlobalSettings.objects.filter(pk=1).first()
             if gs is not None and not getattr(gs, "daily_report_enabled", True):
                 logger.info("send_daily_report_task: daily reports are disabled")
+                # Vypnutý report je tichý stav, ktorý sa zvonku nedá odlíšiť od
+                # rozbitého cronu — preto sa zapisuje.
+                _log_cron_run(
+                    "send_daily_report_task",
+                    "Cron: denný report neodoslaný — je vypnutý v nastaveniach.",
+                    {"sent": False, "reason": "daily_report_disabled", "meals": meals},
+                )
                 return {"skipped": True, "reason": "daily_report_disabled"}
 
             if (reason := _cron_skip_check("send_daily_report_task")) is not None:
@@ -816,7 +908,21 @@ def send_daily_report_task(
             meals_arg,
             scrape_failed,
         )
+        _log_cron_run(
+            "send_daily_report_task",
+            f"Cron odoslal denný report na {target_date} ({meals_arg})."
+            + (" Počty nemusia byť finálne." if scrape_failed else ""),
+            {
+                "sent": True,
+                "date": target_date.isoformat(),
+                "meals": meals_arg.split(","),
+                "scrape_failed": scrape_failed,
+            },
+        )
         return f"Report sent for {target_date} with meals: {meals_arg}"
     except Exception as exc:
         logger.exception("send_daily_report_task failed, retrying...")
+        _log_cron_failure(
+            "send_daily_report_task", exc, {"meals": meals, "date": date_str}
+        )
         raise self.retry(exc=exc)
