@@ -12,6 +12,8 @@ import {
 import { useAuth } from '../../context/auth';
 import { logger } from '../../lib/logger';
 import { PageHead, Button, Card, Field, Input, Select, SearchBox } from './ui';
+import type { BadgeTone } from './eventLogDisplay';
+import { actorDisplay, eventTone, targetDisplay } from './eventLogDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const LEVELS = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
@@ -20,9 +22,11 @@ const EVENT_TYPES = [
     ['order_admin_update', 'Admin upravil objednávku'],
     ['order_admin_delete', 'Admin vymazal objednávku'],
     ['auto_order_run', 'Spustenie auto-objednávok'],
+    ['cron_run', 'Cron úloha dobehla'],
+    ['cron_skipped', 'Cron úloha preskočená (víkend/voľný deň)'],
+    ['cron_failed', 'Cron úloha zlyhala'],
     ['push_broadcast', 'Odoslanie push notifikácie'],
     ['settings_change', 'Zmena nastavení'],
-    ['cron_skipped', 'Cron úloha preskočená (víkend/voľný deň)'],
     ['deploy_version', 'Nasadená nová verzia'],
 ] as const;
 
@@ -50,9 +54,11 @@ interface EventLogEntry {
     event_type_label: string;
     actor: number | null;
     actor_email?: string;
+    actor_name?: string;
     actor_label: string;
     target_user: number | null;
     target_user_email?: string;
+    target_user_name?: string;
     summary: string;
     payload: Record<string, unknown>;
     created_at: string;
@@ -104,7 +110,23 @@ function formatTime(value: string) {
     }).format(date);
 }
 
-type BadgeTone = 'green' | 'peach' | 'teal' | 'honey' | 'coral' | 'gray' | 'orange';
+/** Dátum a čas na dva riadky: `14.08.` nad `07:30`.
+ *
+ * Jednoriadkový tvar so sekundami zaberal v tabuľke najširší stĺpec, hoci
+ * sekundy pri auditnej udalosti nikto nečíta. Rok je z riadku tiež preč —
+ * v zozname zoradenom od najnovšieho ho nesie kontext, nie každý riadok. */
+export function EventTime({ value }: { value: string }) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return <span className="zpa-time">{value}</span>;
+    const day = new Intl.DateTimeFormat('sk-SK', { day: '2-digit', month: '2-digit' }).format(date);
+    const time = new Intl.DateTimeFormat('sk-SK', { hour: '2-digit', minute: '2-digit' }).format(date);
+    return (
+        <span className="zpa-time" title={formatTime(value)}>
+            <span className="zpa-time__day">{day}</span>
+            <span className="zpa-time__hm">{time}</span>
+        </span>
+    );
+}
 
 function levelTone(level: string): BadgeTone {
     if (level === 'CRITICAL' || level === 'ERROR') return 'coral';
@@ -286,10 +308,14 @@ export default function AdminLogs() {
                                                 return (
                                                     <Fragment key={entry.id}>
                                                         <tr>
-                                                            <td>{formatTime(entry.created_at)}</td>
-                                                            <td><span className="zpa-badge zpa-badge--teal">{entry.event_type_label}</span></td>
-                                                            <td>{entry.actor_label || entry.actor_email || 'system'}</td>
-                                                            <td>{entry.target_user_email || (entry.target_user ? `#${entry.target_user}` : '—')}</td>
+                                                            <td><EventTime value={entry.created_at} /></td>
+                                                            <td>
+                                                                <span className={`zpa-badge zpa-badge--${eventTone(entry.event_type)}`}>
+                                                                    {entry.event_type_label}
+                                                                </span>
+                                                            </td>
+                                                            <td>{actorDisplay(entry)}</td>
+                                                            <td>{targetDisplay(entry)}</td>
                                                             <td>{entry.summary}</td>
                                                             <td className="r">
                                                                 <Button variant="ghost" sm onClick={() => toggleExpanded(setExpandedEvents, entry.id)}>
