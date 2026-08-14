@@ -20,11 +20,12 @@ from ..serializers_menu import (
 )
 from ..services.meal_plan_service import MealPlanService
 from ..utils import parse_date_param
+from .audit_mixins import AuditedModelViewSetMixin
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
-class PortionTypeViewSet(viewsets.ModelViewSet):
+class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     List portion types (age-group coefficients); non-staff see only active
     entries and cannot write. Staff can adjust an existing coefficient.
@@ -45,7 +46,7 @@ class PortionTypeViewSet(viewsets.ModelViewSet):
         return qs
 
 
-class MealTemplateViewSet(viewsets.ModelViewSet):
+class MealTemplateViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     List meal templates (the fixed weight catalog); filterable by category.
     Non-staff see only active entries and cannot write. Staff can add a new
@@ -79,7 +80,7 @@ class MealTemplateViewSet(viewsets.ModelViewSet):
     partial_update=extend_schema(tags=["meal-plan"]),
     destroy=extend_schema(tags=["meal-plan"]),
 )
-class DailyMealPlanViewSet(viewsets.ModelViewSet):
+class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """Admin ViewSet for daily meal plans with gramage reporting and export."""
 
     serializer_class = DailyMealPlanSerializer
@@ -114,7 +115,7 @@ class DailyMealPlanViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save()
+        super().perform_create(serializer)
 
     def list(self, request, *args, **kwargs):
         if not self._is_admin_route():

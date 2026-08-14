@@ -9,9 +9,10 @@ from rest_framework.response import Response
 
 from ..models import Holiday
 from ..serializers import HolidaySerializer
+from .audit_mixins import AuditedModelViewSetMixin
 
 
-class AdminHolidayViewSet(viewsets.ModelViewSet):
+class AdminHolidayViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     Admin CRUD for holidays.
     GET/POST/DELETE /api/admin/holidays/

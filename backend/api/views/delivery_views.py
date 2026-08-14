@@ -12,6 +12,7 @@ from ..serializers_delivery import (
     DeliveryPrevadzkaSerializer,
     DeliveryRouteSerializer,
 )
+from .audit_mixins import AuditedModelViewSetMixin
 
 
 @extend_schema_view(
@@ -24,7 +25,7 @@ from ..serializers_delivery import (
     layout=extend_schema(tags=["admin-delivery-layout"]),
     reorder=extend_schema(tags=["admin-delivery-layout"]),
 )
-class DeliveryBlockViewSet(viewsets.ModelViewSet):
+class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DeliveryBlockSerializer
     permission_classes = [permissions.IsAdminUser]
 
@@ -123,7 +124,7 @@ class DeliveryBlockViewSet(viewsets.ModelViewSet):
     partial_update=extend_schema(tags=["admin-delivery-layout"]),
     destroy=extend_schema(tags=["admin-delivery-layout"]),
 )
-class DeliveryRouteViewSet(viewsets.ModelViewSet):
+class DeliveryRouteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = DeliveryRoute.objects.select_related("block").prefetch_related(
         Prefetch(
             "prevadzky",
@@ -142,7 +143,7 @@ class DeliveryRouteViewSet(viewsets.ModelViewSet):
     update=extend_schema(tags=["admin-delivery-layout"]),
     partial_update=extend_schema(tags=["admin-delivery-layout"]),
 )
-class AdminPrevadzkaDeliveryViewSet(viewsets.ModelViewSet):
+class AdminPrevadzkaDeliveryViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     queryset = Prevadzka.objects.select_related("celok", "delivery_route").order_by(
         "celok__nazov", "sort_order", "nazov"
     )
