@@ -320,8 +320,12 @@ def _client_rows(
         }
     ]
 
-    for sub_row, gram_cells in visible:
+    # Každý druhý podriadok dostane pruh (`zebra`) — na papieri je tabuľka
+    # široká a oko bez neho stráca riadok. Parita sa počíta v rámci jednej
+    # prevádzky, aby pruhy nezáviseli od toho, koľko riadkov mala tá nad ňou.
+    for position, (sub_row, gram_cells) in enumerate(visible):
         is_diet = sub_row.get("type") == "diet"
+        zebra = " zebra" if position % 2 else ""
         label = sub_row.get("label") or ""
         cell = _label_cell(
             f"↳ {label}" if is_diet else label,
@@ -335,7 +339,7 @@ def _client_rows(
         out.append(
             {
                 "kind": "sub-row",
-                "css": "sub-row diet" if is_diet else "sub-row",
+                "css": ("sub-row diet" if is_diet else "sub-row") + zebra,
                 "group_id": key,
                 "collapsible": True,
                 "color": (

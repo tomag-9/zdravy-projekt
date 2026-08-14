@@ -40,9 +40,16 @@ _MONTHS = [
 
 
 def _stylesheet() -> str:
+    """Najprv spoločná tabuľka, až potom papier.
+
+    `gramage-pdf.css` je vrstva navrch: dopĺňa premenné a prepisuje to, čo je
+    na obrazovke inak (šírky stĺpcov, veľkosti písma, pruhy). Pri opačnom poradí
+    ju screen pravidlá s rovnakou špecificitou prebijú a tlač ostane pri
+    rozmeroch monitora.
+    """
     table = (ASSETS / "gramage-table.css").read_text(encoding="utf-8")
     page = (ASSETS / "gramage-pdf.css").read_text(encoding="utf-8")
-    return f"{page}\n{table}"
+    return f"{table}\n{page}"
 
 
 def format_date(iso_date: str) -> str:
@@ -169,14 +176,18 @@ def render_table(spec: dict) -> str:
     )
 
 
-def render_document(spec: dict) -> str:
-    """Celá stránka vrátane štýlov — vstup pre WeasyPrint."""
+def render_document(spec: dict, title: str = "Gramáž jedál") -> str:
+    """Celá stránka vrátane štýlov — vstup pre WeasyPrint.
+
+    ``title`` mení len nadpis strany; tabuľka je pre stiahnutie z admina aj pre
+    denný report tá istá.
+    """
     date_text = format_date(spec.get("date") or "")
     return (
         "<!DOCTYPE html><html lang='sk'><head><meta charset='utf-8'>"
-        f"<title>Gramáž jedál — {escape(str(spec.get('date') or ''))}</title>"
+        f"<title>{escape(title)} — {escape(str(spec.get('date') or ''))}</title>"
         f"<style>{_stylesheet()}</style></head><body>"
-        f"<h1>Gramáž jedál<small>{escape(date_text)}</small></h1>"
+        f"<h1>{escape(title)}<small>{escape(date_text)}</small></h1>"
         f"{render_table(spec)}"
         "</body></html>"
     )
