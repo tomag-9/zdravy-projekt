@@ -24,9 +24,12 @@
     --font-sans: "DejaVu Sans", sans-serif;
 }
 
+/* A4 na šírku — papier, ktorý má kuchyňa aj klient v tlačiarni. A3 sa musel
+ * škálovať alebo tlačiť na dve strany; radšej zúžime stĺpce (viď „Zúženie
+ * stĺpcov" nižšie), nech to vyjde na bežný list. */
 @page {
-    size: A3 landscape;
-    margin: 10mm 8mm;
+    size: A4 landscape;
+    margin: 8mm 6mm;
     @bottom-right {
         content: counter(page) " / " counter(pages);
         font-family: "DejaVu Sans", sans-serif;
@@ -44,15 +47,15 @@ body {
 }
 
 h1 {
-    margin: 0 0 6mm;
-    font-size: 14pt;
+    margin: 0 0 3mm;
+    font-size: 12pt;
     color: var(--green-900);
 }
 
 h1 small {
     display: block;
     margin-top: 1mm;
-    font-size: 9pt;
+    font-size: 8.5pt;
     font-weight: 400;
     color: var(--ink-3);
     text-transform: capitalize;
@@ -60,9 +63,77 @@ h1 small {
 
 /* Obrazovka tabuľku scrolluje, stránka ju musí zalomiť — hlavička sa preto
  * opakuje a riadok sa nesmie roztrhnúť cez dve strany. */
-.zpa-gram { width: 100%; font-size: 7.5pt; }
+.zpa-gram { width: 100%; font-size: 6.5pt; table-layout: fixed; }
 .zpa-gram thead { display: table-header-group; }
 .zpa-gram tr { page-break-inside: avoid; }
+
+/* ── Zúženie stĺpcov ─────────────────────────────────────────────────────────
+ * Obrazovka si stĺpce roztiahne podľa obsahu (`width: max-content`) a chýbajúce
+ * miesto vyrieši scrollom. Papier scroll nemá: `table-layout: fixed` rozdelí
+ * šírku rovnomerne, `min-width` zo screen CSS by to prebilo, tak ho rušíme.
+ * Prvý stĺpec (názov prevádzky / riadku) drží pevných 32 mm, zvyšok si delia
+ * gramáže. */
+.zpa-gram th,
+.zpa-gram td { min-width: 0; padding: 1mm 1.2mm; }
+.zpa-gram th:first-child,
+.zpa-gram td:first-child { width: 42mm; min-width: 0; max-width: none; }
+/* Názov riadku sa v úzkom stĺpci musí zalomiť. Obrazovka ho skracuje „…"-om a
+ * dohľadá zvyšok tooltipom; papier tooltip nemá, tak radšej dva riadky ako
+ * „Súčet b". Odznak s počtom sa pritom nesmie stlačiť. */
+.zpa-gram .lbl-line { display: flex; align-items: baseline; gap: 1mm; }
+.zpa-gram .lbl-line > span:first-child {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: break-word;
+}
+.zpa-gram .client-toggle > span { min-width: 0; }
+.zpa-gram thead .grp { font-size: 6.5pt; }
+.zpa-gram thead .comp { font-size: 6pt; }
+/* V úzkom stĺpci sa dlhý názov komponentu musí zalomiť, nie zmiznúť pod „…". */
+.zpa-gram thead .grp small,
+.zpa-gram thead .comp small {
+    max-width: none;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 5.5pt;
+    line-height: 1.15;
+}
+.zpa-gram .lbl-line > span:first-child { white-space: normal; }
+/* `width: 100%` + padding by pás prevádzky roztiahlo za okraj strany a „spolu
+ * porcií" by sa orezalo — na obrazovke to schová scroll, na papieri nie. */
+.zpa-gram .client-toggle {
+    box-sizing: border-box;
+    padding: 1.4mm 2mm;
+    font-size: 8.5pt;
+    gap: 2mm;
+}
+.zpa-gram .client-toggle .meta { font-size: 6.5pt; }
+.zpa-gram tbody .band td,
+.zpa-gram tfoot .band td,
+.zpa-gram .portion-summary-band td { padding: 1.2mm 2mm; font-size: 7pt; }
+.zpa-gram .route-row td { padding: 1.6mm 2mm 1mm; }
+.zpa-gram .route-pill { padding: 0.6mm 1.6mm; font-size: 7pt; }
+.zpa-gram .sub-row.diet .lbl { font-size: 6.5pt; padding-left: 3mm; }
+.zpa-gram .note-admin td,
+.zpa-gram .note-delivery td { font-size: 6.5pt; padding: 1.2mm 2mm; }
+.zpa-gram .count-badge { min-width: 4mm; height: 3.2mm; padding: 0 1mm; font-size: 6pt; }
+.zpa-gram .diet-dot { width: 1.6mm; height: 1.6mm; margin-right: 1.2mm; }
+
+/* ── Pruhovanie riadkov ──────────────────────────────────────────────────────
+ * Klient žiadal jemnú šedú na každom druhom riadku. Na obrazovke riadok vedie
+ * oko farebná výplň stĺpca (`mh-*-cell`), tá by ale pruh prekryla a striedanie
+ * by vyzeralo náhodne — na papieri ju preto vypíname. Jedlá od seba naďalej
+ * delí zvislá čiara `meal-sep` a farebné hlavičky. */
+.zpa-gram .mh-break-cell,
+.zpa-gram .mh-soup-cell,
+.zpa-gram .mh-menuA-cell,
+.zpa-gram .mh-menuB-cell,
+.zpa-gram .mh-menuC-cell,
+.zpa-gram .mh-menuV-cell,
+.zpa-gram .mh-snack-cell { background: transparent; }
+.zpa-gram .sub-row.zebra td { background: #EDEDEA; }
 
 /* `tfoot` je štandardne table-footer-group a zopakoval by sa na konci každej
  * strany — celkový súčet by potom vyzeral ako medzisúčet. Patrí raz, na koniec. */

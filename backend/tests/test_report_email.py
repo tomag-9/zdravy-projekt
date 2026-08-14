@@ -158,6 +158,16 @@ class TestGlobalSettingsAPI:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+def fake_pdf():
+    """Report PDF sa stavia z jedálnička; tu testujeme rozposielanie, nie kreslenie."""
+    with patch(
+        "api.management.commands.send_order_report.build_report_pdf_bytes",
+        return_value=b"%PDF-1.7 fake",
+    ) as mock_build:
+        yield mock_build
+
+
 @pytest.mark.django_db
 class TestSendOrderReportCommand:
     def test_skips_when_no_recipients(self, global_settings, capsys):
@@ -172,7 +182,9 @@ class TestSendOrderReportCommand:
         )
 
     @patch("api.management.commands.send_order_report.send_daily_report_email")
-    def test_sends_email_to_configured_recipients(self, mock_send, global_settings, db):
+    def test_sends_email_to_configured_recipients(
+        self, mock_send, global_settings, fake_pdf, db
+    ):
         global_settings.report_email_recipients = ["report@example.com"]
         global_settings.save()
 
@@ -183,10 +195,11 @@ class TestSendOrderReportCommand:
         call_kwargs = mock_send.call_args.kwargs
         assert call_kwargs["recipients"] == ["report@example.com"]
         assert call_kwargs["report_date"] == target_date.isoformat()
-        assert call_kwargs["attachment_filename"].endswith(".xlsx")
+        assert call_kwargs["attachment_filename"].endswith(".pdf")
+        assert len(call_kwargs["attachment_bytes"]) > 0
 
     @patch("api.management.commands.send_order_report.send_daily_report_email")
-    def test_explicit_date_flag(self, mock_send, global_settings, db):
+    def test_explicit_date_flag(self, mock_send, global_settings, fake_pdf, db):
         global_settings.report_email_recipients = ["r@example.com"]
         global_settings.save()
 
@@ -197,15 +210,44 @@ class TestSendOrderReportCommand:
         assert call_kwargs["report_date"] == fixed_date
 
     @patch("api.management.commands.send_order_report.send_daily_report_email")
-    def test_report_includes_order_data(self, mock_send, global_settings, admin_user):
-        """XLSX bytes should be non-empty even when there are no orders."""
+    def test_full_report_draws_the_whole_table(
+        self, mock_send, global_settings, fake_pdf, db
+    ):
+        """Report za všetky jedlá nefiltruje sekcie — inak by vypadli stĺpce."""
         global_settings.report_email_recipients = ["r@example.com"]
         global_settings.save()
 
         management.call_command("send_order_report", "--days=1")
 
-        call_kwargs = mock_send.call_args.kwargs
-        assert len(call_kwargs["attachment_bytes"]) > 0
+        assert fake_pdf.call_args.kwargs["meals"] is None
+
+    @patch("api.management.commands.send_order_report.send_daily_report_email")
+    def test_breakfast_report_narrows_the_table_to_breakfast(
+        self, mock_send, global_settings, fake_pdf, db
+    ):
+        global_settings.report_email_recipients = ["r@example.com"]
+        global_settings.save()
+
+        management.call_command("send_order_report", "--days=1", "--meals=breakfast")
+
+        assert fake_pdf.call_args.kwargs["meals"] == ["breakfast"]
+
+    @patch("api.management.commands.send_order_report.send_daily_report_email")
+    def test_no_email_when_there_is_nothing_to_print(
+        self, mock_send, global_settings, capsys, db
+    ):
+        """Bez jedálnička (alebo bez daných jedál) sa mail neposiela vôbec."""
+        global_settings.report_email_recipients = ["r@example.com"]
+        global_settings.save()
+
+        with patch(
+            "api.management.commands.send_order_report.build_report_pdf_bytes",
+            return_value=None,
+        ):
+            management.call_command("send_order_report", "--days=1")
+
+        mock_send.assert_not_called()
+        assert "Nothing to report" in capsys.readouterr().out
 
     def test_invalid_date_exits_gracefully(self, global_settings, capsys):
         global_settings.report_email_recipients = ["r@example.com"]
@@ -225,7 +267,7 @@ class TestSendOrderReportCommand:
 @pytest.mark.django_db
 class TestSendDailyReportEmail:
     @patch("api.email_utils.EmailMessage")
-    def test_attaches_xlsx_and_sends(self, MockEmailMessage):
+    def test_attaches_pdf_and_sends(self, MockEmailMessage):
         from api.email_utils import send_daily_report_email
 
         mock_instance = MagicMock()
@@ -234,8 +276,8 @@ class TestSendDailyReportEmail:
         send_daily_report_email(
             recipients=["a@x.com", "b@x.com"],
             report_date="2026-02-25",
-            attachment_bytes=b"fake-xlsx-content",
-            attachment_filename="prehlad_2026-02-25.xlsx",
+            attachment_bytes=b"%PDF-1.7 fake",
+            attachment_filename="prehlad_2026-02-25.pdf",
         )
 
         MockEmailMessage.assert_called_once()
@@ -244,9 +286,9 @@ class TestSendDailyReportEmail:
         assert "2026-02-25" in call_kwargs["subject"]
 
         mock_instance.attach.assert_called_once_with(
-            "prehlad_2026-02-25.xlsx",
-            b"fake-xlsx-content",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "prehlad_2026-02-25.pdf",
+            b"%PDF-1.7 fake",
+            "application/pdf",
         )
         mock_instance.send.assert_called_once_with(fail_silently=False)
 
@@ -260,8 +302,8 @@ class TestSendDailyReportEmail:
         send_daily_report_email(
             recipients=["report@example.com"],
             report_date="2026-02-25",
-            attachment_bytes=b"fake-xlsx-content",
-            attachment_filename="prehlad_2026-02-25.xlsx",
+            attachment_bytes=b"%PDF-1.7 fake",
+            attachment_filename="prehlad_2026-02-25.pdf",
             meals=["breakfast"],
         )
 

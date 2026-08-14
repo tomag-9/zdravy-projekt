@@ -98,12 +98,12 @@ def send_daily_report_email(
     meals: list[str] | None = None,
     data_may_be_stale: bool = False,
 ) -> None:
-    """Send the daily order report as an XLSX attachment to *recipients*.
+    """Send the daily order report as a PDF attachment to *recipients*.
 
     Args:
         recipients: List of email addresses to send to
         report_date: Date string in YYYY-MM-DD format
-        attachment_bytes: XLSX file bytes
+        attachment_bytes: PDF file bytes
         attachment_filename: Name of the attachment file
         meals: List of meals included in report (breakfast, lunch, olovrant)
         data_may_be_stale: The EduPage import that should have preceded this
@@ -133,10 +133,11 @@ def send_daily_report_email(
     body = (
         f"Dobrý deň,\n\n"
         f"{warning}"
-        f"V prílohe nájdete denný prehľad objednávok za {report_date}.\n\n"
+        f"V prílohe nájdete denný prehľad objednávok za {report_date}.\n"
+        "PDF je pripravené na tlač na formát A4 (na šírku).\n\n"
         "S pozdravom, Tím Zdravý projekt"
     )
-    content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    content_type = "application/pdf"
     email = EmailMessage(
         subject=subject,
         body=body,

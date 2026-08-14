@@ -451,6 +451,11 @@ sequenceDiagram
     Cmd->>Email: odosle report prijemcom
 ```
 
+Prilohou mailu je **PDF** — ta ista tabulka gramaze, aku admin vidi na obrazovke
+(`MealPlanService.gramage_dashboard` -> `build_table_spec` -> `gramage_table_html`
+-> WeasyPrint, viz `api/exporters/daily_report_pdf.py`), zuzena na jedla daneho
+mailu. Ked pre ne v ten den nie je ani jeden stlpec jedalnicka, mail sa neposiela.
+
 ## Flow: push notifikacie
 
 ```mermaid

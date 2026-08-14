@@ -1,8 +1,9 @@
 """
 Management command: send_order_report
 
-Generates an XLSX daily order report and emails it to the configured
-recipients stored in GlobalSettings.report_email_recipients.
+Generates the daily order report as a PDF — tá istá tabuľka prehľadu gramáže,
+akú admin vidí na obrazovke — and emails it to the configured recipients
+stored in GlobalSettings.report_email_recipients.
 
 Usage:
     python manage.py send_order_report           # yesterday (--days 1)
@@ -11,131 +12,21 @@ Usage:
 """
 
 import datetime
-import io
 import logging
 
 from django.core.management.base import BaseCommand
 
 from api.email_utils import send_daily_report_email
-from api.models import DailyOrder, GlobalSettings
-from api.report_xlsx_helpers import (
-    xlsx_apply_table_grid,
-    xlsx_build_column_meta,
-    xlsx_collect_columns,
-    xlsx_style_headers,
-    xlsx_write_data,
-)
+from api.exporters.daily_report_pdf import build_report_pdf_bytes
+from api.models import GlobalSettings
 
 logger = logging.getLogger(__name__)
 
 _MEAL_KEYS = ["breakfast", "lunch", "olovrant"]
-_MEAL_LABELS = {"breakfast": "Raňajky", "lunch": "Obed", "olovrant": "Olovrant"}
-
-
-def build_xlsx_bytes(
-    target_date: datetime.date, meals: list[str] | None = None
-) -> bytes:
-    """Generate an XLSX report for *target_date* and optional meal filter.
-
-    Args:
-        target_date: The date to generate the report for
-        meals: List of meals to include (e.g., ["breakfast"] or ["breakfast", "lunch", "olovrant"])
-               If None, includes all meals.
-
-    Raises:
-        ValueError: If meals list is provided but contains no valid meal keys.
-    """
-    import openpyxl
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
-
-    if meals is None:
-        meals = _MEAL_KEYS
-    else:
-        # Warn about any unknown meal keys
-        invalid_meals = sorted({m for m in meals if m not in _MEAL_KEYS})
-        if invalid_meals:
-            logger.warning(
-                "Unknown meal keys in order report: %s (valid: %s)",
-                ", ".join(invalid_meals),
-                ", ".join(_MEAL_KEYS),
-            )
-        # Ensure meals is a subset of valid meals
-        meals = [m for m in meals if m in _MEAL_KEYS]
-        if not meals:
-            raise ValueError(
-                f"No valid meals in request. Valid keys: {', '.join(_MEAL_KEYS)}"
-            )
-
-    safe_date = target_date.isoformat()
-
-    orders = (
-        DailyOrder.objects.filter(date=target_date)
-        .select_related("user", "prevadzka")
-        .order_by("user__email")
-    )
-
-    rows_data = [
-        {
-            "user": o.user,
-            "data": o.data or {},
-            "visible_meals": getattr(o.prevadzka, "visible_meals", None) or _MEAL_KEYS,
-        }
-        for o in orders
-    ]
-
-    sorted_cats = xlsx_collect_columns(rows_data, meals)
-    col_meta, header_row_1, header_row_2, header_row_3 = xlsx_build_column_meta(
-        sorted_cats, meals, _MEAL_LABELS
-    )
-
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = f"Prehlad {safe_date}"
-
-    header_fill_main = PatternFill("solid", fgColor="2563EB")
-    header_fill_meal = {
-        "breakfast": PatternFill("solid", fgColor="F97316"),
-        "lunch": PatternFill("solid", fgColor="3B82F6"),
-        "olovrant": PatternFill("solid", fgColor="22C55E"),
-    }
-    header_font = Font(bold=True, color="FFFFFF")
-    bold_font = Font(bold=True)
-    center = Alignment(horizontal="center", vertical="center")
-
-    ws.append([f"Denný prehľad objednávok — {safe_date}"])
-    ws["A1"].font = Font(bold=True, size=14)
-    ws.append([])
-    ws.append(header_row_1)
-    ws.append(header_row_2)
-    ws.append(header_row_3)
-
-    xlsx_style_headers(
-        ws,
-        col_meta,
-        sorted_cats,
-        meals,
-        header_fill_main,
-        header_fill_meal,
-        header_font,
-        center,
-    )
-    xlsx_write_data(ws, rows_data, meals, sorted_cats, bold_font)
-    xlsx_apply_table_grid(ws)
-
-    ws.column_dimensions["A"].width = 28
-    for c_idx in range(2, len(col_meta) + 1):
-        ws.column_dimensions[get_column_letter(c_idx)].width = 12
-    ws.freeze_panes = "B6"
-
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return output.read()
 
 
 class Command(BaseCommand):
-    help = "Generate the daily XLSX order report and email it to configured recipients."
+    help = "Generate the daily PDF order report and email it to configured recipients."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -217,16 +108,29 @@ class Command(BaseCommand):
             return
 
         # ── Generate report ───────────────────────────────────────────────────
+        # Celý deň = celá tabuľka bez filtra sekcií; inak len stĺpce daných jedál.
+        section_meals = None if set(meals) == set(_MEAL_KEYS) else meals
         try:
-            report_bytes = build_xlsx_bytes(target_date, meals=meals)
+            report_bytes = build_report_pdf_bytes(target_date, meals=section_meals)
         except Exception:
-            logger.exception("Failed to generate XLSX report for %s", target_date)
+            logger.exception("Failed to generate PDF report for %s", target_date)
             self.stderr.write(
                 self.style.ERROR(f"Failed to generate report for {target_date}.")
             )
             raise
 
-        filename = f"prehlad_{target_date.isoformat()}.xlsx"
+        if report_bytes is None:
+            # Prázdny jedálniček alebo deň bez daných jedál — mail s prázdnou
+            # tabuľkou by kuchyni nič nepovedal, tak sa neposiela.
+            self.stdout.write(
+                self.style.WARNING(
+                    f"No menu columns for {target_date} ({', '.join(meals)}). "
+                    "Nothing to report — skipping the email."
+                )
+            )
+            return
+
+        filename = f"prehlad_{target_date.isoformat()}.pdf"
 
         # ── Send email ────────────────────────────────────────────────────────
         try:
