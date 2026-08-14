@@ -34,7 +34,7 @@ class TestAutoOrderScheduleSync:
         # Trigger time = max(08:00, 10:00, 09:00) = 10:00
         assert task.crontab.hour == "10"
         assert task.crontab.minute == "0"
-        assert task.crontab.day_of_week == "1-5"
+        assert task.crontab.day_of_week == "0-4"
 
     def test_updates_periodic_task_when_deadline_changes(self):
         """Updating GlobalSettings reschedules the task to the new latest deadline."""
@@ -64,8 +64,12 @@ class TestAutoOrderScheduleSync:
         assert task.crontab.hour == "12"
         assert task.crontab.minute == "45"
 
-    def test_task_runs_only_on_workdays(self):
-        """PeriodicTask crontab is limited to Monday–Friday."""
+    def test_task_runs_on_the_eve_of_every_workday(self):
+        """Auto-orders dopĺňajú `_next_workday`, takže bežia v predvečer: Ne–Št.
+
+        S maskou Po–Pi sa pondelok dopĺňal už v piatok večer — dva dni pred
+        deadlinom, a v nedeľu, keď si klient ešte môže objednať sám, nebežalo nič.
+        """
         GlobalSettings.objects.create(
             deadline_breakfast=datetime.time(10, 0),
             deadline_lunch=datetime.time(10, 0),
@@ -73,7 +77,9 @@ class TestAutoOrderScheduleSync:
         )
 
         task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
-        assert task.crontab.day_of_week == "1-5"
+        assert task.crontab.day_of_week == "0-4"
+        # Sobota nikdy — po nej nenasleduje pracovný deň, ktorý by sa dopĺňal.
+        assert "6" not in task.crontab.day_of_week
 
 
 @pytest.mark.django_db

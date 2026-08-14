@@ -147,6 +147,31 @@ class TestSyncPushReminderSchedule:
         ):
             assert task.crontab.day_of_week == "1-5"
 
+    def test_day_before_reminder_runs_on_the_eve(self):
+        """Pripomienka musí prísť pred deadlinom, na ktorý naozaj upozorňuje.
+
+        Raňajky s deadlinom 21:00 deň vopred: pripomienka o 20:30 má zmysel len
+        v predvečer obsluhovaného dňa. S maskou Po–Pi chodila v piatok večer na
+        deadline, ktorý je až v nedeľu, a v nedeľu — teda pol hodinu pred tým
+        skutočným — nechodila vôbec.
+        """
+        _make_settings(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 30),
+            deadline_olovrant=datetime.time(7, 30),
+        )
+
+        breakfast = PeriodicTask.objects.get(
+            name=_push_reminder_task_name(["breakfast"])
+        )
+        lunch_olovrant = PeriodicTask.objects.get(
+            name=_push_reminder_task_name(["lunch", "olovrant"])
+        )
+
+        assert breakfast.crontab.day_of_week == "0-4"  # Ne–Št
+        assert lunch_olovrant.crontab.day_of_week == "1-5"  # Po–Pi
+
     def test_tasks_are_enabled(self):
         _make_settings()
         for task in PeriodicTask.objects.filter(
@@ -272,9 +297,10 @@ class TestSendPushDeadlineReminderTask:
     def test_skips_saturday(self):
         """Task returns early on Saturdays without sending anything."""
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_SATURDAY
             result = send_push_deadline_reminder_task(["lunch"])
 
@@ -299,9 +325,10 @@ class TestSendPushDeadlineReminderTask:
         )
 
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             send_push_deadline_reminder_task(["lunch"])
@@ -322,9 +349,10 @@ class TestSendPushDeadlineReminderTask:
             password="x",
         )
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 0, "stale_removed": 0}
             send_push_deadline_reminder_task(["lunch"])
@@ -341,9 +369,10 @@ class TestSendPushDeadlineReminderTask:
         staff_user.save(update_fields=["is_staff"])
 
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             send_push_deadline_reminder_task(["lunch"])
 
@@ -356,9 +385,10 @@ class TestSendPushDeadlineReminderTask:
         """Notification body contains the Slovak label for the meal."""
         _make_user_with_subscription("body-test")
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             send_push_deadline_reminder_task(["lunch"])
@@ -370,9 +400,10 @@ class TestSendPushDeadlineReminderTask:
         """Two grouped meals are joined with 'a' in the notification body."""
         _make_user_with_subscription("two-meals")
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             send_push_deadline_reminder_task(["breakfast", "lunch"])
@@ -386,9 +417,10 @@ class TestSendPushDeadlineReminderTask:
         """Three grouped meals: comma-separated with 'a' before the last."""
         _make_user_with_subscription("three-meals")
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             send_push_deadline_reminder_task(["breakfast", "lunch", "olovrant"])
@@ -408,9 +440,10 @@ class TestSendPushDeadlineReminderTask:
         self._setup_gs(
             deadline_lunch_is_day_before=True,
         )
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             result = send_push_deadline_reminder_task(["lunch"])
@@ -421,9 +454,10 @@ class TestSendPushDeadlineReminderTask:
         """Task returns a dict with sent count and meal_types list."""
         _make_user_with_subscription("count-test")
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             result = send_push_deadline_reminder_task(["breakfast"])
@@ -436,9 +470,10 @@ class TestSendPushDeadlineReminderTask:
         """Notifications are sent with url='/order' so users land on the order page."""
         _make_user_with_subscription("url-test")
         self._setup_gs()
-        with patch("api.tasks.timezone") as mock_tz, patch(
-            "api.tasks.PushNotificationService"
-        ) as mock_svc:
+        with (
+            patch("api.tasks.timezone") as mock_tz,
+            patch("api.tasks.PushNotificationService") as mock_svc,
+        ):
             mock_tz.localdate.return_value = FUTURE_TUESDAY
             mock_svc.send_to_user.return_value = {"sent": 1, "stale_removed": 0}
             send_push_deadline_reminder_task(["lunch"])

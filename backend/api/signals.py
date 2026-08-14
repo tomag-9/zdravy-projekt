@@ -43,6 +43,23 @@ WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
 
+# Cron musí bežať v ten deň, na ktorý je úloha nastavená — nie v ten, ktorého sa
+# týka jedlo. Úloha so `is_day_before` deadlinom obsluhuje NASLEDUJÚCI pracovný
+# deň (`_next_workday`), takže musí bežať v jeho predvečer: pre pondelok je to
+# nedeľa. S maskou Po–Pi ju v nedeľu nikto nespustí a pondelok obslúži už piatok
+# večer — teda 48 h pred deadlinom, o ktorom si klienti myslia, že je v nedeľu
+# o 21:00. Všetko, čo cez víkend doobjednajú alebo odhlásia, sa stratí.
+DAY_OF_WEEK_WORKDAYS = "1-5"  # Po–Pi — úloha obsluhuje deň, v ktorý beží
+DAY_OF_WEEK_DAY_BEFORE = "0-4"  # Ne–Št — úloha obsluhuje nasledujúci pracovný deň
+# Pozn.: obe masky predpokladajú, že jediné voľné dni sú víkendy — rovnaký
+# predpoklad má `_next_workday`. Keby pribudol kalendár sviatkov, musia sa
+# posunúť obe naraz (predvečer sviatku sa nespúšťa, predvečer dňa PO sviatku áno).
+
+
+def _day_of_week(is_day_before: bool) -> str:
+    """Maska dní pre cron podľa toho, ktorý deň úloha obsluhuje."""
+    return DAY_OF_WEEK_DAY_BEFORE if is_day_before else DAY_OF_WEEK_WORKDAYS
+
 
 def _shift_time(value: datetime.time, minutes: int) -> datetime.time:
     """Move a wall-clock time by `minutes`, wrapping around midnight."""
@@ -68,10 +85,17 @@ def _push_reminder_task_name(meal_types: list[str]) -> str:
 def _sync_auto_order_schedule(settings_instance) -> None:
     """
     Create or update the Celery Beat PeriodicTask so that auto-orders fire
-    at max(deadline_breakfast, deadline_lunch, deadline_olovrant) Monday–Friday.
+    at max(deadline_breakfast, deadline_lunch, deadline_olovrant), on the eve
+    of every workday (Sun–Thu).
 
     Using the *latest* deadline ensures all manual-order windows have closed
     before we fill in the gaps automatically.
+
+    `apply_auto_orders` dopĺňa vždy `_next_workday(dnes)`, takže je to „deň
+    vopred" úloha bez ohľadu na nastavenie deadlinov — a musí bežať v predvečer
+    obsluhovaného dňa. S maskou Po–Pi sa pondelok dopĺňal už v piatok večer a
+    klient, ktorý si cez víkend objednal sám, dostal auto-objednávku spred dvoch
+    dní; v nedeľu naopak nebežalo nič.
     """
     try:
         from django.conf import settings
@@ -92,7 +116,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         schedule, _ = CrontabSchedule.objects.get_or_create(
             minute=trigger_time.minute,
             hour=trigger_time.hour,
-            day_of_week="1-5",  # Mon–Fri
+            day_of_week=_day_of_week(is_day_before=True),
             day_of_month="*",
             month_of_year="*",
             timezone=settings.TIME_ZONE,
@@ -114,7 +138,7 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         )
 
         logger.info(
-            "Auto-order periodic task synced → %02d:%02d Mon–Fri (tz: %s)",
+            "Auto-order periodic task synced → %02d:%02d Sun–Thu (tz: %s)",
             trigger_time.hour,
             trigger_time.minute,
             settings.TIME_ZONE,
@@ -328,7 +352,7 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
 
         new_task_names: set[str] = set()
 
-        for (deadline, _is_day_before), meal_types_group in groups.items():
+        for (deadline, is_day_before), meal_types_group in groups.items():
             dt = datetime.datetime.combine(datetime.date.today(), deadline)
             reminder_dt = dt - datetime.timedelta(minutes=PUSH_REMINDER_OFFSET_MINUTES)
 
@@ -347,7 +371,7 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
             schedule, _ = CrontabSchedule.objects.get_or_create(
                 minute=reminder_time.minute,
                 hour=reminder_time.hour,
-                day_of_week="1-5",  # Mon–Fri
+                day_of_week=_day_of_week(is_day_before),
                 day_of_month="*",
                 month_of_year="*",
                 timezone=settings.TIME_ZONE,
@@ -458,7 +482,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
             schedule, _ = CrontabSchedule.objects.get_or_create(
                 minute=scrape_time.minute,
                 hour=scrape_time.hour,
-                day_of_week="1-5",
+                day_of_week=_day_of_week(is_day_before),
                 day_of_month="*",
                 month_of_year="*",
                 timezone=settings.TIME_ZONE,
@@ -466,8 +490,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
 
             chained_reports = _chained_report_specs(settings_instance, meal_types_group)
             report_note = (
-                f" Chains {len(chained_reports)} daily report(s) once the import "
-                f"lands."
+                f" Chains {len(chained_reports)} daily report(s) once the import lands."
                 if chained_reports
                 else ""
             )

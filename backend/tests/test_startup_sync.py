@@ -113,6 +113,61 @@ class TestStartupSync:
         lunch = PeriodicTask.objects.get(name="edupage-scrape-lunch-olovrant")
         assert (lunch.crontab.hour, lunch.crontab.minute) == ("7", "30")
 
+    def test_day_before_scrape_runs_on_the_eve_sunday_to_thursday(self):
+        """Deň-vopred deadline musí bežať v predvečer obsluhovaného dňa.
+
+        Presne to je prod nastavenie: raňajky majú deadline 21:00 deň vopred a
+        task importuje `_next_workday(dnes)`. S maskou Po–Pi sa pondelkové
+        raňajky natiahli už v piatok o 21:00 — 48 h pred deadlinom, ktorý má
+        klient v nedeľu — a v nedeľu nebežalo nič, takže víkendové objednávky
+        a odhlášky sa do appky nikdy nedostali. Ranný obed/olovrant sa naopak
+        týka dňa, v ktorý beží, a ostáva Po–Pi.
+        """
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 30),
+            deadline_lunch_is_day_before=False,
+            deadline_olovrant=datetime.time(7, 30),
+            deadline_olovrant_is_day_before=False,
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+
+        breakfast = PeriodicTask.objects.get(name="edupage-scrape-breakfast")
+        lunch = PeriodicTask.objects.get(name="edupage-scrape-lunch-olovrant")
+
+        assert breakfast.crontab.day_of_week == "0-4"  # Ne–Št
+        assert lunch.crontab.day_of_week == "1-5"  # Po–Pi
+
+    def test_scrape_mask_follows_the_flag_not_the_meal(self):
+        """Maska visí na `is_day_before`, nie na tom, o ktoré jedlo ide."""
+        from api.signals import _sync_edupage_scrape_schedule
+
+        gs = _make_settings(
+            deadline_breakfast=datetime.time(7, 0),
+            deadline_breakfast_is_day_before=False,
+            deadline_lunch=datetime.time(20, 0),
+            deadline_lunch_is_day_before=True,
+            deadline_olovrant=datetime.time(6, 0),
+            deadline_olovrant_is_day_before=False,
+        )
+
+        _sync_edupage_scrape_schedule(gs)
+
+        assert (
+            PeriodicTask.objects.get(name="edupage-scrape-lunch").crontab.day_of_week
+            == "0-4"
+        )
+        assert (
+            PeriodicTask.objects.get(
+                name="edupage-scrape-breakfast"
+            ).crontab.day_of_week
+            == "1-5"
+        )
+
     def test_edupage_scrape_handles_deadline_near_midnight(self):
         """
         Bez offsetu už nie je čo orezávať na 00:00 — deadline tesne po polnoci
