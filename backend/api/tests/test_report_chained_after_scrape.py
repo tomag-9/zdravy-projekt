@@ -92,7 +92,9 @@ class TestChainedReportDispatch:
         )
         _stub_scrape(monkeypatch)
         monkeypatch.setattr(
-            timezone, "localdate", lambda: datetime.date(2026, 6, 29)  # Monday
+            timezone,
+            "localdate",
+            lambda: datetime.date(2026, 6, 29),  # Monday
         )
 
         with patch("api.tasks.send_daily_report_task.apply_async") as apply_async:
@@ -185,9 +187,14 @@ class TestScrapeGiveUp:
             }
         )
 
-        event = EventLog.objects.get(event_type=EventLog.EventType.CRON_SKIPPED)
+        # Vyčerpaný scrape je zlyhanie, nie preskočený víkend — v audite sa
+        # tie dve veci nesmú miešať.
+        event = EventLog.objects.get(event_type=EventLog.EventType.CRON_FAILED)
         assert event.payload["task"] == "scrape_edupage_orders_task"
         assert event.payload["dates"] == ["2026-06-29"]
+        assert not EventLog.objects.filter(
+            event_type=EventLog.EventType.CRON_SKIPPED
+        ).exists()
 
 
 @pytest.mark.django_db

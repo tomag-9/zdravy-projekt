@@ -19,7 +19,9 @@ class EventLog(models.Model):
         AUTO_ORDER_RUN = "auto_order_run", "Spustenie auto-objednávok"
         PUSH_BROADCAST = "push_broadcast", "Odoslanie push notifikácie"
         SETTINGS_CHANGE = "settings_change", "Zmena nastavení"
+        CRON_RUN = "cron_run", "Cron úloha dobehla"
         CRON_SKIPPED = "cron_skipped", "Cron úloha preskočená (víkend/voľný deň)"
+        CRON_FAILED = "cron_failed", "Cron úloha zlyhala"
         DEPLOY_VERSION = "deploy_version", "Nasadená nová verzia"
 
     event_type = models.CharField(max_length=50, choices=EventType.choices)
