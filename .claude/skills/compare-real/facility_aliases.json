@@ -1,7 +1,13 @@
 {
   "_comment": "App (EduPage) facility label -> real workbook 'Zariadenie' label. Value may be a single string, or a LIST of real labels meaning 'sum these real rows for this one app facility' (used when the app scrapes a celok as one bucket but the real sheet bills its sub-units on separate rows). Keys/values are ASCII-folded before matching, so human spelling is fine. Add only CONFIDENT mappings; leave ambiguous ones out and note them in the report. NOTE (2026-07-17 update): the real workbook renamed most facilities with an 'ms ' prefix and the app dropped its 'MŠ' prefix; list values below carry both spellings so old and new workbooks both reconcile. NOTE (2026-08-04 Rozmanita split, d5892019): 'Rozmanita Škola' is now its own app-managed prevadzka (edupage_connection=None, own real row) — it must NOT be summed into 'Rozmanita Škôlka' here, or its counts vanish from its own real_only/app_only comparison and get silently folded into the kindergarten's total.",
 
-  "Fantastická": ["fantasticka skolka", "fantasticka"],
+  "Fantastická škôlka": ["fantasticka skolka", "fantasticka"],
+  "Do Sveta": ["do sveta (nemaju ranajky)", "do sveta"],
+  "Hravou Formou bez raňajok": [
+    "hravou formou bez ranajok enjoy creativity",
+    "hravou formou bez ranajok"
+  ],
+  "Motýlik a Včielka": ["motylik a vcielka male gn!!!", "motylik a vcielka"],
   "Edulienka": ["ms edulienka", "edulienka"],
   "Felix": ["ms felix karlovska", "felix"],
   "Filipa Nériho": ["ms filipaneriho", "filipa neriho"],

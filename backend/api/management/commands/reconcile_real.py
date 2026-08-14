@@ -33,8 +33,6 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 from openpyxl import load_workbook
 
-from api.services.meal_plan_service import MealPlanService
-
 REAL_DIR = Path(__file__).resolve().parents[4] / "test" / "data" / "real"
 
 
@@ -484,23 +482,21 @@ def _count_below(sheet, row: int) -> Decimal | None:
     return None
 
 
-def _column_meal_types(sheet, col_groups: list[dict]) -> dict[int, str]:
+def _column_meal_types(
+    sheet, col_groups: list[dict], component_columns: list[int | None] | None = None
+) -> dict[int, str]:
     """{Hárok1 column index → meal_type}, derived from the app's own dashboard.
 
     Which dish is lunch and which is olovrant changes daily, so the mapping is taken
-    from the app's ``col_groups`` (each carries its meal category) and matched to the
-    header by dish name rather than hard-coded column positions or name guesses.
+    from the app's ``col_groups`` (each carries its meal category) through the same
+    component→column alignment Tier 2 uses, never from hard-coded column positions.
     """
-    header_columns = _real_header_columns(sheet)
+    if component_columns is None:
+        component_columns, _ = _align_components(sheet, col_groups)
     result: dict[int, str] = {}
-    for group in col_groups:
-        meal_type = _APP_MEAL_TO_TYPE.get(group.get("meal", ""))
-        if meal_type is None:
-            continue
-        for component in group["components"]:
-            col = header_columns.get(_normalize(component["label"]))
-            if col is not None:
-                result.setdefault(col, meal_type)
+    for meal_type, col in zip(_component_meal_types(col_groups), component_columns):
+        if meal_type is not None and col is not None:
+            result.setdefault(col, meal_type)
     return result
 
 
@@ -553,32 +549,123 @@ def _real_counts_by_facility(
     }
 
 
-def _real_gram_values_by_name(
-    sheet,
-    row_numbers: list[int],
-    component_names: list[str],
-    header_columns: dict[str, int],
-) -> list[Decimal | None]:
-    """Real grams per app component, matched to the Hárok1 column by dish name.
+def _columns_by_name(sheet, component_names: list[str]) -> list[int | None]:
+    """Per app component → Hárok1 column, matched on the dish name.
 
-    Returns ``None`` for a component whose dish isn't in this day's header (e.g. a
-    diet-only facility whose menu differs from the standard) so the caller can skip
-    it rather than report a bogus diff against 0. Each real column is consumed at
-    most once: if two app components normalize to the same dish name, only the first
-    reads it (the rest get ``None``) so the real grams aren't double-counted.
+    Each real column is consumed at most once: if two app components normalize to
+    the same dish name, only the first reads it (the rest get ``None``) so the real
+    grams aren't double-counted.
     """
-    values: list[Decimal | None] = []
-    used_columns: set[int] = set()
+    header_columns = _real_header_columns(sheet)
+    columns: list[int | None] = []
+    used: set[int] = set()
     for name in component_names:
         col = header_columns.get(_normalize(name))
-        if col is None or col in used_columns:
+        if col is None or col in used:
+            columns.append(None)
+            continue
+        used.add(col)
+        columns.append(col)
+    return columns
+
+
+def _real_base_grams_by_column(sheet) -> dict[int, Decimal]:
+    """{column → KLASIK base gramage} from the day's base-gramage legend.
+
+    Row ``KLASIK`` of the legend states one portion of every dish in the header
+    (200 / 90 / 110 / 10 / … / 75), which is the same shape the app's meal plan
+    carries as ``base_grams``. That makes it a name-independent key for aligning
+    the two sides.
+    """
+    legend_rows = sorted(_legend_rows(sheet))
+    if not legend_rows:
+        return {}
+    klasik_row = legend_rows[0]  # the legend's first line is KLASIK
+    return {
+        col: _decimal(sheet.cell(row=klasik_row, column=col).value)
+        for col in _real_data_columns(sheet)
+    }
+
+
+def _columns_by_base_gramage(
+    sheet, component_base_grams: list[Decimal | None]
+) -> list[int | None]:
+    """Per app component → Hárok1 column, aligned on base gramage.
+
+    Production meal plans are built from generic gramage templates (``Hlavná
+    zložka``, ``Príloha``), so their component labels carry no dish name to match
+    the header with — but their per-portion gramage is exactly the workbook's
+    KLASIK legend row. Both sides list the day's dishes in serving order, so the
+    alignment is the longest common subsequence of the two gram sequences: that
+    keeps the order intact and lets a component with no counterpart (raňajky,
+    which Hárok1 doesn't carry at all) drop out instead of binding to an unrelated
+    column that happens to share a number.
+    """
+    base_by_col = _real_base_grams_by_column(sheet)
+    cols = [col for col, base in base_by_col.items() if base > 0]
+    app = component_base_grams
+    # lcs[i][j] = length of the best alignment of app[i:] with cols[j:]
+    lcs = [[0] * (len(cols) + 1) for _ in range(len(app) + 1)]
+    for i in range(len(app) - 1, -1, -1):
+        for j in range(len(cols) - 1, -1, -1):
+            matches = app[i] is not None and app[i] == base_by_col[cols[j]]
+            lcs[i][j] = max(
+                lcs[i + 1][j + 1] + 1 if matches else 0,
+                lcs[i + 1][j],
+                lcs[i][j + 1],
+            )
+    columns: list[int | None] = [None] * len(app)
+    i = j = 0
+    while i < len(app) and j < len(cols):
+        matches = app[i] is not None and app[i] == base_by_col[cols[j]]
+        if matches and lcs[i][j] == lcs[i + 1][j + 1] + 1:
+            columns[i] = cols[j]
+            i += 1
+            j += 1
+        elif lcs[i + 1][j] >= lcs[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    return columns
+
+
+def _align_components(sheet, col_groups: list[dict]) -> tuple[list[int | None], str]:
+    """Per app component → Hárok1 column, plus the strategy that produced it.
+
+    Dish names are the sharper key (they survive two dishes sharing a gramage), so
+    they win whenever they resolve at least as many components; the gramage
+    alignment is what makes a production meal plan — which has no dish names —
+    comparable at all.
+    """
+    by_name = _columns_by_name(sheet, _component_names(col_groups))
+    by_base = _columns_by_base_gramage(sheet, _component_base_grams(col_groups))
+    if sum(c is not None for c in by_name) >= sum(c is not None for c in by_base):
+        return by_name, "dish-name"
+    return by_base, "base-gramage"
+
+
+def _real_gram_values(
+    sheet, row_numbers: list[int], component_columns: list[int | None]
+) -> list[Decimal | None]:
+    """Real grams per app component, summed over the facility's whole block.
+
+    ``None`` for a component with no Hárok1 column (e.g. raňajky, which the sheet
+    doesn't carry) so the caller skips it rather than reporting a bogus diff.
+    """
+    values: list[Decimal | None] = []
+    for col in component_columns:
+        if col is None:
             values.append(None)
             continue
-        used_columns.add(col)
-        total = Decimal("0")
-        for row_number in row_numbers:
-            total += _decimal(sheet.cell(row=row_number, column=col).value)
-        values.append(total)
+        values.append(
+            sum(
+                (
+                    _decimal(sheet.cell(row=row, column=col).value)
+                    for row in row_numbers
+                ),
+                Decimal("0"),
+            )
+        )
     return values
 
 
@@ -589,6 +676,13 @@ class Command(BaseCommand):
         parser.add_argument("--date", required=True, help="Date YYYY-MM-DD.")
         parser.add_argument(
             "--workbook", help="Override workbook path (default: auto-resolve by date)."
+        )
+        parser.add_argument(
+            "--dashboard",
+            help=(
+                "Compare a gramage-dashboard JSON dump instead of the local DB — "
+                "how a production day is reconciled (see the compare-real skill)."
+            ),
         )
         parser.add_argument(
             "--alias-map",
@@ -625,7 +719,18 @@ class Command(BaseCommand):
         def _key(client: object) -> str:
             return _normalize(client)
 
-        dashboard = MealPlanService.gramage_dashboard(date_str)
+        dashboard_path = options.get("dashboard")
+        if dashboard_path:
+            # Production runs the same service, so its dump is the same shape — the
+            # app side of a prod reconciliation needs no DB access here at all.
+            with Path(dashboard_path).open(encoding="utf-8") as handle:
+                dashboard = json.load(handle)
+            source = f"dashboard dump ({Path(dashboard_path).name})"
+        else:
+            from api.services.meal_plan_service import MealPlanService
+
+            dashboard = MealPlanService.gramage_dashboard(date_str)
+            source = "local DB"
         app_rows = dashboard.get("rows", [])
         col_groups = dashboard.get("col_groups", [])
         labels = _component_labels(col_groups)
@@ -639,11 +744,21 @@ class Command(BaseCommand):
 
         har_sheet = wb["Hárok1"] if "Hárok1" in wb.sheetnames else wb.active
 
+        component_columns, align_strategy = _align_components(har_sheet, col_groups)
+        column_meal_types = _column_meal_types(har_sheet, col_groups, component_columns)
+        # A meal the workbook has no column for (raňajky live in their own morning
+        # table) cannot be reconciled at all. Comparing it anyway would fault every
+        # facility for the app's real breakfast count against a hard-coded 0.
+        comparable_meal_types = tuple(
+            meal_type
+            for meal_type in MEAL_TYPES
+            if meal_type in set(column_meal_types.values())
+        )
+        skipped_meal_types = [m for m in MEAL_TYPES if m not in comparable_meal_types]
+
         # ── Tier 1: counts (per meal type) ────────────────────────────────────
         real_counts = _rekey_by_alias(
-            _real_counts_by_facility(
-                har_sheet, _column_meal_types(har_sheet, col_groups)
-            ),
+            _real_counts_by_facility(har_sheet, column_meal_types),
             alias_map,
             _combine_count_buckets,
         )
@@ -658,7 +773,7 @@ class Command(BaseCommand):
             row, app_buckets = app_counts[key]
             real_buckets = real_counts[key]
             client = str(row.get("client", ""))
-            for meal_type in MEAL_TYPES:
+            for meal_type in comparable_meal_types:
                 app_val = app_buckets.get(meal_type) or Decimal("0")
                 real_val = real_buckets.get(meal_type) or Decimal("0")
                 diff = app_val - real_val
@@ -681,7 +796,7 @@ class Command(BaseCommand):
         count_diff_by_key_meal = {}
         for key, (row, app_buckets) in app_counts.items():
             real_buckets = real_counts.get(key, {})
-            for meal_type in MEAL_TYPES:
+            for meal_type in comparable_meal_types:
                 app_val = app_buckets.get(meal_type) or Decimal("0")
                 real_val = real_buckets.get(meal_type) or Decimal("0")
                 count_diff_by_key_meal[(key, meal_type)] = app_val - real_val
@@ -689,8 +804,6 @@ class Command(BaseCommand):
         # ── Tier 2: gramage ───────────────────────────────────────────────────
         gram_findings = []
         if width:
-            header_columns = _real_header_columns(har_sheet)
-            component_names = _component_names(col_groups)
             real_gram_rows = _rekey_by_alias(
                 _real_rows_by_label(har_sheet),
                 alias_map,
@@ -707,8 +820,8 @@ class Command(BaseCommand):
                     )
                     continue
                 block_rows = _expand_block_rows(har_sheet, row_numbers)
-                real_values = _real_gram_values_by_name(
-                    har_sheet, block_rows, component_names, header_columns
+                real_values = _real_gram_values(
+                    har_sheet, block_rows, component_columns
                 )
                 for label, real_v, app_v, meal_type, base_grams in zip(
                     labels,
@@ -744,7 +857,11 @@ class Command(BaseCommand):
         report = {
             "date": date_str,
             "workbook": workbook_path.name,
+            "app_source": source,
             "meal_plan_id": dashboard.get("meal_plan_id"),
+            "column_alignment": align_strategy,
+            "meal_types_compared": list(comparable_meal_types),
+            "meal_types_skipped": skipped_meal_types,
             "tier1_counts": {
                 "matched": count_findings,
                 "app_only": app_only,
@@ -765,7 +882,7 @@ class Command(BaseCommand):
 
         s = report["summary"]
         self.stderr.write(
-            f"[{date_str}] {workbook_path.name}: "
+            f"[{date_str}] {workbook_path.name} ({source}, {align_strategy}): "
             f"counts OK={s['count_ok']} FAIL={s['count_fail']}  "
             f"gram FAIL={s['gram_fail']} missing={s['gram_missing_rows']}  "
             f"unmatched={s['unmatched_facilities']}"
