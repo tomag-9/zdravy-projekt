@@ -6,6 +6,7 @@ import datetime
 from decimal import Decimal
 from typing import Any
 
+from django.core.exceptions import FieldDoesNotExist
 from django.db.models import Model
 
 from ..models import EventLog
@@ -30,13 +31,23 @@ def _json_value(value: Any) -> Any:
 
 
 def build_model_diff(instance: Model | None, validated_data: dict[str, Any]) -> dict:
-    """Return JSON-safe ``from``/``to`` values for serializer changes."""
+    """Return JSON-safe ``from``/``to`` values for serializer changes.
+
+    Serializery bežne nesú aj polia, ktoré na modeli neexistujú — `company_name`
+    žije na profile, `prevadzky` je M2M spracované ručne v `create()`. Tie sa
+    preskakujú: pôvodnú hodnotu z inštancie prečítať nemáme odkiaľ a vymyslené
+    ``from: null`` by v audite klamalo. Bez tejto poistky navyše `get_field()`
+    vyhodí `FieldDoesNotExist` a zhodí celý zápis (teda aj uloženie).
+    """
     changes = {}
     for field_name, new_value in validated_data.items():
         if instance is None:
             old_value = None
         else:
-            field = instance._meta.get_field(field_name)
+            try:
+                field = instance._meta.get_field(field_name)
+            except FieldDoesNotExist:
+                continue
             if field.many_to_many:
                 old_value = list(
                     getattr(instance, field_name).values_list("pk", flat=True)

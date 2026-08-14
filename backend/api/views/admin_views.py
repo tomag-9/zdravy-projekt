@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
 from ..serializers_user import AdminUserSerializer
+from .audit_mixins import AuditedModelViewSetMixin
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +24,33 @@ class AdminUserPagination(pagination.PageNumberPagination):
     max_page_size = 500
 
 
+def _display_name(user) -> str:
+    """Meno používateľa pre tabuľku udalostí, alebo prázdno keď ho nemá.
+
+    E-mail je identifikátor, nie meno — v audite sa zle číta a pri dlhých
+    adresách rozhadzuje stĺpec. Poradie: meno a priezvisko loginu → názov
+    prevádzky z profilu (klienti bežne priezvisko vyplnené nemajú). Prázdny
+    reťazec necháva rozhodnutie na volajúcom, ktorý spadne späť na e-mail.
+    """
+    if user is None:
+        return ""
+    full_name = f"{user.first_name} {user.last_name}".strip()
+    if full_name:
+        return full_name
+    profile = getattr(user, "profile", None)
+    return (getattr(profile, "company_name", "") or "").strip()
+
+
 class AdminEventLogSerializer(serializers.ModelSerializer):
     event_type_label = serializers.CharField(
         source="get_event_type_display", read_only=True
     )
     actor_email = serializers.EmailField(source="actor.email", read_only=True)
+    actor_name = serializers.SerializerMethodField()
     target_user_email = serializers.EmailField(
         source="target_user.email", read_only=True
     )
+    target_user_name = serializers.SerializerMethodField()
 
     class Meta:
         model = EventLog
@@ -40,13 +60,21 @@ class AdminEventLogSerializer(serializers.ModelSerializer):
             "event_type_label",
             "actor",
             "actor_email",
+            "actor_name",
             "actor_label",
             "target_user",
             "target_user_email",
+            "target_user_name",
             "summary",
             "payload",
             "created_at",
         ]
+
+    def get_actor_name(self, obj) -> str:
+        return _display_name(obj.actor)
+
+    def get_target_user_name(self, obj) -> str:
+        return _display_name(obj.target_user)
 
 
 @extend_schema_view(
@@ -57,7 +85,7 @@ class AdminEventLogSerializer(serializers.ModelSerializer):
     partial_update=extend_schema(tags=["admin"]),
     destroy=extend_schema(tags=["admin"]),
 )
-class AdminUserViewSet(viewsets.ModelViewSet):
+class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     Admin ViewSet for managing users and their settings.
 
@@ -123,7 +151,9 @@ class AdminUserViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        user = serializer.save()
+        # super() vykoná uloženie a zapíše zmenu do Udalostí (AuditedModelViewSetMixin).
+        super().perform_create(serializer)
+        user = serializer.instance
 
         try:
             profile = user.profile
@@ -138,7 +168,8 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         old_email = serializer.instance.email
-        user = serializer.save()
+        super().perform_update(serializer)
+        user = serializer.instance
 
         # Email zmenený → starý setup/reset odkaz smeruje na účet pod inou
         # adresou a heslo bolo zvolené (alebo naposledy obnovené) s vedomím
@@ -223,7 +254,11 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [permissions.IsAdminUser]
 
     def get_queryset(self):
-        queryset = EventLog.objects.select_related("actor", "target_user")
+        # Profily sa ťahajú spolu s používateľmi: meno pre tabuľku ich číta pre
+        # každý riadok, takže bez toho je to N+1 dotazov na stránku.
+        queryset = EventLog.objects.select_related(
+            "actor", "actor__profile", "target_user", "target_user__profile"
+        )
         event_type = self.request.query_params.get("event_type", "").strip()
         actor = self.request.query_params.get("actor", "").strip()
         date_from = self.request.query_params.get("date_from", "").strip()

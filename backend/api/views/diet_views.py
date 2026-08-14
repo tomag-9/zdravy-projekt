@@ -15,6 +15,7 @@ from ..models import Diet
 from ..serializers_user import DietSerializer
 from ..services.meal_plan_service import resolve_diet_menu_variants
 from ..utils import parse_date_param
+from .audit_mixins import AuditedModelViewSetMixin
 
 
 @extend_schema_view(
@@ -27,7 +28,7 @@ from ..utils import parse_date_param
     reorder=extend_schema(tags=["diets"]),
     menu_variant_map=extend_schema(tags=["diets"]),
 )
-class DietViewSet(viewsets.ModelViewSet):
+class DietViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for the Diet model (CRUD).
 

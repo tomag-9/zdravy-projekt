@@ -3,8 +3,9 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..models import EventLog
 from ..serializers_user import UserProfileSerializer
-from ..services.event_log_service import build_model_diff
+from ..services.event_log_service import build_model_diff, log_event
 
 
 @extend_schema_view(
@@ -40,7 +41,22 @@ class UserProfileViewSet(viewsets.ViewSet):
                 context={"request": request},
             )
             if serializer.is_valid():
+                # Diff sa berie pred uložením — potom sú staré hodnoty preč.
+                # Profil si mení používateľ sám, takže aktor aj cieľ je on.
+                changes = build_model_diff(request.user, serializer.validated_data)
                 serializer.save()
+                if changes:
+                    log_event(
+                        EventLog.EventType.SETTINGS_CHANGE,
+                        actor=request.user,
+                        target_user=request.user,
+                        summary=f"{request.user.email} upravil svoj profil.",
+                        payload={
+                            "model": "api.userprofile",
+                            "object_id": request.user.pk,
+                            "changes": changes,
+                        },
+                    )
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
