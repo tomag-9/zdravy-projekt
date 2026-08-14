@@ -534,6 +534,15 @@
 .zpa-badge--gray   { background: var(--bg-cream-soft); color: var(--ink-3); }
 .zpa-badge--orange { background: rgba(239,152,33,0.18); color: var(--orange-500); }
 
+/* Čas udalosti na dva riadky: deň nad hodinou. Tabulárne číslice, aby
+   sa čísla pod sebou zvisle zarovnali a stĺpec nepoškakoval. */
+.zpa-time {
+    display: inline-flex; flex-direction: column; line-height: 1.25;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.zpa-time__day { font-weight: 600; }
+.zpa-time__hm { color: var(--ink-3); font-size: 0.875em; }
+
 /* ========================================================== *
  * Modal
  * ========================================================== */

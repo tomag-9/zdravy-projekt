@@ -296,3 +296,49 @@ def test_facility_and_edupage_changes_include_field_diffs(admin_client, admin_us
     ).get()
     assert connection_event.payload["changes"]["api_identifier"]["to"] == "new"
     assert Celok.objects.filter(pk=celok_id).exists()
+
+
+@pytest.mark.django_db
+def test_event_log_endpoint_exposes_names_not_just_emails(
+    admin_client, admin_user, user
+):
+    """Tabuľka udalostí ukazuje meno; e-mail je identifikátor, nie meno.
+
+    Meno sa berie z loginu (`first_name`/`last_name`), a keď ho nemá — čo je pri
+    klientoch bežné — z názvu prevádzky na profile.
+    """
+    from api.models import UserProfile
+
+    admin_user.first_name = "Jana"
+    admin_user.last_name = "Sláviková"
+    admin_user.save(update_fields=["first_name", "last_name"])
+    UserProfile.objects.update_or_create(
+        user=user, defaults={"company_name": "MŠ Krásnanko"}
+    )
+
+    log_event(
+        EventLog.EventType.ORDER_ADMIN_UPDATE,
+        actor=admin_user,
+        target_user=user,
+        summary="Objednávka upravená.",
+    )
+
+    response = admin_client.get("/api/admin/event-logs/")
+
+    assert response.status_code == status.HTTP_200_OK
+    entry = response.json()["results"][0]
+    assert entry["actor_name"] == "Jana Sláviková"
+    assert entry["target_user_name"] == "MŠ Krásnanko"
+    # E-mail ostáva v odpovedi ako záloha pre účty bez mena.
+    assert entry["actor_email"] == admin_user.email
+
+
+@pytest.mark.django_db
+def test_event_log_names_are_blank_for_system_actors(admin_client):
+    """Cron nemá login ani meno — riadok sa musí zaobísť bez oboch."""
+    log_event(EventLog.EventType.CRON_RUN, actor_label="cron", summary="Cron dobehol.")
+
+    entry = admin_client.get("/api/admin/event-logs/").json()["results"][0]
+
+    assert entry["actor_name"] == ""
+    assert entry["actor_label"] == "cron"
