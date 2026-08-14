@@ -10,6 +10,7 @@ from openpyxl import Workbook
 
 from api.management.commands.reconcile_real import (
     _column_meal_types,
+    _columns_by_name,
     _combine_count_buckets,
     _count_or_none,
     _expand_block_rows,
@@ -17,7 +18,7 @@ from api.management.commands.reconcile_real import (
     _load_alias_map,
     _normalize,
     _real_counts_by_facility,
-    _real_gram_values_by_name,
+    _real_gram_values,
     _real_header_columns,
     _real_rows_by_label,
     _rekey_by_alias,
@@ -181,10 +182,9 @@ class TestHarok1BlockParsing(unittest.TestCase):
         self.assertEqual(rows, [7, 9])
 
     def test_gram_values_by_name_sum_block(self):
-        cols = _real_header_columns(self.ws)
         names = ["Polievka", "Hlavná", "Vajce", "Nátierka", "Pečivo"]
         rows = _expand_block_rows(self.ws, [2])  # klasik + No milk
-        vals = _real_gram_values_by_name(self.ws, rows, names, cols)
+        vals = _real_gram_values(self.ws, rows, _columns_by_name(self.ws, names))
         # Polievka 2400+200, Hlavná 2220+185, Vajce 6+0.5, Nátierka 300+0, Pečivo 12+0
         self.assertEqual(
             vals,
@@ -198,14 +198,15 @@ class TestHarok1BlockParsing(unittest.TestCase):
         )
 
     def test_gram_values_none_for_missing_dish(self):
-        cols = _real_header_columns(self.ws)
-        vals = _real_gram_values_by_name(self.ws, [2], ["Neexistuje"], cols)
+        vals = _real_gram_values(
+            self.ws, [2], _columns_by_name(self.ws, ["Neexistuje"])
+        )
         self.assertEqual(vals, [None])
 
     def test_duplicate_dish_name_not_double_counted(self):
         # dva app komponenty s rovnakým názvom jedla → real stĺpec sa číta len raz
-        cols = _real_header_columns(self.ws)
-        vals = _real_gram_values_by_name(self.ws, [2], ["Polievka", "Polievka"], cols)
+        columns = _columns_by_name(self.ws, ["Polievka", "Polievka"])
+        vals = _real_gram_values(self.ws, [2], columns)
         self.assertEqual(vals, [Decimal("2400"), None])
 
 
