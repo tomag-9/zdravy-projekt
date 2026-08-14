@@ -36,6 +36,23 @@ vôbec, na mobile ho tooltip prekryl).
 **viacerými** prevádzkami, aby testy prechádzali aj cestou výberu prevádzky,
 kde vznikali chyby (objednávky sa vedú per prevádzka).
 
+Pre `/admin` je to `admin@example.com` / `admin` (`loginAsAdmin()`). Nejde cez
+`login()`: ten čaká na `/home`, kam sa staff nikdy nedostane.
+
+## Admin na mobile
+
+`admin-mobile.spec.ts` beží len v projekte `mobile` (nad 900px sa mobilný shell
+vôbec nezapína, preto sa na desktope preskočí). Stráži tri veci:
+
+- žiadna admin obrazovka netečie do strán — ani dokument, ani `.zpa-main`.
+  Široké tabuľky (gramáž, logy) smú scrollovať, ale vo vlastnom
+  `.zpa-table-wrap`;
+- zásuvka s navigáciou sa otvorí nad topbarom, má čitateľné popisky (rail sa na
+  desktope rozbaľuje hoverom, ktorý na dotyku neexistuje) a po výbere položky sa
+  zavrie. Zatvára sa posunom, takže sa testuje **poloha**, nie `toBeHidden()`;
+- poradie prevádzok v trase sa dá meniť šípkami — HTML5 drag & drop sa na
+  dotyku vôbec nespustí.
+
 ## Na čo si dať pozor pri písaní testov
 
 - **Mobilné modály.** Po prihlásení sa na mobile otvorí `PWAInstallBanner` a

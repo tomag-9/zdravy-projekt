@@ -6,6 +6,12 @@ export const MULTI_PREVADZKA_LOGIN = {
   password: "prevadzka",
 };
 
+/** Demo admin zo `init_roles` — jediný login, ktorý vidí `/admin`. */
+export const ADMIN_LOGIN = {
+  email: "admin@example.com",
+  password: "admin",
+};
+
 /**
  * Na mobilnom viewporte sa po prihlásení otvorí modál „Nainštalovať aplikáciu“
  * (`PWAInstallBanner`) a prekryje celé UI. Je to správne správanie appky, len
@@ -33,6 +39,21 @@ export async function login(
   await page.fill('input[type="password"]', credentials.password);
   await page.click('button[type="submit"]');
   await page.waitForURL(/\/home/);
+}
+
+/**
+ * Prihlási admina a počká na admin shell.
+ *
+ * Nejde cez `login()`: ten čaká na `/home`, kam sa staff nikdy nedostane —
+ * `ProtectedRoute` ho hneď presmeruje na `/admin`.
+ */
+export async function loginAsAdmin(page: Page): Promise<void> {
+  await dismissMobilePrompts(page);
+  await page.goto("/login");
+  await page.fill('input[inputmode="email"]', ADMIN_LOGIN.email);
+  await page.fill('input[type="password"]', ADMIN_LOGIN.password);
+  await page.click('button[type="submit"]');
+  await page.waitForURL(/\/admin/);
 }
 
 /**

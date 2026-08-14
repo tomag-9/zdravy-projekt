@@ -290,7 +290,9 @@ const SystemSettings: React.FC = () => {
                             Prepíše objednávky EduPage prevádzok pre zvolený deň aktuálnymi
                             počtami. Použi ráno, keď rodičia po večernom scrape odhlásili deti.
                         </p>
-                        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', marginTop: 12 }}>
+                        {/* `flexWrap` kvôli úzkym displejom: tlačidlo má nowrap
+                            a vedľa dátumu sa na 320px nezmestí. */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginTop: 12 }}>
                             <Field label="Deň">
                                 <Input
                                     type="date"
