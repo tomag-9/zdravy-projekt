@@ -119,6 +119,59 @@ class TestCatalogAudit:
 
 
 @pytest.mark.django_db
+class TestNestedSourceAudit:
+    """Pole s vnoreným ``source`` nesmie zhodiť zápis, ktorý audituje.
+
+    ``UserProfileSerializer.onboarding_completed`` má
+    ``source="profile.onboarding_completed"``, takže do ``validated_data`` príde
+    ako ``{"profile": {...}}``. ``User._meta.get_field("profile")`` je reverzná
+    ``OneToOneRel`` — nemá ``attname`` a diff na nej padal na ``AttributeError``.
+    Zhodil tým **celé uloženie profilu**, nielen audit.
+    """
+
+    def test_saving_a_nested_field_succeeds_and_is_recorded(
+        self, authenticated_client, user
+    ):
+        response = authenticated_client.patch(
+            "/api/user/profile/", {"onboarding_completed": True}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        user.profile.refresh_from_db()
+        assert user.profile.onboarding_completed is True
+
+        event = _changes("api.userprofile").get()
+        assert event.payload["changes"]["profile.onboarding_completed"] == {
+            "from": False,
+            "to": True,
+        }
+
+    def test_saving_works_for_a_user_who_has_no_profile_yet(
+        self, admin_client, admin_user
+    ):
+        """Reverzná väzba pri chýbajúcom objekte hádže, nevracia ``None``.
+
+        Profil vzniká až v ``update()``, takže v okamihu diffu ešte nie je —
+        naivné ``getattr`` by tu spadlo na ``RelatedObjectDoesNotExist``.
+        """
+        assert not hasattr(admin_user, "profile")
+
+        response = admin_client.patch(
+            "/api/user/profile/", {"onboarding_completed": True}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        admin_user.refresh_from_db()
+        assert admin_user.profile.onboarding_completed is True
+
+        event = _changes("api.userprofile").get()
+        assert event.payload["changes"]["profile.onboarding_completed"] == {
+            "from": None,
+            "to": True,
+        }
+
+
+@pytest.mark.django_db
 def test_sensitive_values_are_never_written_to_the_audit():
     """Audit číta každý admin — heslá a tokeny doň nesmú ani omylom."""
     from api.views.audit_mixins import _redact

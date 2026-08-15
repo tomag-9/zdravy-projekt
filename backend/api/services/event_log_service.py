@@ -6,7 +6,7 @@ import datetime
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 from django.db.models import Model
 
 from ..models import EventLog
@@ -30,6 +30,19 @@ def _json_value(value: Any) -> Any:
     return value
 
 
+def _related_instance(instance: Model, field_name: str) -> Model | None:
+    """Súvisiaci objekt pre vnorený ``source``, alebo ``None`` ak ešte nie je.
+
+    Reverzná ``OneToOne`` väzba pri chýbajúcom objekte vyhodí
+    ``RelatedObjectDoesNotExist`` namiesto toho, aby vrátila ``None`` — to je
+    prípad používateľa, ktorému profil vzniká až týmto zápisom.
+    """
+    try:
+        return getattr(instance, field_name, None)
+    except ObjectDoesNotExist:
+        return None
+
+
 def build_model_diff(instance: Model | None, validated_data: dict[str, Any]) -> dict:
     """Return JSON-safe ``from``/``to`` values for serializer changes.
 
@@ -38,6 +51,12 @@ def build_model_diff(instance: Model | None, validated_data: dict[str, Any]) -> 
     preskakujú: pôvodnú hodnotu z inštancie prečítať nemáme odkiaľ a vymyslené
     ``from: null`` by v audite klamalo. Bez tejto poistky navyše `get_field()`
     vyhodí `FieldDoesNotExist` a zhodí celý zápis (teda aj uloženie).
+
+    Pole s vnoreným ``source`` (``UserProfileSerializer.onboarding_completed``
+    má ``source="profile.onboarding_completed"``) príde ako vnorený dict pod
+    menom väzby. Hodnota patrí súvisiacemu objektu, nie tejto inštancii, takže
+    sa diff počíta rekurzívne a zmena sa zapíše pod bodkovaným kľúčom —
+    rovnaký tvar, aký dáva :func:`build_nested_dict_diff`.
     """
     changes = {}
     for field_name, new_value in validated_data.items():
@@ -48,12 +67,25 @@ def build_model_diff(instance: Model | None, validated_data: dict[str, Any]) -> 
                 field = instance._meta.get_field(field_name)
             except FieldDoesNotExist:
                 continue
+            if field.is_relation and isinstance(new_value, dict):
+                nested = build_model_diff(
+                    _related_instance(instance, field_name), new_value
+                )
+                for nested_name, nested_change in nested.items():
+                    changes[f"{field_name}.{nested_name}"] = nested_change
+                continue
             if field.many_to_many:
                 old_value = list(
                     getattr(instance, field_name).values_list("pk", flat=True)
                 )
             elif field.is_relation:
-                old_value = getattr(instance, field.attname)
+                # Reverzná väzba (``OneToOneRel``, ``ManyToOneRel``) nemá na
+                # inštancii vlastný stĺpec, teda ani ``attname``. Prečítať sa dá
+                # len cez súvisiaci objekt — a to rieši vetva vyššie.
+                attname = getattr(field, "attname", None)
+                if attname is None:
+                    continue
+                old_value = getattr(instance, attname)
             else:
                 old_value = getattr(instance, field_name)
         old_json = _json_value(old_value)
