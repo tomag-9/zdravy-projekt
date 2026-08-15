@@ -48,6 +48,7 @@ package-lock.json
 # Husky
 .husky/
 .mypy_cache/
+.ruff_cache/
 
 # Frontend build
 frontend/dist/
@@ -114,6 +115,8 @@ tasks.md
 feedback.md
 test/
 prevadzky.md
+feedback.md
+CLAUDE-LOCAL.md
 
 # Playwright E2E artefakty
 frontend/test-results/
