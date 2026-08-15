@@ -15,7 +15,8 @@
         "perf",
         "ci",
         "build",
-        "revert"
+        "revert",
+        "release"
       ]
     ],
     "type-case": [2, "always", "lower-case"],
