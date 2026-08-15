@@ -111,8 +111,10 @@ const AdminUserDetail: React.FC = () => {
           <span className="zpa-avatar-sm" style={{ width: 60, height: 60, fontSize: 24 }}>
             {user.email.charAt(0).toUpperCase()}
           </span>
-          <div>
-            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, color: "var(--green-900)", margin: 0 }}>
+          {/* `minWidth: 0` nie je kozmetika: bez neho sa flex položka nezmenší
+              pod svoj obsah a e-mail v nadpise vytečie z obrazovky. */}
+          <div style={{ minWidth: 0 }}>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, fontWeight: 700, color: "var(--green-900)", margin: 0, overflowWrap: "anywhere" }}>
               {user.first_name || user.last_name ? `${user.first_name} ${user.last_name}`.trim() : user.email}
             </h1>
             <p style={{ color: "var(--ink-3)", margin: "4px 0 0" }}>Úprava osobných údajov a rolí</p>

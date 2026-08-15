@@ -292,6 +292,9 @@
     margin: 0;
     letter-spacing: -0.01em;
     line-height: 1.1;
+    /* Nadpis býva dáta, nie text — e-mail admina ani názov celku nemajú kde
+     * zalomiť a na úzkej obrazovke by vytiekli von. */
+    overflow-wrap: anywhere;
 }
 .zpa-pagehead p {
     margin: 6px 0 0;
@@ -368,6 +371,16 @@
 }
 .zpa-draggable-row:hover .zpa-row-grip { color: var(--green-700); background: rgba(114,136,75,0.10); }
 .zpa-row-grip svg { width: 17px; height: 17px; }
+
+/* Akcie riadku (šípky poradia + ostatné tlačidlá). */
+.zpa-rowactions { display: inline-flex; align-items: center; gap: 4px; justify-content: flex-end; flex-wrap: wrap; }
+
+/* Na dotyku sa HTML5 drag & drop nespustí, takže úchyt nič nesľubuje —
+ * poradie sa tam mení šípkami. Miesto po ňom využijú akcie riadku. */
+@media (hover: none) and (pointer: coarse) {
+    .zpa-row-grip { display: none; }
+    .zpa-gripcell { display: none; }
+}
 
 /* ========================================================== *
  * Cards
@@ -735,27 +748,138 @@
  * ========================================================== */
 .zpa-topbar { display: none; }
 @media (max-width: 900px) {
+    /* Shell je na desktope flex **riadok** (rail vľavo, obsah vpravo). Na mobile
+     * pribúda topbar ako ďalší priamy potomok — v riadku by si sadol vedľa
+     * obsahu ako úzky stĺpec a zvyšok appky stlačil mimo viewport. Preto sa tu
+     * shell prepína na stĺpec: topbar hore, obsah pod ním. */
+    .zpa-app { flex-direction: column; }
     .zpa-topbar {
-        display: flex; align-items: center; gap: 12px;
+        display: flex; align-items: center; gap: 12px; flex: 0 0 auto;
         position: sticky; top: 0; z-index: 40;
         height: 56px; padding: 0 16px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
         background: var(--bg-cream-warm);
         border-bottom: 1px solid var(--line-soft);
     }
     .zpa-topbar img { height: 26px; width: auto; }
     .zpa-topbar .zpa-iconbtn { margin-left: auto; }
-    .zpa-sidebar { transform: translateX(-100%); transition: transform 240ms cubic-bezier(.4,0,.2,1); width: 264px; }
+    /* V stĺpci by `height: 100%` z desktopu pretiekol o výšku topbaru. */
+    .zpa-main { height: auto; flex: 1 1 auto; min-height: 0; }
+    /* Zásuvka prekrýva aj topbar — inak by jej hlavička s logom zmizla pod ním. */
+    .zpa-sidebar {
+        transform: translateX(-100%);
+        transition: transform 240ms cubic-bezier(.4,0,.2,1);
+        width: 264px;
+        z-index: 45;
+    }
     .zpa-sidebar::after { display: none; }
     .zpa-sidebar:hover { width: 264px; box-shadow: none; }
-    .zpa-sidebar .brand-mini { display: none; }
-    .zpa-sidebar .brand-full { display: flex; }
-    .zpa-sidebar .zpa-nav-item .lbl, .zpa-sidebar .zpa-nav-section .lbl { opacity: 1; }
-    .zpa-sidebar .zpa-user .body, .zpa-sidebar .zpa-user .logout { opacity: 1; pointer-events: auto; }
+    /* Rail sa na desktope rozbaľuje cez `:hover`; na dotyku hover neexistuje,
+     * takže je zásuvka vždy „rozbalená". Selektory musia prebiť
+     * `.zpa-sidebar:not(:hover) …` — `:not(:hover)` sa počíta do špecificity,
+     * takže bez zopakovania `:not(:hover)` by tieto pravidlá prehrali. */
+    .zpa-sidebar:not(:hover) .brand-mini { display: none; }
+    .zpa-sidebar:not(:hover) .brand-full { display: flex; }
+    .zpa-sidebar:not(:hover) .zpa-nav-item .lbl,
+    .zpa-sidebar:not(:hover) .zpa-nav-section .lbl { opacity: 1; }
+    .zpa-sidebar:not(:hover) .zpa-user .body,
+    .zpa-sidebar:not(:hover) .zpa-user .logout { opacity: 1; pointer-events: auto; }
     .zpa-app.nav-open .zpa-sidebar { transform: translateX(0); box-shadow: 10px 0 44px rgba(23,53,5,0.16); }
     .zpa-main { margin-left: 0; }
-    .zpa-scrim-nav { position: fixed; inset: 0; z-index: 25; background: rgba(23,53,5,0.28); }
-    .zpa-content { padding: 20px 16px 48px; }
+    .zpa-scrim-nav { position: fixed; inset: 0; z-index: 42; background: rgba(23,53,5,0.28); }
+    .zpa-content {
+        padding: 20px 16px 48px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+        padding-bottom: calc(48px + env(safe-area-inset-bottom));
+    }
     .zpa-content--wide { max-width: none; }
+    /* Gramáž si drží vlastný scroll; na desktope si odpočítava hlavičku stránky,
+     * na mobile navyše 56px topbaru. */
+    .zpa-gram-wrap { max-height: calc(100vh - 224px); }
+}
+
+/* ========================================================== *
+ * Mobile: obsah stránok
+ * ----------------------------------------------------------
+ * Admin bol navrhnutý na širokú obrazovku — riadky s pevnými stĺpcami,
+ * toolbary v jednom riadku, tabuľky so 6+ stĺpcami. Tu sa tie isté vzory
+ * preskladajú na výšku; širokú tabuľku (gramáž, logy) necháme scrollovať
+ * vodorovne vo vlastnom kontajneri, nie celou stránkou.
+ * ========================================================== */
+@media (max-width: 700px) {
+    .zpa-pagehead { margin-bottom: 20px; gap: 14px; }
+    .zpa-pagehead h1 { font-size: 24px; }
+    .zpa-pagehead .actions { width: 100%; }
+
+    /* Toolbary a hlavičky kariet: radšej zalomiť ako pretiecť. */
+    .zpa-card-head { flex-wrap: wrap; gap: 12px; padding: 16px; }
+    .zpa-card--pad { padding: 16px; }
+    .zpa-listrow { flex-wrap: wrap; gap: 10px; padding: 14px 16px; }
+    .zpa-listgroup-label { padding: 8px 16px; }
+    .zpa-statusgrid { grid-template-columns: 1fr; }
+
+    /* Tabuľky: užšie odsadenie, aby sa vodorovný scroll spustil čo najneskôr. */
+    .zpa-table thead th { padding: 12px 14px; }
+    .zpa-table tbody td { padding: 12px 14px; }
+
+    /* Taby sa nezmestia vedľa seba — nech sa dajú prejsť prstom. */
+    .zpa-tabs { overflow-x: auto; scrollbar-width: none; }
+    .zpa-tabs::-webkit-scrollbar { display: none; }
+    .zpa-tab { flex: 0 0 auto; padding: 13px 18px; white-space: nowrap; }
+
+    /* Dátový navigátor: šípky po stranách, dátum na vlastný riadok. */
+    .zpa-datenav { flex-wrap: wrap; justify-content: space-between; row-gap: 10px; padding: 14px 16px; }
+    .zpa-datenav .mid { order: 3; flex: 1 0 100%; justify-content: center; flex-wrap: wrap; }
+    .zpa-navchip { padding: 9px 12px; }
+
+    /* Kalendár jedálnička: 7 stĺpcov na 390px znamená ~50px na bunku. */
+    .zpa-cal-grid, .zpa-cal-dow { gap: 3px; }
+    .zpa-cal-cell { min-height: 56px; padding: 5px 4px; gap: 3px; border-radius: var(--radius-sm); }
+    .zpa-cal-cell .dnum { font-size: 12px; }
+    /* Text „Plán" sa do bunky nezmestí — ostáva bodka ako indikátor. */
+    .zpa-cal-plan { font-size: 0; gap: 0; }
+    .zpa-cal-plan .dot { width: 6px; height: 6px; }
+    .zpa-cal-plan .grams { display: none; }
+    .zpa-cal-legend { flex-wrap: wrap; gap: 10px 16px; font-size: 12px; }
+
+    /* Riadok s koeficientom diéty: názov mal pevných 180px. */
+    .zpa-coefrow { flex-wrap: wrap; }
+    .zpa-coefrow .nm { flex: 1 0 100%; }
+
+    .zpa-tplrow { flex-wrap: wrap; }
+    .zpa-tplrow .wl { margin-left: 0; }
+}
+
+/* Modál ako bottom sheet: na výšku obrazovky je stred plytvanie miestom
+ * a tlačidlá v päte sú príliš ďaleko od palca. */
+@media (max-width: 600px) {
+    .zpa-scrim { padding: 0; align-items: flex-end; }
+    .zpa-modal {
+        max-width: none;
+        max-height: 92%;
+        border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    }
+    .zpa-modal--wide { max-width: none; }
+    .zpa-modal-head { padding: 16px; }
+    .zpa-modal-body { padding: 16px; }
+    .zpa-modal-foot {
+        padding: 12px 16px;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
+        flex-direction: column-reverse;
+    }
+    .zpa-modal-foot .zpa-btn { width: 100%; }
+}
+
+/* Dotykové ciele: 34px ikonové tlačidlo sa myšou trafí, prstom nie.
+ * Viazané na hrubý ukazovateľ, nie na šírku — dotykový tablet v šírke
+ * desktopu má rovnaký problém. */
+@media (hover: none) and (pointer: coarse) {
+    .zpa-iconbtn { width: 42px; height: 42px; }
+    .zpa-btn { padding: 12px 18px; }
+    .zpa-btn--sm { padding: 10px 14px; }
+    .zpa-tab { min-height: 46px; }
 }
 
 /* ── Celok → prevádzky (rozbaliteľný zoznam v Správe prevádzok) ── */
@@ -772,7 +896,12 @@
     display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;
     padding: 6px 0; background: none; border: none; cursor: pointer;
     text-align: left; font: inherit; color: inherit;
+    /* Bez zalomenia sa dlhý názov celku aj s odznakmi rozlial cez tlačidlá
+     * akcií vpravo (flex položky sa implicitne nezmenšujú pod svoj obsah). */
+    flex-wrap: wrap; row-gap: 6px;
 }
+.zpa-celok-toggle > span { min-width: 0; overflow-wrap: anywhere; }
+.zpa-celok-toggle .zpa-badge { flex: 0 0 auto; }
 .zpa-celok-toggle .chev { color: var(--green-600); }
 .zpa-celok-actions { display: inline-flex; gap: 4px; flex-shrink: 0; }
 .zpa-celok-body {
@@ -782,6 +911,15 @@
     overflow-x: auto;
 }
 .zpa-celok-body .zpa-table { background: transparent; }
+
+/* Štyri ikonové akcie zožerú na mobile polovicu šírky — názov celku dostane
+ * vlastný riadok a akcie sa zarovnajú pod neho doprava. Pravidlá musia stáť až
+ * za definíciami vyššie: majú rovnakú špecificitu, takže rozhoduje poradie. */
+@media (max-width: 700px) {
+    .zpa-celok-row { flex-wrap: wrap; padding: 10px 12px 10px 14px; }
+    .zpa-celok-toggle { flex: 1 1 100%; }
+    .zpa-celok-actions { margin-left: auto; }
+}
 
 /* ========================================================== *
  * Filter sekcií gramáže (raňajky / polievka / menu / olovrant)
