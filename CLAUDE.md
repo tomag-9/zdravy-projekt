@@ -1,6 +1,6 @@
 # CLAUDE.md — zdravy-projekt (Zdravé Brúsko)
 
-Django (backend) + React/TS (frontend), beží cez `docker compose -f compose/dev.yml`.
+Django (backend) + React/TS (frontend)
 Slovenský systém objednávania školských jedál.
 
 ## Doménový model
@@ -25,6 +25,4 @@ seed_real_delivery_layout → seed_merge_celky → sync_periodic_tasks).
 
 ## Pravidlá
 - **Commit / PR** len na výslovné vyžiadanie. Pred commitom zelený suite.
-- Test-fixtures pre objednávky: klient potrebuje `UserProfile` (signál mu dá celok + default
-  prevádzku), inak `DailyOrder` padne na NOT NULL. Viac objednávok pre rovnaký deň/používateľa
-  alebo staff bez profilu → vytvor explicitný `Celok`+`Prevadzka` a odovzdaj `prevadzka=`.
+- Ďalšie pravidla v CLAUDE-LOCAL.md prečítaj si to.
