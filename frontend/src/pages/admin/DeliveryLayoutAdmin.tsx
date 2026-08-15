@@ -169,6 +169,31 @@ const DeliveryLayoutAdmin: React.FC = () => {
     });
   };
 
+  /**
+   * Posunie prevádzku o krok v rámci jej trasy.
+   *
+   * Duplikuje to, čo sa dá spraviť ťahaním riadku — ale HTML5 drag & drop sa na
+   * dotykovom displeji vôbec nespustí, takže bez týchto tlačidiel je poradie
+   * prevádzok na mobile nemenné. Rovnaký vzor už používajú bloky (`moveBlock`).
+   */
+  const movePrevadzkaInRoute = (routeId: number, prevadzkaId: number, delta: number) => {
+    updateLayout((current) => ({
+      ...current,
+      blocks: current.blocks.map((block) => ({
+        ...block,
+        routes: block.routes.map((route) => {
+          if (route.id !== routeId) return route;
+          const prevadzky = [...route.prevadzky];
+          const index = prevadzky.findIndex((item) => item.id === prevadzkaId);
+          const target = index + delta;
+          if (index < 0 || target < 0 || target >= prevadzky.length) return route;
+          [prevadzky[index], prevadzky[target]] = [prevadzky[target], prevadzky[index]];
+          return { ...route, prevadzky };
+        }),
+      })),
+    }));
+  };
+
   const startDrag = (event: React.DragEvent, nextDragging: DragState) => {
     setDragging(nextDragging);
     event.dataTransfer.effectAllowed = "move";
@@ -499,7 +524,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         {route.prevadzky.length === 0 ? (
                           <tr><td style={{ color: "var(--ink-mute)" }}>Žiadne prevádzky v trase.</td></tr>
                         ) : (
-                          route.prevadzky.map((prevadzka) => (
+                          route.prevadzky.map((prevadzka, prevadzkaIndex) => (
                             <tr
                               key={prevadzka.id}
                               className={`zpa-draggable-row${dragging?.type === "prevadzka" && dragging.prevadzkaId === prevadzka.id ? " is-dragging" : ""}`}
@@ -515,7 +540,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                                 setDragging(null);
                               }}
                             >
-                              <td style={{ width: 48 }}>
+                              <td className="zpa-gripcell" style={{ width: 48 }}>
                                 <span className="zpa-row-grip" title="Presunúť prevádzku" aria-label="Presunúť prevádzku">
                                   <GripVertical />
                                 </span>
@@ -525,13 +550,31 @@ const DeliveryLayoutAdmin: React.FC = () => {
                                 <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{prevadzka.celok}{prevadzka.adresa ? ` · ${prevadzka.adresa}` : ""}</div>
                               </td>
                               <td className="r">
-                                <Button
-                                  sm
-                                  variant="ghost"
-                                  onClick={() => requestUnassignPrevadzka(prevadzka, () => assignPrevadzka(prevadzka.id, null))}
-                                >
-                                  Odobrať
-                                </Button>
+                                <div className="zpa-rowactions">
+                                  <IconButton
+                                    onClick={() => movePrevadzkaInRoute(route.id, prevadzka.id, -1)}
+                                    disabled={prevadzkaIndex === 0}
+                                    title="Vyššie"
+                                    aria-label={`Posunúť ${prevadzka.report_alias || prevadzka.nazov} vyššie`}
+                                  >
+                                    <ArrowUp />
+                                  </IconButton>
+                                  <IconButton
+                                    onClick={() => movePrevadzkaInRoute(route.id, prevadzka.id, 1)}
+                                    disabled={prevadzkaIndex === route.prevadzky.length - 1}
+                                    title="Nižšie"
+                                    aria-label={`Posunúť ${prevadzka.report_alias || prevadzka.nazov} nižšie`}
+                                  >
+                                    <ArrowDown />
+                                  </IconButton>
+                                  <Button
+                                    sm
+                                    variant="ghost"
+                                    onClick={() => requestUnassignPrevadzka(prevadzka, () => assignPrevadzka(prevadzka.id, null))}
+                                  >
+                                    Odobrať
+                                  </Button>
+                                </div>
                               </td>
                             </tr>
                           ))
@@ -582,7 +625,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                           setDragging(null);
                         }}
                       >
-                        <td style={{ width: 48 }}>
+                        <td className="zpa-gripcell" style={{ width: 48 }}>
                           <span className="zpa-row-grip" title="Presunúť prevádzku" aria-label="Presunúť prevádzku">
                             <GripVertical />
                           </span>
@@ -592,7 +635,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                           <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{prevadzka.celok}</div>
                         </td>
                         <td className="r">
-                          <Select defaultValue="" onChange={(e) => assignPrevadzka(prevadzka.id, Number(e.target.value))} style={{ width: 260 }}>
+                          <Select defaultValue="" onChange={(e) => assignPrevadzka(prevadzka.id, Number(e.target.value))} style={{ width: "min(260px, 100%)" }}>
                             <option value="" disabled>Priradiť do trasy…</option>
                             {routeOptions.map(({ route, block }) => (
                               <option key={route.id} value={route.id}>{block.name} / {route.name}</option>

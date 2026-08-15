@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { GripVertical, Layers, Plus, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, GripVertical, Layers, Plus, Pencil, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { PageHead, Card, Button, IconButton, Field, Input, Textarea, Modal, Empty, ColorSwatchPicker, Checkbox } from "./ui";
 import { DietColorSwatch } from "./DietColorSwatch";
-import { dietReorderPayload, moveDietBefore } from "./dietReorder";
+import { dietReorderPayload, moveDietBefore, moveDietBy } from "./dietReorder";
 
 export interface Diet {
   id: number;
@@ -277,6 +277,13 @@ const DietManager: React.FC = () => {
     void persistDietOrder(nextDiets);
   };
 
+  const moveDiet = (dietId: number, delta: number) => {
+    const nextDiets = moveDietBy(diets, dietId, delta);
+    if (nextDiets === diets) return;
+    setDiets(nextDiets);
+    void persistDietOrder(nextDiets);
+  };
+
   const composableDiets = diets.filter((diet) => (diet.base_diets || []).length === 0);
 
   return (
@@ -373,7 +380,23 @@ const DietManager: React.FC = () => {
                   )}
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <div className="zpa-rowactions" style={{ flexShrink: 0 }}>
+                  <IconButton
+                    title="Vyššie"
+                    aria-label={`Posunúť diétu ${diet.name} vyššie`}
+                    disabled={dietPosition === 0}
+                    onClick={() => moveDiet(diet.id, -1)}
+                  >
+                    <ArrowUp />
+                  </IconButton>
+                  <IconButton
+                    title="Nižšie"
+                    aria-label={`Posunúť diétu ${diet.name} nižšie`}
+                    disabled={dietPosition === diets.length - 1}
+                    onClick={() => moveDiet(diet.id, 1)}
+                  >
+                    <ArrowDown />
+                  </IconButton>
                   <IconButton
                     title="Upraviť"
                     onClick={() =>
