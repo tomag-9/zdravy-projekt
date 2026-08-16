@@ -9,7 +9,7 @@ import { useEffect } from "react";
 
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
-import { isAdminOrAbove, isSuperadmin } from "./lib/roles";
+import { isAdminOrAbove, isSuperadmin, isKuchyna } from "./lib/roles";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
@@ -48,6 +48,8 @@ import MealCatalogAdmin from "./pages/admin/MealCatalogAdmin";
 import PushNotificationsAdmin from "./pages/admin/PushNotifications";
 import HolidaysAdmin from "./pages/admin/HolidaysAdmin";
 import AdminLogs from "./pages/admin/AdminLogs";
+import KuchynaLayout from "./pages/kuchyna/KuchynaLayout";
+import KuchynaOverview from "./pages/kuchyna/KuchynaOverview";
 
 const ProtectedRoute = () => {
   const { isAuthenticated, isLoading, user } = useAuth();
@@ -66,10 +68,13 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // Admin/superadmin nepatrí na klientske cesty. Rovnaký predikát ako
-  // `AdminRoute`, inak by sa pri nesúlade `role`/`is_staff` točil redirect.
+  // Interné role nepatria na klientske cesty. Rovnaké predikáty ako v
+  // `AdminRoute`/`KuchynaRoute`, inak by sa redirect točil dokola.
   if (isAdminOrAbove(user)) {
     return <Navigate to="/admin" replace />;
+  }
+  if (isKuchyna(user)) {
+    return <Navigate to="/kuchyna" replace />;
   }
 
   return (
@@ -99,10 +104,37 @@ const AdminRoute = () => {
   }
 
   if (!isAdminOrAbove(user)) {
-    return <Navigate to="/home" replace />;
+    return <Navigate to={isKuchyna(user) ? "/kuchyna" : "/home"} replace />;
   }
 
   return <ErrorBoundary><AdminLayout /></ErrorBoundary>;
+};
+
+/**
+ * Kuchyňa má vlastnú cestu mimo admin konzoly (#486). Admin sa sem vedome
+ * nepúšťa: hoci je v rebríku nad kuchyňou, ten istý prehľad má vo svojom
+ * Prehľade — a tablet layout by mu na desktope len prekážal.
+ */
+const KuchynaRoute = () => {
+  const { user, isAuthenticated, isLoading } = useAuth();
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (isLoading) {
+    return <AppLoadingScreen />;
+  }
+
+  if (user === null) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!isKuchyna(user)) {
+    return <Navigate to={isAdminOrAbove(user) ? "/admin" : "/home"} replace />;
+  }
+
+  return <ErrorBoundary><KuchynaLayout /></ErrorBoundary>;
 };
 
 /**
@@ -217,6 +249,11 @@ export default function App() {
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
                 <Route path="logs" element={<SuperadminRoute><AdminLogs /></SuperadminRoute>} />
+              </Route>
+
+              {/* Kuchyňa Routes */}
+              <Route path="/kuchyna" element={<KuchynaRoute />}>
+                <Route index element={<ErrorBoundary><KuchynaOverview /></ErrorBoundary>} />
               </Route>
 
               {/* Client Routes */}

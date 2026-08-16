@@ -13,7 +13,7 @@ from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
-from ..permissions import IsAdminOrAbove
+from ..permissions import IsAdminOrAbove, IsKuchynaOrAbove
 from ..roles import is_admin_or_above
 from ..serializers_menu import (
     DailyMealPlanSerializer,
@@ -90,12 +90,17 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def _is_admin_route(self) -> bool:
         return self.request.path.startswith("/api/admin/")
 
+    #: Prehľady nakladania — kuchyňa ich len číta, meniť nesmie nič (#486).
+    KUCHYNA_READABLE_ACTIONS = {"gramage_dashboard", "gramage_dashboard_pdf"}
+
     def get_permissions(self):
         if (
             self.action in ["list", "retrieve", "by_date"]
             and not self._is_admin_route()
         ):
             return [permissions.IsAuthenticated()]
+        if self.action in self.KUCHYNA_READABLE_ACTIONS:
+            return [IsKuchynaOrAbove()]
         return [IsAdminOrAbove()]
 
     def get_queryset(self):

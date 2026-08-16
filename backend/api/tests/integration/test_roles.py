@@ -250,6 +250,48 @@ class TestKuchynaIsNotAClient:
         ).exists()
 
 
+class TestKuchynaOverviewAccess:
+    """#486 — kuchyňa vidí prehľad nakladania, ale nič v ňom nezmení."""
+
+    DATE = "2026-08-17"
+
+    def test_can_read_gramage_dashboard(self, api_client):
+        user = _user("kuch-read@example.com", role=roles.KUCHYNA)
+        api_client.force_authenticate(user=user)
+        res = api_client.get(
+            f"/api/admin/meal-plans/gramage-dashboard/?date={self.DATE}"
+        )
+        assert res.status_code == 200
+        assert "spec" in res.data
+
+    def test_admin_reads_the_same_endpoint(self, admin_client):
+        """Admin je v rebríku nad kuchyňou, takže jej prah prejde tiež."""
+        res = admin_client.get(
+            f"/api/admin/meal-plans/gramage-dashboard/?date={self.DATE}"
+        )
+        assert res.status_code == 200
+
+    def test_client_cannot_read_it(self, authenticated_client):
+        res = authenticated_client.get(
+            f"/api/admin/meal-plans/gramage-dashboard/?date={self.DATE}"
+        )
+        assert res.status_code == 403
+
+    @pytest.mark.parametrize(
+        "method,url",
+        [
+            ("post", "/api/admin/meal-plans/"),
+            ("get", "/api/admin/meal-plans/"),
+            ("get", "/api/admin/closed-days/"),
+            ("get", "/api/admin/summary/daily-report/"),
+        ],
+    )
+    def test_cannot_touch_the_rest_of_admin(self, api_client, method, url):
+        user = _user("kuch-write@example.com", role=roles.KUCHYNA)
+        api_client.force_authenticate(user=user)
+        assert getattr(api_client, method)(url).status_code == 403
+
+
 class TestNoOpProperty:
     """#482 sa nesmie dotknúť práv, ktoré dnes platia."""
 
