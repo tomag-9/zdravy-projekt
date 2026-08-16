@@ -259,11 +259,27 @@ class GlobalSettings(models.Model):
 class UserProfile(models.Model):
     """Login-level údaje; doménové dáta žijú na Celok/Prevadzka/access modeloch."""
 
+    class Role(models.TextChoices):
+        KLIENT = "klient", "Klient"
+        ADMIN = "admin", "Admin"
+        SUPERADMIN = "superadmin", "Superadmin"
+        KUCHYNA = "kuchyna", "Kuchyňa"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
         max_length=255,
         blank=True,
         help_text="Interný názov prevádzky (používa sa interne)",
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.KLIENT,
+        db_index=True,
+        help_text=(
+            "Rola loginu (#482). `is_staff` zostáva odvodeným zrkadlom pre Django "
+            "admin — autoritatívna je táto hodnota, čítaj ju cez `api.roles.role_of`."
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     onboarding_completed = models.BooleanField(

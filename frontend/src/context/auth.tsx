@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import { logger } from '../lib/logger';
+import type { Role } from '../lib/roles';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 const CACHED_PROFILE_KEY = "cached_user_profile";
@@ -31,6 +32,8 @@ interface User {
   onboarding_completed?: boolean;
   groups?: string[];
   is_staff?: boolean;
+  /** Chýba, kým beží staršia verzia backendu — vtedy použi `roleOf()`. */
+  role?: Role;
   profile?: UserProfile;
 }
 

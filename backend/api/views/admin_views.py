@@ -148,6 +148,12 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(is_staff=True)
         elif is_staff == "false":
             qs = qs.filter(is_staff=False)
+
+        # `?role=` pribúda POPRI `?is_staff=` — ten ďalej používa AdminUserList,
+        # takže sa nesmie odstrániť skôr, než sa frontend prepne (#483).
+        role = self.request.query_params.get("role")
+        if role:
+            qs = qs.filter(profile__role=role)
         return qs
 
     def perform_create(self, serializer):
