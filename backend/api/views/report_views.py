@@ -2,11 +2,12 @@ import datetime
 import logging
 
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import Celok, DailyOrder, Prevadzka
+from ..permissions import IsAdminOrAbove
 from ..services import ReportService
 from ..utils import meal_counts, order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
@@ -87,7 +88,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     Aggregates order data for reporting and analytics.
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
 
     def _parse_date(self, request):
         """Parse ?date=YYYY-MM-DD; vráti date alebo DRF Response(400)."""

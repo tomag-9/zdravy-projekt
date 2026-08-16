@@ -1,11 +1,12 @@
 from django.db import transaction
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import DeliveryBlock, DeliveryRoute, Prevadzka
+from ..permissions import IsAdminOrAbove
 from ..serializers_delivery import (
     DeliveryBlockSerializer,
     DeliveryLayoutSerializer,
@@ -27,7 +28,7 @@ from .audit_mixins import AuditedModelViewSetMixin
 )
 class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DeliveryBlockSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
 
     def get_queryset(self):
         return (
@@ -134,7 +135,7 @@ class DeliveryRouteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         )
     )
     serializer_class = DeliveryRouteSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
 
 
 @extend_schema_view(
@@ -148,5 +149,5 @@ class AdminPrevadzkaDeliveryViewSet(AuditedModelViewSetMixin, viewsets.ModelView
         "celok__nazov", "sort_order", "nazov"
     )
     serializer_class = DeliveryPrevadzkaSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
     http_method_names = ["get", "patch", "put", "head", "options"]

@@ -13,6 +13,7 @@ from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
+from ..permissions import IsAdminOrAbove
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -37,7 +38,7 @@ class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = PortionType.objects.all()
@@ -60,7 +61,7 @@ class MealTemplateViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = MealTemplate.objects.all()
@@ -94,7 +95,7 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             and not self._is_admin_route()
         ):
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         item_queryset = MealPlanItem.objects.select_related("template__diet", "diet")

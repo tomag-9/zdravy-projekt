@@ -9,6 +9,7 @@ import { useEffect } from "react";
 
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
+import { isAdminOrAbove, isSuperadmin } from "./lib/roles";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
@@ -65,8 +66,9 @@ const ProtectedRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  // If user is admin (is_staff), they shouldn't be accessing client routes
-  if (user?.is_staff) {
+  // Admin/superadmin nepatrí na klientske cesty. Rovnaký predikát ako
+  // `AdminRoute`, inak by sa pri nesúlade `role`/`is_staff` točil redirect.
+  if (isAdminOrAbove(user)) {
     return <Navigate to="/admin" replace />;
   }
 
@@ -96,11 +98,23 @@ const AdminRoute = () => {
     return <Navigate to="/login" replace />;
   }
 
-  if (!user?.is_staff) {
+  if (!isAdminOrAbove(user)) {
     return <Navigate to="/home" replace />;
   }
 
   return <ErrorBoundary><AdminLayout /></ErrorBoundary>;
+};
+
+/**
+ * Sekcie presunuté na superadmina (#483). Admin, ktorý si URL napíše ručne,
+ * skončí na dashboarde; backend na tie endpointy aj tak vracia 403.
+ */
+const SuperadminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user } = useAuth();
+  if (!isSuperadmin(user)) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 };
 
 function PushSubscriptionReconciler() {
@@ -194,15 +208,15 @@ export default function App() {
                 <Route path="delivery-layout" element={<ErrorBoundary><DeliveryLayoutAdmin /></ErrorBoundary>} />
                 <Route path="facilities" element={<ErrorBoundary><FacilityManager /></ErrorBoundary>} />
                 <Route path="facilities/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
-                <Route path="roles" element={<ErrorBoundary><AdminUserList /></ErrorBoundary>} />
-                <Route path="roles/:id" element={<ErrorBoundary><AdminUserDetail /></ErrorBoundary>} />
+                <Route path="roles" element={<SuperadminRoute><AdminUserList /></SuperadminRoute>} />
+                <Route path="roles/:id" element={<SuperadminRoute><AdminUserDetail /></SuperadminRoute>} />
                 <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />
                 <Route path="meal-plan" element={<ErrorBoundary><MealPlanCalendar /></ErrorBoundary>} />
                 <Route path="meal-catalog" element={<ErrorBoundary><MealCatalogAdmin /></ErrorBoundary>} />
-                <Route path="settings" element={<ErrorBoundary><SystemSettings /></ErrorBoundary>} />
+                <Route path="settings" element={<SuperadminRoute><SystemSettings /></SuperadminRoute>} />
                 <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
                 <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
-                <Route path="logs" element={<ErrorBoundary><AdminLogs /></ErrorBoundary>} />
+                <Route path="logs" element={<SuperadminRoute><AdminLogs /></SuperadminRoute>} />
               </Route>
 
               {/* Client Routes */}

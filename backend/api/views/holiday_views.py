@@ -8,6 +8,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ..models import Holiday
+from ..permissions import IsAdminOrAbove
 from ..serializers import HolidaySerializer
 from .audit_mixins import AuditedModelViewSetMixin
 
@@ -20,7 +21,7 @@ class AdminHolidayViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = HolidaySerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
     pagination_class = None
 
     def get_queryset(self):

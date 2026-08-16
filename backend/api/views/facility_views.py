@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q, QuerySet
-from rest_framework import permissions, viewsets
+from rest_framework import viewsets
 
 from ..models import (
     Celok,
@@ -28,6 +28,7 @@ from ..models import (
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
 )
+from ..permissions import IsAdminOrAbove
 from ..serializers_facilities import AdminCelokSerializer, AdminPrevadzkaSerializer
 from ..services.event_log_service import build_model_diff, log_event
 
@@ -56,7 +57,7 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = AdminCelokSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
     pagination_class = None
 
     def perform_create(self, serializer):
@@ -163,7 +164,7 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
     """Plný CRUD nad prevádzkami pre správu celkov."""
 
     serializer_class = AdminPrevadzkaSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
     pagination_class = None
 
     def perform_create(self, serializer):

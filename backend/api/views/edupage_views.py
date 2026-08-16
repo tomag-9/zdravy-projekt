@@ -2,7 +2,7 @@ import datetime
 import logging
 
 from django.db import transaction
-from rest_framework import permissions, serializers, status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -14,6 +14,7 @@ from ..edupage_scraper import (
     prevadzky_without_match,
 )
 from ..models import DailyOrder, EdupageConnection, EventLog
+from ..permissions import IsAdminOrAbove
 from ..serializers import DailyOrderSerializer
 from ..services.edupage_connection_service import edupage_operations
 from ..services.event_log_service import build_model_diff, log_event
@@ -36,7 +37,7 @@ class EdupageConnectionSerializer(serializers.ModelSerializer):
 class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
     queryset = EdupageConnection.objects.all().order_by("name", "pk")
     serializer_class = EdupageConnectionSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
     pagination_class = None
 
     AUDITED_FIELDS = {"api_identifier", "mealsguest_url", "is_active"}

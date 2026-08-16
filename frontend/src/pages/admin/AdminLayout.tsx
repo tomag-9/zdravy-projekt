@@ -17,23 +17,11 @@ import {
     Menu,
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
+import { isSuperadmin } from '../../lib/roles';
+import { visibleNav, type NavEntry } from './adminNav';
 import { Modal, Button } from './ui';
 import AdminProfileModal from './AdminProfileModal';
 
-type Icon = React.ComponentType<{ className?: string }>;
-
-interface NavItem {
-    kind: 'item';
-    to: string;
-    label: string;
-    icon: Icon;
-}
-interface NavSection {
-    kind: 'section';
-    label: string;
-    icon: Icon;
-}
-type NavEntry = NavItem | NavSection;
 
 const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: Gauge },
@@ -45,18 +33,19 @@ const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/facilities', label: 'Správa prevádzok', icon: Building },
     { kind: 'section', label: 'Nastavenia', icon: Sliders },
     { kind: 'item', to: '/admin/diets', label: 'Diéty', icon: Salad },
-    { kind: 'item', to: '/admin/settings', label: 'Systémové nastavenia', icon: Sliders },
+    { kind: 'item', to: '/admin/settings', label: 'Systémové nastavenia', icon: Sliders, superadminOnly: true },
     { kind: 'item', to: '/admin/holidays', label: 'Voľné dni', icon: Umbrella },
-    { kind: 'item', to: '/admin/logs', label: 'Logy', icon: Scroll },
+    { kind: 'item', to: '/admin/logs', label: 'Logy', icon: Scroll, superadminOnly: true },
     { kind: 'section', label: 'Komunikácia', icon: Bell },
     { kind: 'item', to: '/admin/push-notifications', label: 'Notifikácie', icon: Bell },
     { kind: 'section', label: 'Oprávnenia', icon: Shield },
-    { kind: 'item', to: '/admin/roles', label: 'Správa adminov', icon: Shield },
+    { kind: 'item', to: '/admin/roles', label: 'Správa adminov', icon: Shield, superadminOnly: true },
 ];
 
 const AdminLayout: React.FC = () => {
     const { logout, user } = useAuth();
     const location = useLocation();
+    const nav = React.useMemo(() => visibleNav(NAV, isSuperadmin(user)), [user]);
     const [navOpen, setNavOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
     const [showProfileModal, setShowProfileModal] = React.useState(false);
@@ -98,7 +87,7 @@ const AdminLayout: React.FC = () => {
                     </div>
 
                     <nav className="zpa-nav">
-                        {NAV.map((n, i) => {
+                        {nav.map((n, i) => {
                             if (n.kind === 'section') {
                                 const Ic = n.icon;
                                 return (

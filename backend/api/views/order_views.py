@@ -15,6 +15,7 @@ from rest_framework.response import Response
 
 from ..exceptions import ClientOnlyError, ClosedDayOrderModificationError
 from ..models import ClosedDay, DailyOrder, EventLog
+from ..permissions import IsAdminOrAbove
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
 from ..services.event_log_service import build_nested_dict_diff, log_event
@@ -302,7 +303,7 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
     POST /api/admin/trigger-auto-orders/  { "date": "YYYY-MM-DD" }  (date optional)
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
 
     def create(self, request: Request) -> Response:
         date_str = request.data.get("date")

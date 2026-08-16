@@ -162,6 +162,34 @@ class TestBackfillInvariants:
         assert user.profile.role == roles.ADMIN
 
 
+class TestSuperadminOnlySections:
+    """#483 — správa loginov, logy a systémové nastavenia sú len pre superadmina."""
+
+    SUPERADMIN_ONLY = [
+        "/api/admin/users/",
+        "/api/admin/logs/",
+        "/api/admin/event-logs/",
+    ]
+
+    @pytest.mark.parametrize("url", SUPERADMIN_ONLY)
+    def test_plain_admin_is_forbidden(self, plain_admin_client, url):
+        assert plain_admin_client.get(url).status_code == 403
+
+    @pytest.mark.parametrize("url", SUPERADMIN_ONLY)
+    def test_superadmin_still_allowed(self, admin_client, url):
+        assert admin_client.get(url).status_code == 200
+
+    def test_plain_admin_cannot_write_global_settings(self, plain_admin_client):
+        res = plain_admin_client.post(
+            "/api/admin/global-settings/", {"deadline_lunch": "09:00"}, format="json"
+        )
+        assert res.status_code == 403
+
+    def test_global_settings_stay_publicly_readable(self, api_client):
+        """Login stránka číta nastavenia bez prihlásenia — nesmelo sa to zúžiť."""
+        assert api_client.get("/api/admin/global-settings/").status_code == 200
+
+
 class TestNoOpProperty:
     """#482 sa nesmie dotknúť práv, ktoré dnes platia."""
 
