@@ -1,10 +1,12 @@
 """
 DRF permission triedy postavené na rolách (#482).
 
-Pozor na poradie nasadzovania: tieto triedy sa v #482 iba pridávajú, žiadny
-`permission_classes` sa v tej istej PR nemení. Prepínanie `IsAdminUser` →
-`IsSuperadmin` patrí do #483, aby sa dala zmena práv nasadiť (a prípadne
-vrátiť) samostatne.
+Všetky prahové triedy vznikajú z jedného generátora nad rebríkom
+``kuchyna < admin < superadmin`` — nie ako ručne vymenované množiny rolí.
+Vďaka tomu nemôže vzniknúť dvojica typu „IsKuchyna" (presná zhoda) a
+„IsKuchynaOrAdmin" (ad-hoc zlúčenie), ktoré sa časom rozídu.
+
+Klient v rebríku nie je, preto má vlastnú triedu.
 """
 
 from __future__ import annotations
@@ -14,44 +16,32 @@ from rest_framework import permissions
 from . import roles
 
 
-class IsAdminOrAbove(permissions.BasePermission):
-    """Admin aj superadmin. Rolový ekvivalent dnešného ``IsAdminUser``."""
+def _min_role(minimum: str, message: str) -> type[permissions.BasePermission]:
+    """Vyrobí permission triedu pre prah `minimum` v internom rebríku."""
 
-    message = "Vyžaduje sa rola admin alebo superadmin."
+    class _MinRolePermission(permissions.BasePermission):
+        def has_permission(self, request, view) -> bool:
+            return roles.at_least(request.user, minimum)
 
-    def has_permission(self, request, view) -> bool:
-        return roles.is_admin_or_above(request.user)
-
-
-class IsSuperadmin(permissions.BasePermission):
-    """Len superadmin — správa loginov, logy a systémové nastavenia (#483)."""
-
-    message = "Vyžaduje sa rola superadmin."
-
-    def has_permission(self, request, view) -> bool:
-        return roles.is_superadmin(request.user)
+    _MinRolePermission.message = message  # type: ignore[attr-defined]
+    return _MinRolePermission
 
 
-class IsKuchyna(permissions.BasePermission):
-    """Len kuchyňa — naberací workflow (#486, #487)."""
+#: Kuchyňa a vyššie — prehľady nakladania (#486, #487). Admin ich vidí tiež,
+#: lebo je v rebríku nad kuchyňou.
+IsKuchynaOrAbove = _min_role(
+    roles.KUCHYNA, "Vyžaduje sa rola kuchyňa, admin alebo superadmin."
+)
 
-    message = "Vyžaduje sa rola kuchyňa."
+#: Admin a vyššie — hranica celého admin rozhrania.
+IsAdminOrAbove = _min_role(roles.ADMIN, "Vyžaduje sa rola admin alebo superadmin.")
 
-    def has_permission(self, request, view) -> bool:
-        return roles.is_kuchyna(request.user)
-
-
-class IsKuchynaOrAdmin(permissions.BasePermission):
-    """Kuchyňa plus admin/superadmin — spoločné prehľady nakladania."""
-
-    message = "Vyžaduje sa rola kuchyňa, admin alebo superadmin."
-
-    def has_permission(self, request, view) -> bool:
-        return roles.is_kuchyna(request.user) or roles.is_admin_or_above(request.user)
+#: Len superadmin — správa loginov, logy a systémové nastavenia (#483).
+IsSuperadmin = _min_role(roles.SUPERADMIN, "Vyžaduje sa rola superadmin.")
 
 
 class IsKlient(permissions.BasePermission):
-    """Len klientske loginy — objednávanie."""
+    """Len zákaznícke loginy — objednávanie. Interné role sem nepatria."""
 
     message = "Vyžaduje sa klientske konto."
 

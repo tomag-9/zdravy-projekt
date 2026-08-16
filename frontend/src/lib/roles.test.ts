@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { roleOf, isAdminOrAbove, isSuperadmin, isKuchyna } from './roles';
+import { roleOf, isAdminOrAbove, isSuperadmin, isKuchyna, isKuchynaOrAbove, isKlient } from './roles';
 
 describe('roleOf', () => {
   it('uprednostní rolu z backendu', () => {
@@ -21,16 +21,23 @@ describe('roleOf', () => {
 });
 
 describe('predikáty rolí', () => {
+  // Rebrík kuchyňa < admin < superadmin; klient stojí mimo neho.
   it.each([
-    ['klient', false, false, false],
-    ['kuchyna', false, false, true],
-    ['admin', true, false, false],
-    ['superadmin', true, true, false],
-  ] as const)('%s', (role, admin, sadmin, kuchyna) => {
+    ['klient', false, false, false, true],
+    ['kuchyna', true, false, false, false],
+    ['admin', true, true, false, false],
+    ['superadmin', true, true, true, false],
+  ] as const)('%s', (role, kuchynaUp, admin, sadmin, klient) => {
     const user = { role };
+    expect(isKuchynaOrAbove(user)).toBe(kuchynaUp);
     expect(isAdminOrAbove(user)).toBe(admin);
     expect(isSuperadmin(user)).toBe(sadmin);
-    expect(isKuchyna(user)).toBe(kuchyna);
+    expect(isKlient(user)).toBe(klient);
+  });
+
+  it('admin je nad kuchyňou, ale nie je to kuchyňa', () => {
+    expect(isKuchynaOrAbove({ role: 'admin' })).toBe(true);
+    expect(isKuchyna({ role: 'admin' })).toBe(false);
   });
 
   it('is_staff bez role sa počíta ako admin', () => {

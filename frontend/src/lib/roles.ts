@@ -27,16 +27,36 @@ export function roleOf(user: RoleBearer | null | undefined): Role {
   return user.is_staff ? 'admin' : 'klient';
 }
 
-/** Vidí admin rozhranie (admin aj superadmin) — ekvivalent dnešného `is_staff`. */
+/**
+ * Rebrík interných rolí — zrkadlí `_LEVEL` v `backend/api/roles.py`.
+ * `klient` v ňom zámerne nie je: je to zákazník, nie nižší stupeň zamestnanca.
+ */
+const LEVEL: Record<string, number> = { kuchyna: 1, admin: 2, superadmin: 3 };
+
+/** True, ak je rola `minimum` alebo vyššia. Klient neprejde žiadnym prahom. */
+export function atLeast(user: RoleBearer | null | undefined, minimum: Role): boolean {
+  return (LEVEL[roleOf(user)] ?? 0) >= (LEVEL[minimum] ?? 0);
+}
+
+/** Vidí admin rozhranie (admin aj superadmin). */
 export function isAdminOrAbove(user: RoleBearer | null | undefined): boolean {
-  const role = roleOf(user);
-  return role === 'admin' || role === 'superadmin';
+  return atLeast(user, 'admin');
 }
 
 export function isSuperadmin(user: RoleBearer | null | undefined): boolean {
-  return roleOf(user) === 'superadmin';
+  return atLeast(user, 'superadmin');
 }
 
+/** Kuchyňa a vyššie — prehľady nakladania vidí aj admin. */
+export function isKuchynaOrAbove(user: RoleBearer | null | undefined): boolean {
+  return atLeast(user, 'kuchyna');
+}
+
+/** Presne kuchyňa — na rozhodnutie, kam používateľa po prihlásení poslať. */
 export function isKuchyna(user: RoleBearer | null | undefined): boolean {
   return roleOf(user) === 'kuchyna';
+}
+
+export function isKlient(user: RoleBearer | null | undefined): boolean {
+  return roleOf(user) === 'klient';
 }

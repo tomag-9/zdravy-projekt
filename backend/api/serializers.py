@@ -16,6 +16,7 @@ from .exceptions import (
 )
 from .models import ClosedDay, DailyOrder, Diet, Holiday, PortionType, Prevadzka
 from .order_data import OrderData, safe_count
+from .roles import is_admin_or_above
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
     PrevadzkaNejednoznacna,
@@ -313,16 +314,17 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _enforce_holiday_restriction(
         self, user: Any, status: str, date: datetime.date
     ) -> None:
-        """Disallow non-staff, non-draft orders on holidays.
+        """Disallow non-admin, non-draft orders on holidays.
 
-        Staff bypass is keyed off the authenticated actor (request.user) so
-        that staff acting on behalf of a client can still submit on holidays.
-        Falls back to the order owner's is_staff if no request context exists.
+        Obídenie je viazané na prihláseného aktéra (request.user), aby admin
+        konajúci za klienta vedel objednať aj na sviatok. Rola, nie `is_staff` —
+        kuchyňa toto obísť nesmie (#482).
+        Falls back to the order owner's role if no request context exists.
         """
         request = self.context.get("request")
         actor = getattr(request, "user", None)
-        is_staff = getattr(actor, "is_staff", False) or getattr(user, "is_staff", False)
-        if not is_staff and status != "draft":
+        acting_admin = is_admin_or_above(actor) or is_admin_or_above(user)
+        if not acting_admin and status != "draft":
             if Holiday.objects.filter(date=date).exists():
                 raise HolidayOrderNotAllowedError()
 
@@ -348,7 +350,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 {"user": "User must be provided in request context or validated data."}
             )
         input_status = validated_data.get("status", "submitted")
-        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+        is_admin = is_admin_or_above(getattr(request, "user", None))
 
         self._enforce_day_open(validated_data["date"])
         self._enforce_holiday_restriction(user, input_status, validated_data["date"])
@@ -361,7 +363,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             existing_order = DailyOrder.objects.filter(
                 prevadzka=prevadzka, date=validated_data["date"]
             ).first()
-            if not is_staff:
+            if not is_admin:
                 self._validate_deadlines(
                     validated_data["date"],
                     validated_data.get("data", {}),
@@ -386,7 +388,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             .only("data")
             .first()
         )
-        if not is_staff:
+        if not is_admin:
             self._validate_deadlines(
                 validated_data["date"],
                 new_data,
@@ -441,7 +443,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _resolve_prevadzka(user, validated_data: Dict[str, Any]) -> Prevadzka:
         """Za ktorú prevádzku sa objednáva. Pri viacerých ju musí klient poslať."""
         explicit = validated_data.pop("prevadzka", None)
-        if explicit is not None and getattr(user, "is_staff", False):
+        if explicit is not None and is_admin_or_above(user):
             return explicit
         try:
             return vyber_prevadzku(user, explicit.pk if explicit else None)
@@ -457,12 +459,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         new_data = validated_data.get("data", instance.data)
         request = self.context.get("request")
         user = validated_data.get("user") or instance.user
-        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+        is_admin = is_admin_or_above(getattr(request, "user", None))
 
         self._enforce_day_open(instance.date)
         self._enforce_holiday_restriction(user, input_status, instance.date)
 
-        if not is_staff:
+        if not is_admin:
             self._validate_deadlines(
                 instance.date, new_data, input_status, instance.data
             )
@@ -517,12 +519,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        is_admin = bool(
-            user is not None
-            and (
-                getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
-            )
-        )
+        is_admin = is_admin_or_above(user)
         if not is_admin:
             data.pop("report_email_recipients", None)
         return data

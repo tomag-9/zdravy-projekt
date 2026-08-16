@@ -11,7 +11,7 @@ from rest_framework.test import APIRequestFactory
 
 from api import roles
 from api.models import UserProfile
-from api.permissions import IsAdminOrAbove, IsKuchyna, IsSuperadmin
+from api.permissions import IsAdminOrAbove, IsKlient, IsKuchynaOrAbove, IsSuperadmin
 
 pytestmark = pytest.mark.django_db
 
@@ -76,21 +76,35 @@ class TestRoleOf:
 
 class TestPermissionClasses:
     @pytest.mark.parametrize(
-        "role,admin_ok,super_ok,kuchyna_ok",
+        "role,kuchyna_ok,admin_ok,super_ok,klient_ok",
         [
-            (roles.KLIENT, False, False, False),
-            (roles.KUCHYNA, False, False, True),
-            (roles.ADMIN, True, False, False),
-            (roles.SUPERADMIN, True, True, False),
+            # Klient nie je v rebríku — neprejde žiadnym interným prahom.
+            (roles.KLIENT, False, False, False, True),
+            (roles.KUCHYNA, True, False, False, False),
+            # Admin je NAD kuchyňou, takže jej prah prejde tiež.
+            (roles.ADMIN, True, True, False, False),
+            (roles.SUPERADMIN, True, True, True, False),
         ],
     )
-    def test_matrix(self, role, admin_ok, super_ok, kuchyna_ok):
+    def test_matrix(self, role, kuchyna_ok, admin_ok, super_ok, klient_ok):
         user = _user(f"{role}@example.com", role=role)
         request = APIRequestFactory().get("/")
         request.user = user
+        assert IsKuchynaOrAbove().has_permission(request, None) is kuchyna_ok
         assert IsAdminOrAbove().has_permission(request, None) is admin_ok
         assert IsSuperadmin().has_permission(request, None) is super_ok
-        assert IsKuchyna().has_permission(request, None) is kuchyna_ok
+        assert IsKlient().has_permission(request, None) is klient_ok
+
+    def test_ladder_is_ordered(self):
+        """kuchyňa < admin < superadmin; klient stojí mimo rebríka."""
+        for role in (roles.KUCHYNA, roles.ADMIN, roles.SUPERADMIN):
+            user = _user(f"ladder-{role}@example.com", role=role)
+            assert roles.is_kuchyna_or_above(user)
+            assert roles.is_internal(user)
+            assert not roles.is_klient(user)
+        klient = _user("ladder-klient@example.com", role=roles.KLIENT)
+        assert not roles.is_kuchyna_or_above(klient)
+        assert not roles.is_internal(klient)
 
 
 class TestBackfillInvariants:
@@ -188,6 +202,52 @@ class TestSuperadminOnlySections:
     def test_global_settings_stay_publicly_readable(self, api_client):
         """Login stránka číta nastavenia bez prihlásenia — nesmelo sa to zúžiť."""
         assert api_client.get("/api/admin/global-settings/").status_code == 200
+
+
+class TestKuchynaIsNotAClient:
+    """Kuchyňa má `is_staff=False`, takže ju dátová vrstva kedysi brala ako
+    zákazníka — dostávala fantómový celok, auto-objednávky aj klientske
+    notifikácie. Toto sú regresné testy na tú triedu chýb."""
+
+    def _kuchyna(self, admin_client, email="kuch@example.com"):
+        res = admin_client.post(
+            "/api/admin/users/",
+            {"email": email, "is_staff": False, "role": roles.KUCHYNA},
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        return User.objects.get(email=email)
+
+    def test_gets_no_phantom_celok(self, admin_client):
+        user = self._kuchyna(admin_client)
+        assert user.profile.dostupne_celky().count() == 0
+        assert user.profile.dostupne_prevadzky().count() == 0
+
+    def test_excluded_from_auto_orders(self, admin_client):
+        """`klient_q()` je presne dotaz, ktorým auto_order_service vyberá klientov."""
+        user = self._kuchyna(admin_client)
+        assert not User.objects.filter(roles.klient_q(), pk=user.pk).exists()
+
+    def test_client_still_matches_klient_q(self, admin_client):
+        res = admin_client.post(
+            "/api/admin/users/",
+            {"email": "zakaznik@example.com", "is_staff": False},
+            format="json",
+        )
+        assert res.status_code == 201, res.data
+        user = User.objects.get(email="zakaznik@example.com")
+        assert User.objects.filter(roles.klient_q(), pk=user.pk).exists()
+
+    def test_login_without_profile_still_counts_as_client(self):
+        """Fallback z `role_of` musí platiť aj na úrovni DB dotazu."""
+        user = _user("bezprofilu@example.com")
+        assert not hasattr(user, "profile")
+        assert User.objects.filter(roles.klient_q(), pk=user.pk).exists()
+
+    def test_admin_is_not_a_client(self, admin_client):
+        assert not User.objects.filter(
+            roles.klient_q(), email="admin@example.com"
+        ).exists()
 
 
 class TestNoOpProperty:

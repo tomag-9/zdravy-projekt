@@ -485,7 +485,13 @@ class AdminUserSerializer(serializers.ModelSerializer):
         profile.role = role or role_for_flags(
             is_staff=user.is_staff, is_superuser=user.is_superuser
         )
-        profile._skip_default_facility = celok is not None or bool(prevadzky)
+        # Vlastný celok/prevádzka dávajú zmysel len zákazníckemu loginu. Kuchyňa
+        # ani admin ich dostať nesmú — inak by im systém generoval objednávky.
+        profile._skip_default_facility = (
+            celok is not None
+            or bool(prevadzky)
+            or profile.role != UserProfile.Role.KLIENT
+        )
         profile.save()
         # Login „na prevádzku": obmedz rozsah na vybrané prevádzky (M2M). Prázdne =
         # celý celok. Validujeme, že prevádzky patria zadanému celku.
