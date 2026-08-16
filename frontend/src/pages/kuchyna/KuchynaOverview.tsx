@@ -20,6 +20,7 @@ import {
     formatDay,
 } from '../../lib/businessDay';
 import GramageTable, { type TableSpec } from '../admin/GramageTable';
+import KuchynaLoading from './KuchynaLoading';
 
 const API = import.meta.env.VITE_API_URL || '/api';
 
@@ -35,6 +36,9 @@ const KuchynaOverview: React.FC = () => {
     const [date, setDate] = useState(maxDate);
     const [data, setData] = useState<DashboardResponse | null>(null);
     const [loading, setLoading] = useState(false);
+    // Prehľad = čo sa má naložiť, Nakladanie = odklikávanie. Dve záložky, nie
+    // dve obrazovky — kuchyňa medzi nimi počas naberania preskakuje.
+    const [tab, setTab] = useState<'prehlad' | 'nakladanie'>('prehlad');
 
     const fetchData = useCallback(async () => {
         setLoading(true);
@@ -89,7 +93,30 @@ const KuchynaOverview: React.FC = () => {
                 </button>
             </div>
 
-            {loading ? (
+            <div className="zpk-tabs" role="tablist">
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === 'prehlad'}
+                    className={`zpk-tab${tab === 'prehlad' ? ' is-active' : ''}`}
+                    onClick={() => setTab('prehlad')}
+                >
+                    Prehľad
+                </button>
+                <button
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === 'nakladanie'}
+                    className={`zpk-tab${tab === 'nakladanie' ? ' is-active' : ''}`}
+                    onClick={() => setTab('nakladanie')}
+                >
+                    Nakladanie
+                </button>
+            </div>
+
+            {tab === 'nakladanie' ? (
+                <KuchynaLoading date={date} />
+            ) : loading ? (
                 <div className="zpk-empty">
                     <Loader2 className="zpk-spin" />
                     <span>Načítavam…</span>

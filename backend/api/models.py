@@ -910,3 +910,72 @@ class PushNotificationAttempt(models.Model):
 
     def __str__(self) -> str:
         return f"PushNotificationAttempt({self.status}, …{self.endpoint[-20:]})"
+
+
+class LoadingStatus(models.Model):
+    """Odkliknutie, že položka je pre danú prevádzku a deň naložená (#487).
+
+    `item_key` je kľúč stĺpcovej skupiny z gramážového prehľadu
+    (`col_groups[].key` — napr. `soup`, `main_course_A`, `afternoon_snack_diet_3`).
+    Je odvodený z obsahu jedálnička, nie z poradia riadkov, takže prežije
+    prekreslenie tabuľky aj zmenu triedenia prevádzok.
+
+    Riadok sa nemaže ani pri odškrtnutí — `is_loaded=False` si ponecháva stopu,
+    kto a kedy naposledy stav zmenil. Kuchyňa je rola s viacerými účtami, takže
+    „kto to odklikol" je pri reklamácii podstatná informácia.
+    """
+
+    date = models.DateField(db_index=True)
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="loading_statuses"
+    )
+    item_key = models.CharField(
+        max_length=100, help_text="Kľúč stĺpcovej skupiny z gramážového prehľadu."
+    )
+    is_loaded = models.BooleanField(default=True)
+    marked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="loading_marks",
+    )
+    marked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["date", "prevadzka", "item_key"]
+        indexes = [models.Index(fields=["date", "prevadzka"])]
+        ordering = ["date", "prevadzka_id", "item_key"]
+
+    def __str__(self) -> str:
+        stav = "naložené" if self.is_loaded else "nenaložené"
+        return f"{self.date} {self.prevadzka}: {self.item_key} — {stav}"
+
+
+class PrevadzkaLoadingConfirmation(models.Model):
+    """Finálne potvrdenie, že prevádzka je celá naložená (#487).
+
+    Samostatný model, nie `item_key=""` na `LoadingStatus` — potvrdenie je iná
+    vec než položka a miešať ich do jednej tabuľky by si vyžiadalo strážiť
+    magickú hodnotu kľúča.
+    """
+
+    date = models.DateField(db_index=True)
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="loading_confirmations"
+    )
+    confirmed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="loading_confirmations",
+    )
+    confirmed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["date", "prevadzka"]
+        ordering = ["-confirmed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.date} {self.prevadzka}: naložené"

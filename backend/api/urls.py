@@ -24,6 +24,7 @@ from .views import (
     GlobalSettingsViewSet,
     HolidayListViewSet,
     InboxViewSet,
+    LoadingViewSet,
     LogoutView,
     MealTemplateViewSet,
     PasswordResetConfirmView,
@@ -69,6 +70,7 @@ router.register(
     AdminPrevadzkaDeliveryViewSet,
     basename="admin-prevadzka-delivery",
 )
+router.register(r"kuchyna/loading", LoadingViewSet, basename="kuchyna-loading")
 router.register(r"admin/summary", AdminSummaryViewSet, basename="adminsummary")
 router.register(
     r"admin/global-settings",

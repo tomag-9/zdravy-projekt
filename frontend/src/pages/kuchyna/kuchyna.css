@@ -190,3 +190,183 @@
 .zpk-gram .client-toggle {
     min-height: 52px;
 }
+
+/* ── Záložky ───────────────────────────────────────────────────────────── */
+
+.zpk-tabs {
+    display: flex;
+    gap: 8px;
+}
+
+.zpk-tab {
+    flex: 1;
+    min-height: 52px;
+    padding: 0 20px;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 14px;
+    background: #fff;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--ink-2, #4a4a45);
+    cursor: pointer;
+}
+
+.zpk-tab.is-active {
+    background: var(--green-900, #2f3a1f);
+    border-color: var(--green-900, #2f3a1f);
+    color: #fff;
+}
+
+/* ── Nakladanie ────────────────────────────────────────────────────────── */
+
+.zpk-progress {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink-2, #4a4a45);
+}
+
+.zpk-cards {
+    display: grid;
+    /* Na iPade dva stĺpce, na menšom tablete jeden — bez media query. */
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+.zpk-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px;
+    background: #fff;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 18px;
+}
+
+.zpk-card.is-confirmed {
+    border-color: var(--green-700, #72884b);
+    background: rgba(114, 136, 75, 0.06);
+}
+
+.zpk-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.zpk-card-head h2 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 19px;
+    color: var(--green-900, #2f3a1f);
+}
+
+.zpk-card-meta {
+    font-size: 14px;
+    color: var(--ink-mute, #8a8a80);
+}
+
+.zpk-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(114, 136, 75, 0.16);
+    color: var(--green-700, #72884b);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.zpk-done svg {
+    width: 16px;
+    height: 16px;
+}
+
+.zpk-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Celý riadok je klikací, nie len malý checkbox — naberá sa v rukaviciach. */
+.zpk-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 56px;
+    padding: 0 14px;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 14px;
+    background: #fff;
+    font-size: 16px;
+    color: var(--ink-1, #23231f);
+    text-align: left;
+    cursor: pointer;
+}
+
+.zpk-item:active {
+    background: var(--line, #e6e6e0);
+}
+
+.zpk-item:disabled {
+    opacity: 0.6;
+}
+
+.zpk-item.is-loaded {
+    border-color: var(--green-700, #72884b);
+    background: rgba(114, 136, 75, 0.08);
+}
+
+.zpk-check {
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--line, #e6e6e0);
+    border-radius: 9px;
+    background: #fff;
+    color: #fff;
+}
+
+.zpk-item.is-loaded .zpk-check {
+    background: var(--green-700, #72884b);
+    border-color: var(--green-700, #72884b);
+}
+
+.zpk-check svg {
+    width: 19px;
+    height: 19px;
+}
+
+.zpk-item-label {
+    flex: 1;
+}
+
+.zpk-checklist {
+    margin: 0 0 16px;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.zpk-checklist li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    color: var(--ink-1, #23231f);
+}
+
+.zpk-checklist svg {
+    width: 18px;
+    height: 18px;
+    color: var(--green-700, #72884b);
+}

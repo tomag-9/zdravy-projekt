@@ -42,6 +42,7 @@ from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
 # Inbox views
 from .inbox_views import InboxViewSet
+from .loading_views import LoadingViewSet
 
 # Meal plan views
 from .meal_plan_views import (
@@ -68,6 +69,7 @@ from .report_views import AdminSummaryViewSet
 from .settings_views import GlobalSettingsViewSet, UserProfileViewSet
 
 __all__ = [
+    "LoadingViewSet",
     # Authentication
     "EmailTokenObtainPairSerializer",
     # Holidays
