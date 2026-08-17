@@ -82,8 +82,7 @@ class DailyOrder(models.Model):
         help_text=(
             "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
             "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...]}. "
-            "Prázdne pri ručných "
-            "objednávkach a pri scrape bez upozornení."
+            "Prázdne pri ručných objednávkach a pri scrape bez upozornení."
         ),
     )
     is_auto = models.BooleanField(
@@ -366,6 +365,19 @@ class Celok(models.Model):
         return self.nazov
 
 
+class Vydaj(models.TextChoices):
+    """Výdajný bod kuchyne (cluster), z ktorého sa prevádzka vydáva.
+
+    Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku aj
+    vlastné trasy. Je to zámerne vlastnosť PREVÁDZKY, nie trasy: trasa môže voziť
+    do oboch výdajov a rozdelenie si prevádzka nastavuje sama.
+    """
+
+    A = "A", "Výdaj A"
+    B = "B", "Výdaj B"
+    C = "C", "Výdaj C"
+
+
 class Prevadzka(models.Model):
     """Jedna prevádzka (miesto výdaja) v rámci celku.
 
@@ -427,6 +439,16 @@ class Prevadzka(models.Model):
     delivery_sort_order = models.PositiveSmallIntegerField(
         default=0,
         help_text="Poradie prevádzky v rámci rozvozovej trasy.",
+    )
+    vydaj = models.CharField(
+        max_length=1,
+        choices=Vydaj.choices,
+        default=Vydaj.A,
+        db_index=True,
+        help_text=(
+            "Výdajný bod kuchyne, z ktorého sa prevádzka vydáva. Podľa neho sa "
+            "delí gramážová tabuľka aj tlač; trasa ostáva nezávislá."
+        ),
     )
     report_alias = models.CharField(
         max_length=255,

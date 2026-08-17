@@ -115,11 +115,12 @@ h1 small {
 .zpa-gram tbody .band td,
 .zpa-gram tfoot .band td,
 .zpa-gram .portion-summary-band td { padding: 1.2mm 2mm; font-size: 7pt; }
-.zpa-gram .route-row td { padding: 1.4mm 2mm; }
-/* Trasa je na papieri o triedu väčšia než dáta — vodič ju hľadá očami zďaleka. */
-.zpa-gram .route-pill { padding: 0.8mm 2mm; font-size: 9pt; }
-.zpa-gram .route-pill small { font-size: 7.5pt; }
-.zpa-gram tbody .block-band td { font-size: 11pt; padding: 2mm; }
+.zpa-gram .route-row td { padding: 1.2mm 2mm; }
+/* Trasa je na papieri o kúsok väčšia než dáta — vodič ju hľadá očami, ale
+ * tabuľka musí ostať čitateľná ako celok. */
+.zpa-gram .route-pill { padding: 0.5mm 1.6mm; font-size: 7.5pt; }
+.zpa-gram .route-pill small { font-size: 6.5pt; }
+.zpa-gram tbody .block-band td { font-size: 8.5pt; padding: 1.6mm 2mm; }
 .zpa-gram .sub-row.diet .lbl { font-size: 6.5pt; padding-left: 3mm; }
 .zpa-gram .note-admin td,
 .zpa-gram .note-delivery td { font-size: 6.5pt; padding: 1.2mm 2mm; }

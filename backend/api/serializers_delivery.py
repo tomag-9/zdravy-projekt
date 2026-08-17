@@ -17,6 +17,7 @@ class DeliveryPrevadzkaSerializer(serializers.ModelSerializer):
             "report_alias",
             "adresa",
             "celok",
+            "vydaj",
             "delivery_route",
             "delivery_sort_order",
             "delivery_note",

@@ -4,6 +4,7 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { Badge, Button, Card, Empty, Field, IconButton, Input, Modal, PageHead, Select, TableWrap } from "./ui";
+import { VYDAJE } from "./facility/PrevadzkaFields";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -13,6 +14,8 @@ interface DeliveryPrevadzka {
   report_alias: string;
   adresa: string;
   celok: string;
+  /** Výdajný bod kuchyne (`api.models.Vydaj`) — podľa neho sa delí tabuľka. */
+  vydaj: string;
   delivery_route: number | null;
   delivery_sort_order: number;
   delivery_note: string;
@@ -104,6 +107,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [editRouteBlock, setEditRouteBlock] = useState<number | null>(null);
   const [editBlock, setEditBlock] = useState<DeliveryBlock | null>(null);
   const [editBlockName, setEditBlockName] = useState("");
+  // Prázdne = všetky výdajné body. Kuchyňa si tak vie pozrieť trasy len toho
+  // bodu, z ktorého práve vydáva.
+  const [vydajFilter, setVydajFilter] = useState("");
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -403,6 +409,23 @@ const DeliveryLayoutAdmin: React.FC = () => {
     setEditRouteBlock(route.block);
   };
 
+  const vydajLabel = (key: string) =>
+    VYDAJE.find((item) => item.key === key)?.label ?? key;
+
+  const setPrevadzkaVydaj = async (prevadzka: DeliveryPrevadzka, vydaj: string) => {
+    const res = await apiFetch(`${API}/admin/prevadzky-delivery/${prevadzka.id}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vydaj }),
+    });
+    if (res.ok) {
+      await fetchLayout();
+      success(`${prevadzka.report_alias || prevadzka.nazov} → ${vydajLabel(vydaj)}`);
+    } else {
+      toastError("Nepodarilo sa zmeniť výdaj prevádzky.");
+    }
+  };
+
   const openEditBlock = (block: DeliveryBlock) => {
     setEditBlock(block);
     setEditBlockName(block.name);
@@ -487,9 +510,20 @@ const DeliveryLayoutAdmin: React.FC = () => {
       <PageHead
         eyebrow="Rozvoz"
         title="Poradie a trasy"
-        desc="Rozdelenie prevádzok do blokov a trás pre admin Prehľad."
+        desc="Rozdelenie prevádzok do blokov a trás. Výdaj (bod kuchyne) sa nastavuje pri prevádzke a delí gramážovú tabuľku."
         actions={
           <>
+            <Select
+              value={vydajFilter}
+              onChange={(e) => setVydajFilter(e.target.value)}
+              style={{ width: "auto" }}
+              aria-label="Výdajný bod"
+            >
+              <option value="">Všetky výdaje</option>
+              {VYDAJE.map((item) => (
+                <option key={item.key} value={item.key}>{item.label}</option>
+              ))}
+            </Select>
             <Button variant="secondary" onClick={() => setShowBlockModal(true)}>
               <Plus /> Blok
             </Button>
@@ -532,7 +566,14 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 </div>
               </div>
 
-              {block.routes.map((route) => (
+              {block.routes.map((route) => {
+                // Pri zapnutom filtri trasa ukáže len prevádzky daného výdaja;
+                // trasa, ktorá doň nevozí, sa nevykresľuje vôbec.
+                const visiblePrevadzky = route.prevadzky.filter(
+                  (prevadzka) => !vydajFilter || (prevadzka.vydaj || "A") === vydajFilter,
+                );
+                if (vydajFilter && visiblePrevadzky.length === 0) return null;
+                return (
                 <div
                   key={route.id}
                   style={{ borderBottom: "1px solid var(--line-soft)" }}
@@ -566,10 +607,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
                   >
                     <table className="zpa-table">
                       <tbody>
-                        {route.prevadzky.length === 0 ? (
+                        {visiblePrevadzky.length === 0 ? (
                           <tr><td style={{ color: "var(--ink-mute)" }}>Žiadne prevádzky v trase.</td></tr>
                         ) : (
-                          route.prevadzky.map((prevadzka, prevadzkaIndex) => (
+                          visiblePrevadzky.map((prevadzka, prevadzkaIndex) => (
                             <tr
                               key={prevadzka.id}
                               className={`zpa-draggable-row${dragging?.type === "prevadzka" && dragging.prevadzkaId === prevadzka.id ? " is-dragging" : ""}`}
@@ -593,6 +634,17 @@ const DeliveryLayoutAdmin: React.FC = () => {
                               <td>
                                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{prevadzka.report_alias || prevadzka.nazov}</div>
                                 <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{prevadzka.celok}{prevadzka.adresa ? ` · ${prevadzka.adresa}` : ""}</div>
+                              </td>
+                              <td style={{ width: 130 }}>
+                                <Select
+                                  value={prevadzka.vydaj || "A"}
+                                  onChange={(e) => void setPrevadzkaVydaj(prevadzka, e.target.value)}
+                                  aria-label={`Výdaj — ${prevadzka.report_alias || prevadzka.nazov}`}
+                                >
+                                  {VYDAJE.map((item) => (
+                                    <option key={item.key} value={item.key}>{item.label}</option>
+                                  ))}
+                                </Select>
                               </td>
                               <td className="r">
                                 <div className="zpa-rowactions">
@@ -628,7 +680,8 @@ const DeliveryLayoutAdmin: React.FC = () => {
                     </table>
                   </TableWrap>
                 </div>
-              ))}
+                );
+              })}
             </Card>
           ))}
 

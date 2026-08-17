@@ -14,6 +14,7 @@ export const EMPTY_PREVADZKA: PrevadzkaForm = {
   adresa: "",
   edupage_connection: null,
   edupage_match: "",
+  vydaj: "A",
   report_alias: "",
   delivery_note: "",
   sort_order: 0,

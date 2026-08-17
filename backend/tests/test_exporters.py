@@ -160,7 +160,7 @@ class TestGramageDashboardExports:
         assert ("Bezlepková", "2") in rendered
         assert ("Vegan", "1") in rendered
 
-    def test_portion_summaries_export_per_delivery_block_and_globally(self):
+    def test_portion_summaries_export_per_vydaj_and_globally(self):
         user = User.objects.create_user(
             username="delivery-export@example.com",
             email="delivery-export@example.com",
@@ -232,6 +232,8 @@ class TestGramageDashboardExports:
                 nazov="Prevádzka 2",
                 delivery_route=second_route,
                 delivery_sort_order=1,
+                # Druhý výdajný bod kuchyne — tabuľka sa delí podľa neho.
+                vydaj="B",
             ),
             Prevadzka.objects.create(
                 celok=celok,
@@ -248,21 +250,21 @@ class TestGramageDashboardExports:
             )
 
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
-        assert len(data["blocks"]) == 2
+        assert len(data["vydaje"]) == 2
         assert len(data["unassigned_rows"]) == 1
         expected_summaries = [
             (
-                f"Súhrn porcií {block_index + 1}",
+                f"Súhrn porcií — {vydaj['name']}",
                 portion_summary(
                     data,
                     [
                         row
-                        for route in block.get("routes", [])
+                        for route in vydaj.get("routes", [])
                         for row in route.get("rows", [])
                     ],
                 ),
             )
-            for block_index, block in enumerate(data["blocks"])
+            for vydaj in data["vydaje"]
         ]
         expected_summaries.append(("Porcie celkom", portion_summary(data)))
 
