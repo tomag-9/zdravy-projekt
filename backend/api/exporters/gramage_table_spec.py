@@ -27,6 +27,24 @@ from .gramage_dashboard_export import (
 
 EMPTY = "—"
 
+# Prázdny stĺpec na ručné poznámky pri tlači (požiadavka prevádzky 17. 8. 2026).
+NOTE_COLUMN_LABEL = "Poznámka"
+
+# Ktoré stĺpcové skupiny patria pod ktoré jedlo. Kuchyňa čítala tabuľku ako jeden
+# pás stĺpcov a hľadala, kde končia raňajky a začína obed — hlavička preto nesie
+# ešte jednu, nadradenú úroveň s názvom jedla.
+_MEAL_BANDS: dict[str, str] = {
+    "breakfast_snack": "Raňajky / desiata",
+    "soup": "Obed",
+    "main_course": "Obed",
+    "afternoon_snack": "Olovrant",
+}
+_MEAL_BAND_CSS: dict[str, str] = {
+    "Raňajky / desiata": "mb-break",
+    "Obed": "mb-lunch",
+    "Olovrant": "mb-snack",
+}
+
 
 def _decimal_text(value: Decimal) -> str:
     """Číslo do bunky: bez chvostových núl, s desatinnou čiarkou.
@@ -92,8 +110,19 @@ def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> li
     return keep or list(range(len(col_groups)))
 
 
+def _note_cell() -> dict:
+    """Prázdna bunka posledného stĺpca — miesto na ručnú poznámku vo vytlačenej
+    tabuľke. Vracia sa nová inštancia, nie zdieľaný dict, nech si ju renderer
+    nemôže omylom premutovať naprieč riadkami."""
+    return {"text": "", "css": "cell-note"}
+
+
 def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[dict]:
-    """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami."""
+    """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami.
+
+    Na konci vždy pribudne prázdna bunka stĺpca „Poznámka" — je súčasťou každého
+    dátového riadku, takže ju dopĺňa jedno miesto namiesto každého volajúceho.
+    """
     cells = []
     for position, (group_index, group) in enumerate(groups):
         grams = []
@@ -112,6 +141,7 @@ def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[di
                         "css": f"cell-num mh-{hues[position]}-cell{separator}",
                     }
                 )
+    cells.append(_note_cell())
     return cells
 
 
@@ -140,7 +170,8 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     hues = [meal_hue(g.get("meal"), g.get("variant")) for _, g in groups]
 
     total_components = sum(len(g.get("components") or []) for _, g in groups)
-    total_columns = 1 + total_components
+    # 1 = názov prevádzky/riadku, +1 = prázdny stĺpec „Poznámka" na konci.
+    total_columns = 1 + total_components + 1
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
@@ -148,7 +179,17 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     blocks = data.get("blocks") or []
     if blocks:
         for block_index, block in enumerate(blocks):
-            rows.append(_band("block-band", block.get("name") or "", total_columns))
+            # Bloky sú výdajné body kuchyne (cluster 1 / cluster 2) — v tlači ide
+            # každý na vlastný list, aby si ich dva body vedeli rozdať bez
+            # hľadania, kde jeden končí.
+            rows.append(
+                _band(
+                    "block-band",
+                    block.get("name") or "",
+                    total_columns,
+                    css="band block-band" + (" page-break" if block_index else ""),
+                )
+            )
             for route in block.get("routes") or []:
                 route_rows = route.get("rows") or []
                 # Prázdne trasy sa nevykresľujú — obrazovka ich tiež preskakuje.
@@ -176,7 +217,14 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
             )
         unassigned = data.get("unassigned_rows") or []
         if unassigned:
-            rows.append(_band("block-band", "Nepriradené prevádzky", total_columns))
+            rows.append(
+                _band(
+                    "block-band",
+                    "Nepriradené prevádzky",
+                    total_columns,
+                    css="band block-band page-break",
+                )
+            )
             for client_row in unassigned:
                 rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
     else:
@@ -212,6 +260,32 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     }
 
 
+def _meal_band_cells(groups: list[dict]) -> list[dict]:
+    """Nadradený pás hlavičky: Raňajky / Obed / Olovrant.
+
+    Susedné stĺpcové skupiny toho istého jedla sa zlejú do jednej bunky (polievka
+    a všetky menu tvoria jeden „Obed"), takže hranica medzi jedlami je vidieť ako
+    jeden švík, nie ako séria malých nadpisov.
+    """
+    cells: list[dict] = []
+    for _, group in groups:
+        span = len(group.get("components") or [])
+        if not span:
+            continue
+        label = _MEAL_BANDS.get(str(group.get("meal") or ""), "Ostatné")
+        if cells and cells[-1]["text"] == label:
+            cells[-1]["colspan"] += span
+            continue
+        css = _MEAL_BAND_CSS.get(label, "mb-other")
+        separator = " meal-sep" if cells else ""
+        cells.append(
+            {"text": label, "css": f"mealband {css}{separator}", "colspan": span}
+        )
+    if cells:
+        cells.append({"text": "", "css": "mealband mb-note meal-sep", "colspan": 1})
+    return cells
+
+
 def _build_header(groups: list[dict], hues: list[str]) -> dict:
     group_cells = []
     component_cells = []
@@ -237,17 +311,27 @@ def _build_header(groups: list[dict], hues: list[str]) -> dict:
                     "css": f"comp mh-{hues[position]}-2{component_separator}",
                 }
             )
+    group_cells.append(
+        {
+            "text": NOTE_COLUMN_LABEL,
+            "sub": "",
+            "css": "grp grp-note meal-sep",
+            "colspan": 1,
+        }
+    )
+    component_cells.append({"text": "", "sub": "", "css": "comp comp-note meal-sep"})
     return {
         "corner": "Prevádzka / Riadok",
+        "meals": _meal_band_cells(groups),
         "groups": group_cells,
         "components": component_cells,
     }
 
 
-def _band(kind: str, text: str, total_columns: int) -> dict:
+def _band(kind: str, text: str, total_columns: int, css: str = "band") -> dict:
     return {
         "kind": kind,
-        "css": "band",
+        "css": css,
         "cells": [{"text": text, "colspan": total_columns}],
     }
 
@@ -447,6 +531,7 @@ def _totals_row(
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             cells.append({"text": text or EMPTY, "css": separator.strip()})
+    cells.append(_note_cell())
     return {
         "kind": "total",
         "css": "total",
