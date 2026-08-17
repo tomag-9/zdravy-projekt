@@ -132,6 +132,8 @@ interface TableSpec {
   sections: SpecSection[];
   header: {
     corner: string;
+    /** Nadradený pás hlavičky: Raňajky / Obed / Olovrant. */
+    meals?: Array<{ text: string; css: string; colspan: number }>;
     groups: Array<{ text: string; sub: string; css: string; colspan: number }>;
     components: Array<{ text: string; sub: string; css: string }>;
   };
@@ -760,6 +762,8 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     );
   };
 
+  const mealBands = spec.header.meals ?? [];
+
   // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení.
   const visibleRows = spec.rows.filter(
     (row) => !row.collapsible || expandedClients.includes(row.group_id ?? ""),
@@ -770,8 +774,20 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <div className="zpa-table-wrap zpa-gram-wrap">
         <table className="zpa-gram">
           <thead>
+            {mealBands.length > 0 && (
+              <tr>
+                <th className="corner" rowSpan={3}>{spec.header.corner}</th>
+                {mealBands.map((band, index) => (
+                  <th key={index} className={band.css} colSpan={band.colspan}>
+                    {band.text}
+                  </th>
+                ))}
+              </tr>
+            )}
             <tr>
-              <th className="corner" rowSpan={2}>{spec.header.corner}</th>
+              {mealBands.length === 0 && (
+                <th className="corner" rowSpan={2}>{spec.header.corner}</th>
+              )}
               {spec.header.groups.map((group, index) => (
                 <th key={index} className={group.css} colSpan={group.colspan}>
                   {group.text}<small>{group.sub}</small>
