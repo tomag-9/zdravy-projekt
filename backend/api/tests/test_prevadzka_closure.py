@@ -127,7 +127,9 @@ class TestScheduling:
         )
         assert next_business_day(MONDAY, prevadzky[0]) == WEDNESDAY
         assert next_business_day(MONDAY, prevadzky[1]) == MONDAY
-        assert previous_business_day(TUESDAY, prevadzky[0]) == FRIDAY - datetime.timedelta(days=7)
+        assert previous_business_day(
+            TUESDAY, prevadzky[0]
+        ) == FRIDAY - datetime.timedelta(days=7)
 
     def test_business_days_skips_weekend_holiday_and_closure(self, prevadzky):
         Holiday.objects.create(date=TUESDAY, reason="Sviatok")

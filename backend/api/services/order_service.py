@@ -12,7 +12,6 @@ from ..scheduling import expand_closures, is_weekend
 from .auto_order_service import _build_auto_data, _is_order_empty
 from .prevadzka_service import dostupne_prevadzky
 
-
 # Okno, v ktorom sa hľadá 5 dní na objednanie. Musí pokryť aj dlhšie voľno
 # prevádzky (#490) — dva týždne prázdnin posunú pätku dopredu o desiatky dní.
 _PLANNED_WINDOW_DAYS = 120

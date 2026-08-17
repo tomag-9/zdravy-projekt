@@ -116,9 +116,7 @@ def closed_dates_for_prevadzky(
     return result
 
 
-def day_off_reason(
-    check_date: datetime.date, prevadzka: object = None
-) -> str | None:
+def day_off_reason(check_date: datetime.date, prevadzka: object = None) -> str | None:
     """Prečo je `check_date` voľný, alebo None keď sa objednáva.
 
     Bez `prevadzka` posudzuje len globálne voľno (víkend + `Holiday`).

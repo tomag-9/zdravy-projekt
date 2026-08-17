@@ -15,7 +15,6 @@ from .exceptions import (
     OrderDeadlinePassedError,
     PrevadzkaClosureOrderNotAllowedError,
 )
-from .scheduling import is_prevadzka_closed
 from .models import (
     ClosedDay,
     DailyOrder,
@@ -27,6 +26,7 @@ from .models import (
 )
 from .order_data import OrderData, safe_count
 from .roles import is_admin_or_above
+from .scheduling import is_prevadzka_closed
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
     PrevadzkaNejednoznacna,

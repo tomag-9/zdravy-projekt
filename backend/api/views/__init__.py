@@ -40,12 +40,6 @@ from .facility_views import AdminCelokViewSet, AdminFacilityPrevadzkaViewSet
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
-# Voľno prevádzky (#490)
-from .prevadzka_closure_views import (
-    AdminPrevadzkaClosureViewSet,
-    PrevadzkaClosureListViewSet,
-)
-
 # Inbox views
 from .inbox_views import InboxViewSet
 from .loading_views import LoadingViewSet
@@ -63,6 +57,12 @@ from .order_views import (
     DailyOrderViewSet,
     PlannedOrdersViewSet,
     PrevadzkaViewSet,
+)
+
+# Voľno prevádzky (#490)
+from .prevadzka_closure_views import (
+    AdminPrevadzkaClosureViewSet,
+    PrevadzkaClosureListViewSet,
 )
 
 # Push notification views
