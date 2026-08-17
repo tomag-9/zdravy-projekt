@@ -270,6 +270,21 @@ class HolidayOrderNotAllowedError(BaseAPIException):
     default_detail = "Na tento deň nie je možné zadať objednávku (voľný deň)."
 
 
+class PrevadzkaClosureOrderNotAllowedError(BaseAPIException):
+    """Objednávka na deň, kedy má prevádzka nastavené vlastné voľno (#490).
+
+    Oddelené od `HolidayOrderNotAllowedError`: `Holiday` zavrie celú kuchyňu,
+    toto len jednu prevádzku, a klient potrebuje z hlášky vedieť, ktorý z tých
+    dvoch prípadov nastal.
+    """
+
+    status_code = status.HTTP_400_BAD_REQUEST
+    error_code = "prevadzka_closure"
+    default_detail = (
+        "Na tento deň má prevádzka nastavené voľno, objednávku zadať nemožno."
+    )
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Token & Verification Errors
 # ──────────────────────────────────────────────────────────────────────────────

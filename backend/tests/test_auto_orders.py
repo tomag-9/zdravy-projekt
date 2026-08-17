@@ -148,6 +148,9 @@ class TestIsOrderEmpty:
 # ---------------------------------------------------------------------------
 
 
+# `django_db`, lebo `_next_workday` odvtedy, čo beží cez `api.scheduling`,
+# preskakuje aj nastavené voľné dni (`Holiday`) — potrebuje teda databázu.
+@pytest.mark.django_db
 class TestNextWorkday:
     def test_monday_returns_tuesday(self):
         assert _next_workday(MONDAY) == TUESDAY

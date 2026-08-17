@@ -5,6 +5,7 @@ from typing import Any, List
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -826,6 +827,60 @@ class Holiday(models.Model):
     def __str__(self) -> str:
         suffix = f" ({self.reason})" if self.reason else ""
         return f"Voľný deň {self.date}{suffix}"
+
+
+class PrevadzkaClosure(models.Model):
+    """Voľno JEDNEJ prevádzky — deň alebo súvislý rozsah (napr. prázdniny škôlky).
+
+    Zámerne nie `Holiday`: `Holiday` je celosystémové voľno kuchyne (nevarí sa
+    nikde), toto zavrie len konkrétnu prevádzku, kým ostatné objednávajú ďalej.
+    Preto aj rozsah namiesto riadku na deň — prázdniny sú súvislý úsek a admin
+    ho má vedieť zrušiť jedným klikom, nie mazať 14 riadkov.
+    """
+
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="closures"
+    )
+    date_from = models.DateField(db_index=True)
+    date_to = models.DateField(db_index=True)
+    reason = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date_from", "prevadzka_id"]
+        verbose_name = "voľno prevádzky"
+        verbose_name_plural = "voľná prevádzky"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(date_to__gte=models.F("date_from")),
+                name="prevadzka_closure_range_ordered",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["prevadzka", "date_from", "date_to"],
+                name="prevadzka_closure_lookup",
+            )
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise DjangoValidationError(
+                {"date_to": "Koniec voľna nesmie byť pred jeho začiatkom."}
+            )
+
+    def covers(self, day: datetime.date) -> bool:
+        return self.date_from <= day <= self.date_to
+
+    def __str__(self) -> str:
+        span = (
+            str(self.date_from)
+            if self.date_from == self.date_to
+            else f"{self.date_from} – {self.date_to}"
+        )
+        suffix = f" ({self.reason})" if self.reason else ""
+        return f"Voľno {self.prevadzka_id}: {span}{suffix}"
 
 
 class PushSubscription(models.Model):

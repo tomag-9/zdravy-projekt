@@ -6,7 +6,15 @@ import { logger } from '../../lib/logger';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection } from "./GramageTable";
-import { prevWeekday, nextWeekday, lastWeekdayToday, toDateString, isWeekday, formatDay as formatDate } from "../../lib/businessDay";
+import {
+  prevWeekday,
+  nextWeekday,
+  lastWeekdayToday,
+  toDateString,
+  isWeekend,
+  fromDateKey,
+  formatDay as formatDate,
+} from "../../lib/businessDay";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -362,7 +370,7 @@ const AdminDashboard: React.FC = () => {
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!val) return;
-                  if (!isWeekday(new Date(val + "T12:00:00"))) return;
+                  if (isWeekend(fromDateKey(val))) return;
                   if (val <= maxDate) setDate(val);
                 }}
                 className="zpa-input"

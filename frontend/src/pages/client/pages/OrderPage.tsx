@@ -15,6 +15,7 @@ import { OrderRequestError } from "../hooks/useOrder";
 import TourOverlay from "../components/onboarding/TourOverlay";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
+import { dayOffReason, fromDateKey } from '../../../lib/businessDay';
 import { buildPackSeparatelyItems } from "../components/order/packSeparately";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
@@ -55,6 +56,7 @@ const OrderPage = () => {
     copyLunchFromCurrentBreakfast,
     copyOlovrantFromCurrentLunch,
     holidays,
+    closures,
     mealPlanAvailability,
     prevadzky,
     needsChoice,
@@ -198,6 +200,9 @@ const OrderPage = () => {
   const getFriendlyOrderErrorMessage = (error: unknown) => {
     if (error instanceof OrderRequestError && error.code === "order_deadline_passed") {
       return "Objednávku už nie je možné odoslať, termín uplynul.";
+    }
+    if (error instanceof OrderRequestError && error.code === "prevadzka_closure") {
+      return "Prevádzka má na tento deň nastavené voľno, objednávku zadať nemožno.";
     }
     return "Nepodarilo sa odoslať objednávku. Skúste to znova.";
   };
@@ -423,11 +428,20 @@ const OrderPage = () => {
   };
 
   const dateFormatter = new Intl.DateTimeFormat('sk-SK', { weekday: 'long', day: 'numeric', month: 'long' });
-  const dateObj = new Date(`${selectedDate}T12:00:00`);
+  const dateObj = fromDateKey(selectedDate);
   const formattedDate = dateFormatter.format(dateObj);
   const totalPortions = getTotalPortions();
 
-  const isHolidayDay = holidays?.has(selectedDate);
+  // Jedno miesto pre "v tento deň sa neobjednáva": sviatok kuchyne (`holidays`)
+  // aj voľno tejto prevádzky (`closures`, #490). Dôvod si držíme, lebo banner
+  // má povedať, ktorý z tých dvoch prípadov nastal.
+  const dayOffKind = dayOffReason(dateObj, { holidays, closures });
+  const isHolidayDay = dayOffKind === "holiday" || dayOffKind === "closure";
+  const dayOffTitle = dayOffKind === "closure" ? "Voľno prevádzky" : "Voľný deň";
+  const dayOffSubtitle =
+    dayOffKind === "closure"
+      ? "Prevádzka má na tento deň nastavené voľno, objednávku zadať nemožno."
+      : "Na tento deň nie je možné zadať objednávku.";
   const allVisibleDeadlinesClosed = visibleMealsList.every((m) =>
     !OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
   );
@@ -502,13 +516,15 @@ const OrderPage = () => {
             : undefined
         }
         disabled={
-          holidays?.has(selectedDate) ||
+          isHolidayDay ||
           (fullDayOrder ? !isFullDayDeadlineOpen : allVisibleDeadlinesClosed)
         }
         disabledMessage={
-          holidays?.has(selectedDate)
-            ? "Voľný deň – objednávky nie sú dostupné."
-            : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
+          dayOffKind === "closure"
+            ? "Prevádzka má na tento deň voľno – objednávky nie sú dostupné."
+            : isHolidayDay
+              ? "Voľný deň – objednávky nie sú dostupné."
+              : "Na tento deň už nie je možné vytvoriť objednávku (termín uplynul)."
         }
       />
     </div>
@@ -649,18 +665,18 @@ const OrderPage = () => {
 
         {/* PC day selector */}
         <div className="pc-daysel-pc" data-tour-id="tour-day-selector">
-          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
+          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} closures={closures} />
         </div>
 
         {/* Holiday banner */}
-        {holidays?.has(selectedDate) && (
+        {isHolidayDay && (
           <div className="zp-banner zp-banner--holiday" style={{ display: "flex", gap: 12, marginBottom: 16 }}>
             <span className="icon">🏖️</span>
             <div>
               <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--teal-500)", fontSize: 14 }}>
-                Voľný deň
+                {dayOffTitle}
               </div>
-              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>Na tento deň nie je možné zadať objednávku.</div>
+              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>{dayOffSubtitle}</div>
             </div>
           </div>
         )}
@@ -728,18 +744,18 @@ const OrderPage = () => {
 
         {/* Day selector */}
         <div data-tour-id="tour-day-selector">
-          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} />
+          <DaySelector selectedDate={selectedDate} onChange={setSelectedDate} holidays={holidays} closures={closures} />
         </div>
 
         {/* Holiday banner */}
-        {holidays?.has(selectedDate) && (
+        {isHolidayDay && (
           <div className="zp-banner zp-banner--holiday" style={{ display: "flex", gap: 12 }}>
             <span className="icon">🏖️</span>
             <div>
               <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--teal-500)", fontSize: 14 }}>
-                Voľný deň
+                {dayOffTitle}
               </div>
-              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>Na tento deň nie je možné zadať objednávku.</div>
+              <div style={{ fontSize: 13, color: "var(--teal-500)" }}>{dayOffSubtitle}</div>
             </div>
           </div>
         )}

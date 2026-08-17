@@ -10,6 +10,7 @@ from .views import (
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
+    AdminPrevadzkaClosureViewSet,
     AdminPrevadzkaDeliveryViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
@@ -31,6 +32,7 @@ from .views import (
     PasswordResetRequestView,
     PlannedOrdersViewSet,
     PortionTypeViewSet,
+    PrevadzkaClosureListViewSet,
     PrevadzkaViewSet,
     PushSubscribeView,
     SafeTokenRefreshView,
@@ -95,6 +97,14 @@ router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-tem
 router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
+router.register(
+    r"admin/prevadzka-closures",
+    AdminPrevadzkaClosureViewSet,
+    basename="admin-prevadzka-closure",
+)
+router.register(
+    r"prevadzka-closures", PrevadzkaClosureListViewSet, basename="prevadzka-closure"
+)
 router.register(r"inbox", InboxViewSet, basename="inbox")
 router.register(
     r"admin/edupage-connections",

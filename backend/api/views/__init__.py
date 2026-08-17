@@ -40,6 +40,12 @@ from .facility_views import AdminCelokViewSet, AdminFacilityPrevadzkaViewSet
 # Holiday views
 from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
+# Voľno prevádzky (#490)
+from .prevadzka_closure_views import (
+    AdminPrevadzkaClosureViewSet,
+    PrevadzkaClosureListViewSet,
+)
+
 # Inbox views
 from .inbox_views import InboxViewSet
 from .loading_views import LoadingViewSet
@@ -77,6 +83,9 @@ __all__ = [
     # Holidays
     "AdminHolidayViewSet",
     "HolidayListViewSet",
+    # Voľno prevádzky
+    "AdminPrevadzkaClosureViewSet",
+    "PrevadzkaClosureListViewSet",
     "EmailTokenObtainPairView",
     "LogoutView",
     "PasswordResetRequestView",

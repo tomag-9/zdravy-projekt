@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, X, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { logger } from '../../lib/logger';
+import { fetchAllPages } from '../../lib/pagination';
+import { fromDateKey, isDayOff } from '../../lib/businessDay';
 import { PageHead, Card, Button, Select } from "./ui";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -313,6 +315,26 @@ const MealPlanCalendar: React.FC = () => {
     fetchTemplates();
   }, [fetchTemplates]);
 
+  // #489: na deň voľna sa plán nezakladá, tak sa ani neponúka na kliknutie.
+  // Sem patrí len `Holiday` (celá kuchyňa) — jedálniček je spoločný pre všetky
+  // prevádzky, takže voľno jednej z nich ho neruší.
+  const [holidays, setHolidays] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      try {
+        const rows = await fetchAllPages<{ date: string }>(
+          apiFetch,
+          `${API}/admin/holidays/`,
+        );
+        setHolidays(new Set(rows.map((h) => h.date)));
+      } catch (e) {
+        logger.error(e);
+      }
+    };
+    fetchHolidays();
+  }, [apiFetch]);
+
   const prevMonth = () => {
     if (month === 0) { setMonth(11); setYear(y => y - 1); }
     else setMonth(m => m - 1);
@@ -359,12 +381,15 @@ const MealPlanCalendar: React.FC = () => {
                   const plan = plans[dateStr];
                   const isToday = dateStr === todayStr;
                   const isWeekend = ((startDow + day - 1) % 7) >= 5;
+                  const dayOff = isDayOff(fromDateKey(dateStr), { holidays });
 
                   return (
                     <button
                       key={dateStr}
                       onClick={() => setSelectedDate(dateStr)}
-                      className={`zpa-cal-cell${isToday ? " today" : ""}${isWeekend && !isToday ? " weekend" : ""}`}
+                      disabled={dayOff}
+                      title={dayOff ? "Voľný deň — jedálniček sa nezadáva" : undefined}
+                      className={`zpa-cal-cell${isToday ? " today" : ""}${isWeekend && !isToday ? " weekend" : ""}${dayOff ? " dayoff" : ""}`}
                     >
                       <span className="dnum">{day}</span>
                       {plan && (

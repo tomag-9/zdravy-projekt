@@ -13,8 +13,18 @@ from .exceptions import (
     ClosedDayOrderModificationError,
     HolidayOrderNotAllowedError,
     OrderDeadlinePassedError,
+    PrevadzkaClosureOrderNotAllowedError,
 )
-from .models import ClosedDay, DailyOrder, Diet, Holiday, PortionType, Prevadzka
+from .scheduling import is_prevadzka_closed
+from .models import (
+    ClosedDay,
+    DailyOrder,
+    Diet,
+    Holiday,
+    PortionType,
+    Prevadzka,
+    PrevadzkaClosure,
+)
 from .order_data import OrderData, safe_count
 from .roles import is_admin_or_above
 from .services.prevadzka_service import (
@@ -328,6 +338,21 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             if Holiday.objects.filter(date=date).exists():
                 raise HolidayOrderNotAllowedError()
 
+    def _enforce_prevadzka_closure(
+        self, user: Any, status: str, date: datetime.date, prevadzka: Prevadzka
+    ) -> None:
+        """Ako `_enforce_holiday_restriction`, ale pre voľno JEDNEJ prevádzky (#490).
+
+        Samostatná metóda, lebo prevádzku pozná až `_resolve_prevadzka()` —
+        globálne voľno sa dá overiť skôr, toto až po nej.
+        """
+        request = self.context.get("request")
+        actor = getattr(request, "user", None)
+        is_staff = getattr(actor, "is_staff", False) or getattr(user, "is_staff", False)
+        if not is_staff and status != "draft":
+            if is_prevadzka_closed(date, prevadzka):
+                raise PrevadzkaClosureOrderNotAllowedError()
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -356,6 +381,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
         prevadzka = self._resolve_prevadzka(user, validated_data)
+        self._enforce_prevadzka_closure(
+            user, input_status, validated_data["date"], prevadzka
+        )
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -463,6 +491,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         self._enforce_day_open(instance.date)
         self._enforce_holiday_restriction(user, input_status, instance.date)
+        if instance.prevadzka_id:
+            self._enforce_prevadzka_closure(
+                user, input_status, instance.date, instance.prevadzka
+            )
 
         if not is_admin:
             self._validate_deadlines(
@@ -529,6 +561,36 @@ class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
         fields = ["id", "date", "reason"]
+
+
+class PrevadzkaClosureSerializer(serializers.ModelSerializer):
+    """Voľno jednej prevádzky (#490) — deň alebo rozsah."""
+
+    prevadzka_nazov = serializers.CharField(source="prevadzka.nazov", read_only=True)
+
+    class Meta:
+        model = PrevadzkaClosure
+        fields = [
+            "id",
+            "prevadzka",
+            "prevadzka_nazov",
+            "date_from",
+            "date_to",
+            "reason",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        # Pri PATCHi príde len jedno pole — druhý koniec doplň z inštancie,
+        # inak by sa dal rozsah "obrátiť" čiastočnou úpravou.
+        date_from = attrs.get("date_from") or getattr(self.instance, "date_from", None)
+        date_to = attrs.get("date_to") or getattr(self.instance, "date_to", None)
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError(
+                {"date_to": "Koniec voľna nesmie byť pred jeho začiatkom."}
+            )
+        return attrs
 
 
 class PrevadzkaDietSerializer(serializers.ModelSerializer):

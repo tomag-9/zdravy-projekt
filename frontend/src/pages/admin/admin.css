@@ -647,6 +647,9 @@
 .zpa-cal-cell.empty { background: transparent; border: 0; cursor: default; }
 .zpa-cal-cell.weekend { background: var(--bg-cream-soft); }
 .zpa-cal-cell.today { border-color: var(--orange-500); background: linear-gradient(135deg, var(--bg-cream-warm), #fff4e0); }
+/* Deň voľna (víkend/sviatok) — plán sa naň nezadáva, bunka je neaktívna (#489). */
+.zpa-cal-cell.dayoff { cursor: not-allowed; opacity: .55; }
+.zpa-cal-cell.dayoff:hover { border-color: var(--line-soft); box-shadow: none; transform: none; }
 .zpa-cal-cell .dnum { font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--green-900); }
 .zpa-cal-cell.weekend .dnum { color: var(--ink-mute); }
 .zpa-cal-cell.today .dnum { color: var(--orange-500); }

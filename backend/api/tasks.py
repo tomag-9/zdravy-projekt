@@ -164,7 +164,7 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         )
         return {"error": "missing_global_settings", "meal_types": meal_types}
 
-    from api.scheduling import is_configured_day_off
+    from api.scheduling import day_off_reason, is_day_off
 
     today = timezone.localdate()
 
@@ -176,11 +176,11 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
         target_date = _next_workday(today) if is_day_before else today
         # Skip weekends and admin-configured days off (Holiday) — #442.
-        if target_date.weekday() < 5 and not is_configured_day_off(target_date):
+        if not is_day_off(target_date):
             date_to_meals.setdefault(target_date, []).append(meal_type)
 
     if not date_to_meals:
-        reason = "weekend" if today.weekday() >= 5 else "configured_day_off"
+        reason = day_off_reason(today) or "configured_day_off"
         logger.info(
             "send_push_deadline_reminder_task: %s skip for meal_types=%s",
             reason,
@@ -613,6 +613,7 @@ def scrape_edupage_orders_task(
             prevadzky_without_match,
         )
         from api.models import DailyOrder, GlobalSettings
+        from api.scheduling import closed_dates_for_prevadzky
         from api.services import _next_workday
         from api.services.edupage_connection_service import edupage_operations
         from api.utils import filter_order_data_for_prevadzka
@@ -698,6 +699,12 @@ def scrape_edupage_orders_task(
             # Viac prevádzok → EduPage riadky rozdelíme podľa `edupage_match`.
             # Jedna prevádzka → split nerobíme a všetko ide do nej.
             by_nazov = {p.nazov: p for p in prevadzky}
+            # Voľno prevádzky (#490): na taký deň sa jej plán nezakladá vôbec.
+            # Jeden dotaz na celok, nie na každý (prevádzka × deň).
+            scrape_dates = list(date_to_meals)
+            closed_by_prevadzka = closed_dates_for_prevadzky(
+                [p.id for p in prevadzky], min(scrape_dates), max(scrape_dates)
+            )
             matches = build_prevadzka_matches(prevadzky)
             bez_matchu = prevadzky_without_match(prevadzky)
             if len(prevadzky) > 1 and bez_matchu:
@@ -748,6 +755,16 @@ def scrape_edupage_orders_task(
                     data_by_nazov = {prevadzky[0].nazov: result.order_data}
 
                 for nazov, prevadzka in by_nazov.items():
+                    if target_date in closed_by_prevadzka.get(prevadzka.id, set()):
+                        logger.info(
+                            "scrape_edupage_orders_task: %s má na %s voľno — "
+                            "plán nezakladám",
+                            nazov,
+                            target_date,
+                        )
+                        skipped += 1
+                        continue
+
                     # Pri rozdelenom celku priraď každej prevádzke len tie flagy,
                     # ktorých porcie do nej reálne padli; config_notes sú celok-wide.
                     if len(prevadzky) > 1:
