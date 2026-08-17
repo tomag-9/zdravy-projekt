@@ -70,6 +70,16 @@ class Command(BaseCommand):
         admin_group = Group.objects.get(name="Admin")
         admin_user.groups.add(admin_group)
 
+        # Demo admin je zámerne superadmin, aby sa dala prejsť celá konzola.
+        # Migrácia 0073 degraduje ostatných superadminov, takže sa mu rola
+        # obnovuje tu — v produkcii sa sem beh nikdy nedostane.
+        demo_profile, _ = UserProfile.objects.get_or_create(
+            user=admin_user, defaults={"company_name": "Demo admin"}
+        )
+        if demo_profile.role != UserProfile.Role.SUPERADMIN:
+            demo_profile.role = UserProfile.Role.SUPERADMIN
+            demo_profile.save(update_fields=["role"])
+
         if created:
             self.stdout.write(
                 self.style.SUCCESS(f'Created superuser "{DEMO_ADMIN_EMAIL}"')

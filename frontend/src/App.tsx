@@ -10,6 +10,9 @@ import { useEffect } from "react";
 import { AppProvider } from "./pages/client/context/AppContext";
 import { AuthProvider, useAuth } from "./context/auth";
 import { isAdminOrAbove, isSuperadmin, isKuchyna } from "./lib/roles";
+import { SECTION, canEdit } from "./lib/sections";
+import { EditAccessProvider } from "./lib/editAccess";
+import ReadOnlyNotice from "./pages/admin/ReadOnlyNotice";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
@@ -138,6 +141,23 @@ const KuchynaRoute = () => {
 };
 
 /**
+ * Obal admin obrazovky: chybová hranica + režim „len na čítanie" podľa sekcie
+ * (#484). Vďaka nemu je nová obrazovka krytá tým, že sa uvedie jej sekcia —
+ * netreba nič meniť v samotnej obrazovke.
+ */
+const Section = ({ section, children }: { section: string; children: React.ReactNode }) => {
+  const { user } = useAuth();
+  return (
+    <ErrorBoundary>
+      <EditAccessProvider canEdit={canEdit(user?.sections, section)}>
+        <ReadOnlyNotice />
+        {children}
+      </EditAccessProvider>
+    </ErrorBoundary>
+  );
+};
+
+/**
  * Sekcie presunuté na superadmina (#483). Admin, ktorý si URL napíše ručne,
  * skončí na dashboarde; backend na tie endpointy aj tak vracia 403.
  */
@@ -235,20 +255,20 @@ export default function App() {
               {/* Admin Routes */}
               <Route path="/admin" element={<AdminRoute />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
-                <Route path="dashboard" element={<ErrorBoundary><AdminDashboard /></ErrorBoundary>} />
-                <Route path="prevadzka-overview" element={<ErrorBoundary><PrevadzkaOverview /></ErrorBoundary>} />
-                <Route path="delivery-layout" element={<ErrorBoundary><DeliveryLayoutAdmin /></ErrorBoundary>} />
-                <Route path="facilities" element={<ErrorBoundary><FacilityManager /></ErrorBoundary>} />
-                <Route path="facilities/:id" element={<ErrorBoundary><ClientDetail /></ErrorBoundary>} />
-                <Route path="roles" element={<SuperadminRoute><AdminUserList /></SuperadminRoute>} />
-                <Route path="roles/:id" element={<SuperadminRoute><AdminUserDetail /></SuperadminRoute>} />
-                <Route path="diets" element={<ErrorBoundary><DietManager /></ErrorBoundary>} />
-                <Route path="meal-plan" element={<ErrorBoundary><MealPlanCalendar /></ErrorBoundary>} />
-                <Route path="meal-catalog" element={<ErrorBoundary><MealCatalogAdmin /></ErrorBoundary>} />
-                <Route path="settings" element={<SuperadminRoute><SystemSettings /></SuperadminRoute>} />
-                <Route path="push-notifications" element={<ErrorBoundary><PushNotificationsAdmin /></ErrorBoundary>} />
-                <Route path="holidays" element={<ErrorBoundary><HolidaysAdmin /></ErrorBoundary>} />
-                <Route path="logs" element={<SuperadminRoute><AdminLogs /></SuperadminRoute>} />
+                <Route path="dashboard" element={<Section section={SECTION.dashboard}><AdminDashboard /></Section>} />
+                <Route path="prevadzka-overview" element={<Section section={SECTION.podklady}><PrevadzkaOverview /></Section>} />
+                <Route path="delivery-layout" element={<Section section={SECTION.trasy}><DeliveryLayoutAdmin /></Section>} />
+                <Route path="facilities" element={<Section section={SECTION.prevadzky}><FacilityManager /></Section>} />
+                <Route path="facilities/:id" element={<Section section={SECTION.prevadzky}><ClientDetail /></Section>} />
+                <Route path="roles" element={<SuperadminRoute><Section section={SECTION.pristupy}><AdminUserList /></Section></SuperadminRoute>} />
+                <Route path="roles/:id" element={<SuperadminRoute><Section section={SECTION.pristupy}><AdminUserDetail /></Section></SuperadminRoute>} />
+                <Route path="diets" element={<Section section={SECTION.diety}><DietManager /></Section>} />
+                <Route path="meal-plan" element={<Section section={SECTION.jedalnicek}><MealPlanCalendar /></Section>} />
+                <Route path="meal-catalog" element={<Section section={SECTION.katalog}><MealCatalogAdmin /></Section>} />
+                <Route path="settings" element={<SuperadminRoute><Section section={SECTION.nastavenia}><SystemSettings /></Section></SuperadminRoute>} />
+                <Route path="push-notifications" element={<Section section={SECTION.notifikacie}><PushNotificationsAdmin /></Section>} />
+                <Route path="holidays" element={<Section section={SECTION.volneDni}><HolidaysAdmin /></Section>} />
+                <Route path="logs" element={<SuperadminRoute><Section section={SECTION.logy}><AdminLogs /></Section></SuperadminRoute>} />
               </Route>
 
               {/* Kuchyňa Routes */}

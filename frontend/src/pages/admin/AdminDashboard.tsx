@@ -324,7 +324,8 @@ const AdminDashboard: React.FC = () => {
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
           <>
-            <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
+            {/* Export nemení dáta — kto má sekciu na čítanie, má ho mať tiež. */}
+            <Button allowReadOnly variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
               {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} Stiahnuť PDF
             </Button>
             {!closedLoading && !isClosed && (

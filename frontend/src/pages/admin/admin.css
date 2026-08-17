@@ -980,3 +980,12 @@
 .zpa-spin { animation: zpa-spin 1s linear infinite; }
 @keyframes zpa-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .zpa-spin { animation: none; } }
+
+/* Režim „len na čítanie" (#484) — bez tohto vyzerá zamknutá obrazovka rozbito. */
+.zpa-readonly-notice {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 16px; padding: 12px 16px;
+    background: rgba(201,150,35,0.12); border: 1px solid rgba(201,150,35,0.35);
+    border-radius: var(--radius-md); color: var(--mustard-700); font-size: 13.5px;
+}
+.zpa-readonly-notice svg { width: 18px; height: 18px; flex: 0 0 auto; }
