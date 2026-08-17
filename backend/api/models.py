@@ -81,7 +81,8 @@ class DailyOrder(models.Model):
         blank=True,
         help_text=(
             "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
-            "{'attention': [...], 'config_notes': [...]}. Prázdne pri ručných "
+            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...]}. "
+            "Prázdne pri ručných "
             "objednávkach a pri scrape bez upozornení."
         ),
     )

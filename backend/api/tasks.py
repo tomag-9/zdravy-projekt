@@ -603,6 +603,7 @@ def scrape_edupage_orders_task(
 
         from api.edupage_scraper import (
             EdupageScraper,
+            allowed_diet_names,
             build_prevadzka_matches,
             nest_order_data_by_category,
             prevadzky_without_match,
@@ -678,6 +679,8 @@ def scrape_edupage_orders_task(
                     target_meals.append(meal_type)
 
         scraper = EdupageScraper()
+        # Whitelist diét sa číta raz za beh — je rovnaký pre všetky prevádzky.
+        allowed_diets = allowed_diet_names()
         scraped = errors = skipped = 0
 
         for operation in edupage_operations():
@@ -712,6 +715,7 @@ def scrape_edupage_orders_task(
                         operation["url"],
                         target_date,
                         prevadzka_matches=matches if len(prevadzky) > 1 else None,
+                        allowed_diets=allowed_diets,
                     )
                 except Exception:
                     logger.exception(
@@ -735,6 +739,14 @@ def scrape_edupage_orders_task(
                         target_date,
                         result.attention,
                     )
+                if result.unmapped_letters:
+                    logger.warning(
+                        "scrape_edupage_orders_task: neznáme diéty pre %s na %s: %s "
+                        "— porcie sú započítané, ale diétu treba založiť v appke",
+                        operation["name"],
+                        target_date,
+                        result.unmapped_letters,
+                    )
 
                 # Jedna prevádzka → celý objem jej; viac → podľa edupage_match.
                 if len(prevadzky) > 1:
@@ -749,8 +761,12 @@ def scrape_edupage_orders_task(
                         attention_for_prevadzka = result.attention_by_prevadzka.get(
                             nazov, []
                         )
+                        unmapped_for_prevadzka = result.unmapped_by_prevadzka.get(
+                            nazov, []
+                        )
                     else:
                         attention_for_prevadzka = result.attention
+                        unmapped_for_prevadzka = result.unmapped_letters
 
                     nested_order_data = nest_order_data_by_category(
                         data_by_nazov.get(nazov, {}), nazov
@@ -799,6 +815,7 @@ def scrape_edupage_orders_task(
                         order.scrape_flags = {
                             "attention": list(attention_for_prevadzka),
                             "config_notes": list(result.config_notes),
+                            "unmapped_diets": list(unmapped_for_prevadzka),
                         }
                         order.save(update_fields=["data", "scrape_flags", "updated_at"])
                     scraped += 1
