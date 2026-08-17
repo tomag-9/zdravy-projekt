@@ -127,9 +127,16 @@ interface SpecSection {
   selected: boolean;
 }
 
+interface SpecBlock {
+  name: string;
+  selected: boolean;
+}
+
 interface TableSpec {
   total_columns: number;
   sections: SpecSection[];
+  /** Výdajné body kuchyne (clustre) — každý sa dá zobraziť a vytlačiť sám. */
+  blocks: SpecBlock[];
   header: {
     corner: string;
     /** Nadradený pás hlavičky: Raňajky / Obed / Olovrant. */
@@ -245,13 +252,18 @@ const AdminDashboard: React.FC = () => {
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
   const [sections, setSections] = useState<string[]>([]);
+  const [blocks, setBlocks] = useState<string[]>([]);
 
-  // Ktoré sekcie (raňajky / polievka / menu / olovrant) sa zobrazujú. Prázdny
-  // výber = kompletná tabuľka. Rovnaký filter dostane obrazovka aj PDF, takže
-  // vytlačíš presne to, čo vidíš.
+  // Ktoré sekcie (raňajky / polievka / menu / olovrant) a ktoré výdajné body sa
+  // zobrazujú. Prázdny výber = kompletná tabuľka. Rovnaký filter dostane
+  // obrazovka aj PDF, takže vytlačíš presne to, čo vidíš.
   const sectionQuery = useMemo(
-    () => sections.map((key) => `&section=${encodeURIComponent(key)}`).join(""),
-    [sections],
+    () =>
+      [
+        ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
+        ...blocks.map((name) => `&block=${encodeURIComponent(name)}`),
+      ].join(""),
+    [sections, blocks],
   );
 
   const fetchData = useCallback(async () => {
@@ -466,22 +478,31 @@ const AdminDashboard: React.FC = () => {
 
         {!loading && data && hasData && (
           <>
-            <SectionFilter
+            <PrintFilter
               sections={data.spec.sections}
-              onToggle={(key) =>
-                setSections((current) => {
-                  // Prázdny výber znamená „všetko", takže prvé odkliknutie musí
-                  // vychádzať zo skutočne zobrazených sekcií, nie z prázdna.
-                  const base = current.length
-                    ? current
-                    : data.spec.sections.map((section) => section.key);
-                  const next = base.includes(key)
-                    ? base.filter((item) => item !== key)
-                    : [...base, key];
-                  return next.length === data.spec.sections.length ? [] : next;
-                })
+              blocks={data.spec.blocks ?? []}
+              onToggleSection={(key) =>
+                setSections((current) =>
+                  toggleSelection(
+                    current,
+                    key,
+                    data.spec.sections.map((section) => section.key),
+                  ),
+                )
               }
-              onReset={() => setSections([])}
+              onToggleBlock={(name) =>
+                setBlocks((current) =>
+                  toggleSelection(
+                    current,
+                    name,
+                    (data.spec.blocks ?? []).map((block) => block.name),
+                  ),
+                )
+              }
+              onReset={() => {
+                setSections([]);
+                setBlocks([]);
+              }}
             />
             <GramageTable data={data} />
           </>
@@ -635,34 +656,80 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
   );
 };
 
-// ── Filter sekcií ─────────────────────────────────────────────────────────────
+// ── Filter zobrazenia a tlače ────────────────────────────────────────────────
 // Rovnaký výber ide na obrazovku aj do PDF — čo vidíš, to vytlačíš.
 
-const SectionFilter: React.FC<{
-  sections: SpecSection[];
+/**
+ * Prepnutie jednej položky vo filtri. Prázdny výber znamená „všetko", takže
+ * prvé odkliknutie musí vychádzať zo skutočne zobrazených položiek, nie z
+ * prázdna; a keď sú nakoniec vybraté všetky, vraciame sa na prázdno.
+ */
+const toggleSelection = (current: string[], value: string, all: string[]): string[] => {
+  const base = current.length ? current : all;
+  const next = base.includes(value) ? base.filter((item) => item !== value) : [...base, value];
+  return next.length === all.length ? [] : next;
+};
+
+const FilterRow: React.FC<{
+  label: string;
+  items: Array<{ key: string; label: string; selected: boolean }>;
   onToggle: (key: string) => void;
+}> = ({ label, items, onToggle }) => (
+  <div className="row">
+    <span className="lbl">{label}</span>
+    {items.map((item) => (
+      <button
+        key={item.key}
+        type="button"
+        className={`chip${item.selected ? " on" : ""}`}
+        aria-pressed={item.selected}
+        onClick={() => onToggle(item.key)}
+      >
+        {item.label}
+      </button>
+    ))}
+  </div>
+);
+
+const PrintFilter: React.FC<{
+  sections: SpecSection[];
+  blocks: SpecBlock[];
+  onToggleSection: (key: string) => void;
+  onToggleBlock: (name: string) => void;
   onReset: () => void;
-}> = ({ sections, onToggle, onReset }) => {
-  const allSelected = sections.every((section) => section.selected);
+}> = ({ sections, blocks, onToggleSection, onToggleBlock, onReset }) => {
+  const allSelected =
+    sections.every((section) => section.selected) && blocks.every((block) => block.selected);
   return (
     <div className="zpa-section-filter">
-      <span className="lbl">Zobraziť</span>
-      {sections.map((section) => (
-        <button
-          key={section.key}
-          type="button"
-          className={`chip${section.selected ? " on" : ""}`}
-          aria-pressed={section.selected}
-          onClick={() => onToggle(section.key)}
-        >
-          {section.label}
-        </button>
-      ))}
-      {!allSelected && (
-        <button type="button" className="reset" onClick={onReset}>
-          Zobraziť všetko
-        </button>
+      <FilterRow
+        label="Jedlá"
+        items={sections.map((section) => ({ ...section, key: section.key }))}
+        onToggle={onToggleSection}
+      />
+      {blocks.length > 1 && (
+        <FilterRow
+          label="Výdajný bod"
+          items={blocks.map((block) => ({
+            key: block.name,
+            label: block.name,
+            selected: block.selected,
+          }))}
+          onToggle={onToggleBlock}
+        />
       )}
+      <div className="row">
+        <span className="hint">
+          {allSelected
+            ? "Tlačí sa celá tabuľka. Odkliknutím vyberieš, čo sa má zobraziť aj vytlačiť."
+            : "Do PDF ide presne tento výber."}
+        </span>
+        {!allSelected && (
+          <button type="button" className="reset" onClick={onReset}>
+            Zobraziť všetko
+          </button>
+        )}
+      </div>
     </div>
   );
 };

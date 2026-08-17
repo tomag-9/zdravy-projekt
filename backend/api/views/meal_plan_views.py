@@ -291,7 +291,10 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from ..exporters.gramage_table_spec import build_table_spec
 
         sections = request.query_params.getlist("section") or None
-        data["spec"] = build_table_spec(data, sections=sections)
+        block_names = request.query_params.getlist("block") or None
+        data["spec"] = build_table_spec(
+            data, sections=sections, block_names=block_names
+        )
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-pdf")
@@ -313,7 +316,8 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         from ..exporters.gramage_table_spec import build_table_spec
 
         sections = request.query_params.getlist("section") or None
-        spec = build_table_spec(data, sections=sections)
+        block_names = request.query_params.getlist("block") or None
+        spec = build_table_spec(data, sections=sections, block_names=block_names)
         pdf_bytes = HTML(string=render_document(spec)).write_pdf()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"

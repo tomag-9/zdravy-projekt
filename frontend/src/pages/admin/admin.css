@@ -925,13 +925,20 @@
  * Filter sekcií gramáže (raňajky / polievka / menu / olovrant)
  * ========================================================== */
 .zpa-section-filter {
-    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    display: flex; flex-direction: column; gap: 8px;
     margin-bottom: 14px;
 }
+/* Jeden rad filtra = jedna otázka (ktoré jedlá / ktorý výdajný bod). Pod nimi
+ * veta, čo pôjde do tlače — predtým sa dalo len tušiť, že PDF kopíruje výber. */
+.zpa-section-filter .row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+}
+.zpa-section-filter .hint { font-size: 12px; color: var(--ink-3); }
 .zpa-section-filter .lbl {
     font-family: var(--font-display); font-weight: 700; font-size: 11px;
     text-transform: uppercase; letter-spacing: var(--tracking-caps);
     color: var(--ink-3); margin-right: 4px;
+    min-width: 84px;
 }
 .zpa-section-filter .chip {
     padding: 6px 14px; border-radius: var(--radius-pill); cursor: pointer;
