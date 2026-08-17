@@ -14,8 +14,10 @@ from api.exceptions import (
     MissingRequiredFieldError,
 )
 from api.models import ClosedDay, EventLog
-from api.permissions import IsAdminOrAbove
+from api.permissions import IsAdminOrAbove, SectionAccess
 from api.services.event_log_service import log_event
+
+from .. import sections
 
 
 def _parse_date(value) -> datetime.date:
@@ -43,7 +45,8 @@ def _payload(target_date: datetime.date, closed_day: ClosedDay | None) -> dict:
 class ClosedDayViewSet(viewsets.ViewSet):
     """Read, create, and remove global date locks."""
 
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.PODKLADY
 
     def list(self, request):
         target_date = _parse_date(request.query_params.get("date"))

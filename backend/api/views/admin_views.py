@@ -8,9 +8,10 @@ from rest_framework import pagination, serializers, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from .. import sections
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
-from ..permissions import IsSuperadmin
+from ..permissions import IsSuperadmin, SectionAccess
 from ..serializers_user import AdminUserSerializer
 from .audit_mixins import AuditedModelViewSetMixin
 
@@ -95,7 +96,8 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = AdminUserSerializer
-    permission_classes = [IsSuperadmin]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.PRISTUPY
     pagination_class = AdminUserPagination
 
     def get_queryset(self):
@@ -205,7 +207,8 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     list=extend_schema(tags=["admin"]),
 )
 class AdminLogViewSet(viewsets.ViewSet):
-    permission_classes = [IsSuperadmin]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.LOGY
 
     def list(self, request):
         records = get_log_records()
@@ -258,7 +261,8 @@ class AdminLogViewSet(viewsets.ViewSet):
 )
 class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AdminEventLogSerializer
-    permission_classes = [IsSuperadmin]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.LOGY
 
     def get_queryset(self):
         # Profily sa ťahajú spolu s používateľmi: meno pre tabuľku ich číta pre

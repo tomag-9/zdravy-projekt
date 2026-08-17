@@ -979,3 +979,29 @@ class PrevadzkaLoadingConfirmation(models.Model):
 
     def __str__(self) -> str:
         return f"{self.date} {self.prevadzka}: naložené"
+
+
+class SectionPermission(models.Model):
+    """Override prístupu k jednej sekcii pre jeden login (#484).
+
+    Záznam existuje LEN tam, kde sa má odchýliť od role. Chýbajúci záznam
+    preto neznamená „bez prístupu", ale „ako určuje rola" — inak by pridanie
+    novej sekcie odstrihlo všetkých existujúcich adminov.
+
+    Override vie prístup len obmedziť. Povýšiť nad rolu sa ním nedá; na to
+    slúži zmena role.
+    """
+
+    profile = models.ForeignKey(
+        UserProfile, on_delete=models.CASCADE, related_name="section_permissions"
+    )
+    section = models.CharField(max_length=40)
+    level = models.CharField(max_length=10)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["profile", "section"]
+        ordering = ["profile_id", "section"]
+
+    def __str__(self) -> str:
+        return f"{self.profile}: {self.section} = {self.level}"

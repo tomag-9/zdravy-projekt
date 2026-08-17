@@ -34,6 +34,7 @@ from .views import (
     PrevadzkaViewSet,
     PushSubscribeView,
     SafeTokenRefreshView,
+    SectionPermissionViewSet,
     UserProfileViewSet,
     VapidPublicKeyView,
 )
@@ -53,6 +54,11 @@ router.register(
     basename="admin-facility-prevadzka",
 )
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
+router.register(
+    r"admin/section-permissions",
+    SectionPermissionViewSet,
+    basename="admin-section-permission",
+)
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
 router.register(r"admin/event-logs", AdminEventLogViewSet, basename="admin-event-log")
 router.register(

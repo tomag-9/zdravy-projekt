@@ -5,8 +5,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .. import sections
 from ..models import DeliveryBlock, DeliveryRoute, Prevadzka
-from ..permissions import IsAdminOrAbove
+from ..permissions import IsAdminOrAbove, SectionAccess
 from ..serializers_delivery import (
     DeliveryBlockSerializer,
     DeliveryLayoutSerializer,
@@ -28,7 +29,8 @@ from .audit_mixins import AuditedModelViewSetMixin
 )
 class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     serializer_class = DeliveryBlockSerializer
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.TRASY
 
     def get_queryset(self):
         return (
@@ -135,7 +137,8 @@ class DeliveryRouteViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         )
     )
     serializer_class = DeliveryRouteSerializer
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.TRASY
 
 
 @extend_schema_view(
@@ -149,5 +152,6 @@ class AdminPrevadzkaDeliveryViewSet(AuditedModelViewSetMixin, viewsets.ModelView
         "celok__nazov", "sort_order", "nazov"
     )
     serializer_class = DeliveryPrevadzkaSerializer
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.TRASY
     http_method_names = ["get", "patch", "put", "head", "options"]

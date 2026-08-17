@@ -238,6 +238,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         source="profile.onboarding_completed", required=False
     )
     role = serializers.SerializerMethodField()
+    sections = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -256,14 +257,25 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "profile",
             "is_staff",
             "role",
+            "sections",
         ]
-        read_only_fields = ["id", "date_joined", "is_staff", "role"]
+        read_only_fields = ["id", "date_joined", "is_staff", "role", "sections"]
 
     def get_role(self, obj: User) -> str:
         """Rola cez `role_of` — login bez profilu ju odvodí zo starých príznakov."""
         from .roles import role_of
 
         return role_of(obj)
+
+    def get_sections(self, obj: User) -> Dict[str, str]:
+        """Efektívne úrovne prístupu k sekciám (#484).
+
+        Frontend z toho gejtuje menu aj režim „len na čítanie". Je to len
+        zrkadlo — skutočná zábrana je `SectionAccess` na endpointoch.
+        """
+        from .access import effective_map
+
+        return effective_map(obj)
 
     def validate_email(self, value: str) -> str:
         """Enforce unique email for profile updates."""

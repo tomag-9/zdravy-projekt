@@ -9,6 +9,7 @@ import React, {
 import { useNavigate } from "react-router-dom";
 import { logger } from '../lib/logger';
 import type { Role } from '../lib/roles';
+import type { SectionMap } from '../lib/sections';
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 const CACHED_PROFILE_KEY = "cached_user_profile";
@@ -34,6 +35,8 @@ interface User {
   is_staff?: boolean;
   /** Chýba, kým beží staršia verzia backendu — vtedy použi `roleOf()`. */
   role?: Role;
+  /** Efektívne úrovne prístupu k sekciám (#484); chýba pri staršom backende. */
+  sections?: SectionMap;
   profile?: UserProfile;
 }
 

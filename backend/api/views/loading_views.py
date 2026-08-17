@@ -7,8 +7,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .. import sections
 from ..models import Prevadzka
-from ..permissions import IsKuchynaOrAbove
+from ..permissions import IsKuchynaOrAbove, SectionAccess
 from ..services import loading_service
 from ..utils import parse_date_param
 
@@ -54,7 +55,8 @@ class LoadingViewSet(viewsets.ViewSet):
     workflow reálne používa, admin ho vidí, lebo je v rebríku nad ňou.
     """
 
-    permission_classes = [IsKuchynaOrAbove]
+    permission_classes = [IsKuchynaOrAbove, SectionAccess]
+    section = sections.NAKLADANIE
 
     def list(self, request):
         """GET /api/kuchyna/loading/?date=YYYY-MM-DD"""

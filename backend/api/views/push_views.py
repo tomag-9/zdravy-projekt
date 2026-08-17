@@ -25,7 +25,8 @@ from api.notification_targets import resolve_notification_target
 from api.services.event_log_service import log_event
 from api.services.push_notification_service import PushNotificationService
 
-from ..permissions import IsAdminOrAbove
+from .. import sections
+from ..permissions import IsAdminOrAbove, SectionAccess
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +104,8 @@ class AdminSendPushView(APIView):
       user_id (int, optional) – send to a specific user; omit to send to all
     """
 
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.NOTIFIKACIE
 
     def post(self, request: Request) -> Response:
         if not PushNotificationService.is_available():

@@ -34,3 +34,19 @@ describe('visibleNav', () => {
     expect(labels(visibleNav(nav, false))).not.toContain('Nastavenia');
   });
 });
+
+describe('visibleNav so sekciami', () => {
+  const withSections: Entry[] = [
+    { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: (() => null) as never, section: 'dashboard' },
+    { kind: 'item', to: '/admin/diets', label: 'Diéty', icon: (() => null) as never, section: 'diety' },
+  ];
+
+  it('skryje sekciu bez prístupu', () => {
+    const out = visibleNav(withSections, true, (s) => s !== 'diety');
+    expect(out.map((e) => e.label)).toEqual(['Prehľad']);
+  });
+
+  it('bez predikátu ostane menu nedotknuté', () => {
+    expect(visibleNav(withSections, true)).toHaveLength(2);
+  });
+});

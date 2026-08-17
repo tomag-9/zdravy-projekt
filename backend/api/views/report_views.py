@@ -6,8 +6,9 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from .. import sections
 from ..models import Celok, DailyOrder, Prevadzka
-from ..permissions import IsAdminOrAbove
+from ..permissions import IsAdminOrAbove, SectionAccess
 from ..services import ReportService
 from ..utils import meal_counts, order_row_label
 from .report_helpers import build_user_meal_row, merge_meal_totals
@@ -88,7 +89,8 @@ class AdminSummaryViewSet(viewsets.ViewSet):
     Aggregates order data for reporting and analytics.
     """
 
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.PODKLADY
 
     def _parse_date(self, request):
         """Parse ?date=YYYY-MM-DD; vráti date alebo DRF Response(400)."""

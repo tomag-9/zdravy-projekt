@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from rest_framework import permissions
 
-from . import roles
+from . import access, roles, sections
 
 
 def _min_role(minimum: str, message: str) -> type[permissions.BasePermission]:
@@ -47,3 +47,29 @@ class IsKlient(permissions.BasePermission):
 
     def has_permission(self, request, view) -> bool:
         return roles.is_klient(request.user)
+
+
+class SectionAccess(permissions.BasePermission):
+    """
+    Prístup k sekcii podľa efektívnej úrovne (#484).
+
+    Viewset uvedie `section = sections.JEDALNICEK`; čítanie vyžaduje `read`,
+    zápis `edit`. Trieda sa vedome nepýta na rolu — tú už zohľadnil
+    `access.level_for`, ktorý override zastropuje rolou.
+
+    Bez `section` na viewsete prístup NEPOVOLÍ: tichý priechod by z preklepu
+    v názve atribútu spravil dieru.
+    """
+
+    message = "Na túto sekciu nemáte dostatočné oprávnenie."
+
+    def has_permission(self, request, view) -> bool:
+        section_key = getattr(view, "section", None)
+        if not section_key:
+            return False
+        needed = (
+            sections.READ
+            if request.method in permissions.SAFE_METHODS
+            else sections.EDIT
+        )
+        return sections.at_least(access.level_for(request.user, section_key), needed)

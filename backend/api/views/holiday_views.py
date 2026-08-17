@@ -7,8 +7,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from .. import sections
 from ..models import Holiday
-from ..permissions import IsAdminOrAbove
+from ..permissions import IsAdminOrAbove, SectionAccess
 from ..serializers import HolidaySerializer
 from .audit_mixins import AuditedModelViewSetMixin
 
@@ -21,7 +22,8 @@ class AdminHolidayViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = HolidaySerializer
-    permission_classes = [IsAdminOrAbove]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.VOLNE_DNI
     pagination_class = None
 
     def get_queryset(self):

@@ -18,34 +18,38 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { isSuperadmin } from '../../lib/roles';
+import { SECTION, canRead } from '../../lib/sections';
 import { visibleNav, type NavEntry } from './adminNav';
 import { Modal, Button } from './ui';
 import AdminProfileModal from './AdminProfileModal';
 
 
 const NAV: NavEntry[] = [
-    { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: Gauge },
-    { kind: 'item', to: '/admin/prevadzka-overview', label: 'Dodanie podkladov', icon: ClipboardCheck },
-    { kind: 'item', to: '/admin/delivery-layout', label: 'Poradie a trasy', icon: RouteIcon },
-    { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays },
-    { kind: 'item', to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: BookOpen },
+    { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: Gauge, section: SECTION.dashboard },
+    { kind: 'item', to: '/admin/prevadzka-overview', label: 'Dodanie podkladov', icon: ClipboardCheck, section: SECTION.podklady },
+    { kind: 'item', to: '/admin/delivery-layout', label: 'Poradie a trasy', icon: RouteIcon, section: SECTION.trasy },
+    { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays, section: SECTION.jedalnicek },
+    { kind: 'item', to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: BookOpen, section: SECTION.katalog },
     { kind: 'section', label: 'Prevádzky', icon: Building },
-    { kind: 'item', to: '/admin/facilities', label: 'Správa prevádzok', icon: Building },
+    { kind: 'item', to: '/admin/facilities', label: 'Správa prevádzok', icon: Building, section: SECTION.prevadzky },
     { kind: 'section', label: 'Nastavenia', icon: Sliders },
-    { kind: 'item', to: '/admin/diets', label: 'Diéty', icon: Salad },
-    { kind: 'item', to: '/admin/settings', label: 'Systémové nastavenia', icon: Sliders, superadminOnly: true },
-    { kind: 'item', to: '/admin/holidays', label: 'Voľné dni', icon: Umbrella },
-    { kind: 'item', to: '/admin/logs', label: 'Logy', icon: Scroll, superadminOnly: true },
+    { kind: 'item', to: '/admin/diets', label: 'Diéty', icon: Salad, section: SECTION.diety },
+    { kind: 'item', to: '/admin/settings', label: 'Systémové nastavenia', icon: Sliders, superadminOnly: true, section: SECTION.nastavenia },
+    { kind: 'item', to: '/admin/holidays', label: 'Voľné dni', icon: Umbrella, section: SECTION.volneDni },
+    { kind: 'item', to: '/admin/logs', label: 'Logy', icon: Scroll, superadminOnly: true, section: SECTION.logy },
     { kind: 'section', label: 'Komunikácia', icon: Bell },
-    { kind: 'item', to: '/admin/push-notifications', label: 'Notifikácie', icon: Bell },
+    { kind: 'item', to: '/admin/push-notifications', label: 'Notifikácie', icon: Bell, section: SECTION.notifikacie },
     { kind: 'section', label: 'Oprávnenia', icon: Shield },
-    { kind: 'item', to: '/admin/roles', label: 'Správa adminov', icon: Shield, superadminOnly: true },
+    { kind: 'item', to: '/admin/roles', label: 'Správa adminov', icon: Shield, superadminOnly: true, section: SECTION.pristupy },
 ];
 
 const AdminLayout: React.FC = () => {
     const { logout, user } = useAuth();
     const location = useLocation();
-    const nav = React.useMemo(() => visibleNav(NAV, isSuperadmin(user)), [user]);
+    const nav = React.useMemo(
+        () => visibleNav(NAV, isSuperadmin(user), (s) => canRead(user?.sections, s)),
+        [user],
+    );
     const [navOpen, setNavOpen] = React.useState(false);
     const [showLogoutModal, setShowLogoutModal] = React.useState(false);
     const [showProfileModal, setShowProfileModal] = React.useState(false);

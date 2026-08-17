@@ -64,11 +64,13 @@ from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
 
 # Report views
 from .report_views import AdminSummaryViewSet
+from .section_permission_views import SectionPermissionViewSet
 
 # Settings views
 from .settings_views import GlobalSettingsViewSet, UserProfileViewSet
 
 __all__ = [
+    "SectionPermissionViewSet",
     "LoadingViewSet",
     # Authentication
     "EmailTokenObtainPairSerializer",
