@@ -16,15 +16,37 @@ from typing import Any
 
 from . import sections
 
+#: Kde si držíme načítané overridy na inštancii používateľa.
+_CACHE_ATTR = "_section_overrides_cache"
+
 
 def _overrides(user: Any) -> dict[str, str]:
+    """Overridy loginu, načítané raz za request.
+
+    `SectionAccess` sa pýta pri každom volaní a viewsety majú dve permission
+    triedy — bez cache by z toho bol dotaz navyše na každý admin request
+    (chytil to `test_list_celky_uses_bounded_prefetches`). `request.user`
+    vzniká per request, takže cache na inštancii nemôže pretiecť medzi nimi.
+    """
+    cached = getattr(user, _CACHE_ATTR, None)
+    if cached is not None:
+        return cached
+
     profile = getattr(user, "profile", None)
-    if profile is None:
-        return {}
-    return {
-        permission.section: permission.level
-        for permission in profile.section_permissions.all()
-    }
+    overrides = (
+        {}
+        if profile is None
+        else {
+            permission.section: permission.level
+            for permission in profile.section_permissions.all()
+        }
+    )
+    try:
+        setattr(user, _CACHE_ATTR, overrides)
+    except AttributeError:
+        # AnonymousUser a podobné môžu byť nemenné — cache je len optimalizácia.
+        pass
+    return overrides
 
 
 def level_for(user: Any, section_key: str) -> str:
