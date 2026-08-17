@@ -82,6 +82,38 @@ def test_delivery_layout_reorder_moves_prevadzky_between_routes(
     assert second.delivery_sort_order == 1
 
 
+def test_route_can_be_moved_to_another_block(admin_authenticated_client):
+    """Blok = výdajný bod kuchyne; trasa sa medzi bodmi musí dať presunúť."""
+    bezne = DeliveryBlock.objects.create(name="Bežné trasy", sort_order=1)
+    extra = DeliveryBlock.objects.create(name="Trasa extra", sort_order=2)
+    route = DeliveryRoute.objects.create(block=bezne, name="Trasa 1", sort_order=1)
+
+    response = admin_authenticated_client.patch(
+        f"/api/admin/delivery-routes/{route.id}/",
+        {"block": extra.id, "sort_order": 1},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    route.refresh_from_db()
+    assert route.block_id == extra.id
+
+
+def test_block_can_be_renamed(admin_authenticated_client):
+    """Prevádzka si bloky pomenúva sama (napr. Cluster 1 / Cluster 2)."""
+    block = DeliveryBlock.objects.create(name="Bežné trasy", sort_order=1)
+
+    response = admin_authenticated_client.patch(
+        f"/api/admin/delivery-blocks/{block.id}/",
+        {"name": "Cluster 1"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    block.refresh_from_db()
+    assert block.name == "Cluster 1"
+
+
 def test_gramage_dashboard_groups_rows_by_delivery_layout_order():
     block = DeliveryBlock.objects.create(name="Extra", sort_order=2)
     route = DeliveryRoute.objects.create(block=block, name="TRASA EXTRA", sort_order=3)
