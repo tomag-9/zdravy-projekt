@@ -44,6 +44,20 @@ Cvernička načítala z EduPage diétu, ktorú appka nepozná.
 - Otvorená otázka od Stana: „ako to upravíme?“ → zvážiť aspoň **detekciu neznámej diéty
   pri scrape + upozornenie**, aby to nezapadlo, namiesto tichého vynechania.
 
+## Stav riešenia (vetva `feat/edupage-neznama-dieta`)
+
+| Požiadavka | Stav |
+| --- | --- |
+| Neznáma diéta z EduPage | hotové — porcie sa započítajú, diéta sa flagne v admin prehľade, whitelist berie diéty z DB |
+| Tlač po výdajných bodoch (clustre) | hotové — filter „Výdajný bod" na obrazovke aj v PDF, každý blok v PDF na vlastnom liste |
+| Premenovanie blokov / presun trás medzi blokmi | hotové — v karte Rozvoz (Cluster 1 / Cluster 2 si vieš pomenovať sám) |
+| Poradie trás a škôlok | už existovalo v karte Rozvoz |
+| Červený riadok trasy, väčšie písmo | hotové |
+| Oddelenie raňajky / obed / olovrant | hotové — nadradený pás jedál v hlavičke + hrubší predel stĺpcov |
+| Výber čo tlačiť | hotové — filter je jedna karta (Jedlá / Výdajný bod) s vetou, čo pôjde do PDF |
+| Premenovanie „hlavná zložka" | hotové — Katalóg jedál → Upraviť |
+| Stĺpec „Poznámka" | hotové — prázdny stĺpec na konci tabuľky |
+
 ## Otvorené / na doriešenie
 - Presná definícia clustra: stačí príznak na trase (cluster 1/2) + samostatná tlač?
 - Ako riešiť neznáme diéty z EduPage (upozornenie vs. auto-založenie).
