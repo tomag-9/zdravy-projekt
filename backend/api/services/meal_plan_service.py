@@ -16,6 +16,7 @@ from ..models import (
     MealCategory,
     MealPlanItem,
     MealTemplate,
+    Vydaj,
 )
 from ..order_data import OrderData
 from ..utils import (
@@ -1215,6 +1216,9 @@ class MealPlanService:
                             if prevadzka is not None
                             else 9999
                         ),
+                        "vydaj": (
+                            prevadzka.vydaj if prevadzka is not None else str(Vydaj.A)
+                        ),
                         "delivery_note": delivery_note,
                         "total_count": _tidy_count(
                             client_total_count + sum(diet_summary_counts.values())
@@ -1231,6 +1235,9 @@ class MealPlanService:
 
         rows.sort(
             key=lambda r: (
+                # Výdajný bod je najvyššia úroveň tabuľky — až v ňom sa radí podľa
+                # rozvozu, aby prevádzka nepreskakovala medzi dvoma tabuľkami.
+                r["vydaj"],
                 r["delivery_block_sort_order"],
                 r["delivery_route_sort_order"],
                 r["delivery_sort_order"],
@@ -1238,59 +1245,60 @@ class MealPlanService:
             )
         )
 
-        def _delivery_blocks_payload(rows_for_payload: list[dict]) -> tuple[list, list]:
-            route_rows: dict[int, list[dict]] = {}
+        def _vydaje_payload(rows_for_payload: list[dict]) -> tuple[list, list]:
+            """Riadky zoskupené podľa výdajného bodu, vnútri podľa trás.
+
+            Výdaj je vlastnosť prevádzky, nie trasy — jedna trasa preto môže voziť
+            do oboch výdajov a objaví sa v oboch tabuľkách, zakaždým len so svojimi
+            riadkami. Poradie trás ostáva rozvozové (blok → trasa), aby vodič
+            čítal tabuľku v poradí, v akom nakladá.
+            """
+            route_rows: dict[tuple[str, int], list[dict]] = {}
             unassigned_rows = []
             for row in rows_for_payload:
                 route_id = row.get("delivery_route_id")
                 if route_id is None:
                     unassigned_rows.append(row)
                     continue
-                route_rows.setdefault(route_id, []).append(row)
+                route_rows.setdefault((row["vydaj"], route_id), []).append(row)
 
             if not route_rows:
                 return [], unassigned_rows
 
-            routes = (
+            routes = list(
                 DeliveryRoute.objects.filter(is_active=True, block__is_active=True)
                 .select_related("block")
                 .order_by("block__sort_order", "sort_order", "name")
             )
-            blocks_by_id: dict[int, dict] = {}
-            for route in routes:
-                block = route.block
-                block_payload = blocks_by_id.setdefault(
-                    block.id,
-                    {
-                        "id": block.id,
-                        "name": block.name,
-                        "sort_order": block.sort_order,
-                        "include_in_main_summary": block.include_in_main_summary,
-                        "include_in_extra_summary": block.include_in_extra_summary,
-                        "routes": [],
-                    },
-                )
-                block_payload["routes"].append(
-                    {
-                        "id": route.id,
-                        "name": route.name,
-                        "driver": route.driver,
-                        "departure_time": (
-                            route.departure_time.isoformat()
-                            if route.departure_time
-                            else None
-                        ),
-                        "note": route.note,
-                        "sort_order": route.sort_order,
-                        "rows": route_rows.get(route.id, []),
-                    }
-                )
 
-            blocks = sorted(
-                blocks_by_id.values(),
-                key=lambda item: (item["sort_order"], item["name"].casefold()),
-            )
-            return blocks, unassigned_rows
+            vydaje = []
+            for value, label in Vydaj.choices:
+                routes_payload = []
+                for route in routes:
+                    rows_for_route = route_rows.get((value, route.id))
+                    if not rows_for_route:
+                        continue
+                    routes_payload.append(
+                        {
+                            "id": route.id,
+                            "name": route.name,
+                            "driver": route.driver,
+                            "departure_time": (
+                                route.departure_time.isoformat()
+                                if route.departure_time
+                                else None
+                            ),
+                            "note": route.note,
+                            "sort_order": route.sort_order,
+                            "block_name": route.block.name,
+                            "rows": rows_for_route,
+                        }
+                    )
+                if routes_payload:
+                    vydaje.append(
+                        {"key": value, "name": label, "routes": routes_payload}
+                    )
+            return vydaje, unassigned_rows
 
         totals_serialized = _serialize_group_totals(totals)
 
@@ -1388,14 +1396,14 @@ class MealPlanService:
                 }
             )
 
-        delivery_blocks, unassigned_rows = _delivery_blocks_payload(rows)
+        vydaje, unassigned_rows = _vydaje_payload(rows)
 
         return {
             "date": date_str,
             "meal_plan_id": plan_id,
             "col_groups": col_groups,
             "rows": rows,
-            "blocks": delivery_blocks,
+            "vydaje": vydaje,
             "unassigned_rows": unassigned_rows,
             "totals": totals_serialized,
             "count_summary": count_summary,

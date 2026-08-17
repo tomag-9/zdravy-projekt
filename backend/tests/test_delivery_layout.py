@@ -114,6 +114,52 @@ def test_block_can_be_renamed(admin_authenticated_client):
     assert block.name == "Cluster 1"
 
 
+def test_gramage_dashboard_splits_one_route_between_vydaje():
+    """Výdaj je vlastnosť prevádzky — jedna trasa vie voziť do oboch bodov.
+
+    Trasa sa preto objaví v oboch tabuľkách, zakaždým len so svojimi riadkami.
+    """
+    block = DeliveryBlock.objects.create(name="Bežné trasy", sort_order=1)
+    route = DeliveryRoute.objects.create(block=block, name="Trasa 1", sort_order=1)
+    v_a = _prevadzka("A prevádzka", route=route, order=1)
+    v_b = _prevadzka("B prevádzka", route=route, order=2)
+    Prevadzka.objects.filter(pk=v_b.pk).update(vydaj="B")
+
+    user = User.objects.create_user(
+        username="vydaj@example.com", email="vydaj@example.com"
+    )
+    PortionType.objects.create(name="Škôlka", coefficient="1.0000", sort_order=1)
+    template = MealTemplate.objects.create(
+        category="main_course",
+        name="Rizoto",
+        weight_label="200g",
+        base_weight_grams="200.00",
+        components=[{"label": "Hlavná zložka", "grams": "200", "unit": "g"}],
+    )
+    plan = DailyMealPlan.objects.create(
+        date=datetime.date(2026, 7, 20), created_by=user
+    )
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=template, category="main_course"
+    )
+    for prevadzka in (v_a, v_b):
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=plan.date,
+            data={"lunch": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+
+    assert [vydaj["key"] for vydaj in data["vydaje"]] == ["A", "B"]
+    for vydaj, expected_client in zip(data["vydaje"], ["A prevádzka", "B prevádzka"]):
+        assert [route["name"] for route in vydaj["routes"]] == ["Trasa 1"]
+        assert [row["client"] for row in vydaj["routes"][0]["rows"]] == [
+            expected_client
+        ]
+
+
 def test_gramage_dashboard_groups_rows_by_delivery_layout_order():
     block = DeliveryBlock.objects.create(name="Extra", sort_order=2)
     route = DeliveryRoute.objects.create(block=block, name="TRASA EXTRA", sort_order=3)
@@ -153,9 +199,11 @@ def test_gramage_dashboard_groups_rows_by_delivery_layout_order():
     data = MealPlanService.gramage_dashboard(plan.date.isoformat())
 
     assert [row["client"] for row in data["rows"]] == ["A prevádzka", "B prevádzka"]
-    assert data["blocks"][0]["name"] == "Extra"
-    assert data["blocks"][0]["routes"][0]["name"] == "TRASA EXTRA"
-    assert [row["client"] for row in data["blocks"][0]["routes"][0]["rows"]] == [
+    # Najvyššia úroveň tabuľky je výdajný bod prevádzky (default „Výdaj A"),
+    # poradie vnútri neho ostáva rozvozové.
+    assert data["vydaje"][0]["name"] == "Výdaj A"
+    assert data["vydaje"][0]["routes"][0]["name"] == "TRASA EXTRA"
+    assert [row["client"] for row in data["vydaje"][0]["routes"][0]["rows"]] == [
         "A prevádzka",
         "B prevádzka",
     ]

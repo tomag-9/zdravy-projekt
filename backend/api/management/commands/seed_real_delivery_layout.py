@@ -13,7 +13,7 @@ from typing import Iterable
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from api.models import Celok, DeliveryBlock, DeliveryRoute, Diet, Prevadzka
+from api.models import Celok, DeliveryBlock, DeliveryRoute, Diet, Prevadzka, Vydaj
 
 
 @dataclass(frozen=True)
@@ -527,12 +527,21 @@ def _upsert_prevadzka(
         adresa=row.address or "",
         delivery_route=route,
         delivery_sort_order=sort_order,
+        # Výdajný bod hádame z bloku len pri ZAKLADANÍ. Existujúcim prevádzkam ho
+        # seed neprepisuje: výdaj si prevádzka nastavuje sama a seed beží pri
+        # každom nasadení — prepis by jej voľbu zakaždým zahodil.
+        vydaj=_vydaj_pre_blok(route),
         report_alias=row.alias,
         delivery_note=row.note,
         is_active=True,
     )
     prevadzka.save()
     return prevadzka
+
+
+def _vydaj_pre_blok(route: DeliveryRoute) -> str:
+    """Extra blok vozí druhý výdajný bod kuchyne, zvyšok prvý."""
+    return str(Vydaj.B if route.block.include_in_extra_summary else Vydaj.A)
 
 
 def _find_existing_prevadzka(row: DeliverySeedRow) -> Prevadzka | None:

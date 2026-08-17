@@ -221,10 +221,10 @@ def test_client_row_carries_the_screen_metadata():
 
 def test_empty_routes_are_skipped():
     payload = _payload(
-        blocks=[
+        vydaje=[
             {
-                "id": 1,
-                "name": "Blok 1",
+                "key": "A",
+                "name": "Výdaj A",
                 "routes": [
                     {"id": 1, "name": "Prázdna trasa", "rows": []},
                     {"id": 2, "name": "Plná trasa", "rows": _payload()["rows"]},
@@ -478,22 +478,22 @@ def test_meal_band_merges_soup_with_main_course():
     assert sum(span for _, span in bands) == len(spec["header"]["components"])
 
 
-# ── Filter výdajných bodov (clusterov) ───────────────────────────────────────
+# ── Filter výdajných bodov ───────────────────────────────────────────────────
 
 
-def _two_block_payload():
+def _two_vydaje_payload():
     """Dva výdajné body, každý s jednou prevádzkou — kuchyňa vydáva z dvoch miest."""
     rows = _payload()["rows"]
     return _payload(
-        blocks=[
+        vydaje=[
             {
-                "id": 1,
-                "name": "Bežné trasy",
+                "key": "A",
+                "name": "Výdaj A",
                 "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
             },
             {
-                "id": 2,
-                "name": "Trasa extra",
+                "key": "B",
+                "name": "Výdaj B",
                 "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
             },
         ],
@@ -508,54 +508,54 @@ def _band_texts(spec):
     ]
 
 
-def test_block_filter_prints_a_single_dispatch_point():
-    spec = build_table_spec(_two_block_payload(), block_names=["Trasa extra"])
+def test_vydaj_filter_prints_a_single_dispatch_point():
+    spec = build_table_spec(_two_vydaje_payload(), vydaje=["B"])
 
-    assert _band_texts(spec) == ["Trasa extra"]
-    assert [block["selected"] for block in spec["blocks"]] == [False, True]
+    assert _band_texts(spec) == ["Výdaj B"]
+    assert [vydaj["selected"] for vydaj in spec["vydaje"]] == [False, True]
 
 
-def test_unknown_or_empty_block_selection_falls_back_to_everything():
-    payload = _two_block_payload()
+def test_unknown_or_empty_vydaj_selection_falls_back_to_everything():
+    payload = _two_vydaje_payload()
 
-    assert _band_texts(build_table_spec(payload)) == ["Bežné trasy", "Trasa extra"]
-    assert _band_texts(build_table_spec(payload, block_names=["nezmysel"])) == [
-        "Bežné trasy",
-        "Trasa extra",
+    assert _band_texts(build_table_spec(payload)) == ["Výdaj A", "Výdaj B"]
+    assert _band_texts(build_table_spec(payload, vydaje=["nezmysel"])) == [
+        "Výdaj A",
+        "Výdaj B",
     ]
 
 
-def test_every_block_but_the_first_starts_on_a_new_page():
-    spec = build_table_spec(_two_block_payload())
+def test_every_vydaj_but_the_first_starts_on_a_new_page():
+    spec = build_table_spec(_two_vydaje_payload())
 
     bands = [row for row in spec["rows"] if "block-band" in row["css"]]
     assert "page-break" not in bands[0]["css"]
     assert "page-break" in bands[1]["css"]
 
 
-def test_filtered_block_totals_ignore_the_other_block():
+def test_filtered_vydaj_totals_ignore_the_other_vydaj():
     """Pri tlači jedného výdajného bodu nesmie v pätke svietiť gramáž celého dňa.
 
     `data["totals"]` je predpočítaný súčet za celý deň — fixture mu dá hodnotu,
     ktorú jeden blok dosiahnuť nemôže, takže je vidieť, či ju filtrovaná pätka
     naozaj prepočítala z vlastných riadkov.
     """
-    payload = _two_block_payload()
+    payload = _two_vydaje_payload()
     payload["totals"] = [["9999.00"], ["9999.00"], []]
 
     full = build_table_spec(payload)
-    single = build_table_spec(payload, block_names=["Bežné trasy"])
+    single = build_table_spec(payload, vydaje=["A"])
 
     assert full["footer"][-1]["cells"][1]["text"] == "9999"
-    # 8 porcií bez diét × 200 g polievky v jedinom bloku.
+    # 8 porcií bez diét × 200 g polievky v jedinom výdaji.
     assert single["footer"][-1]["cells"][1]["text"] == "1600"
 
 
 def test_unassigned_prevadzky_stay_out_of_a_filtered_print():
-    payload = _two_block_payload()
+    payload = _two_vydaje_payload()
     payload["unassigned_rows"] = _payload()["rows"]
 
     assert "Nepriradené prevádzky" in _band_texts(build_table_spec(payload))
     assert "Nepriradené prevádzky" not in _band_texts(
-        build_table_spec(payload, block_names=["Bežné trasy"])
+        build_table_spec(payload, vydaje=["A"])
     )

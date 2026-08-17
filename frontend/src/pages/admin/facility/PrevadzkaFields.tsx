@@ -1,6 +1,17 @@
 import React from "react";
 import { Field, Input, Select, Textarea, Toggle } from "../ui";
 
+/**
+ * Výdajný bod kuchyne, z ktorého sa prevádzka vydáva. Podľa neho sa delí
+ * gramážová tabuľka aj tlač — trasa rozvozu je na tom nezávislá.
+ * Kľúče musia sedieť s `api.models.Vydaj`.
+ */
+export const VYDAJE = [
+  { key: "A", label: "Výdaj A" },
+  { key: "B", label: "Výdaj B" },
+  { key: "C", label: "Výdaj C" },
+] as const;
+
 export interface Prevadzka {
   id: number;
   celok: number;
@@ -10,6 +21,7 @@ export interface Prevadzka {
   edupage_connection: number | null;
   edupage_connection_name: string | null;
   edupage_match: string;
+  vydaj: string;
   report_alias: string;
   delivery_note: string;
   sort_order: number;
@@ -24,6 +36,7 @@ export interface PrevadzkaForm {
   adresa: string;
   edupage_connection: number | null;
   edupage_match: string;
+  vydaj: string;
   report_alias: string;
   delivery_note: string;
   sort_order: number;
@@ -66,6 +79,22 @@ export const PrevadzkaFields: React.FC<{
     )}
     <Field label="Edupage match" hint="(prefix; ; oddeľuje viac)">
       <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => setForm((current) => ({ ...current, edupage_match: e.target.value }))} />
+    </Field>
+    <Field label="Výdaj" hint="(z ktorého bodu kuchyne sa vydáva)">
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
+        {VYDAJE.map((vydaj) => (
+          <label key={vydaj.key} style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+            <input
+              type="radio"
+              name="prevadzka-vydaj"
+              value={vydaj.key}
+              checked={(form.vydaj || "A") === vydaj.key}
+              onChange={() => setForm((current) => ({ ...current, vydaj: vydaj.key }))}
+            />
+            {vydaj.label}
+          </label>
+        ))}
+      </div>
     </Field>
     <Field label="Report alias" hint="(názov vo výkazoch)">
       <Input value={form.report_alias} onChange={(e) => setForm((current) => ({ ...current, report_alias: e.target.value }))} />

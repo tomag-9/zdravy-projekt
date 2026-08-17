@@ -4,7 +4,7 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { PageHead, Button, Card, Badge, Empty } from "./ui";
+import { PageHead, Button, Card, Badge, Empty, Select } from "./ui";
 import { DietColorSwatch } from "./DietColorSwatch";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -127,7 +127,8 @@ interface SpecSection {
   selected: boolean;
 }
 
-interface SpecBlock {
+interface SpecVydaj {
+  key: string;
   name: string;
   selected: boolean;
 }
@@ -135,8 +136,8 @@ interface SpecBlock {
 interface TableSpec {
   total_columns: number;
   sections: SpecSection[];
-  /** Výdajné body kuchyne (clustre) — každý sa dá zobraziť a vytlačiť sám. */
-  blocks: SpecBlock[];
+  /** Výdajné body kuchyne — každý sa dá zobraziť a vytlačiť sám. */
+  vydaje: SpecVydaj[];
   header: {
     corner: string;
     /** Nadradený pás hlavičky: Raňajky / Obed / Olovrant. */
@@ -252,7 +253,8 @@ const AdminDashboard: React.FC = () => {
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
   const [sections, setSections] = useState<string[]>([]);
-  const [blocks, setBlocks] = useState<string[]>([]);
+  // Prázdny výber = všetky výdajné body; inak práve ten jeden vybratý.
+  const [vydaj, setVydaj] = useState<string>("");
 
   // Ktoré sekcie (raňajky / polievka / menu / olovrant) a ktoré výdajné body sa
   // zobrazujú. Prázdny výber = kompletná tabuľka. Rovnaký filter dostane
@@ -261,9 +263,9 @@ const AdminDashboard: React.FC = () => {
     () =>
       [
         ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
-        ...blocks.map((name) => `&block=${encodeURIComponent(name)}`),
+        ...(vydaj ? [`&vydaj=${encodeURIComponent(vydaj)}`] : []),
       ].join(""),
-    [sections, blocks],
+    [sections, vydaj],
   );
 
   const fetchData = useCallback(async () => {
@@ -480,7 +482,8 @@ const AdminDashboard: React.FC = () => {
           <>
             <PrintFilter
               sections={data.spec.sections}
-              blocks={data.spec.blocks ?? []}
+              vydaje={data.spec.vydaje ?? []}
+              vydaj={vydaj}
               onToggleSection={(key) =>
                 setSections((current) =>
                   toggleSelection(
@@ -490,18 +493,10 @@ const AdminDashboard: React.FC = () => {
                   ),
                 )
               }
-              onToggleBlock={(name) =>
-                setBlocks((current) =>
-                  toggleSelection(
-                    current,
-                    name,
-                    (data.spec.blocks ?? []).map((block) => block.name),
-                  ),
-                )
-              }
+              onVydajChange={setVydaj}
               onReset={() => {
                 setSections([]);
-                setBlocks([]);
+                setVydaj("");
               }}
             />
             <GramageTable data={data} />
@@ -693,13 +688,13 @@ const FilterRow: React.FC<{
 
 const PrintFilter: React.FC<{
   sections: SpecSection[];
-  blocks: SpecBlock[];
+  vydaje: SpecVydaj[];
+  vydaj: string;
   onToggleSection: (key: string) => void;
-  onToggleBlock: (name: string) => void;
+  onVydajChange: (key: string) => void;
   onReset: () => void;
-}> = ({ sections, blocks, onToggleSection, onToggleBlock, onReset }) => {
-  const allSelected =
-    sections.every((section) => section.selected) && blocks.every((block) => block.selected);
+}> = ({ sections, vydaje, vydaj, onToggleSection, onVydajChange, onReset }) => {
+  const allSelected = sections.every((section) => section.selected) && !vydaj;
   return (
     <div className="zpa-section-filter">
       <FilterRow
@@ -707,16 +702,21 @@ const PrintFilter: React.FC<{
         items={sections.map((section) => ({ ...section, key: section.key }))}
         onToggle={onToggleSection}
       />
-      {blocks.length > 1 && (
-        <FilterRow
-          label="Výdajný bod"
-          items={blocks.map((block) => ({
-            key: block.name,
-            label: block.name,
-            selected: block.selected,
-          }))}
-          onToggle={onToggleBlock}
-        />
+      {vydaje.length > 1 && (
+        <div className="row">
+          <span className="lbl">Výdaj</span>
+          <Select
+            value={vydaj}
+            onChange={(e) => onVydajChange(e.target.value)}
+            style={{ width: "auto" }}
+            aria-label="Výdajný bod"
+          >
+            <option value="">Všetky výdaje</option>
+            {vydaje.map((item) => (
+              <option key={item.key} value={item.key}>{item.name}</option>
+            ))}
+          </Select>
+        </div>
       )}
       <div className="row">
         <span className="hint">

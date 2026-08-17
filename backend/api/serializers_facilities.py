@@ -79,6 +79,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "edupage_connection",
             "edupage_connection_name",
             "edupage_match",
+            "vydaj",
             "report_alias",
             "delivery_note",
             "sort_order",

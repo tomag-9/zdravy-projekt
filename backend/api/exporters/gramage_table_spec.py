@@ -162,23 +162,22 @@ def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     return cell
 
 
-def _filter_blocks(all_blocks: list[dict], selected: list[str] | None) -> list[int]:
-    """Indexy blokov (výdajných bodov), ktoré sa majú vykresliť.
+def _filter_vydaje(all_vydaje: list[dict], selected: list[str] | None) -> list[int]:
+    """Indexy výdajných bodov, ktoré sa majú vykresliť.
 
-    Blok je cluster kuchyne — vyberá sa podľa názvu, lebo to je to isté, čo vidí
-    používateľ v prepínači, a názov je v `DeliveryBlock` unikátny. Prázdny výber
-    aj neznámy názov padnú späť na celú tabuľku (rovnako ako filter sekcií), aby
-    preklep v URL nevrátil prázdnu stranu.
+    Výdaj sa vyberá kľúčom (`A`, `B` …), nie názvom — názov je len popiska a môže
+    sa zmeniť. Prázdny výber aj neznámy kľúč padnú späť na celú tabuľku (rovnako
+    ako filter sekcií), aby preklep v URL nevrátil prázdnu stranu.
     """
     if not selected:
-        return list(range(len(all_blocks)))
-    wanted = {str(name) for name in selected}
+        return list(range(len(all_vydaje)))
+    wanted = {str(key) for key in selected}
     keep = [
         index
-        for index, block in enumerate(all_blocks)
-        if str(block.get("name") or "") in wanted
+        for index, vydaj in enumerate(all_vydaje)
+        if str(vydaj.get("key") or "") in wanted
     ]
-    return keep or list(range(len(all_blocks)))
+    return keep or list(range(len(all_vydaje)))
 
 
 def _totals_from_summary(summary: list[dict]) -> list[list]:
@@ -202,7 +201,7 @@ def _totals_from_summary(summary: list[dict]) -> list[list]:
 def build_table_spec(
     data: dict,
     sections: list[str] | None = None,
-    block_names: list[str] | None = None,
+    vydaje: list[str] | None = None,
 ) -> dict:
     """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky."""
     all_groups = data.get("col_groups") or []
@@ -217,26 +216,25 @@ def build_table_spec(
     header = _build_header(groups, hues)
     rows: list[dict] = []
 
-    all_blocks = data.get("blocks") or []
-    keep_blocks = _filter_blocks(all_blocks, block_names)
-    blocks = [all_blocks[index] for index in keep_blocks]
+    all_vydaje = data.get("vydaje") or []
+    keep_vydaje = _filter_vydaje(all_vydaje, vydaje)
+    shown_vydaje = [all_vydaje[index] for index in keep_vydaje]
     # Filter na konkrétny výdajný bod je „vytlač túto tabuľku" — nepriradené
     # prevádzky doň nepatria a v celej tabuľke sa aj tak ukážu.
-    filtered_blocks = len(blocks) != len(all_blocks)
-    if blocks:
-        for block_index, block in enumerate(blocks):
-            # Bloky sú výdajné body kuchyne (cluster 1 / cluster 2) — v tlači ide
-            # každý na vlastný list, aby si ich dva body vedeli rozdať bez
-            # hľadania, kde jeden končí.
+    filtered = len(shown_vydaje) != len(all_vydaje)
+    if shown_vydaje:
+        for position, vydaj in enumerate(shown_vydaje):
+            # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
+            # vlastný list, nech si ho jeho obsluha vezme celý.
             rows.append(
                 _band(
                     "block-band",
-                    block.get("name") or "",
+                    vydaj.get("name") or "",
                     total_columns,
-                    css="band block-band" + (" page-break" if block_index else ""),
+                    css="band block-band" + (" page-break" if position else ""),
                 )
             )
-            for route in block.get("routes") or []:
+            for route in vydaj.get("routes") or []:
                 route_rows = route.get("rows") or []
                 # Prázdne trasy sa nevykresľujú — obrazovka ich tiež preskakuje.
                 if not route_rows:
@@ -246,22 +244,22 @@ def build_table_spec(
                     rows.extend(
                         _client_rows(client_row, data, groups, hues, total_columns)
                     )
-            block_rows = [
+            vydaj_rows = [
                 r
-                for route in block.get("routes") or []
+                for route in vydaj.get("routes") or []
                 for r in route.get("rows") or []
             ]
             rows.extend(
                 _portion_summary_rows(
-                    f"Súhrn porcií {block_index + 1}",
-                    portion_summary(data, block_rows),
+                    f"Súhrn porcií — {vydaj.get('name') or position + 1}",
+                    portion_summary(data, vydaj_rows),
                     keep,
                     groups,
                     hues,
                     total_columns,
                 )
             )
-        unassigned = [] if filtered_blocks else (data.get("unassigned_rows") or [])
+        unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
                 _band(
@@ -277,11 +275,11 @@ def build_table_spec(
         for client_row in data.get("rows") or []:
             rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
 
-    if filtered_blocks:
+    if filtered:
         visible_rows = [
             row
-            for block in blocks
-            for route in block.get("routes") or []
+            for vydaj in shown_vydaje
+            for route in vydaj.get("routes") or []
             for row in route.get("rows") or []
         ]
         footer_summary = portion_summary(data, visible_rows)
@@ -316,14 +314,15 @@ def build_table_spec(
             }
             for index, group in enumerate(all_groups)
         ],
-        # Prepínače výdajných bodov (clusterov) — tiež zo VŠETKÝCH blokov, nech sa
-        # odfiltrovaný dá zapnúť späť.
-        "blocks": [
+        # Prepínače výdajných bodov — tiež zo VŠETKÝCH, nech sa odfiltrovaný dá
+        # zapnúť späť.
+        "vydaje": [
             {
-                "name": str(block.get("name") or ""),
-                "selected": index in set(keep_blocks),
+                "key": str(vydaj.get("key") or ""),
+                "name": str(vydaj.get("name") or ""),
+                "selected": index in set(keep_vydaje),
             }
-            for index, block in enumerate(all_blocks)
+            for index, vydaj in enumerate(all_vydaje)
         ],
     }
 

@@ -73,41 +73,39 @@
     text-transform: uppercase; letter-spacing: var(--tracking-caps);
     padding: 9px 16px;
 }
-/* Blok = výdajný bod kuchyne (cluster). Musí byť vidieť na prvý pohľad, že tu
- * začína druhá tabuľka — v tlači ide navyše na vlastný list. */
+/* Výdajný bod kuchyne. Vidieť, že tu začína druhá tabuľka (v tlači aj druhý
+ * list), ale bez krikľavého pásu — stačí tmavý pruh a tenká červená linka. */
 .zpa-gram tbody .block-band td {
     background: var(--green-900); color: #fff;
-    font-size: 15px; letter-spacing: 0.1em;
-    padding: 14px 16px;
-    border-top: 4px solid var(--coral-600);
+    font-size: 12px; letter-spacing: var(--tracking-caps);
+    padding: 10px 16px;
+    border-top: 2px solid var(--coral-600);
 }
-/* Trasa — celý riadok červený a o poschodie väčšie písmo. Zelený pás sa v
- * hustej tabuľke strácal a rozvoz nevedel, kde jedna trasa končí (17. 8. 2026). */
+/* Trasa — jemný červený pás. Musí byť vidieť, kde trasa začína, ale nesmie
+ * prekričať dáta: sýta výplň cez celý riadok bola priveľká (17. 8. 2026). */
 .zpa-gram .route-row td {
-    min-width: 0; padding: 10px 16px;
-    background: var(--coral-600);
-    border-top: 3px solid var(--coral-logo);
-    border-bottom: 2px solid var(--coral-logo);
+    min-width: 0; padding: 7px 16px;
+    background: rgba(201,46,82,0.07);
+    border-top: 1px solid rgba(201,46,82,0.35);
+    border-bottom: 1px solid rgba(201,46,82,0.16);
 }
 .zpa-gram .route-pill {
-    display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
-    padding: 6px 12px; border-radius: var(--radius-pill);
+    display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+    padding: 3px 10px; border-radius: var(--radius-pill);
     background: #fff; color: var(--coral-600);
-    border: 1px solid rgba(255,255,255,0.9);
-    box-shadow: 0 1px 0 rgba(23,53,5,0.08);
-    font-family: var(--font-display); font-weight: 700; font-size: 15px;
-    text-transform: uppercase; letter-spacing: 0.02em;
+    border: 1px solid rgba(201,46,82,0.30);
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
 }
 .zpa-gram .route-pill::before {
-    content: ""; width: 8px; height: 8px; border-radius: 999px;
+    content: ""; width: 6px; height: 6px; border-radius: 999px;
     background: var(--coral-600); flex: 0 0 auto;
 }
 .zpa-gram .route-pill > span {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .zpa-gram .route-pill small {
-    flex: 0 0 auto; color: var(--coral-600);
-    font-family: var(--font-sans); font-size: 12px; font-weight: 600;
+    flex: 0 0 auto; color: var(--ink-3);
+    font-family: var(--font-sans); font-size: 11px; font-weight: 600;
 }
 .zpa-gram .portion-summary-band td {
     background: rgba(255,201,92,0.18); color: var(--mustard-700);
