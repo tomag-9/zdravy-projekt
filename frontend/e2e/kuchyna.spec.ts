@@ -75,67 +75,82 @@ test.describe("Kuchyňa", () => {
 
 test.describe("Nakladanie (#487)", () => {
   /**
-   * Stav nakladania žije v DB a prežije beh testu, takže sa nesmie
-   * predpokladať prázdny štart — kliklo by sa na už naložené položky a
-   * odškrtlo by ich to. Preto sa dopĺňa len to, čo chýba.
+   * Seed dáta pokrývajú len časť dní, takže predvolený deň (dnešok) môže byť
+   * bez jedálnička. Vrátime sa po dňoch dozadu, kým sa neobjavia stanoviská —
+   * inak by test padal podľa toho, ktorý deň v týždni práve beží.
    */
-  async function ensureAllLoaded(card: import("@playwright/test").Locator) {
-    const items = card.locator(".zpk-item");
-    for (let i = 0; i < (await items.count()); i++) {
-      const item = items.nth(i);
-      if (!((await item.getAttribute("class")) ?? "").includes("is-loaded")) {
-        await item.click();
-        await expect(item).toHaveClass(/is-loaded/);
-      }
+  async function gotoDayWithData(page: Page): Promise<boolean> {
+    for (let i = 0; i < 7; i++) {
+      if (await page.locator(".zpk-station").count()) return true;
+      await page.click('button[aria-label="Predchádzajúci deň"]');
+      await page.waitForTimeout(400);
     }
+    return (await page.locator(".zpk-station").count()) > 0;
   }
 
-  async function openLoading(page: Page) {
+  /**
+   * Stav nakladania žije v DB a prežije beh testu, takže sa nesmie
+   * predpokladať prázdny štart — inak by klik odškrtol už naloženú položku.
+   */
+  async function setTick(row: import("@playwright/test").Locator, loaded: boolean) {
+    const tick = row.locator(".zpk-tick");
+    const isOn = ((await tick.getAttribute("class")) ?? "").includes("is-loaded");
+    if (isOn !== loaded) await tick.click();
+    await expect(tick).toHaveClass(loaded ? /is-loaded/ : /^((?!is-loaded).)*$/);
+  }
+
+  test("stanoviská sa dajú prepínať a prvé je predvolené", async ({ page }) => {
     await loginAsKuchyna(page);
-    await page.getByRole("tab", { name: "Nakladanie" }).click();
-    const card = page.locator(".zpk-card").first();
-    await expect(card).toBeVisible();
-    return card;
-  }
+    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
+    const stations = page.locator(".zpk-station");
+    await expect(stations.first()).toHaveClass(/is-active/);
 
-  test("prevádzku nejde potvrdiť, kým niečo chýba", async ({ page }) => {
-    const card = await openLoading(page);
-
-    // Zhoď jednu položku, nech je stav deterministický bez ohľadu na DB.
-    const first = card.locator(".zpk-item").first();
-    if (((await first.getAttribute("class")) ?? "").includes("is-loaded")) {
-      await first.click();
+    if ((await stations.count()) > 1) {
+      await stations.nth(1).click();
+      await expect(stations.nth(1)).toHaveClass(/is-active/);
+      await expect(stations.first()).not.toHaveClass(/is-active/);
     }
-    await expect(first).not.toHaveClass(/is-loaded/);
-
-    await expect(card.getByRole("button", { name: /^Ešte / })).toBeDisabled();
-    await expect(card.locator(".zpk-done")).toHaveCount(0);
   });
 
-  test("po odklikaní všetkého prejde kontrolný krok a potvrdenie", async ({ page }) => {
-    const card = await openLoading(page);
-    await ensureAllLoaded(card);
+  test("odklikávanie je priamo v riadku prevádzky", async ({ page }) => {
+    await loginAsKuchyna(page);
+    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
+    const row = page.locator("tr.client-row").first();
+    await expect(row.locator(".zpk-tick")).toBeVisible();
 
-    const confirmBtn = card.getByRole("button", { name: "Skontrolovať a potvrdiť" });
-    await expect(confirmBtn).toBeEnabled();
-    await confirmBtn.click();
-
-    await page.getByRole("button", { name: "Potvrdiť naloženie" }).click();
-    await expect(card.locator(".zpk-done")).toBeVisible();
+    await setTick(row, false);
+    await setTick(row, true);
   });
 
-  test("odškrtnutie položky zruší potvrdenie", async ({ page }) => {
-    const card = await openLoading(page);
-    await ensureAllLoaded(card);
+  test("postup stanoviska sa počíta", async ({ page }) => {
+    await loginAsKuchyna(page);
+    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
+    const progress = page.locator(".zpk-station-progress");
+    await expect(progress).toBeVisible();
 
-    // Test si potvrdený stav zariadi sám, nespolieha sa na predchádzajúci test.
-    if (!(await card.locator(".zpk-done").count())) {
-      await card.getByRole("button", { name: "Skontrolovať a potvrdiť" }).click();
-      await page.getByRole("button", { name: "Potvrdiť naloženie" }).click();
-    }
-    await expect(card.locator(".zpk-done")).toBeVisible();
+    const row = page.locator("tr.client-row").first();
+    await setTick(row, false);
+    const before = await progress.textContent();
+    await setTick(row, true);
+    await expect(progress).not.toHaveText(before ?? "");
+  });
 
-    await card.locator(".zpk-item").first().click();
-    await expect(card.locator(".zpk-done")).toHaveCount(0);
+  test("stanovisko mení, ktorá položka sa odklikáva", async ({ page }) => {
+    await loginAsKuchyna(page);
+    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
+    const stations = page.locator(".zpk-station");
+    test.skip((await stations.count()) < 2, "deň má jediné stanovisko");
+
+    const row = page.locator("tr.client-row").first();
+    await stations.first().click();
+    await setTick(row, true);
+
+    // Druhé stanovisko má vlastný stav — nesmie zdediť odklik prvého.
+    await stations.nth(1).click();
+    await setTick(row, false);
+    await expect(row.locator(".zpk-tick")).not.toHaveClass(/is-loaded/);
+
+    await stations.first().click();
+    await expect(row.locator(".zpk-tick")).toHaveClass(/is-loaded/);
   });
 });

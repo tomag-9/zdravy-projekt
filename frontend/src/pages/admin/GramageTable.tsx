@@ -30,6 +30,8 @@ export interface SpecRow {
   group_id?: string;
   collapsible?: boolean;
   color?: string | null;
+  /** Len na riadkoch `kind: "client"` — cieľ odklikávania naloženia (#487). */
+  prevadzka_id?: number | null;
 }
 
 export interface SpecSection {
@@ -74,7 +76,17 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
   </>
 );
 
-const GramageTable: React.FC<{ spec: TableSpec; className?: string }> = ({ spec, className }) => {
+interface GramageTableProps {
+  spec: TableSpec;
+  className?: string;
+  /**
+   * Voliteľná akcia vpravo v riadku prevádzky. Admin Prehľad ju neposiela a
+   * vyzerá presne ako predtým; kuchyňa cez ňu vešia odklikávanie naloženia.
+   */
+  renderClientAction?: (prevadzkaId: number) => React.ReactNode;
+}
+
+const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction }) => {
   const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
   const toggleClient = (key: string) => {
@@ -93,17 +105,24 @@ const GramageTable: React.FC<{ spec: TableSpec; className?: string }> = ({ spec,
     if (row.kind === "client") {
       const cell = row.cells[0];
       const isExpanded = expandedClients.includes(row.group_id ?? "");
+      const action =
+        renderClientAction && row.prevadzka_id != null
+          ? renderClientAction(row.prevadzka_id)
+          : null;
       return (
         <tr key={index} className={row.css}>
           <td colSpan={cell.colspan}>
-            <button type="button" className="client-toggle" onClick={() => toggleClient(row.group_id ?? "")}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
-                {cell.text}
-                <span className="meta">{cell.meta}</span>
-              </span>
-              <span className="meta">{cell.meta_right}</span>
-            </button>
+            <div className="client-line">
+              <button type="button" className="client-toggle" onClick={() => toggleClient(row.group_id ?? "")}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                  <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
+                  {cell.text}
+                  <span className="meta">{cell.meta}</span>
+                </span>
+                <span className="meta">{cell.meta_right}</span>
+              </button>
+              {action}
+            </div>
           </td>
         </tr>
       );

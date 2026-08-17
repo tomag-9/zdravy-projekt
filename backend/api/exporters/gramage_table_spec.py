@@ -307,6 +307,9 @@ def _client_rows(
             "kind": "client",
             "css": "client-row",
             "group_id": key,
+            # Kuchyňa vešia na klientsky riadok odklikávanie naloženia (#487),
+            # a potrebuje k tomu prevádzku ako číslo — nie parsovanie `group_id`.
+            "prevadzka_id": row.get("prevadzka_id"),
             "cells": [
                 {
                     "text": row.get("client") or "",
