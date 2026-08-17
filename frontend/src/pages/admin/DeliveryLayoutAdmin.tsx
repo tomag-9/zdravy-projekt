@@ -98,6 +98,12 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [editRouteName, setEditRouteName] = useState("");
   const [editRouteDriver, setEditRouteDriver] = useState("");
   const [editRouteTime, setEditRouteTime] = useState("");
+  // Blok je výdajný bod kuchyne (cluster) — trasa sa medzi nimi musí dať
+  // presunúť a blok premenovať, inak sa rozdelenie na dva body dá nastaviť len
+  // zakladaním trás nanovo (spätná väzba 17. 8. 2026).
+  const [editRouteBlock, setEditRouteBlock] = useState<number | null>(null);
+  const [editBlock, setEditBlock] = useState<DeliveryBlock | null>(null);
+  const [editBlockName, setEditBlockName] = useState("");
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -377,11 +383,46 @@ const DeliveryLayoutAdmin: React.FC = () => {
     }
   };
 
+  /**
+   * Presun trasy do iného bloku ju zaradí na konec cieľového bloku. Bez toho by
+   * si ponechala pôvodné `sort_order` a v novom bloku by skočila doprostred —
+   * poradie trás si prevádzka nastavuje ručne a takýto skok je preň chyba.
+   */
+  const blockMovePatch = (route: DeliveryRoute, targetBlockId: number | null) => {
+    const target = targetBlockId ?? route.block;
+    if (target === route.block) return { block: target };
+    const siblings = layout.blocks.find((block) => block.id === target)?.routes ?? [];
+    return { block: target, sort_order: siblings.length + 1 };
+  };
+
   const openEditRoute = (route: DeliveryRoute) => {
     setEditRoute(route);
     setEditRouteName(route.name);
     setEditRouteDriver(route.driver || "");
     setEditRouteTime(route.departure_time?.slice(0, 5) || "");
+    setEditRouteBlock(route.block);
+  };
+
+  const openEditBlock = (block: DeliveryBlock) => {
+    setEditBlock(block);
+    setEditBlockName(block.name);
+  };
+
+  const updateBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editBlock || !editBlockName.trim()) return;
+    const res = await apiFetch(`${API}/admin/delivery-blocks/${editBlock.id}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editBlockName.trim() }),
+    });
+    if (res.ok) {
+      setEditBlock(null);
+      await fetchLayout();
+      success("Blok bol premenovaný.");
+    } else {
+      toastError("Nepodarilo sa premenovať blok.");
+    }
   };
 
   const updateRoute = async (e: React.FormEvent) => {
@@ -394,6 +435,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
         name: editRouteName.trim(),
         driver: editRouteDriver.trim(),
         departure_time: editRouteTime || null,
+        ...blockMovePatch(editRoute, editRouteBlock),
       }),
     });
     if (res.ok) {
@@ -475,6 +517,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                   <p>{block.routes.length} trás</p>
                 </div>
                 <div className="actions">
+                  <Button sm variant="ghost" onClick={() => openEditBlock(block)}>
+                    Premenovať
+                  </Button>
                   <IconButton onClick={() => moveBlock(block.id, -1)} disabled={blockIndex === 0} title="Vyššie" aria-label="Vyššie">
                     <ArrowUp />
                   </IconButton>
@@ -722,6 +767,35 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <Input type="time" value={editRouteTime} onChange={(e) => setEditRouteTime(e.target.value)} />
               </Field>
             </div>
+            <Field label="Blok (výdajný bod)">
+              <Select
+                value={String(editRouteBlock ?? editRoute.block)}
+                onChange={(e) => setEditRouteBlock(Number(e.target.value))}
+              >
+                {layout.blocks.map((block) => (
+                  <option key={block.id} value={block.id}>{block.name}</option>
+                ))}
+              </Select>
+            </Field>
+          </form>
+        </Modal>
+      )}
+
+      {editBlock && (
+        <Modal
+          title="Premenovať blok"
+          onClose={() => setEditBlock(null)}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setEditBlock(null)}>Zrušiť</Button>
+              <Button type="submit" form="edit-block-form">Uložiť</Button>
+            </>
+          }
+        >
+          <form id="edit-block-form" onSubmit={updateBlock}>
+            <Field label="Názov bloku" req>
+              <Input required value={editBlockName} onChange={(e) => setEditBlockName(e.target.value)} />
+            </Field>
           </form>
         </Modal>
       )}
