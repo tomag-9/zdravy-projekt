@@ -48,7 +48,7 @@ def _settings(**kwargs):
 
 
 def _stub_scrape(monkeypatch):
-    def fake_scrape(self, url, target_date, prevadzka_matches=None):
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
         return ScrapeResult(
             date=target_date,
             order_data={"lunch": {"menuCounts": {"A": 5}}},
@@ -157,7 +157,7 @@ class TestScrapeGiveUp:
         _settings()
         monkeypatch.setattr(timezone, "localdate", lambda: datetime.date(2026, 6, 29))
 
-        def blow_up(self, url, target_date, prevadzka_matches=None):
+        def blow_up(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
             raise RuntimeError("edupage down")
 
         monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", blow_up)

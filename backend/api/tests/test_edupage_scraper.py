@@ -323,9 +323,9 @@ class TestParse(unittest.TestCase):
     TARGET_DATE = date(2026, 6, 17)
     DATE_STR = "2026-06-17"
 
-    def _scrape_html(self, html: str):
+    def _scrape_html(self, html: str, allowed_diets=None):
         scraper = EdupageScraper()
-        return scraper._parse(html, self.TARGET_DATE)
+        return scraper._parse(html, self.TARGET_DATE, allowed_diets=allowed_diets)
 
     def _typy(self, items):
         return [
@@ -695,7 +695,7 @@ class TestParse(unittest.TestCase):
         # Zero-count entries should not appear in order_data
         self.assertEqual(result.order_data, {})
 
-    def test_unknown_menu_letter_is_rejected_from_clean_output(self):
+    def test_unknown_diet_is_counted_and_reported(self):
         prehlad = {
             "prehlad": {
                 self.DATE_STR: {
@@ -720,8 +720,50 @@ class TestParse(unittest.TestCase):
         )
         result = self._scrape_html(html)
 
-        self.assertEqual(result.order_data, {})
+        # Neznáma diéta sa NEZAHADZUJE — porcie musia ostať v počte, inak
+        # kuchyni chýbajú jedlá a nikto o tom nevie.
+        self.assertEqual(
+            result.order_data,
+            {"lunch": {"Škôlka": {"menuCounts": {"A": 3}, "diets": {"Z": 3}}}},
+        )
         self.assertIn("Z:Z", result.unmapped_letters)
+
+    def test_diet_known_only_in_db_is_accepted(self):
+        """Diéta založená v appke (nie v zabudovanom zozname) sa už nehlási ako
+        neznáma — presne kvôli tomu, aby nová diéta školy nečakala na nasadenie."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "2": {
+                        "N": {
+                            "typ_platitela": {"1": {"o": 4}},
+                            "porcia": {},
+                            "v_skupina": {},
+                        },
+                    }
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {"N": {"skratka": "NK", "nazov": "NO KAKAO"}}
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            [],
+            self._typy([(1, "MŠ Klasik", 0)]),
+            self.DATE_STR,
+        )
+
+        neznama = self._scrape_html(html)
+        self.assertEqual(neznama.unmapped_letters, ["N:NO KAKAO"])
+
+        znama = self._scrape_html(html, allowed_diets={"NO KAKAO"})
+        self.assertEqual(znama.unmapped_letters, [])
+        self.assertEqual(
+            znama.order_data,
+            {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {"NO KAKAO": 4}}}},
+        )
 
 
 class TestFetchError(unittest.TestCase):

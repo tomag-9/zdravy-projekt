@@ -24,7 +24,7 @@ interface OverviewRow {
   delivered: boolean;
   delivery_status?: "missing" | "manual_zero" | "auto" | "manual";
   counts: OverviewCounts;
-  flags: { attention: string[]; config_notes: string[] };
+  flags: { attention: string[]; config_notes: string[]; unmapped_diets?: string[] };
   has_warning: boolean;
 }
 
@@ -78,7 +78,10 @@ const StatusDot: React.FC<{ row: OverviewRow; source: "edupage" | "app" }> = ({ 
     );
   }
   if (row.has_warning) {
-    const notes = [...row.flags.config_notes, ...row.flags.attention].join("\n");
+    const unmapped = (row.flags.unmapped_diets ?? []).map(
+      (d) => `neznáma diéta z EduPage: ${d} — založ ju v appke`,
+    );
+    const notes = [...row.flags.config_notes, ...row.flags.attention, ...unmapped].join("\n");
     return (
       <span className="zpa-statusdot warn" title={`Dodané, ale skontroluj:\n${notes}`}>
         <AlertTriangle />

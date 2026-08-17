@@ -126,7 +126,7 @@ def test_scrape_imports_orders_for_open_day(admin_client, admin_user, monkeypatc
     )
     monkeypatch.setattr(
         "api.views.edupage_views.EdupageScraper.scrape",
-        lambda self, url, date, prevadzka_matches=None: ScrapeResult(
+        lambda self, url, date, prevadzka_matches=None, allowed_diets=None: ScrapeResult(
             date=date,
             order_data={"lunch": {"menuCounts": {"A": 3}, "diets": {}}},
         ),
