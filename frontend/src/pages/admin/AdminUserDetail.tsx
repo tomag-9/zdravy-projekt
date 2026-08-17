@@ -5,6 +5,8 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { Card, Button, Field, Input } from "./ui";
+import SectionPermissionMatrix from "./SectionPermissionMatrix";
+import { roleOf, type Role } from "../../lib/roles";
 
 interface UserSettings {
   visible_menus: string[];
@@ -19,8 +21,16 @@ interface AdminUser {
   last_name: string;
   is_active: boolean;
   is_staff: boolean;
+  role?: Role;
   settings: UserSettings | null;
 }
+
+const ROLE_LABELS: Record<Role, string> = {
+  klient: 'Klient',
+  kuchyna: 'Kuchyňa',
+  admin: 'Admin',
+  superadmin: 'Superadmin',
+};
 
 const AdminUserDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -143,7 +153,9 @@ const AdminUserDetail: React.FC = () => {
           <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 20 }}>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "8px 14px", background: "rgba(114,136,75,0.10)", borderRadius: "var(--radius-md)", color: "var(--green-700)" }}>
               <ShieldCheck style={{ width: 16, height: 16 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 600 }}>Rola: Administrátor</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                Rola: {ROLE_LABELS[roleOf(user ?? undefined)]}
+              </span>
             </div>
           </div>
         </div>
@@ -154,6 +166,8 @@ const AdminUserDetail: React.FC = () => {
           {saving ? "Ukladám…" : "Uložiť zmeny"}
         </Button>
       </div>
+
+      {id && <SectionPermissionMatrix userId={Number(id)} />}
     </div>
   );
 };

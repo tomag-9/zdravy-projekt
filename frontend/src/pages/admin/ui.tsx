@@ -5,6 +5,7 @@
  * ============================================================= */
 import React from 'react';
 import { Search, X } from 'lucide-react';
+import { useDisabled } from '../../lib/editAccessContext';
 
 type Div = React.HTMLAttributes<HTMLDivElement>;
 
@@ -27,11 +28,16 @@ export const PageHead: React.FC<{
 
 /* ── Button ── */
 type BtnVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'honey';
+/** `allowReadOnly` = prvok nič nemení (hľadanie, filter, export), viď editAccess. */
+type ReadOnlyAware = { allowReadOnly?: boolean };
+
 export const Button: React.FC<
-    React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant; sm?: boolean }
-> = ({ variant = 'primary', sm, className = '', children, ...rest }) => (
+    React.ButtonHTMLAttributes<HTMLButtonElement> &
+        ReadOnlyAware & { variant?: BtnVariant; sm?: boolean }
+> = ({ variant = 'primary', sm, className = '', children, allowReadOnly, disabled, ...rest }) => (
     <button
         className={`zpa-btn zpa-btn--${variant}${sm ? ' zpa-btn--sm' : ''} ${className}`.trim()}
+        disabled={useDisabled(disabled, allowReadOnly)}
         {...rest}
     >
         {children}
@@ -39,9 +45,13 @@ export const Button: React.FC<
 );
 
 export const IconButton: React.FC<
-    React.ButtonHTMLAttributes<HTMLButtonElement>
-> = ({ className = '', children, ...rest }) => (
-    <button className={`zpa-iconbtn ${className}`.trim()} {...rest}>
+    React.ButtonHTMLAttributes<HTMLButtonElement> & ReadOnlyAware
+> = ({ className = '', children, allowReadOnly, disabled, ...rest }) => (
+    <button
+        className={`zpa-iconbtn ${className}`.trim()}
+        disabled={useDisabled(disabled, allowReadOnly)}
+        {...rest}
+    >
         {children}
     </button>
 );
@@ -100,8 +110,14 @@ export const Field: React.FC<{
     </Component>
 );
 
-export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement>> = ({ className = '', ...rest }) => (
-    <input className={`zpa-input ${className}`.trim()} {...rest} />
+export const Input: React.FC<
+    React.InputHTMLAttributes<HTMLInputElement> & ReadOnlyAware
+> = ({ className = '', allowReadOnly, disabled, ...rest }) => (
+    <input
+        className={`zpa-input ${className}`.trim()}
+        disabled={useDisabled(disabled, allowReadOnly)}
+        {...rest}
+    />
 );
 
 const DIET_COLORS = [
@@ -195,27 +211,33 @@ export const ColorSwatchPicker: React.FC<{
     );
 };
 
-export const Select: React.FC<React.SelectHTMLAttributes<HTMLSelectElement>> = ({
-    className = '',
-    children,
-    ...rest
-}) => (
-    <select className={`zpa-select ${className}`.trim()} {...rest}>
+export const Select: React.FC<
+    React.SelectHTMLAttributes<HTMLSelectElement> & ReadOnlyAware
+> = ({ className = '', children, allowReadOnly, disabled, ...rest }) => (
+    <select
+        className={`zpa-select ${className}`.trim()}
+        disabled={useDisabled(disabled, allowReadOnly)}
+        {...rest}
+    >
         {children}
     </select>
 );
 
-export const Textarea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement>> = ({
-    className = '',
-    ...rest
-}) => <textarea className={`zpa-textarea ${className}`.trim()} {...rest} />;
+export const Textarea: React.FC<
+    React.TextareaHTMLAttributes<HTMLTextAreaElement> & ReadOnlyAware
+> = ({ className = '', allowReadOnly, disabled, ...rest }) => (
+    <textarea
+        className={`zpa-textarea ${className}`.trim()}
+        disabled={useDisabled(disabled, allowReadOnly)}
+        {...rest}
+    />
+);
 
-export const Toggle: React.FC<{ on: boolean; onChange: (v: boolean) => void; disabled?: boolean; ariaLabel?: string }> = ({
-    on,
-    onChange,
-    disabled,
-    ariaLabel,
-}) => (
+export const Toggle: React.FC<
+    { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; ariaLabel?: string } & ReadOnlyAware
+> = ({ on, onChange, disabled: ownDisabled, ariaLabel, allowReadOnly }) => {
+    const disabled = useDisabled(ownDisabled, allowReadOnly);
+    return (
     <button
         type="button"
         className={`zpa-switch${on ? ' on' : ''}`}
@@ -224,14 +246,18 @@ export const Toggle: React.FC<{ on: boolean; onChange: (v: boolean) => void; dis
         disabled={disabled}
         onClick={() => onChange(!on)}
     />
-);
+    );
+};
 
-export const Checkbox: React.FC<{ on: boolean; onChange: (v: boolean) => void; children?: React.ReactNode }> = ({
-    on,
-    onChange,
-    children,
-}) => (
-    <button type="button" className={`zpa-check${on ? ' on' : ''}`} onClick={() => onChange(!on)}>
+export const Checkbox: React.FC<
+    { on: boolean; onChange: (v: boolean) => void; children?: React.ReactNode } & ReadOnlyAware
+> = ({ on, onChange, children, allowReadOnly }) => (
+    <button
+        type="button"
+        className={`zpa-check${on ? ' on' : ''}`}
+        disabled={useDisabled(undefined, allowReadOnly)}
+        onClick={() => onChange(!on)}
+    >
         <span className="box">{on && <CheckMark />}</span>
         {children}
     </button>

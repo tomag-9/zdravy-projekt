@@ -10,6 +10,8 @@ DEMO_ADMIN_PASSWORD = "admin"
 DEMO_OPERATION_EMAIL = "prevadzka@example.com"
 DEMO_OPERATION_PASSWORD = "prevadzka"
 DEMO_OPERATION_CELOK = "Demo prevádzka"
+DEMO_KUCHYNA_EMAIL = "kuchyna@example.com"
+DEMO_KUCHYNA_PASSWORD = "kuchyna"
 # Demo login je zámerne viac-prevádzkový: jedno-prevádzkový celok nikdy
 # neodhalí, že objednávka patrí prevádzke a nie prihláseniu — práve tam vznikali
 # chyby (výber prevádzky pri odosielaní, história a súčty za celok).
@@ -68,6 +70,16 @@ class Command(BaseCommand):
         admin_group = Group.objects.get(name="Admin")
         admin_user.groups.add(admin_group)
 
+        # Demo admin je zámerne superadmin, aby sa dala prejsť celá konzola.
+        # Migrácia 0073 degraduje ostatných superadminov, takže sa mu rola
+        # obnovuje tu — v produkcii sa sem beh nikdy nedostane.
+        demo_profile, _ = UserProfile.objects.get_or_create(
+            user=admin_user, defaults={"company_name": "Demo admin"}
+        )
+        if demo_profile.role != UserProfile.Role.SUPERADMIN:
+            demo_profile.role = UserProfile.Role.SUPERADMIN
+            demo_profile.save(update_fields=["role"])
+
         if created:
             self.stdout.write(
                 self.style.SUCCESS(f'Created superuser "{DEMO_ADMIN_EMAIL}"')
@@ -115,6 +127,44 @@ class Command(BaseCommand):
             )
         else:
             self.stdout.write(f'Operation user "{DEMO_OPERATION_EMAIL}" already exists')
+
+        self._ensure_demo_kuchyna()
+
+    def _ensure_demo_kuchyna(self) -> None:
+        """Demo login pre rolu Kuchyňa (#486).
+
+        Kuchyňa nemá `is_staff` a nedostáva vlastný celok ani prevádzku —
+        neobjednáva, len číta prehľad nakladania.
+        """
+        from api.models import UserProfile
+
+        user, created = self._get_or_create_demo_user(
+            email=DEMO_KUCHYNA_EMAIL,
+            legacy_username="kuchyna",
+            is_staff=False,
+            is_superuser=False,
+        )
+        user.is_staff = False
+        user.is_superuser = False
+        user.set_password(DEMO_KUCHYNA_PASSWORD)
+        user.save()
+
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            profile = UserProfile(user=user, company_name="Demo kuchyňa")
+            profile.role = UserProfile.Role.KUCHYNA
+            profile._skip_default_facility = True
+            profile.save()
+        elif profile.role != UserProfile.Role.KUCHYNA:
+            profile.role = UserProfile.Role.KUCHYNA
+            profile.save(update_fields=["role"])
+
+        if created:
+            self.stdout.write(
+                self.style.SUCCESS(f'Created kuchyňa user "{DEMO_KUCHYNA_EMAIL}"')
+            )
+        else:
+            self.stdout.write(f'Kuchyňa user "{DEMO_KUCHYNA_EMAIL}" already exists')
 
     def _ensure_demo_prevadzky(self, celok) -> None:
         """Dorob demo celku ďalšie prevádzky (idempotentne).

@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.utils import timezone
 
+from api.roles import klient_q
 from api.services.push_notification_service import PushNotificationService
 
 logger = logging.getLogger(__name__)
@@ -204,8 +205,10 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
     sent_per_date: dict[str, int] = {}
     try:
         subscribed_user_ids = list(
+            # Klientske notifikácie na objednávanie — kuchyňa ich dostávať nesmie,
+            # hoci má tiež `is_staff=False` (#482).
             PushSubscription.objects.filter(
-                user__is_staff=False,
+                klient_q("user"),
                 user__is_active=True,
             )
             .values_list("user_id", flat=True)
@@ -307,8 +310,10 @@ def send_weekly_order_reminder_task(self):
 
     try:
         subscribed_user_ids = set(
+            # Klientske notifikácie na objednávanie — kuchyňa ich dostávať nesmie,
+            # hoci má tiež `is_staff=False` (#482).
             PushSubscription.objects.filter(
-                user__is_staff=False,
+                klient_q("user"),
                 user__is_active=True,
             )
             .values_list("user_id", flat=True)

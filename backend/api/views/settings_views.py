@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import EventLog
+from ..permissions import IsSuperadmin
 from ..serializers_user import UserProfileSerializer
 from ..services.event_log_service import build_model_diff, log_event
 
@@ -75,8 +76,8 @@ class GlobalSettingsViewSet(viewsets.ViewSet):
         # Allow public read for login/help copy; serializer strips admin-only fields.
         if self.action == "list":
             return [permissions.AllowAny()]
-        # Require admin for creation/updates
-        return [permissions.IsAdminUser()]
+        # Zápis systémových nastavení patrí od #483 výhradne superadminovi.
+        return [IsSuperadmin()]
 
     def list(self, request):
         """

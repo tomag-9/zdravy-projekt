@@ -10,6 +10,46 @@ const isWeekend = (date: Date): boolean => {
   return day === 0 || day === 6;
 };
 
+/** Pracovný deň (pondelok–piatok). */
+export function isWeekday(date: Date): boolean {
+  return !isWeekend(date);
+}
+
+/** Lokálny YYYY-MM-DD (nie ISO/UTC — to by pri večerných hodinách posunulo deň). */
+export function toDateString(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+/** Poludnie zámerne — vyhne sa posunom cez letný/zimný čas. */
+const parseDay = (s: string): Date => new Date(s + 'T12:00:00');
+
+export function prevWeekday(s: string): string {
+  const d = parseDay(s);
+  do { d.setDate(d.getDate() - 1); } while (isWeekend(d));
+  return toDateString(d);
+}
+
+export function nextWeekday(s: string): string {
+  const d = parseDay(s);
+  do { d.setDate(d.getDate() + 1); } while (isWeekend(d));
+  return toDateString(d);
+}
+
+/** Dnešok, alebo posledný pracovný deň, ak je víkend. */
+export function lastWeekdayToday(): string {
+  return toDateString(previousBusinessDay(new Date()));
+}
+
+export function formatDay(s: string): string {
+  return parseDay(s).toLocaleDateString('sk-SK', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
 /** Return `date` unchanged if it's a weekday, otherwise the most recent
  * preceding weekday (Saturday -> Friday, Sunday -> Friday). */
 export function previousBusinessDay(date: Date): Date {

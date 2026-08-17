@@ -4,12 +4,14 @@ from django.contrib.auth.models import User
 from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import pagination, permissions, serializers, viewsets
+from rest_framework import pagination, serializers, viewsets
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from .. import sections
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
+from ..permissions import IsSuperadmin, SectionAccess
 from ..serializers_user import AdminUserSerializer
 from .audit_mixins import AuditedModelViewSetMixin
 
@@ -94,7 +96,8 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = AdminUserSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.PRISTUPY
     pagination_class = AdminUserPagination
 
     def get_queryset(self):
@@ -148,6 +151,12 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(is_staff=True)
         elif is_staff == "false":
             qs = qs.filter(is_staff=False)
+
+        # `?role=` pribúda POPRI `?is_staff=` — ten ďalej používa AdminUserList,
+        # takže sa nesmie odstrániť skôr, než sa frontend prepne (#483).
+        role = self.request.query_params.get("role")
+        if role:
+            qs = qs.filter(profile__role=role)
         return qs
 
     def perform_create(self, serializer):
@@ -198,7 +207,8 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     list=extend_schema(tags=["admin"]),
 )
 class AdminLogViewSet(viewsets.ViewSet):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.LOGY
 
     def list(self, request):
         records = get_log_records()
@@ -251,7 +261,8 @@ class AdminLogViewSet(viewsets.ViewSet):
 )
 class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AdminEventLogSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsSuperadmin, SectionAccess]
+    section = sections.LOGY
 
     def get_queryset(self):
         # Profily sa ťahajú spolu s používateľmi: meno pre tabuľku ich číta pre

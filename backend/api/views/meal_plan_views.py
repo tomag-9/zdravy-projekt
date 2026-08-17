@@ -13,6 +13,8 @@ from rest_framework.response import Response
 
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
+from ..permissions import IsAdminOrAbove, IsKuchynaOrAbove
+from ..roles import is_admin_or_above
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -37,11 +39,11 @@ class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = PortionType.objects.all()
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(is_active=True)
         return qs
 
@@ -60,11 +62,11 @@ class MealTemplateViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = MealTemplate.objects.all()
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(is_active=True)
         category = self.request.query_params.get("category")
         if category:
@@ -88,23 +90,28 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def _is_admin_route(self) -> bool:
         return self.request.path.startswith("/api/admin/")
 
+    #: Prehľady nakladania — kuchyňa ich len číta, meniť nesmie nič (#486).
+    KUCHYNA_READABLE_ACTIONS = {"gramage_dashboard", "gramage_dashboard_pdf"}
+
     def get_permissions(self):
         if (
             self.action in ["list", "retrieve", "by_date"]
             and not self._is_admin_route()
         ):
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        if self.action in self.KUCHYNA_READABLE_ACTIONS:
+            return [IsKuchynaOrAbove()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         item_queryset = MealPlanItem.objects.select_related("template__diet", "diet")
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(
             Prefetch("items", queryset=item_queryset),
             "enrolled_counts__portion_type",
         ).order_by("-date")
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(items__template__is_active=True).distinct()
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")

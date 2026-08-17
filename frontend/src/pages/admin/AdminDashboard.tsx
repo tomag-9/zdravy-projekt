@@ -5,7 +5,8 @@ import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
-import { DietColorSwatch } from "./DietColorSwatch";
+import GramageTable, { type TableSpec, type SpecSection } from "./GramageTable";
+import { prevWeekday, nextWeekday, lastWeekdayToday, toDateString, isWeekday, formatDay as formatDate } from "../../lib/businessDay";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -100,45 +101,6 @@ interface DeliveryBlockGroup {
 // spec-u, takže sa nemajú ako rozísť — všetky rozhodnutia o poradí riadkov,
 // textoch, číslach a triedach padli v gramage_table_spec.py.
 
-interface SpecCell {
-  text?: string;
-  css?: string;
-  colspan?: number;
-  count?: string;
-  sub?: string;
-  meta?: string;
-  meta_right?: string;
-  label?: string;
-  swatch?: { color: string; base_colors: string[] };
-}
-
-interface SpecRow {
-  kind: string;
-  css: string;
-  cells: SpecCell[];
-  group_id?: string;
-  collapsible?: boolean;
-  color?: string | null;
-}
-
-interface SpecSection {
-  key: string;
-  label: string;
-  selected: boolean;
-}
-
-interface TableSpec {
-  total_columns: number;
-  sections: SpecSection[];
-  header: {
-    corner: string;
-    groups: Array<{ text: string; sub: string; css: string; colspan: number }>;
-    components: Array<{ text: string; sub: string; css: string }>;
-  };
-  rows: SpecRow[];
-  footer: SpecRow[];
-}
-
 interface GramageDashboard {
   date: string;
   meal_plan_id: number | null;
@@ -192,36 +154,6 @@ interface ClosedDayResponse {
 }
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
-
-function toDateString(d: Date): string {
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
-}
-
-function isWeekday(d: Date) { const day = d.getDay(); return day !== 0 && day !== 6; }
-
-function prevWeekday(s: string): string {
-  const d = new Date(s + "T12:00:00");
-  do { d.setDate(d.getDate() - 1); } while (!isWeekday(d));
-  return toDateString(d);
-}
-
-function nextWeekday(s: string): string {
-  const d = new Date(s + "T12:00:00");
-  do { d.setDate(d.getDate() + 1); } while (!isWeekday(d));
-  return toDateString(d);
-}
-
-function lastWeekdayToday(): string {
-  const d = new Date();
-  while (!isWeekday(d)) d.setDate(d.getDate() - 1);
-  return toDateString(d);
-}
-
-function formatDate(s: string): string {
-  return new Date(s + "T12:00:00").toLocaleDateString("sk-SK", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
-}
 
 // ── Main component ────────────────────────────────────────────────────────────
 
@@ -392,7 +324,8 @@ const AdminDashboard: React.FC = () => {
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
           <>
-            <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
+            {/* Export nemení dáta — kto má sekciu na čítanie, má ho mať tiež. */}
+            <Button allowReadOnly variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
               {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} Stiahnuť PDF
             </Button>
             {!closedLoading && !isClosed && (
@@ -481,7 +414,7 @@ const AdminDashboard: React.FC = () => {
               }
               onReset={() => setSections([])}
             />
-            <GramageTable data={data} />
+            <GramageTable spec={data.spec} />
           </>
         )}
         {!loading && data && !hasData && hasOrderCounts && orderReport && (
@@ -664,135 +597,5 @@ const SectionFilter: React.FC<{
     </div>
   );
 };
-
-// ── GramageTable ──────────────────────────────────────────────────────────────
-
-const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
-  <>
-    {cells.map((cell, index) => (
-      <td key={index} className={cell.css || undefined} colSpan={cell.colspan}>
-        {cell.count !== undefined ? (
-          <span className="lbl-line">
-            <span>
-              {cell.swatch && (
-                <span style={{ display: "inline-flex", marginRight: 8 }}>
-                  <DietColorSwatch color={cell.swatch.color} baseColors={cell.swatch.base_colors} size={9} />
-                </span>
-              )}
-              {cell.text}
-            </span>
-            <span className="count-badge">{cell.count}</span>
-          </span>
-        ) : (
-          cell.text
-        )}
-      </td>
-    ))}
-  </>
-);
-
-const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
-  const { spec } = data;
-  const [expandedClients, setExpandedClients] = useState<string[]>([]);
-
-  const toggleClient = (key: string) => {
-    setExpandedClients((current) =>
-      current.includes(key)
-        ? current.filter((id) => id !== key)
-        : [...current, key],
-    );
-  };
-
-  // Riadok si nesie triedy aj farbu zo spec-u — tu sa už nič nerozhoduje,
-  // len prekladá na značky (viď backend/api/exporters/gramage_table_spec.py).
-  const renderRow = (row: SpecRow, index: number) => {
-    const style = row.color ? { color: row.color } : undefined;
-
-    if (row.kind === "client") {
-      const cell = row.cells[0];
-      const isExpanded = expandedClients.includes(row.group_id ?? "");
-      return (
-        <tr key={index} className={row.css}>
-          <td colSpan={cell.colspan}>
-            <button type="button" className="client-toggle" onClick={() => toggleClient(row.group_id ?? "")}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
-                {cell.text}
-                <span className="meta">{cell.meta}</span>
-              </span>
-              <span className="meta">{cell.meta_right}</span>
-            </button>
-          </td>
-        </tr>
-      );
-    }
-
-    if (row.kind === "route") {
-      const cell = row.cells[0];
-      return (
-        <tr key={index} className={row.css}>
-          <td colSpan={cell.colspan}>
-            <span className="route-pill">
-              <span>{cell.text}</span>
-              {cell.sub && <small>{cell.sub}</small>}
-            </span>
-          </td>
-        </tr>
-      );
-    }
-
-    if (row.kind === "note-admin" || row.kind === "note-delivery") {
-      const cell = row.cells[0];
-      return (
-        <tr key={index} className={row.css}>
-          <td colSpan={cell.colspan}>
-            <strong>{cell.label}</strong>{" "}
-            <span style={{ whiteSpace: "pre-wrap" }}>{cell.text}</span>
-          </td>
-        </tr>
-      );
-    }
-
-    return (
-      <tr key={index} className={row.css} style={style}>
-        <SpecCells cells={row.cells} />
-      </tr>
-    );
-  };
-
-  // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení.
-  const visibleRows = spec.rows.filter(
-    (row) => !row.collapsible || expandedClients.includes(row.group_id ?? ""),
-  );
-
-  return (
-    <Card style={{ overflow: "hidden" }}>
-      <div className="zpa-table-wrap zpa-gram-wrap">
-        <table className="zpa-gram">
-          <thead>
-            <tr>
-              <th className="corner" rowSpan={2}>{spec.header.corner}</th>
-              {spec.header.groups.map((group, index) => (
-                <th key={index} className={group.css} colSpan={group.colspan}>
-                  {group.text}<small>{group.sub}</small>
-                </th>
-              ))}
-            </tr>
-            <tr>
-              {spec.header.components.map((component, index) => (
-                <th key={index} className={component.css}>
-                  {component.text}<small>{component.sub}</small>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>{visibleRows.map(renderRow)}</tbody>
-          <tfoot>{spec.footer.map(renderRow)}</tfoot>
-        </table>
-      </div>
-    </Card>
-  );
-};
-
 
 export default AdminDashboard;
