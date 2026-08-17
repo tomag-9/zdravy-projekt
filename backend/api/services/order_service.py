@@ -6,10 +6,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from django.contrib.auth.models import User
 from django.utils import timezone
 
-from ..models import DailyOrder, Holiday
+from ..models import DailyOrder, Holiday, PrevadzkaClosure
 from ..order_data import MEAL_KEYS, OrderData
+from ..scheduling import expand_closures, is_weekend
 from .auto_order_service import _build_auto_data, _is_order_empty
 from .prevadzka_service import dostupne_prevadzky
+
+
+# Okno, v ktorom sa hľadá 5 dní na objednanie. Musí pokryť aj dlhšie voľno
+# prevádzky (#490) — dva týždne prázdnin posunú pätku dopredu o desiatky dní.
+_PLANNED_WINDOW_DAYS = 120
 
 
 def _merge_meal_data(target: Dict[str, Any], addition: Dict[str, Any]) -> None:
@@ -49,12 +55,22 @@ class OrderService:
         start: datetime.date,
         count: int = 5,
         holidays: Optional[set[datetime.date]] = None,
+        closed: Optional[set[datetime.date]] = None,
     ) -> List[datetime.date]:
-        """Return the next *count* Mon–Fri non-holiday dates starting from *and including* start."""
+        """Return the next *count* Mon–Fri non-holiday dates starting from *and including* start.
+
+        `closed` sú navyše dni voľna prevádzky (#490/#489). Množiny sa berú
+        zvonku (nie z DB ako v `api.scheduling`), aby helper zostal čistý a
+        volajúci si mohol načítať oboje jedným dotazom pre celé okno.
+        """
         days: List[datetime.date] = []
         d = start
         while len(days) < count:
-            if d.weekday() < 5 and (holidays is None or d not in holidays):
+            if (
+                not is_weekend(d)
+                and (holidays is None or d not in holidays)
+                and (closed is None or d not in closed)
+            ):
                 days.append(d)
             d += datetime.timedelta(days=1)
         return days
@@ -158,10 +174,36 @@ class OrderService:
         holiday_set: set[datetime.date] = set(
             Holiday.objects.filter(date__gte=today).values_list("date", flat=True)
         )
-        workdays = OrderService.next_workdays(today, 5, holiday_set)
-
         # Ako poddotaz, nie materializovaný zoznam — inak by prehľad stál dotaz navyše.
         prevadzky = dostupne_prevadzky(user)
+
+        # Voľno prevádzky (#490): deň zmizne z plánu len keď majú voľno VŠETKY
+        # prevádzky loginu — celok s piatimi škôlkami objednáva ďalej, aj keď
+        # jedna z nich má prázdniny. Okno je zámerne širšie než 5 dní: dlhé
+        # voľno posunie päticu pracovných dní dopredu.
+        window_end = today + datetime.timedelta(days=_PLANNED_WINDOW_DAYS)
+        closed_by_prevadzka = expand_closures(
+            PrevadzkaClosure.objects.filter(
+                prevadzka__in=prevadzky, date_from__lte=window_end, date_to__gte=today
+            ).values_list("prevadzka_id", "date_from", "date_to"),
+            today,
+            window_end,
+        )
+        fully_closed: set[datetime.date] = set()
+        # Zoznam id-čiek stojí dotaz navyše, tak ho pýtame len keď vôbec nejaké
+        # voľno existuje — bežný login žiadne nemá a prehľad ostáva rovnako lacný.
+        if closed_by_prevadzka:
+            prevadzka_ids = list(prevadzky.values_list("id", flat=True))
+            day_cursor = today
+            while day_cursor <= window_end:
+                if prevadzka_ids and all(
+                    day_cursor in closed_by_prevadzka.get(pid, set())
+                    for pid in prevadzka_ids
+                ):
+                    fully_closed.add(day_cursor)
+                day_cursor += datetime.timedelta(days=1)
+
+        workdays = OrderService.next_workdays(today, 5, holiday_set, fully_closed)
 
         existing: Dict[datetime.date, List[DailyOrder]] = {}
         for order in (
@@ -250,6 +292,10 @@ class OrderService:
 
             predicted_data: Dict[str, Any] = {meal: {} for meal in MEAL_KEYS}
             for prevadzka_id in predictable_prevadzka_ids:
+                # Prevádzka s voľnom v tento deň do odhadu neprispieva — inak by
+                # klient videl predikciu porcií, ktoré sa aj tak neuvaria.
+                if day in closed_by_prevadzka.get(prevadzka_id, set()):
+                    continue
                 tmpl = _template_for(day, prevadzka_id)
                 if tmpl is None:
                     continue

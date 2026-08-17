@@ -1,10 +1,21 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import OrderService, { CategoryData, DailyOrder, MealData } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
 import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
 import { logger } from '../../../lib/logger';
+import { fetchAllPages } from '../../../lib/pagination';
+import { fromDateKey, toDateKey } from '../../../lib/businessDay';
 import { useToast } from '../../../context/ToastContext';
 import type { Prevadzka } from './usePrevadzky';
+
+/** Riadok z `/api/prevadzka-closures/` — voľno jednej prevádzky (#490). */
+interface PrevadzkaClosure {
+    id: number;
+    prevadzka: number;
+    date_from: string;
+    date_to: string;
+    reason: string;
+}
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -405,6 +416,42 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         };
         if (user) fetchHolidays();
     }, [apiFetch, user]);
+
+    // Voľno prevádzky (#490): na rozdiel od `holidays` platí len pre jednu
+    // prevádzku, takže sa načíta všetko dostupné a filtruje sa až podľa
+    // aktívnej prevádzky — prepnutie prevádzky tak nestojí ďalší request.
+    const [allClosures, setAllClosures] = useState<PrevadzkaClosure[]>([]);
+
+    useEffect(() => {
+        const fetchClosures = async () => {
+            try {
+                const rows = await fetchAllPages<PrevadzkaClosure>(
+                    apiFetch,
+                    `${API_URL}/prevadzka-closures/`,
+                );
+                setAllClosures(rows);
+            } catch (e) {
+                logger.error("Failed to fetch prevadzka closures", e);
+            }
+        };
+        if (user) fetchClosures();
+    }, [apiFetch, user]);
+
+    const closures = useMemo(() => {
+        const days = new Set<string>();
+        for (const closure of allClosures) {
+            if (activePrevadzkaId && closure.prevadzka !== activePrevadzkaId) continue;
+            const cursor = fromDateKey(closure.date_from);
+            const last = fromDateKey(closure.date_to);
+            // Rozsah sa rozbalí na jednotlivé dni, aby ho `businessDay` helper
+            // aj banner v OrderPage vedeli overiť jedným `Set.has()`.
+            while (cursor <= last) {
+                days.add(toDateKey(cursor));
+                cursor.setDate(cursor.getDate() + 1);
+            }
+        }
+        return days;
+    }, [allClosures, activePrevadzkaId]);
 
     // Order persistence: no autosave/debounce writes draft orders to the backend.
     // Draft state is kept only in localStorage (see safeParse logic above) to survive page refreshes.
@@ -862,6 +909,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         globalDeadlines,
         clientContactInfo,
         holidays,
+        closures,
         mealPlanAvailability,
         packSeparatelyEnabled,
         dietMenuVariantMap,

@@ -3,6 +3,8 @@ import { Coffee, Utensils, Apple, Settings, ChevronRight, ChevronLeft } from "lu
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../context/auth";
 import { useIsPC } from "../../../hooks/useIsPC";
+import { useApp } from "../context/AppContext";
+import { fromDateKey, isDayOff, toDateKey } from "../../../lib/businessDay";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
 
@@ -49,12 +51,7 @@ const MEAL_META = {
   afternoon_snack: { label: "Olovrant", icon: Apple },
 } satisfies Record<MealKey, { label: string; icon: typeof Coffee }>;
 
-function toLocalDateString(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+const toLocalDateString = toDateKey;
 
 function getWorkWeek(offsetWeeks: number): WeekDay[] {
   const now = new Date();
@@ -74,8 +71,10 @@ function getWorkWeek(offsetWeeks: number): WeekDay[] {
 }
 
 function getWeekLabel(week: WeekDay[]): string {
-  const first = new Date(week[0].date + "T12:00:00");
-  const last = new Date(week[4].date + "T12:00:00");
+  // Týždeň môže byť po odfiltrovaní voľna kratší než päť dní (#489) — aj prázdny.
+  if (week.length === 0) return "";
+  const first = fromDateKey(week[0].date);
+  const last = fromDateKey(week[week.length - 1].date);
   const weekNum = (() => {
     const d = new Date(first);
     d.setHours(0, 0, 0, 0);
@@ -91,16 +90,26 @@ const MenuPage = () => {
   const { apiFetch } = useAuth();
   const navigate = useNavigate();
   const isPC = useIsPC();
+  const { holidays, closures } = useApp();
   const [weekOffset, setWeekOffset] = useState(0);
-  const week = useMemo(() => getWorkWeek(weekOffset), [weekOffset]);
+  // #489: sviatok ani voľno prevádzky sa v jedálničku vôbec neponúka — v ten
+  // deň sa nevarí, takže karta dňa by bola len prázdne miesto na kliknutie.
+  const week = useMemo(
+    () =>
+      getWorkWeek(weekOffset).filter(
+        (weekDay) => !isDayOff(fromDateKey(weekDay.date), { holidays, closures }),
+      ),
+    [weekOffset, holidays, closures],
+  );
   const today = toLocalDateString(new Date());
   const defaultIdx = Math.max(week.findIndex((day) => day.date === today), 0);
   const [dayIdx, setDayIdx] = useState(defaultIdx);
   const [plans, setPlans] = useState<Record<string, MealPlanResponse>>({});
   const [loading, setLoading] = useState(true);
   const [nextWeekHasData, setNextWeekHasData] = useState(false);
-  const day = week[dayIdx];
-  const plan = plans[day.date];
+  // Filter voľna (#489) môže týždeň skrátiť pod aktuálny index — držíme ho v medziach.
+  const day = week[Math.min(dayIdx, week.length - 1)] ?? null;
+  const plan = day ? plans[day.date] : undefined;
 
   useEffect(() => {
     setDayIdx(weekOffset === 0 ? Math.max(week.findIndex((d) => d.date === today), 0) : 0);
@@ -203,6 +212,18 @@ const MenuPage = () => {
       </div>
     );
   });
+
+  // Celý týždeň môže byť voľno (prázdniny prevádzky, #490) — vtedy nie je čo
+  // vykresliť a `day` je null.
+  if (!day) {
+    return (
+      <div className={isPC ? "pc-wrap" : "zp-page"}>
+        <div className="zp-empty" style={{ padding: 32, textAlign: "center" }}>
+          V tomto týždni sa neobjednáva — celý je označený ako voľno.
+        </div>
+      </div>
+    );
+  }
 
   if (isPC) {
     return (

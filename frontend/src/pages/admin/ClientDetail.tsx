@@ -11,6 +11,7 @@ import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, E
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
 import { PrevadzkaFields, type EdupageConnectionOption, type PrevadzkaForm } from "./facility/PrevadzkaFields";
 import { EMPTY_LOGIN } from "./facility/constants";
+import PrevadzkaClosures from "./facility/PrevadzkaClosures";
 import { DietColorSwatch } from "./DietColorSwatch";
 
 interface Diet {
@@ -108,7 +109,7 @@ const ClientDetail: React.FC = () => {
   const [celok, setCelok] = useState<CelokDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "logins" | "order_note">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "closures" | "logins" | "order_note">("dashboard");
 
   // Settings State
   const [menus, setMenus] = useState<Set<string>>(new Set());
@@ -568,6 +569,7 @@ const ClientDetail: React.FC = () => {
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: "dashboard", label: "Prehľad objednávok" },
     { key: "settings", label: "Nastavenia" },
+    { key: "closures", label: "Voľno" },
     { key: "logins", label: "Loginy" },
     { key: "order_note", label: "Poznámka k objednávke" },
   ];
@@ -924,6 +926,8 @@ const ClientDetail: React.FC = () => {
             )}
           </Card>
         )}
+
+        {activeTab === "closures" && <PrevadzkaClosures prevadzkaId={facility.id} />}
 
         {activeTab === "order_note" && (
           <div className="zpa-stack">

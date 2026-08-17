@@ -10,6 +10,7 @@ import React, {
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./auth";
 import { useApp } from "../pages/client/context/AppContext";
+import { stepBusinessDay, toDateKey } from "../lib/businessDay";
 import {
   getTourSteps,
   TOUR_STEPS,
@@ -44,13 +45,8 @@ export const TOTAL_STEPS = TOUR_STEPS.length;
 
 /** Returns the first workday strictly after today (Mon–Fri). */
 function getFirstNextWorkday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const today = new Date();
+  return toDateKey(stepBusinessDay(today, 1) ?? today);
 }
 
 export const OnboardingProvider: React.FC<{ children: React.ReactNode }> = ({

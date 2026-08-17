@@ -268,9 +268,10 @@ class TestPlannedOrdersViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # After query optimization, total queries should be <= 4
+        # After query optimization, total queries should be <= 5
         # (includes main list query, helper logic like _last_non_empty_order, user settings
-        # lookup, and #416's bounded visible_portion_types prefetch)
+        # lookup, #416's bounded visible_portion_types prefetch, and #490's single
+        # PrevadzkaClosure lookup for the whole window)
         assert (
-            query_count <= 4
-        ), f"Expected <= 4 queries, got {query_count}. Possible N+1 issue."
+            query_count <= 5
+        ), f"Expected <= 5 queries, got {query_count}. Possible N+1 issue."

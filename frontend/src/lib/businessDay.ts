@@ -1,21 +1,110 @@
 /**
- * Weekend-skipping date helpers for the "termín dodania podkladov" default
- * (see PrevadzkaOverview.tsx / #447). Mirrors the weekend check in
- * backend/api/scheduling.py — frontend-only concern (an initial useState
- * default), so kept as a small standalone util rather than shared code.
+ * Jediné miesto na frontende, ktoré vie odpovedať na "objednáva sa v tento deň?".
+ *
+ * Zrkadlí `backend/api/scheduling.py` — tie isté tri vrstvy voľna:
+ *  1. víkend,
+ *  2. `Holiday` — celosystémové voľno kuchyne (`/api/holidays/`),
+ *  3. `PrevadzkaClosure` — voľno jednej prevádzky (#490, `/api/prevadzka-closures/`).
+ *
+ * Predtým bola víkendová podmienka rozkopírovaná v DaySelector, HomePage,
+ * MenuPage, OnboardingContext a AdminDashboard (#489) — každá kópia mierne iná.
  */
 
-const isWeekend = (date: Date): boolean => {
+/** "YYYY-MM-DD" v lokálnom čase (nie UTC — `toISOString()` posúva deň). */
+export function toDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/** Poludnie, nie polnoc: parsovanie "YYYY-MM-DD" cez `new Date()` inak môže
+ * pri niektorých zónach spadnúť o deň nižšie. */
+export function fromDateKey(key: string): Date {
+  return new Date(`${key}T12:00:00`);
+}
+
+export interface DayOffSets {
+  /** Dátumy ("YYYY-MM-DD") celosystémového voľna. */
+  holidays?: Set<string>;
+  /** Dátumy ("YYYY-MM-DD") voľna konkrétnej prevádzky. */
+  closures?: Set<string>;
+}
+
+export function isWeekend(date: Date): boolean {
   const day = date.getDay(); // 0=Sunday, 6=Saturday
   return day === 0 || day === 6;
-};
+}
 
-/** Return `date` unchanged if it's a weekday, otherwise the most recent
- * preceding weekday (Saturday -> Friday, Sunday -> Friday). */
-export function previousBusinessDay(date: Date): Date {
-  const result = new Date(date);
-  while (isWeekend(result)) {
-    result.setDate(result.getDate() - 1);
+/** Neobjednáva sa: víkend, celosystémové voľno alebo voľno prevádzky. */
+export function isDayOff(date: Date, sets: DayOffSets = {}): boolean {
+  if (isWeekend(date)) return true;
+  const key = toDateKey(date);
+  return (sets.holidays?.has(key) ?? false) || (sets.closures?.has(key) ?? false);
+}
+
+/** Prečo je deň voľný — pre hlášky, ktoré majú rozlíšiť sviatok od voľna prevádzky. */
+export type DayOffReason = "weekend" | "holiday" | "closure";
+
+export function dayOffReason(
+  date: Date,
+  sets: DayOffSets = {},
+): DayOffReason | null {
+  if (isWeekend(date)) return "weekend";
+  const key = toDateKey(date);
+  if (sets.holidays?.has(key)) return "holiday";
+  if (sets.closures?.has(key)) return "closure";
+  return null;
+}
+
+// Poistka proti nekonečnej slučke, keby prišlo voľno na roky dopredu.
+const MAX_DAY_SCAN = 400;
+
+function shift(date: Date, direction: 1 | -1, sets: DayOffSets): Date | null {
+  const cursor = new Date(date);
+  for (let i = 0; i < MAX_DAY_SCAN; i++) {
+    if (!isDayOff(cursor, sets)) return cursor;
+    cursor.setDate(cursor.getDate() + direction);
   }
-  return result;
+  return null;
+}
+
+/** Return `date` unchanged if it's a business day, otherwise the most recent
+ * preceding one (Saturday -> Friday, Sunday -> Friday). */
+export function previousBusinessDay(date: Date, sets: DayOffSets = {}): Date {
+  return shift(date, -1, sets) ?? new Date(date);
+}
+
+/** Opak `previousBusinessDay` — najbližší deň na objednanie od `date` dopredu. */
+export function nextBusinessDay(date: Date, sets: DayOffSets = {}): Date {
+  return shift(date, 1, sets) ?? new Date(date);
+}
+
+/** Prvý deň na objednanie STRIKTNE po `date` — posun v DaySelectore. */
+export function stepBusinessDay(
+  date: Date,
+  direction: 1 | -1,
+  sets: DayOffSets = {},
+): Date | null {
+  const cursor = new Date(date);
+  for (let i = 0; i < MAX_DAY_SCAN; i++) {
+    cursor.setDate(cursor.getDate() + direction);
+    if (!isDayOff(cursor, sets)) return new Date(cursor);
+  }
+  return null;
+}
+
+/** Prvých `count` dní na objednanie od `start` vrátane. */
+export function businessDays(
+  start: Date,
+  count: number,
+  sets: DayOffSets = {},
+): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date(start);
+  for (let i = 0; i < MAX_DAY_SCAN && days.length < count; i++) {
+    if (!isDayOff(cursor, sets)) days.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
 }

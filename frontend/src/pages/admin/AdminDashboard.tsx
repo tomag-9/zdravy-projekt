@@ -3,6 +3,7 @@ import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import { fromDateKey, isWeekend, previousBusinessDay, stepBusinessDay, toDateKey } from '../../lib/businessDay';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty } from "./ui";
 import { DietColorSwatch } from "./DietColorSwatch";
@@ -193,28 +194,23 @@ interface ClosedDayResponse {
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
-function toDateString(d: Date): string {
-  return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, "0"), String(d.getDate()).padStart(2, "0")].join("-");
-}
-
-function isWeekday(d: Date) { const day = d.getDay(); return day !== 0 && day !== 6; }
+// Admin prehľad chodí po dňoch dozadu aj dopredu; víkendová logika je spoločná
+// s klientom (lib/businessDay). Sviatky ani voľno prevádzky sa tu zámerne
+// nefiltrujú — admin sa musí vedieť pozrieť aj na deň, ktorý sa neobjednával.
+const toDateString = toDateKey;
 
 function prevWeekday(s: string): string {
-  const d = new Date(s + "T12:00:00");
-  do { d.setDate(d.getDate() - 1); } while (!isWeekday(d));
-  return toDateString(d);
+  const d = fromDateKey(s);
+  return toDateKey(stepBusinessDay(d, -1) ?? d);
 }
 
 function nextWeekday(s: string): string {
-  const d = new Date(s + "T12:00:00");
-  do { d.setDate(d.getDate() + 1); } while (!isWeekday(d));
-  return toDateString(d);
+  const d = fromDateKey(s);
+  return toDateKey(stepBusinessDay(d, 1) ?? d);
 }
 
 function lastWeekdayToday(): string {
-  const d = new Date();
-  while (!isWeekday(d)) d.setDate(d.getDate() - 1);
-  return toDateString(d);
+  return toDateKey(previousBusinessDay(new Date()));
 }
 
 function formatDate(s: string): string {
@@ -429,7 +425,7 @@ const AdminDashboard: React.FC = () => {
                 onChange={(e) => {
                   const val = e.target.value;
                   if (!val) return;
-                  if (!isWeekday(new Date(val + "T12:00:00"))) return;
+                  if (isWeekend(fromDateKey(val))) return;
                   if (val <= maxDate) setDate(val);
                 }}
                 className="zpa-input"
