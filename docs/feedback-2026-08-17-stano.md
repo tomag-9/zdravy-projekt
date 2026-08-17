@@ -49,10 +49,11 @@ Cvernička načítala z EduPage diétu, ktorú appka nepozná.
 | Požiadavka | Stav |
 | --- | --- |
 | Neznáma diéta z EduPage | hotové — porcie sa započítajú, diéta sa flagne v admin prehľade, whitelist berie diéty z DB |
-| Tlač po výdajných bodoch (clustre) | hotové — filter „Výdajný bod" na obrazovke aj v PDF, každý blok v PDF na vlastnom liste |
-| Premenovanie blokov / presun trás medzi blokmi | hotové — v karte Rozvoz (Cluster 1 / Cluster 2 si vieš pomenovať sám) |
+| Rozdelenie na clustre (výdajné body) | hotové — **výdaj je vlastnosť prevádzky** (radio v jej nastaveniach: Výdaj A / B / C). Tabuľka sa podľa neho delí, v PDF ide každý výdaj na vlastný list. Migrácia hodila prevádzky z Trasy extra do Výdaja B. |
+| Výber clustra v prehľade a v trasách | hotové — dropdown „Výdaj" v Prehľade (platí aj pre tlač) a v karte Rozvoz (filter + prepnutie výdaja priamo pri prevádzke) |
+| Premenovanie blokov / presun trás medzi blokmi | hotové — v karte Rozvoz (bloky ostávajú organizačná vec rozvozu) |
 | Poradie trás a škôlok | už existovalo v karte Rozvoz |
-| Červený riadok trasy, väčšie písmo | hotové |
+| Zvýraznenie trasy | hotové — jemný červený pás s pilulkou (prvá verzia bola príliš krikľavá, stlmené) |
 | Oddelenie raňajky / obed / olovrant | hotové — nadradený pás jedál v hlavičke + hrubší predel stĺpcov |
 | Výber čo tlačiť | hotové — filter je jedna karta (Jedlá / Výdajný bod) s vetou, čo pôjde do PDF |
 | Premenovanie „hlavná zložka" | hotové — Katalóg jedál → Upraviť |
