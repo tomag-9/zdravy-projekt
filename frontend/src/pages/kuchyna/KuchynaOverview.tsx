@@ -180,7 +180,6 @@ const KuchynaOverview: React.FC = () => {
                     title={item.label}
                 >
                     <span className="zpk-tick-box">{item.is_loaded && <Check />}</span>
-                    <span className="zpk-tick-label">Nabral som</span>
                 </button>
 
                 {entry.is_confirmed ? (

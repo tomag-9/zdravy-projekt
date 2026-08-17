@@ -116,7 +116,16 @@ test.describe("Nakladanie (#487)", () => {
     await loginAsKuchyna(page);
     test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
     const row = page.locator("tr.client-row").first();
-    await expect(row.locator(".zpk-tick")).toBeVisible();
+    const tick = row.locator(".zpk-tick");
+    await expect(tick).toBeVisible();
+
+    // Bez textu, takže význam nesie prístupný názov.
+    await expect(tick).toHaveAttribute("aria-label", /.+/);
+
+    // Aj kompaktné tlačidlo musí ostať trafiteľné prstom.
+    const box = await tick.boundingBox();
+    expect(box!.width).toBeGreaterThanOrEqual(48);
+    expect(box!.height).toBeGreaterThanOrEqual(48);
 
     await setTick(row, false);
     await setTick(row, true);

@@ -250,21 +250,19 @@
     padding-right: 12px;
 }
 
+/* Zámerne bez textu: klientsky riadok nesie meno prevádzky aj súčet porcií a
+   široké tlačidlo ich tlačilo. Čo sa odklikáva, hovorí výber stanoviska hore.
+   Plocha ostáva 48×48 px — naberá sa v rukaviciach. */
 .zpk-tick {
     display: inline-flex;
     align-items: center;
-    gap: 10px;
-    min-height: 48px;
-    padding: 0 16px;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
     border: 1px solid var(--line, #e6e6e0);
     border-radius: 12px;
     background: #fff;
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--ink-2, #4a4a45);
     cursor: pointer;
-    white-space: nowrap;
 }
 
 .zpk-tick:active {
