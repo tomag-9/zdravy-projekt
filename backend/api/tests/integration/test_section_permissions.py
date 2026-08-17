@@ -9,11 +9,18 @@ import pytest
 from django.contrib.auth.models import User
 
 from api import access, roles, sections
-from api.models import SectionPermission, UserProfile
+from api.models import UserProfile
 
 pytestmark = pytest.mark.django_db
 
 URL = "/api/admin/section-permissions/"
+
+
+def _set_override(user, section, level):
+    """Override je mapa na profile — nie riadok vo vlastnej tabuľke."""
+    profile = user.profile
+    profile.section_overrides = {**(profile.section_overrides or {}), section: level}
+    profile.save(update_fields=["section_overrides"])
 
 
 def _user(email, role):
@@ -34,7 +41,7 @@ class TestDefaultsFollowTheRole:
         """Chýbajúci override nesmie znamenať „bez prístupu" — inak by nová
         sekcia odstrihla všetkých existujúcich adminov."""
         admin = _user("a@example.com", roles.ADMIN)
-        assert SectionPermission.objects.count() == 0
+        assert admin.profile.section_overrides == {}
         assert access.level_for(admin, sections.JEDALNICEK) == sections.EDIT
         assert access.can_edit(admin, sections.JEDALNICEK)
 
@@ -62,32 +69,24 @@ class TestDefaultsFollowTheRole:
 class TestOverrideOnlyNarrows:
     def test_override_can_downgrade_to_read(self):
         admin = _user("f@example.com", roles.ADMIN)
-        SectionPermission.objects.create(
-            profile=admin.profile, section=sections.JEDALNICEK, level=sections.READ
-        )
+        _set_override(admin, sections.JEDALNICEK, sections.READ)
         assert access.can_read(admin, sections.JEDALNICEK)
         assert not access.can_edit(admin, sections.JEDALNICEK)
 
     def test_override_can_remove_access(self):
         admin = _user("g@example.com", roles.ADMIN)
-        SectionPermission.objects.create(
-            profile=admin.profile, section=sections.DIETY, level=sections.NONE
-        )
+        _set_override(admin, sections.DIETY, sections.NONE)
         assert not access.can_read(admin, sections.DIETY)
 
     def test_override_cannot_grant_above_the_role(self):
         """Toto je jadro veci — inak by rolový systém prestal niečo znamenať."""
         admin = _user("h@example.com", roles.ADMIN)
-        SectionPermission.objects.create(
-            profile=admin.profile, section=sections.NASTAVENIA, level=sections.EDIT
-        )
+        _set_override(admin, sections.NASTAVENIA, sections.EDIT)
         assert access.level_for(admin, sections.NASTAVENIA) == sections.NONE
 
     def test_override_cannot_promote_a_client(self):
         klient = _user("i@example.com", roles.KLIENT)
-        SectionPermission.objects.create(
-            profile=klient.profile, section=sections.JEDALNICEK, level=sections.EDIT
-        )
+        _set_override(klient, sections.JEDALNICEK, sections.EDIT)
         assert access.level_for(klient, sections.JEDALNICEK) == sections.NONE
 
 
@@ -99,26 +98,20 @@ class TestEndpointEnforcement:
 
     def test_read_only_blocks_writes_but_allows_reads(self, api_client):
         client, user = self._admin_client(api_client)
-        SectionPermission.objects.create(
-            profile=user.profile, section=sections.VOLNE_DNI, level=sections.READ
-        )
+        _set_override(user, sections.VOLNE_DNI, sections.READ)
         assert client.get("/api/admin/holidays/").status_code == 200
         res = client.post("/api/admin/holidays/", {"date": "2026-12-24"}, format="json")
         assert res.status_code == 403
 
     def test_no_access_blocks_reads_too(self, api_client):
         client, user = self._admin_client(api_client, "k@example.com")
-        SectionPermission.objects.create(
-            profile=user.profile, section=sections.VOLNE_DNI, level=sections.NONE
-        )
+        _set_override(user, sections.VOLNE_DNI, sections.NONE)
         assert client.get("/api/admin/holidays/").status_code == 403
 
     def test_untouched_section_still_works(self, api_client):
         """Override na jednej sekcii nesmie ovplyvniť ostatné."""
         client, user = self._admin_client(api_client, "l@example.com")
-        SectionPermission.objects.create(
-            profile=user.profile, section=sections.VOLNE_DNI, level=sections.NONE
-        )
+        _set_override(user, sections.VOLNE_DNI, sections.NONE)
         assert client.get("/api/admin/celky/").status_code == 200
 
 
@@ -179,15 +172,14 @@ class TestMatrixApi:
         target = _user("p@example.com", roles.ADMIN)
         res = admin_client.patch(f"{URL}{target.pk}/", payload, format="json")
         assert res.status_code == 400
-        assert not SectionPermission.objects.exists()
+        target.profile.refresh_from_db()
+        assert target.profile.section_overrides == {}
 
 
 class TestProfileExposesSections:
     def test_profile_lists_effective_levels(self, api_client):
         user = _user("q@example.com", roles.ADMIN)
-        SectionPermission.objects.create(
-            profile=user.profile, section=sections.DIETY, level=sections.READ
-        )
+        _set_override(user, sections.DIETY, sections.READ)
         api_client.force_authenticate(user=user)
         res = api_client.get("/api/user/profile/")
         assert res.status_code == 200

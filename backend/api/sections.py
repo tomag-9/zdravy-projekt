@@ -5,8 +5,8 @@ Granularita je **per sekcia**, nie per akcia: sekcia zodpovedá jednej položke
 admin menu, takže sa matica v UI dá prečítať bez vysvetľovania a nová akcia
 vo viewsete nevyžaduje nový záznam oprávnenia.
 
-Default sa **dedí z role**; override existuje len tam, kde preň je záznam
-(`SectionPermission`). Chýbajúci záznam preto nikdy neznamená „bez prístupu" —
+Default sa **dedí z role**; override existuje len tam, kde preň je kľúč
+v `UserProfile.section_overrides`. Chýbajúci kľúč preto nikdy neznamená „bez prístupu" —
 znamená „ako určuje rola".
 """
 

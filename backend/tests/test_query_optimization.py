@@ -146,11 +146,11 @@ class TestAdminCelokViewSetQueries:
 
         query_count = len(ctx.captured_queries)
         # <= 6: #416 added a bounded visible_portion_types prefetch per prevádzka.
-        # <= 7: #484 pridalo načítanie granulárnych oprávnení. Je to jeden
-        # indexovaný dotaz na `profile_id`, cachovaný na inštancii používateľa
-        # (`api.access._overrides`), takže neškáluje s počtom prevádzok ani
-        # permission tried — hranica preto rastie o jeden, nie viac.
-        assert query_count <= 7, f"Expected <= 7 queries, got {query_count}."
+        # Rolový systém (#482) ani granulárne práva (#484) hranicu nezdvihli:
+        # profil aktéra prináša `ProfileAwareJWTAuthentication` tým istým
+        # dotazom, ktorým sa načítava používateľ, a overridy sedia priamo na
+        # ňom (`section_overrides`), takže neznamenajú ďalšie kolo do DB.
+        assert query_count <= 6, f"Expected <= 6 queries, got {query_count}."
         prevadzky = {
             prevadzka["nazov"]: prevadzka
             for celok_payload in payload

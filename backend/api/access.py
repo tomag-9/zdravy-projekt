@@ -4,7 +4,7 @@ Efektívne oprávnenia k sekciám (#484).
 Jediné miesto, ktoré spája dve vrstvy:
 
 1. **rola** určuje, čo je vôbec dosiahnuteľné (`sections.default_level`),
-2. **override** (`SectionPermission`) to môže už len obmedziť.
+2. **override** (`UserProfile.section_overrides`) to môže už len obmedziť.
 
 Override nikdy neprekročí rolu — inak by sa dal adminovi cez maticu pridať
 prístup do superadmin sekcie a rolový systém by prestal niečo znamenať.
@@ -16,37 +16,16 @@ from typing import Any
 
 from . import sections
 
-#: Kde si držíme načítané overridy na inštancii používateľa.
-_CACHE_ATTR = "_section_overrides_cache"
-
 
 def _overrides(user: Any) -> dict[str, str]:
-    """Overridy loginu, načítané raz za request.
+    """Overridy loginu — mapa priamo na profile, teda bez dotazu navyše.
 
-    `SectionAccess` sa pýta pri každom volaní a viewsety majú dve permission
-    triedy — bez cache by z toho bol dotaz navyše na každý admin request
-    (chytil to `test_list_celky_uses_bounded_prefetches`). `request.user`
-    vzniká per request, takže cache na inštancii nemôže pretiecť medzi nimi.
+    Profil prináša `ProfileAwareJWTAuthentication` tým istým dotazom, ktorým sa
+    načítava používateľ, takže granulárne práva nestoja žiadne ďalšie kolo do DB.
     """
-    cached = getattr(user, _CACHE_ATTR, None)
-    if cached is not None:
-        return cached
-
     profile = getattr(user, "profile", None)
-    overrides = (
-        {}
-        if profile is None
-        else {
-            permission.section: permission.level
-            for permission in profile.section_permissions.all()
-        }
-    )
-    try:
-        setattr(user, _CACHE_ATTR, overrides)
-    except AttributeError:
-        # AnonymousUser a podobné môžu byť nemenné — cache je len optimalizácia.
-        pass
-    return overrides
+    overrides = getattr(profile, "section_overrides", None)
+    return overrides if isinstance(overrides, dict) else {}
 
 
 def level_for(user: Any, section_key: str) -> str:

@@ -9,7 +9,6 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from .. import access, sections
-from ..models import SectionPermission
 from ..permissions import IsSuperadmin, SectionAccess
 from ..roles import role_of
 
@@ -50,10 +49,8 @@ class SectionPermissionViewSet(viewsets.ViewSet):
         if user is None:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        overrides = {
-            permission.section: permission.level
-            for permission in SectionPermission.objects.filter(profile__user=user)
-        }
+        profile = getattr(user, "profile", None)
+        overrides = getattr(profile, "section_overrides", None) or {}
         effective = access.effective_map(user)
         return Response(
             {
@@ -115,13 +112,14 @@ class SectionPermissionViewSet(viewsets.ViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+        current = dict(profile.section_overrides or {})
         for key, level in overrides.items():
             if level is None:
-                SectionPermission.objects.filter(profile=profile, section=key).delete()
+                current.pop(key, None)
             else:
-                SectionPermission.objects.update_or_create(
-                    profile=profile, section=key, defaults={"level": level}
-                )
+                current[key] = level
+        profile.section_overrides = current
+        profile.save(update_fields=["section_overrides"])
         return self.retrieve(request, pk=pk)
 
     @staticmethod
