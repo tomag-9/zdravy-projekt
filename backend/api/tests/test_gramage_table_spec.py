@@ -476,3 +476,86 @@ def test_meal_band_merges_soup_with_main_course():
     ]
     # Šírka pásov spolu sedí s počtom zložiek v hlavičke.
     assert sum(span for _, span in bands) == len(spec["header"]["components"])
+
+
+# ── Filter výdajných bodov (clusterov) ───────────────────────────────────────
+
+
+def _two_block_payload():
+    """Dva výdajné body, každý s jednou prevádzkou — kuchyňa vydáva z dvoch miest."""
+    rows = _payload()["rows"]
+    return _payload(
+        blocks=[
+            {
+                "id": 1,
+                "name": "Bežné trasy",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
+            },
+            {
+                "id": 2,
+                "name": "Trasa extra",
+                "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
+            },
+        ],
+        rows=[],
+        unassigned_rows=[],
+    )
+
+
+def _band_texts(spec):
+    return [
+        row["cells"][0]["text"] for row in spec["rows"] if "block-band" in row["css"]
+    ]
+
+
+def test_block_filter_prints_a_single_dispatch_point():
+    spec = build_table_spec(_two_block_payload(), block_names=["Trasa extra"])
+
+    assert _band_texts(spec) == ["Trasa extra"]
+    assert [block["selected"] for block in spec["blocks"]] == [False, True]
+
+
+def test_unknown_or_empty_block_selection_falls_back_to_everything():
+    payload = _two_block_payload()
+
+    assert _band_texts(build_table_spec(payload)) == ["Bežné trasy", "Trasa extra"]
+    assert _band_texts(build_table_spec(payload, block_names=["nezmysel"])) == [
+        "Bežné trasy",
+        "Trasa extra",
+    ]
+
+
+def test_every_block_but_the_first_starts_on_a_new_page():
+    spec = build_table_spec(_two_block_payload())
+
+    bands = [row for row in spec["rows"] if "block-band" in row["css"]]
+    assert "page-break" not in bands[0]["css"]
+    assert "page-break" in bands[1]["css"]
+
+
+def test_filtered_block_totals_ignore_the_other_block():
+    """Pri tlači jedného výdajného bodu nesmie v pätke svietiť gramáž celého dňa.
+
+    `data["totals"]` je predpočítaný súčet za celý deň — fixture mu dá hodnotu,
+    ktorú jeden blok dosiahnuť nemôže, takže je vidieť, či ju filtrovaná pätka
+    naozaj prepočítala z vlastných riadkov.
+    """
+    payload = _two_block_payload()
+    payload["totals"] = [["9999.00"], ["9999.00"], []]
+
+    full = build_table_spec(payload)
+    single = build_table_spec(payload, block_names=["Bežné trasy"])
+
+    assert full["footer"][-1]["cells"][1]["text"] == "9999"
+    # 8 porcií bez diét × 200 g polievky v jedinom bloku.
+    assert single["footer"][-1]["cells"][1]["text"] == "1600"
+
+
+def test_unassigned_prevadzky_stay_out_of_a_filtered_print():
+    payload = _two_block_payload()
+    payload["unassigned_rows"] = _payload()["rows"]
+
+    assert "Nepriradené prevádzky" in _band_texts(build_table_spec(payload))
+    assert "Nepriradené prevádzky" not in _band_texts(
+        build_table_spec(payload, block_names=["Bežné trasy"])
+    )

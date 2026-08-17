@@ -162,7 +162,48 @@ def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     return cell
 
 
-def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
+def _filter_blocks(all_blocks: list[dict], selected: list[str] | None) -> list[int]:
+    """Indexy blokov (výdajných bodov), ktoré sa majú vykresliť.
+
+    Blok je cluster kuchyne — vyberá sa podľa názvu, lebo to je to isté, čo vidí
+    používateľ v prepínači, a názov je v `DeliveryBlock` unikátny. Prázdny výber
+    aj neznámy názov padnú späť na celú tabuľku (rovnako ako filter sekcií), aby
+    preklep v URL nevrátil prázdnu stranu.
+    """
+    if not selected:
+        return list(range(len(all_blocks)))
+    wanted = {str(name) for name in selected}
+    keep = [
+        index
+        for index, block in enumerate(all_blocks)
+        if str(block.get("name") or "") in wanted
+    ]
+    return keep or list(range(len(all_blocks)))
+
+
+def _totals_from_summary(summary: list[dict]) -> list[list]:
+    """Riadok CELKOM z už spočítaného súhrnu porcií.
+
+    `data["totals"]` platí pre celý deň. Keď sa tlačí len jeden výdajný bod, sedeli
+    by v pätke gramáže druhého bodu — preto sa pri filtrovaní celkom počíta z tých
+    istých riadkov, z ktorých sa počítal súhrn (`portion_summary(data, rows)`
+    plní gramáž do stĺpca vlastnej skupiny, viď `portion_summary`).
+    """
+    return [
+        (
+            (item.get("col_grams") or [])[index]
+            if index < len(item.get("col_grams") or [])
+            else []
+        )
+        for index, item in enumerate(summary)
+    ]
+
+
+def build_table_spec(
+    data: dict,
+    sections: list[str] | None = None,
+    block_names: list[str] | None = None,
+) -> dict:
     """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky."""
     all_groups = data.get("col_groups") or []
     keep = _filter_col_groups(all_groups, sections)
@@ -176,7 +217,12 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     header = _build_header(groups, hues)
     rows: list[dict] = []
 
-    blocks = data.get("blocks") or []
+    all_blocks = data.get("blocks") or []
+    keep_blocks = _filter_blocks(all_blocks, block_names)
+    blocks = [all_blocks[index] for index in keep_blocks]
+    # Filter na konkrétny výdajný bod je „vytlač túto tabuľku" — nepriradené
+    # prevádzky doň nepatria a v celej tabuľke sa aj tak ukážu.
+    filtered_blocks = len(blocks) != len(all_blocks)
     if blocks:
         for block_index, block in enumerate(blocks):
             # Bloky sú výdajné body kuchyne (cluster 1 / cluster 2) — v tlači ide
@@ -215,7 +261,7 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
                     total_columns,
                 )
             )
-        unassigned = data.get("unassigned_rows") or []
+        unassigned = [] if filtered_blocks else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
                 _band(
@@ -231,15 +277,28 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
         for client_row in data.get("rows") or []:
             rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
 
+    if filtered_blocks:
+        visible_rows = [
+            row
+            for block in blocks
+            for route in block.get("routes") or []
+            for row in route.get("rows") or []
+        ]
+        footer_summary = portion_summary(data, visible_rows)
+        footer_totals = _totals_from_summary(footer_summary)
+    else:
+        footer_summary = portion_summary(data)
+        footer_totals = data.get("totals") or []
+
     footer = _portion_summary_rows(
         "Porcie celkom",
-        portion_summary(data),
+        footer_summary,
         keep,
         groups,
         hues,
         total_columns,
     )
-    footer.append(_totals_row(data, keep, groups, hues))
+    footer.append(_totals_row(footer_totals, keep, groups, hues))
 
     return {
         "date": data.get("date"),
@@ -256,6 +315,15 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
                 "selected": index in set(keep),
             }
             for index, group in enumerate(all_groups)
+        ],
+        # Prepínače výdajných bodov (clusterov) — tiež zo VŠETKÝCH blokov, nech sa
+        # odfiltrovaný dá zapnúť späť.
+        "blocks": [
+            {
+                "name": str(block.get("name") or ""),
+                "selected": index in set(keep_blocks),
+            }
+            for index, block in enumerate(all_blocks)
         ],
     }
 
@@ -520,9 +588,8 @@ def _portion_summary_rows(
 
 
 def _totals_row(
-    data: dict, keep: list[int], groups: list[dict], hues: list[str]
+    totals: list, keep: list[int], groups: list[dict], hues: list[str]
 ) -> dict:
-    totals = data.get("totals") or []
     cells = []
     for position, (group_index, group) in enumerate(groups):
         values = totals[group_index] if group_index < len(totals) else []
