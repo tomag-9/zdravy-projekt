@@ -459,14 +459,26 @@ class Command(BaseCommand):
 
         routes: dict[str, DeliveryRoute] = {}
         for block_name, route_name, sort_order in ROUTES:
-            route, _ = DeliveryRoute.objects.update_or_create(
+            # Výdaj sa nastavuje len pri ZALOŽENÍ trasy (extra blok = druhý
+            # výdajný bod). Existujúcim trasám ho seed neprepisuje: beží pri
+            # každom nasadení a prepis by ručnú voľbu zakaždým zahodil.
+            route, _ = DeliveryRoute.objects.get_or_create(
                 name=route_name,
                 defaults={
                     "block": blocks[block_name],
                     "sort_order": sort_order,
                     "is_active": True,
+                    "vydaj": (
+                        Vydaj.B
+                        if blocks[block_name].include_in_extra_summary
+                        else Vydaj.A
+                    ),
                 },
             )
+            DeliveryRoute.objects.filter(pk=route.pk).update(
+                block=blocks[block_name], sort_order=sort_order, is_active=True
+            )
+            route.refresh_from_db()
             routes[route_name] = route
 
         for route_name, rows in _rows_by_route().items():
@@ -527,21 +539,12 @@ def _upsert_prevadzka(
         adresa=row.address or "",
         delivery_route=route,
         delivery_sort_order=sort_order,
-        # Výdajný bod hádame z bloku len pri ZAKLADANÍ. Existujúcim prevádzkam ho
-        # seed neprepisuje: výdaj si prevádzka nastavuje sama a seed beží pri
-        # každom nasadení — prepis by jej voľbu zakaždým zahodil.
-        vydaj=_vydaj_pre_blok(route),
         report_alias=row.alias,
         delivery_note=row.note,
         is_active=True,
     )
     prevadzka.save()
     return prevadzka
-
-
-def _vydaj_pre_blok(route: DeliveryRoute) -> str:
-    """Extra blok vozí druhý výdajný bod kuchyne, zvyšok prvý."""
-    return str(Vydaj.B if route.block.include_in_extra_summary else Vydaj.A)
 
 
 def _find_existing_prevadzka(row: DeliverySeedRow) -> Prevadzka | None:

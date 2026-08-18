@@ -49,7 +49,6 @@ interface FacilityDetail {
   adresa: string;
   edupage_connection: number | null;
   edupage_match: string;
-  vydaj: string;
   report_alias: string;
   delivery_note: string;
   sort_order: number;
@@ -123,7 +122,6 @@ const ClientDetail: React.FC = () => {
     adresa: "",
     edupage_connection: null,
     edupage_match: "",
-    vydaj: "A",
     report_alias: "",
     delivery_note: "",
     sort_order: 0,
@@ -182,7 +180,6 @@ const ClientDetail: React.FC = () => {
       adresa: data.adresa || "",
       edupage_connection: data.edupage_connection ?? null,
       edupage_match: data.edupage_match || "",
-      vydaj: data.vydaj || "A",
       report_alias: data.report_alias || "",
       delivery_note: data.delivery_note || "",
       sort_order: data.sort_order || 0,

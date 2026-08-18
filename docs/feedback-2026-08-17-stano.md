@@ -49,8 +49,8 @@ Cvernička načítala z EduPage diétu, ktorú appka nepozná.
 | Požiadavka | Stav |
 | --- | --- |
 | Neznáma diéta z EduPage | hotové — porcie sa započítajú, diéta sa flagne v admin prehľade, whitelist berie diéty z DB |
-| Rozdelenie na clustre (výdajné body) | hotové — **výdaj je vlastnosť prevádzky** (radio v jej nastaveniach: Výdaj A / B / C). Tabuľka sa podľa neho delí, v PDF ide každý výdaj na vlastný list. Migrácia hodila prevádzky z Trasy extra do Výdaja B. |
-| Výber clustra v prehľade a v trasách | hotové — dropdown „Výdaj" v Prehľade (platí aj pre tlač) a v karte Rozvoz (filter + prepnutie výdaja priamo pri prevádzke) |
+| Rozdelenie na clustre (výdajné body) | hotové — **výdaj je vlastnosť trasy** (select pri trase v karte Rozvoz: Výdaj A / B / C). Trasy výdaja A tvoria tabuľku A, trasy výdaja B tabuľku B; prevádzka patrí do výdaja svojej trasy. V PDF ide každý výdaj na vlastný list. Migrácia hodila trasy z bloku Trasa extra do Výdaja B. |
+| Výber clustra v prehľade a v trasách | hotové — dropdown „Výdaj" v Prehľade (platí aj pre tlač) a filter v karte Rozvoz |
 | Premenovanie blokov / presun trás medzi blokmi | hotové — v karte Rozvoz (bloky ostávajú organizačná vec rozvozu) |
 | Poradie trás a škôlok | už existovalo v karte Rozvoz |
 | Zvýraznenie trasy | hotové — jemný červený pás s pilulkou (prvá verzia bola príliš krikľavá, stlmené) |

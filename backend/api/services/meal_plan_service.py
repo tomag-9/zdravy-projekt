@@ -1216,8 +1216,12 @@ class MealPlanService:
                             if prevadzka is not None
                             else 9999
                         ),
+                        # Výdaj berie prevádzka z trasy — tabuľku riadia trasy,
+                        # nie jednotlivé prevádzky.
                         "vydaj": (
-                            prevadzka.vydaj if prevadzka is not None else str(Vydaj.A)
+                            delivery_route.vydaj
+                            if delivery_route is not None
+                            else str(Vydaj.A)
                         ),
                         "delivery_note": delivery_note,
                         "total_count": _tidy_count(
@@ -1248,19 +1252,18 @@ class MealPlanService:
         def _vydaje_payload(rows_for_payload: list[dict]) -> tuple[list, list]:
             """Riadky zoskupené podľa výdajného bodu, vnútri podľa trás.
 
-            Výdaj je vlastnosť prevádzky, nie trasy — jedna trasa preto môže voziť
-            do oboch výdajov a objaví sa v oboch tabuľkách, zakaždým len so svojimi
-            riadkami. Poradie trás ostáva rozvozové (blok → trasa), aby vodič
-            čítal tabuľku v poradí, v akom nakladá.
+            Tabuľku riadia trasy: trasa patrí práve jednému výdaju a ťahá doň
+            všetky svoje prevádzky. Poradie trás ostáva rozvozové (blok → trasa),
+            aby vodič čítal tabuľku v poradí, v akom nakladá.
             """
-            route_rows: dict[tuple[str, int], list[dict]] = {}
+            route_rows: dict[int, list[dict]] = {}
             unassigned_rows = []
             for row in rows_for_payload:
                 route_id = row.get("delivery_route_id")
                 if route_id is None:
                     unassigned_rows.append(row)
                     continue
-                route_rows.setdefault((row["vydaj"], route_id), []).append(row)
+                route_rows.setdefault(route_id, []).append(row)
 
             if not route_rows:
                 return [], unassigned_rows
@@ -1275,7 +1278,9 @@ class MealPlanService:
             for value, label in Vydaj.choices:
                 routes_payload = []
                 for route in routes:
-                    rows_for_route = route_rows.get((value, route.id))
+                    if route.vydaj != value:
+                        continue
+                    rows_for_route = route_rows.get(route.id)
                     if not rows_for_route:
                         continue
                     routes_payload.append(

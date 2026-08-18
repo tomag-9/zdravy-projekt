@@ -14,9 +14,19 @@ export const EMPTY_PREVADZKA: PrevadzkaForm = {
   adresa: "",
   edupage_connection: null,
   edupage_match: "",
-  vydaj: "A",
   report_alias: "",
   delivery_note: "",
   sort_order: 0,
   is_active: true,
 };
+
+/**
+ * Výdajné body kuchyne. Výdaj sa nastavuje na TRASE a podľa neho sa delí
+ * gramážová tabuľka aj tlač — prevádzka patrí do výdaja svojej trasy.
+ * Kľúče musia sedieť s `api.models.Vydaj`.
+ */
+export const VYDAJE = [
+  { key: "A", label: "Výdaj A" },
+  { key: "B", label: "Výdaj B" },
+  { key: "C", label: "Výdaj C" },
+] as const;

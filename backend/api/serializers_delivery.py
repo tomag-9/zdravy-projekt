@@ -17,7 +17,6 @@ class DeliveryPrevadzkaSerializer(serializers.ModelSerializer):
             "report_alias",
             "adresa",
             "celok",
-            "vydaj",
             "delivery_route",
             "delivery_sort_order",
             "delivery_note",
@@ -34,6 +33,7 @@ class DeliveryRouteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "block",
+            "vydaj",
             "name",
             "driver",
             "departure_time",

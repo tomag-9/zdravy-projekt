@@ -212,6 +212,8 @@ class TestGramageDashboardExports:
         )
         second_route = DeliveryRoute.objects.create(
             block=second_block,
+            # Druhý výdajný bod kuchyne — tabuľka sa delí podľa výdaja trasy.
+            vydaj="B",
             name="Druhá trasa",
             driver="Vodič 2",
             departure_time=datetime.time(8, 0),
@@ -232,8 +234,6 @@ class TestGramageDashboardExports:
                 nazov="Prevádzka 2",
                 delivery_route=second_route,
                 delivery_sort_order=1,
-                # Druhý výdajný bod kuchyne — tabuľka sa delí podľa neho.
-                vydaj="B",
             ),
             Prevadzka.objects.create(
                 celok=celok,

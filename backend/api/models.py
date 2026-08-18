@@ -366,11 +366,11 @@ class Celok(models.Model):
 
 
 class Vydaj(models.TextChoices):
-    """Výdajný bod kuchyne (cluster), z ktorého sa prevádzka vydáva.
+    """Výdajný bod kuchyne, z ktorého ide jedlo von.
 
-    Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku aj
-    vlastné trasy. Je to zámerne vlastnosť PREVÁDZKY, nie trasy: trasa môže voziť
-    do oboch výdajov a rozdelenie si prevádzka nastavuje sama.
+    Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku.
+    Výdaj je vlastnosť TRASY: prevádzka patrí do toho výdaja, v ktorého trase
+    stojí, takže sa nastavuje na jednom mieste a nemá si ako protirečiť.
     """
 
     A = "A", "Výdaj A"
@@ -439,16 +439,6 @@ class Prevadzka(models.Model):
     delivery_sort_order = models.PositiveSmallIntegerField(
         default=0,
         help_text="Poradie prevádzky v rámci rozvozovej trasy.",
-    )
-    vydaj = models.CharField(
-        max_length=1,
-        choices=Vydaj.choices,
-        default=Vydaj.A,
-        db_index=True,
-        help_text=(
-            "Výdajný bod kuchyne, z ktorého sa prevádzka vydáva. Podľa neho sa "
-            "delí gramážová tabuľka aj tlač; trasa ostáva nezávislá."
-        ),
     )
     report_alias = models.CharField(
         max_length=255,
@@ -597,6 +587,17 @@ class DeliveryRoute(models.Model):
 
     block = models.ForeignKey(
         DeliveryBlock, on_delete=models.CASCADE, related_name="routes"
+    )
+    vydaj = models.CharField(
+        max_length=1,
+        choices=Vydaj.choices,
+        default=Vydaj.A,
+        db_index=True,
+        help_text=(
+            "Výdajný bod kuchyne, ktorý túto trasu obsluhuje. Gramážová tabuľka "
+            "sa delí podľa neho — trasy výdaja A tvoria tabuľku A, trasy výdaja "
+            "B tabuľku B."
+        ),
     )
     name = models.CharField(max_length=160)
     driver = models.CharField(max_length=80, blank=True, default="")

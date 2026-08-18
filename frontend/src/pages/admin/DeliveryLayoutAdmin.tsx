@@ -4,7 +4,7 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { Badge, Button, Card, Empty, Field, IconButton, Input, Modal, PageHead, Select, TableWrap } from "./ui";
-import { VYDAJE } from "./facility/PrevadzkaFields";
+import { VYDAJE } from "./facility/constants";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -14,8 +14,6 @@ interface DeliveryPrevadzka {
   report_alias: string;
   adresa: string;
   celok: string;
-  /** Výdajný bod kuchyne (`api.models.Vydaj`) — podľa neho sa delí tabuľka. */
-  vydaj: string;
   delivery_route: number | null;
   delivery_sort_order: number;
   delivery_note: string;
@@ -25,6 +23,8 @@ interface DeliveryPrevadzka {
 interface DeliveryRoute {
   id: number;
   block: number;
+  /** Výdajný bod (`api.models.Vydaj`) — trasy výdaja A tvoria tabuľku A. */
+  vydaj: string;
   name: string;
   driver: string;
   departure_time: string | null;
@@ -97,6 +97,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [newRouteName, setNewRouteName] = useState("");
   const [newRouteDriver, setNewRouteDriver] = useState("");
   const [newRouteTime, setNewRouteTime] = useState("");
+  const [newRouteVydaj, setNewRouteVydaj] = useState("A");
   const [editRoute, setEditRoute] = useState<DeliveryRoute | null>(null);
   const [editRouteName, setEditRouteName] = useState("");
   const [editRouteDriver, setEditRouteDriver] = useState("");
@@ -374,6 +375,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
         name: newRouteName.trim(),
         driver: newRouteDriver.trim(),
         departure_time: newRouteTime || null,
+        vydaj: newRouteVydaj,
         sort_order: showRouteModalFor.routes.length + 1,
       }),
     });
@@ -381,6 +383,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
       setNewRouteName("");
       setNewRouteDriver("");
       setNewRouteTime("");
+      setNewRouteVydaj("A");
       setShowRouteModalFor(null);
       await fetchLayout();
       success("Trasa bola pridaná.");
@@ -412,17 +415,17 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const vydajLabel = (key: string) =>
     VYDAJE.find((item) => item.key === key)?.label ?? key;
 
-  const setPrevadzkaVydaj = async (prevadzka: DeliveryPrevadzka, vydaj: string) => {
-    const res = await apiFetch(`${API}/admin/prevadzky-delivery/${prevadzka.id}/`, {
+  const setRouteVydaj = async (route: DeliveryRoute, vydaj: string) => {
+    const res = await apiFetch(`${API}/admin/delivery-routes/${route.id}/`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vydaj }),
     });
     if (res.ok) {
       await fetchLayout();
-      success(`${prevadzka.report_alias || prevadzka.nazov} → ${vydajLabel(vydaj)}`);
+      success(`${route.name} → ${vydajLabel(vydaj)}`);
     } else {
-      toastError("Nepodarilo sa zmeniť výdaj prevádzky.");
+      toastError("Nepodarilo sa zmeniť výdaj trasy.");
     }
   };
 
@@ -510,7 +513,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
       <PageHead
         eyebrow="Rozvoz"
         title="Poradie a trasy"
-        desc="Rozdelenie prevádzok do blokov a trás. Výdaj (bod kuchyne) sa nastavuje pri prevádzke a delí gramážovú tabuľku."
+        desc="Rozdelenie prevádzok do blokov a trás. Výdaj sa nastavuje na trase — trasy výdaja A tvoria tabuľku A, trasy výdaja B tabuľku B."
         actions={
           <>
             <Select
@@ -567,12 +570,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
               </div>
 
               {block.routes.map((route) => {
-                // Pri zapnutom filtri trasa ukáže len prevádzky daného výdaja;
-                // trasa, ktorá doň nevozí, sa nevykresľuje vôbec.
-                const visiblePrevadzky = route.prevadzky.filter(
-                  (prevadzka) => !vydajFilter || (prevadzka.vydaj || "A") === vydajFilter,
-                );
-                if (vydajFilter && visiblePrevadzky.length === 0) return null;
+                // Výdaj je na trase, takže filter skryje celú trasu aj s jej
+                // prevádzkami — presne to, čo uvidíš v tabuľke daného výdaja.
+                if (vydajFilter && (route.vydaj || "A") !== vydajFilter) return null;
                 return (
                 <div
                   key={route.id}
@@ -587,7 +587,17 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: "inline-flex", gap: 4 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <Select
+                        value={route.vydaj || "A"}
+                        onChange={(e) => void setRouteVydaj(route, e.target.value)}
+                        style={{ width: "auto" }}
+                        aria-label={`Výdaj — ${route.name}`}
+                      >
+                        {VYDAJE.map((item) => (
+                          <option key={item.key} value={item.key}>{item.label}</option>
+                        ))}
+                      </Select>
                       <IconButton onClick={() => openEditRoute(route)} title="Upraviť trasu" aria-label="Upraviť trasu">
                         <Pencil />
                       </IconButton>
@@ -607,10 +617,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
                   >
                     <table className="zpa-table">
                       <tbody>
-                        {visiblePrevadzky.length === 0 ? (
+                        {route.prevadzky.length === 0 ? (
                           <tr><td style={{ color: "var(--ink-mute)" }}>Žiadne prevádzky v trase.</td></tr>
                         ) : (
-                          visiblePrevadzky.map((prevadzka, prevadzkaIndex) => (
+                          route.prevadzky.map((prevadzka, prevadzkaIndex) => (
                             <tr
                               key={prevadzka.id}
                               className={`zpa-draggable-row${dragging?.type === "prevadzka" && dragging.prevadzkaId === prevadzka.id ? " is-dragging" : ""}`}
@@ -634,17 +644,6 @@ const DeliveryLayoutAdmin: React.FC = () => {
                               <td>
                                 <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{prevadzka.report_alias || prevadzka.nazov}</div>
                                 <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{prevadzka.celok}{prevadzka.adresa ? ` · ${prevadzka.adresa}` : ""}</div>
-                              </td>
-                              <td style={{ width: 130 }}>
-                                <Select
-                                  value={prevadzka.vydaj || "A"}
-                                  onChange={(e) => void setPrevadzkaVydaj(prevadzka, e.target.value)}
-                                  aria-label={`Výdaj — ${prevadzka.report_alias || prevadzka.nazov}`}
-                                >
-                                  {VYDAJE.map((item) => (
-                                    <option key={item.key} value={item.key}>{item.label}</option>
-                                  ))}
-                                </Select>
                               </td>
                               <td className="r">
                                 <div className="zpa-rowactions">
@@ -793,6 +792,13 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <Input type="time" value={newRouteTime} onChange={(e) => setNewRouteTime(e.target.value)} />
               </Field>
             </div>
+            <Field label="Výdaj" hint="(ktorá tabuľka trasu obsahuje)">
+              <Select value={newRouteVydaj} onChange={(e) => setNewRouteVydaj(e.target.value)}>
+                {VYDAJE.map((item) => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
+              </Select>
+            </Field>
           </form>
         </Modal>
       )}
