@@ -167,37 +167,6 @@ def _sub_rows_by_client(spec):
     return grouped
 
 
-def test_every_second_sub_row_is_striped():
-    """Jemný pruh na každom druhom riadku — bez neho sa na tlači stráca riadok."""
-    spec = build_table_spec(_payload())
-    sub_rows = [r for r in spec["rows"] if r["kind"] == "sub-row"]
-
-    assert [("zebra" in r["css"]) for r in sub_rows] == [False, True]
-
-
-def test_striping_restarts_at_every_client():
-    """Parita sa počíta v rámci prevádzky, nie cez celú tabuľku."""
-    payload = _payload()
-    second = dict(payload["rows"][0])
-    second["client"] = "MŠ Druhá"
-    second["client_id"] = 2
-    second["sub_rows"] = payload["rows"][0]["sub_rows"][:1]
-    payload["rows"] = [payload["rows"][0], second]
-
-    spec = build_table_spec(payload)
-    first_of_each_client = [rows[0] for rows in _sub_rows_by_client(spec).values()]
-
-    assert all("zebra" not in row["css"] for row in first_of_each_client)
-
-
-def _sub_rows_by_client(spec):
-    grouped: dict[str, list] = {}
-    for row in spec["rows"]:
-        if row["kind"] == "sub-row":
-            grouped.setdefault(row["group_id"], []).append(row)
-    return grouped
-
-
 def test_header_keeps_the_template_name():
     spec = build_table_spec(_payload())
 

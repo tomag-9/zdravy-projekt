@@ -676,6 +676,13 @@
 .zpa-listrow .lr-sub { font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .zpa-listrow.past { opacity: 0.55; }
 
+.zpa-login-status { display: inline-flex; flex: 0 0 auto; }
+.zpa-login-status svg { width: 18px; height: 18px; }
+.zpa-login-status--success { color: var(--green-700); }
+.zpa-login-status--pending { color: var(--orange-500); animation: zpaLoginPulse 1.4s ease-in-out infinite; }
+.zpa-login-status--failed { color: var(--coral-600); }
+@keyframes zpaLoginPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
 .zpa-statusgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
 
 /* info / notice boxes */

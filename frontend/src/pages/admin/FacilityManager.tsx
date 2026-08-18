@@ -10,6 +10,7 @@ import {
   Eye,
   UserPlus,
   Users,
+  Send,
 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
@@ -28,6 +29,8 @@ import {
   Select,
 } from "./ui";
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
+import { LoginPasswordStatusBadge } from "./facility/LoginPasswordStatus";
+import { resendLoginInvite } from "./facility/loginInvite";
 import { PrevadzkaFields, type Prevadzka, type PrevadzkaForm } from "./facility/PrevadzkaFields";
 import { EMPTY_LOGIN, EMPTY_PREVADZKA } from "./facility/constants";
 import { normalizeForSearch } from "../../lib/searchNormalize";
@@ -128,6 +131,7 @@ const FacilityManager: React.FC = () => {
   const [lForm, setLForm] = useState<LoginForm>(EMPTY_LOGIN);
   const [lSaving, setLSaving] = useState(false);
   const [loginDeleting, setLoginDeleting] = useState(false);
+  const [resendingLoginId, setResendingLoginId] = useState<number | null>(null);
 
   const fetchCelky = useCallback(async () => {
     try {
@@ -400,6 +404,18 @@ const FacilityManager: React.FC = () => {
     } finally {
       setLSaving(false);
     }
+  };
+
+  const handleResendInvite = async (login: Login) => {
+    setResendingLoginId(login.user_id);
+    const result = await resendLoginInvite(apiFetch, API, login);
+    if (result.ok) {
+      success(`Pozvánka bola znova odoslaná na ${login.email}.`);
+      fetchCelky();
+    } else {
+      toastError(result.detail || "Nepodarilo sa odoslať pozvánku.");
+    }
+    setResendingLoginId(null);
   };
 
   const doDeleteLogin = async () => {
@@ -703,6 +719,17 @@ const FacilityManager: React.FC = () => {
                   <div className="lr-sub">{login.email}</div>
                 </div>
                 {login.is_edupage && <Badge tone="teal">EduPage</Badge>}
+                <LoginPasswordStatusBadge status={login.password_status} />
+                {(login.password_status === "pending" || login.password_status === "failed") && (
+                  <IconButton
+                    onClick={() => handleResendInvite(login)}
+                    disabled={resendingLoginId === login.user_id}
+                    title="Znova odoslať pozvánku na nastavenie hesla"
+                    aria-label={`Znova odoslať pozvánku pre ${login.email}`}
+                  >
+                    <Send />
+                  </IconButton>
+                )}
                 <IconButton
                   onClick={() => openEditLogin(loginListTarget, login)}
                   title="Upraviť login"

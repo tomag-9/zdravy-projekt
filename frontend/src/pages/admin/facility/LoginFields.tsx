@@ -1,12 +1,15 @@
 import React from "react";
 import { Field, Input } from "../ui";
 
+export type LoginPasswordStatus = "success" | "pending" | "failed" | null;
+
 export interface Login {
   user_id: number;
   email: string;
   company_name: string;
   is_edupage: boolean;
   prevadzka_ids: number[];
+  password_status: LoginPasswordStatus;
 }
 
 export interface LoginForm {
