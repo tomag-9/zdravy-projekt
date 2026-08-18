@@ -10,9 +10,10 @@ zobrazuje realitu, nič nemigruje.
 
 from __future__ import annotations
 
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Celok, Diet, PortionType, Prevadzka
+from .models import Celok, Diet, PasswordResetToken, PortionType, Prevadzka
 
 
 class AdminPrevadzkaSerializer(serializers.ModelSerializer):
@@ -175,16 +176,70 @@ class AdminCelokSerializer(serializers.ModelSerializer):
                 )
                 if not current["whole_celok"]:
                     current["prevadzka_ids"].add(prevadzka.id)
+
+        is_edupage = obj.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
+        password_statuses = (
+            {}
+            if is_edupage
+            else self._password_statuses(
+                [entry["profile"].user for entry in profiles_by_user_id.values()]
+            )
+        )
         return [
             {
                 "user_id": entry["profile"].user_id,
                 "email": entry["profile"].user.email,
                 "company_name": entry["profile"].company_name,
-                "is_edupage": (obj.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE),
+                "is_edupage": is_edupage,
                 "prevadzka_ids": sorted(entry["prevadzka_ids"]),
+                "password_status": password_statuses.get(entry["profile"].user_id),
             }
             for entry in profiles_by_user_id.values()
         ]
+
+    @staticmethod
+    def _password_statuses(users) -> dict[int, str]:
+        """Vráti `{user_id: "success" | "pending" | "failed"}` pre login riadky.
+
+        `success` — heslo je nastavené (`has_usable_password`). Inak sa pozrie
+        na posledný nepoužitý setup/reset token: platný → `pending`, vypršaný
+        alebo žiadny → `failed` (link treba znova odoslať).
+
+        Ak volajúci queryset dopredu naprefetchol `user.password_reset_tokens`
+        (filtrované na `used=False`, zoradené `-created_at`) do atribútu
+        `_active_reset_tokens`, použije sa bez ďalšieho dotazu — inak sa
+        chýbajúce id-čka dotiahnu jedným bulk dotazom (fallback pre volajúcich
+        bez prefetchu).
+        """
+        now = timezone.now()
+        statuses: dict[int, str] = {}
+        unprefetched_ids: list[int] = []
+        for user in users:
+            if user.has_usable_password():
+                statuses[user.id] = "success"
+                continue
+            tokens = getattr(user, "_active_reset_tokens", None)
+            if tokens is None:
+                unprefetched_ids.append(user.id)
+                continue
+            token = tokens[0] if tokens else None
+            statuses[user.id] = (
+                "pending" if token and token.expires_at > now else "failed"
+            )
+
+        if unprefetched_ids:
+            latest_tokens: dict[int, PasswordResetToken] = {}
+            for token in PasswordResetToken.objects.filter(
+                user_id__in=unprefetched_ids, used=False
+            ).order_by("user_id", "-created_at"):
+                latest_tokens.setdefault(token.user_id, token)
+            for user_id in unprefetched_ids:
+                token = latest_tokens.get(user_id)
+                statuses[user_id] = (
+                    "pending" if token and token.expires_at > now else "failed"
+                )
+
+        return statuses
 
     def get_prevadzky(self, obj):
         return AdminPrevadzkaSerializer(

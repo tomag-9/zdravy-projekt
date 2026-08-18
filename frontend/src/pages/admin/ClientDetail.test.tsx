@@ -51,8 +51,8 @@ const celokWithLogins = {
   id: 3,
   nazov: "Test celok",
   logins: [
-    { user_id: 501, email: "own@example.com", company_name: "Vlastný login", is_edupage: false, prevadzka_ids: [7] },
-    { user_id: 502, email: "other@example.com", company_name: "Login inej prevádzky", is_edupage: false, prevadzka_ids: [8] },
+    { user_id: 501, email: "own@example.com", company_name: "Vlastný login", is_edupage: false, prevadzka_ids: [7], password_status: "success" },
+    { user_id: 502, email: "other@example.com", company_name: "Login inej prevádzky", is_edupage: false, prevadzka_ids: [8], password_status: "success" },
   ],
 };
 
