@@ -5,12 +5,14 @@ from django.db.models import Exists, OuterRef, Q, Subquery
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import pagination, permissions, serializers, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
 from ..serializers_user import AdminUserSerializer
+from ..services.event_log_service import log_event
 from .audit_mixins import AuditedModelViewSetMixin
 
 logger = logging.getLogger(__name__)
@@ -192,6 +194,41 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                     "email change for user %s",
                     user.email,
                 )
+
+    @action(detail=True, methods=["post"], url_path="resend-invite")
+    def resend_invite(self, request, pk=None):
+        """Znova pošle setup e-mail (nový 7-dňový link) — pre pending/failed login.
+
+        Pre EduPage-only login nemá zmysel (heslo si nikdy sám nenastavuje) —
+        vráti 400.
+        """
+        user = self.get_object()
+        profile = getattr(user, "profile", None)
+        if profile is not None and profile.is_edupage_only():
+            raise ValidationError(
+                {
+                    "detail": "EduPage login nemá vlastné heslo, pozvánku netreba posielať."
+                }
+            )
+
+        from ..email_utils import send_account_setup_email
+
+        try:
+            send_account_setup_email(user=user)
+        except Exception:
+            logger.exception("Failed to resend setup email for user %s", user.email)
+            return Response(
+                {"detail": "Odoslanie e-mailu zlyhalo, skúste to prosím znova."},
+                status=502,
+            )
+
+        log_event(
+            EventLog.EventType.SETTINGS_CHANGE,
+            actor=request.user,
+            target_user=user,
+            summary=f"Admin znova odoslal pozvánku na nastavenie hesla: {user.email}.",
+        )
+        return Response({"detail": "Pozvánka bola znova odoslaná."})
 
 
 @extend_schema_view(
