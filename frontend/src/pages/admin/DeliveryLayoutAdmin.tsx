@@ -4,6 +4,7 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { Badge, Button, Card, Empty, Field, IconButton, Input, Modal, PageHead, Select, TableWrap } from "./ui";
+import { VYDAJE } from "./facility/constants";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -22,6 +23,8 @@ interface DeliveryPrevadzka {
 interface DeliveryRoute {
   id: number;
   block: number;
+  /** Výdajný bod (`api.models.Vydaj`) — trasy výdaja A tvoria tabuľku A. */
+  vydaj: string;
   name: string;
   driver: string;
   departure_time: string | null;
@@ -94,10 +97,20 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const [newRouteName, setNewRouteName] = useState("");
   const [newRouteDriver, setNewRouteDriver] = useState("");
   const [newRouteTime, setNewRouteTime] = useState("");
+  const [newRouteVydaj, setNewRouteVydaj] = useState("A");
   const [editRoute, setEditRoute] = useState<DeliveryRoute | null>(null);
   const [editRouteName, setEditRouteName] = useState("");
   const [editRouteDriver, setEditRouteDriver] = useState("");
   const [editRouteTime, setEditRouteTime] = useState("");
+  // Blok je výdajný bod kuchyne (cluster) — trasa sa medzi nimi musí dať
+  // presunúť a blok premenovať, inak sa rozdelenie na dva body dá nastaviť len
+  // zakladaním trás nanovo (spätná väzba 17. 8. 2026).
+  const [editRouteBlock, setEditRouteBlock] = useState<number | null>(null);
+  const [editBlock, setEditBlock] = useState<DeliveryBlock | null>(null);
+  const [editBlockName, setEditBlockName] = useState("");
+  // Prázdne = všetky výdajné body. Kuchyňa si tak vie pozrieť trasy len toho
+  // bodu, z ktorého práve vydáva.
+  const [vydajFilter, setVydajFilter] = useState("");
   const [dragging, setDragging] = useState<DragState | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -362,6 +375,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
         name: newRouteName.trim(),
         driver: newRouteDriver.trim(),
         departure_time: newRouteTime || null,
+        vydaj: newRouteVydaj,
         sort_order: showRouteModalFor.routes.length + 1,
       }),
     });
@@ -369,6 +383,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
       setNewRouteName("");
       setNewRouteDriver("");
       setNewRouteTime("");
+      setNewRouteVydaj("A");
       setShowRouteModalFor(null);
       await fetchLayout();
       success("Trasa bola pridaná.");
@@ -377,11 +392,63 @@ const DeliveryLayoutAdmin: React.FC = () => {
     }
   };
 
+  /**
+   * Presun trasy do iného bloku ju zaradí na konec cieľového bloku. Bez toho by
+   * si ponechala pôvodné `sort_order` a v novom bloku by skočila doprostred —
+   * poradie trás si prevádzka nastavuje ručne a takýto skok je preň chyba.
+   */
+  const blockMovePatch = (route: DeliveryRoute, targetBlockId: number | null) => {
+    const target = targetBlockId ?? route.block;
+    if (target === route.block) return { block: target };
+    const siblings = layout.blocks.find((block) => block.id === target)?.routes ?? [];
+    return { block: target, sort_order: siblings.length + 1 };
+  };
+
   const openEditRoute = (route: DeliveryRoute) => {
     setEditRoute(route);
     setEditRouteName(route.name);
     setEditRouteDriver(route.driver || "");
     setEditRouteTime(route.departure_time?.slice(0, 5) || "");
+    setEditRouteBlock(route.block);
+  };
+
+  const vydajLabel = (key: string) =>
+    VYDAJE.find((item) => item.key === key)?.label ?? key;
+
+  const setRouteVydaj = async (route: DeliveryRoute, vydaj: string) => {
+    const res = await apiFetch(`${API}/admin/delivery-routes/${route.id}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ vydaj }),
+    });
+    if (res.ok) {
+      await fetchLayout();
+      success(`${route.name} → ${vydajLabel(vydaj)}`);
+    } else {
+      toastError("Nepodarilo sa zmeniť výdaj trasy.");
+    }
+  };
+
+  const openEditBlock = (block: DeliveryBlock) => {
+    setEditBlock(block);
+    setEditBlockName(block.name);
+  };
+
+  const updateBlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editBlock || !editBlockName.trim()) return;
+    const res = await apiFetch(`${API}/admin/delivery-blocks/${editBlock.id}/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: editBlockName.trim() }),
+    });
+    if (res.ok) {
+      setEditBlock(null);
+      await fetchLayout();
+      success("Blok bol premenovaný.");
+    } else {
+      toastError("Nepodarilo sa premenovať blok.");
+    }
   };
 
   const updateRoute = async (e: React.FormEvent) => {
@@ -394,6 +461,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
         name: editRouteName.trim(),
         driver: editRouteDriver.trim(),
         departure_time: editRouteTime || null,
+        ...blockMovePatch(editRoute, editRouteBlock),
       }),
     });
     if (res.ok) {
@@ -445,9 +513,20 @@ const DeliveryLayoutAdmin: React.FC = () => {
       <PageHead
         eyebrow="Rozvoz"
         title="Poradie a trasy"
-        desc="Rozdelenie prevádzok do blokov a trás pre admin Prehľad."
+        desc="Rozdelenie prevádzok do blokov a trás. Výdaj sa nastavuje na trase — trasy výdaja A tvoria tabuľku A, trasy výdaja B tabuľku B."
         actions={
           <>
+            <Select
+              value={vydajFilter}
+              onChange={(e) => setVydajFilter(e.target.value)}
+              style={{ width: "auto" }}
+              aria-label="Výdajný bod"
+            >
+              <option value="">Všetky výdaje</option>
+              {VYDAJE.map((item) => (
+                <option key={item.key} value={item.key}>{item.label}</option>
+              ))}
+            </Select>
             <Button variant="secondary" onClick={() => setShowBlockModal(true)}>
               <Plus /> Blok
             </Button>
@@ -475,6 +554,9 @@ const DeliveryLayoutAdmin: React.FC = () => {
                   <p>{block.routes.length} trás</p>
                 </div>
                 <div className="actions">
+                  <Button sm variant="ghost" onClick={() => openEditBlock(block)}>
+                    Premenovať
+                  </Button>
                   <IconButton onClick={() => moveBlock(block.id, -1)} disabled={blockIndex === 0} title="Vyššie" aria-label="Vyššie">
                     <ArrowUp />
                   </IconButton>
@@ -487,7 +569,11 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 </div>
               </div>
 
-              {block.routes.map((route) => (
+              {block.routes.map((route) => {
+                // Výdaj je na trase, takže filter skryje celú trasu aj s jej
+                // prevádzkami — presne to, čo uvidíš v tabuľke daného výdaja.
+                if (vydajFilter && (route.vydaj || "A") !== vydajFilter) return null;
+                return (
                 <div
                   key={route.id}
                   style={{ borderBottom: "1px solid var(--line-soft)" }}
@@ -501,7 +587,17 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: "inline-flex", gap: 4 }}>
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <Select
+                        value={route.vydaj || "A"}
+                        onChange={(e) => void setRouteVydaj(route, e.target.value)}
+                        style={{ width: "auto" }}
+                        aria-label={`Výdaj — ${route.name}`}
+                      >
+                        {VYDAJE.map((item) => (
+                          <option key={item.key} value={item.key}>{item.label}</option>
+                        ))}
+                      </Select>
                       <IconButton onClick={() => openEditRoute(route)} title="Upraviť trasu" aria-label="Upraviť trasu">
                         <Pencil />
                       </IconButton>
@@ -583,7 +679,8 @@ const DeliveryLayoutAdmin: React.FC = () => {
                     </table>
                   </TableWrap>
                 </div>
-              ))}
+                );
+              })}
             </Card>
           ))}
 
@@ -695,6 +792,13 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <Input type="time" value={newRouteTime} onChange={(e) => setNewRouteTime(e.target.value)} />
               </Field>
             </div>
+            <Field label="Výdaj" hint="(ktorá tabuľka trasu obsahuje)">
+              <Select value={newRouteVydaj} onChange={(e) => setNewRouteVydaj(e.target.value)}>
+                {VYDAJE.map((item) => (
+                  <option key={item.key} value={item.key}>{item.label}</option>
+                ))}
+              </Select>
+            </Field>
           </form>
         </Modal>
       )}
@@ -722,6 +826,35 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <Input type="time" value={editRouteTime} onChange={(e) => setEditRouteTime(e.target.value)} />
               </Field>
             </div>
+            <Field label="Blok (výdajný bod)">
+              <Select
+                value={String(editRouteBlock ?? editRoute.block)}
+                onChange={(e) => setEditRouteBlock(Number(e.target.value))}
+              >
+                {layout.blocks.map((block) => (
+                  <option key={block.id} value={block.id}>{block.name}</option>
+                ))}
+              </Select>
+            </Field>
+          </form>
+        </Modal>
+      )}
+
+      {editBlock && (
+        <Modal
+          title="Premenovať blok"
+          onClose={() => setEditBlock(null)}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setEditBlock(null)}>Zrušiť</Button>
+              <Button type="submit" form="edit-block-form">Uložiť</Button>
+            </>
+          }
+        >
+          <form id="edit-block-form" onSubmit={updateBlock}>
+            <Field label="Názov bloku" req>
+              <Input required value={editBlockName} onChange={(e) => setEditBlockName(e.target.value)} />
+            </Field>
           </form>
         </Modal>
       )}

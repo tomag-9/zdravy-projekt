@@ -437,6 +437,38 @@ describe("Filter sekcií", () => {
     });
   });
 
+  it("prints a single dispatch point when one is picked", async () => {
+    // Kuchyňa vydáva z dvoch bodov naraz a chce tabuľku jedného z nich.
+    mockDashboardRequests({
+      ...GRAMAGE_WITH_ROWS,
+      spec: {
+        ...GRAMAGE_WITH_ROWS.spec,
+        vydaje: [
+          { key: "A", name: "Výdaj A", selected: true },
+          { key: "B", name: "Výdaj B", selected: true },
+        ],
+      },
+    });
+    render(<AdminDashboard />);
+
+    fireEvent.change(await screen.findByLabelText("Výdajný bod"), {
+      target: { value: "B" },
+    });
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&vydaj=B$/),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard-pdf\/\?date=[\d-]+&vydaj=B$/),
+      );
+    });
+  });
+
   it("drops the filter entirely once everything is ticked again", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<AdminDashboard />);

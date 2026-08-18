@@ -51,6 +51,38 @@ interface MealTemplate {
 
 const emptyComponent = (): Component => ({ label: "", grams: "", unit: "g" });
 
+/**
+ * Editor zložiek — zdieľaný formulárom na pridanie aj na úpravu, aby sa názvy
+ * zložiek („Hlavná zložka" …) dali prepísať tam aj tam rovnako.
+ */
+const ComponentRows: React.FC<{
+  components: Component[];
+  onChange: (index: number, patch: Partial<Component>) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}> = ({ components, onChange, onAdd, onRemove }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <span className="zpa-label">Zložky</span>
+    {components.map((c, i) => (
+      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Input placeholder="Názov zložky (napr. Hlavná zložka)" value={c.label} onChange={(e) => onChange(i, { label: e.target.value })} />
+        <Input placeholder="Množstvo" value={c.grams} onChange={(e) => onChange(i, { grams: e.target.value })} style={{ width: 110 }} />
+        <Select value={c.unit} onChange={(e) => onChange(i, { unit: e.target.value as Component["unit"] })} style={{ width: "auto" }}>
+          <option value="g">g</option>
+          <option value="ml">ml</option>
+          <option value="text">text</option>
+        </Select>
+        <button className="zpa-iconbtn" onClick={() => onRemove(i)} disabled={components.length === 1} aria-label="Odstrániť zložku">
+          <X />
+        </button>
+      </div>
+    ))}
+    <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" style={{ alignSelf: "flex-start", paddingLeft: 0 }} onClick={onAdd}>
+      <Plus /> Pridať zložku
+    </button>
+  </div>
+);
+
 const emptyNewTemplate = (category: MealCategory) => ({
   category,
   name: "",
@@ -74,6 +106,13 @@ const MealCatalogAdmin: React.FC = () => {
   const [addingCategory, setAddingCategory] = useState<MealCategory | null>(null);
   const [newTemplate, setNewTemplate] = useState(emptyNewTemplate("soup"));
   const [saving, setSaving] = useState(false);
+  // Úprava existujúceho rozloženia — názov a zložky (kuchyňa si chcela prepísať
+  // „Hlavná zložka" na vlastné pomenovanie, spätná väzba 17. 8. 2026).
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<{ name: string; components: Component[] }>({
+    name: "",
+    components: [],
+  });
 
   const fetchPortionTypes = useCallback(async () => {
     try {
@@ -238,6 +277,63 @@ const MealCatalogAdmin: React.FC = () => {
     }
   };
 
+  const openEditForm = (tpl: MealTemplate) => {
+    setEditingId(tpl.id);
+    setEditDraft({
+      name: tpl.name,
+      components: tpl.components.length ? tpl.components.map((c) => ({ ...c })) : [emptyComponent()],
+    });
+  };
+
+  const updateEditComponent = (index: number, patch: Partial<Component>) => {
+    setEditDraft((d) => ({
+      ...d,
+      components: d.components.map((c, i) => (i === index ? { ...c, ...patch } : c)),
+    }));
+  };
+
+  const handleSaveTemplate = async (tpl: MealTemplate) => {
+    if (!editDraft.name.trim()) {
+      error("Zadajte názov rozloženia");
+      return;
+    }
+    const components = editDraft.components
+      .filter((c) => c.label.trim() && c.grams.trim())
+      .map((c) => ({ label: c.label.trim(), grams: c.grams.trim(), unit: c.unit }));
+    if (components.length === 0) {
+      error("Nechajte aspoň jednu zložku s gramážou");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // `weight_label` a `base_weight_grams` zámerne neposielame — backend si ich
+      // zo zložiek prepočíta sám, inak by v katalógu ostal starý popis váhy.
+      const res = await apiFetch(`${API}/admin/meal-templates/${tpl.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editDraft.name.trim(), components }),
+      });
+      if (res.ok) {
+        success("Rozloženie bolo upravené");
+        setEditingId(null);
+        fetchTemplates();
+      } else {
+        const payload = await res.json().catch(() => null);
+        error(
+          payload && typeof payload === "object"
+            ? JSON.stringify(payload)
+            : "Nepodarilo sa upraviť rozloženie",
+        );
+      }
+    } catch (e) {
+      logger.error(e);
+      error("Chyba pri ukladaní rozloženia");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const templatesByCategory = (category: MealCategory) =>
     templates.filter((t) => t.category === category);
 
@@ -290,14 +386,50 @@ const MealCatalogAdmin: React.FC = () => {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>
                 {templatesByCategory(category).map((tpl) => (
-                  <div key={tpl.id} className="zpa-tplrow" style={tpl.is_active ? undefined : { opacity: 0.5 }}>
-                    <div>
-                      <span className="nm">{tpl.name}</span>
-                      <span className={`wl${tpl.unit_exception ? " exc" : ""}`}>{tpl.weight_label}</span>
+                  <div key={tpl.id}>
+                    <div className="zpa-tplrow" style={tpl.is_active ? undefined : { opacity: 0.5 }}>
+                      <div>
+                        <span className="nm">{tpl.name}</span>
+                        <span className={`wl${tpl.unit_exception ? " exc" : ""}`}>{tpl.weight_label}</span>
+                      </div>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        <Button variant="ghost" sm onClick={() => (editingId === tpl.id ? setEditingId(null) : openEditForm(tpl))}>
+                          {editingId === tpl.id ? "Zavrieť" : "Upraviť"}
+                        </Button>
+                        <Button variant="ghost" sm onClick={() => toggleTemplateActive(tpl)}>
+                          {tpl.is_active ? "Deaktivovať" : "Aktivovať"}
+                        </Button>
+                      </div>
                     </div>
-                    <Button variant="ghost" sm onClick={() => toggleTemplateActive(tpl)}>
-                      {tpl.is_active ? "Deaktivovať" : "Aktivovať"}
-                    </Button>
+                    {editingId === tpl.id && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "12px 0 4px" }}>
+                        <Input
+                          placeholder="Názov rozloženia"
+                          value={editDraft.name}
+                          onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))}
+                        />
+                        <ComponentRows
+                          components={editDraft.components}
+                          onChange={updateEditComponent}
+                          onAdd={() => setEditDraft((d) => ({ ...d, components: [...d.components, emptyComponent()] }))}
+                          onRemove={(index) =>
+                            setEditDraft((d) => ({ ...d, components: d.components.filter((_, i) => i !== index) }))
+                          }
+                        />
+                        {tpl.unit_exception && (
+                          <p style={{ fontSize: 13, color: "var(--ink-3)", margin: 0 }}>
+                            Zložka „{tpl.unit_exception.component_label}" má pevný počet kusov podľa vekovej
+                            skupiny — tú tu neupravíš, ostáva nezmenená.
+                          </p>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                          <Button variant="ghost" onClick={() => setEditingId(null)}>Zrušiť</Button>
+                          <Button onClick={() => handleSaveTemplate(tpl)} disabled={saving}>
+                            {saving ? "Ukladám…" : "Uložiť zmeny"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {templatesByCategory(category).length === 0 && (
@@ -313,26 +445,12 @@ const MealCatalogAdmin: React.FC = () => {
                     onChange={(e) => setNewTemplate((t) => ({ ...t, name: e.target.value }))}
                   />
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <span className="zpa-label">Zložky</span>
-                    {newTemplate.components.map((c, i) => (
-                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <Input placeholder="Názov zložky (napr. Hlavná zložka)" value={c.label} onChange={(e) => updateComponent(i, { label: e.target.value })} />
-                        <Input placeholder="Množstvo" value={c.grams} onChange={(e) => updateComponent(i, { grams: e.target.value })} style={{ width: 110 }} />
-                        <Select value={c.unit} onChange={(e) => updateComponent(i, { unit: e.target.value as Component["unit"] })} style={{ width: "auto" }}>
-                          <option value="g">g</option>
-                          <option value="ml">ml</option>
-                          <option value="text">text</option>
-                        </Select>
-                        <button className="zpa-iconbtn" onClick={() => removeComponentRow(i)} disabled={newTemplate.components.length === 1} aria-label="Odstrániť zložku">
-                          <X />
-                        </button>
-                      </div>
-                    ))}
-                    <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" style={{ alignSelf: "flex-start", paddingLeft: 0 }} onClick={addComponentRow}>
-                      <Plus /> Pridať zložku
-                    </button>
-                  </div>
+                  <ComponentRows
+                    components={newTemplate.components}
+                    onChange={updateComponent}
+                    onAdd={addComponentRow}
+                    onRemove={removeComponentRow}
+                  />
 
                   <Checkbox on={newTemplate.hasException} onChange={(v) => setNewTemplate((t) => ({ ...t, hasException: v }))}>
                     Táto zložka má pevný počet kusov podľa vekovej skupiny (napr. vajce)

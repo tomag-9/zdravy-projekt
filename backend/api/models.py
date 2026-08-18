@@ -81,8 +81,8 @@ class DailyOrder(models.Model):
         blank=True,
         help_text=(
             "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
-            "{'attention': [...], 'config_notes': [...]}. Prázdne pri ručných "
-            "objednávkach a pri scrape bez upozornení."
+            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...]}. "
+            "Prázdne pri ručných objednávkach a pri scrape bez upozornení."
         ),
     )
     is_auto = models.BooleanField(
@@ -365,6 +365,19 @@ class Celok(models.Model):
         return self.nazov
 
 
+class Vydaj(models.TextChoices):
+    """Výdajný bod kuchyne, z ktorého ide jedlo von.
+
+    Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku.
+    Výdaj je vlastnosť TRASY: prevádzka patrí do toho výdaja, v ktorého trase
+    stojí, takže sa nastavuje na jednom mieste a nemá si ako protirečiť.
+    """
+
+    A = "A", "Výdaj A"
+    B = "B", "Výdaj B"
+    C = "C", "Výdaj C"
+
+
 class Prevadzka(models.Model):
     """Jedna prevádzka (miesto výdaja) v rámci celku.
 
@@ -574,6 +587,17 @@ class DeliveryRoute(models.Model):
 
     block = models.ForeignKey(
         DeliveryBlock, on_delete=models.CASCADE, related_name="routes"
+    )
+    vydaj = models.CharField(
+        max_length=1,
+        choices=Vydaj.choices,
+        default=Vydaj.A,
+        db_index=True,
+        help_text=(
+            "Výdajný bod kuchyne, ktorý túto trasu obsluhuje. Gramážová tabuľka "
+            "sa delí podľa neho — trasy výdaja A tvoria tabuľku A, trasy výdaja "
+            "B tabuľku B."
+        ),
     )
     name = models.CharField(max_length=160)
     driver = models.CharField(max_length=80, blank=True, default="")
