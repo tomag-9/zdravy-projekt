@@ -268,7 +268,7 @@ def test_totals_row_uses_a_dash_for_empty_columns():
     spec = build_table_spec(_payload())
 
     # Posledná bunka je prázdna „Poznámka"; gramáž je tá pred ňou.
-    assert spec["footer"][-1]["cells"][-1]["css"] == "cell-note"
+    assert spec["footer"][-1]["cells"][-1]["css"] == "cell-note meal-sep"
     assert spec["footer"][-1]["cells"][-2]["text"] == "—"
 
 
@@ -446,7 +446,12 @@ def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
 
 
 def test_note_column_is_empty_on_every_data_row():
-    """Prázdny stĺpec na ručné poznámky do vytlačenej tabuľky."""
+    """Prázdny stĺpec na ručné poznámky do vytlačenej tabuľky.
+
+    `meal-sep` na poslednom stĺpci je zámerne rovnaké ako medzi ostatnými
+    jedlami — bez neho by čiara medzi posledným jedlom (napr. Olovrant) a
+    Poznámkou chýbala, hoci medzi Raňajkami/Obedom/Olovrantom je.
+    """
     spec = build_table_spec(_payload())
 
     assert spec["header"]["groups"][-1]["text"] == "Poznámka"
@@ -459,7 +464,7 @@ def test_note_column_is_empty_on_every_data_row():
     ]
     assert data_rows
     for row in data_rows:
-        assert row["cells"][-1] == {"text": "", "css": "cell-note"}
+        assert row["cells"][-1] == {"text": "", "css": "cell-note meal-sep"}
 
 
 def test_meal_band_merges_soup_with_main_course():
