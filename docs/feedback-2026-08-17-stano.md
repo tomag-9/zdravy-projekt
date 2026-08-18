@@ -60,6 +60,17 @@ Cvernička načítala z EduPage diétu, ktorú appka nepozná.
 | Stĺpec „Poznámka" | hotové — prázdny stĺpec na konci tabuľky |
 
 ## Otvorené / na doriešenie
-- Presná definícia clustra: stačí príznak na trase (cluster 1/2) + samostatná tlač?
-- Ako riešiť neznáme diéty z EduPage (upozornenie vs. auto-založenie).
-- Zoznam škôlok do ďalšieho testovania — čaká sa na Stana.
+- **Zoznam škôlok do ďalšieho testovania** — čaká sa na Stana.
+- **Pomenovanie výdajov**: dnes natvrdo „Výdaj A / B / C". Ak ich chce prevádzka volať
+  inak (napr. „Cluster 1"), treba z toho spraviť číselník s CRUD-om — teraz je to
+  zmena v kóde + migrácia.
+- **Neznáma diéta z EduPage** sa hlási, ale nezakladá sama. Ak sa ukáže, že hlásenie
+  nikto nečíta včas, ďalší krok je auto-založenie diéty ako neaktívnej + notifikácia.
+- **Prevádzka bez trasy** („Nepriradené prevádzky") nepatrí do žiadneho výdaja — v celej
+  tabuľke je vidieť na konci, pri tlači jedného výdaja sa nezobrazí. Ak by mali chodiť
+  aj do konkrétneho výdaja, treba im dať trasu.
+- **Bloky rozvozu** (Bežné trasy / Trasa extra) sú po zavedení výdajov už len
+  organizačné zoskupenie trás v karte Rozvoz; príznaky `include_in_*_summary` slúžia iba
+  na predvolený výdaj pri seedovaní novej trasy. Ak sa ukážu ako mätúce, dajú sa zrušiť.
+- **Denný report / e-mail** posiela celú tabuľku (každý výdaj na vlastnom liste), nie
+  samostatný súbor per výdaj — zatiaľ to nikto nežiadal.
