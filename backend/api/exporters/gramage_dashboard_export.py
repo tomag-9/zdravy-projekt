@@ -224,24 +224,3 @@ def readable_text_color(hex_color: str) -> str:
             break
         rgb = [round(channel * 0.85) for channel in rgb]
     return "".join(f"{channel:02X}" for channel in rgb)
-
-
-def flat_client_rows(data: dict) -> list[dict]:
-    """All per-client rows, whether or not the day has a delivery-block layout.
-
-    ``data["rows"]`` only holds every row when there is no block layout; once
-    ``blocks``/``unassigned_rows`` are populated those replace it as the
-    source of truth. Both PDF and XLSX exporters need the full row set (e.g.
-    for the CELKOM totals row), so compute it once here.
-    """
-    blocks = data.get("blocks") or []
-    if not blocks:
-        return list(data.get("rows") or [])
-    flat = [
-        row
-        for block in blocks
-        for route in block.get("routes", [])
-        for row in route.get("rows", [])
-    ]
-    flat.extend(data.get("unassigned_rows") or [])
-    return flat
