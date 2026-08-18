@@ -112,9 +112,11 @@ def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> li
 
 def _note_cell() -> dict:
     """Prázdna bunka posledného stĺpca — miesto na ručnú poznámku vo vytlačenej
-    tabuľke. Vracia sa nová inštancia, nie zdieľaný dict, nech si ju renderer
-    nemôže omylom premutovať naprieč riadkami."""
-    return {"text": "", "css": "cell-note"}
+    tabuľke. Nesie `meal-sep`, rovnako ako hlavička nad ňou (`grp-note`/`comp-note`)
+    — inak by oddeľovacia čiara medzi posledným jedlom a Poznámkou chýbala, hoci
+    medzi všetkými ostatnými jedlami je. Vracia sa nová inštancia, nie zdieľaný
+    dict, nech si ju renderer nemôže omylom premutovať naprieč riadkami."""
+    return {"text": "", "css": "cell-note meal-sep"}
 
 
 def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[dict]:
