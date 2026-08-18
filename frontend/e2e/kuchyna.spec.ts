@@ -6,7 +6,7 @@
  */
 
 import { test, expect, Page } from "@playwright/test";
-import { dismissMobilePrompts } from "./helpers";
+import { dismissMobilePrompts, ensureMealPlan, defaultKuchynaDay } from "./helpers";
 
 /** Demo kuchyňa login zo `init_roles`. */
 const KUCHYNA_LOGIN = { email: "kuchyna@example.com", password: "kuchyna" };
@@ -74,19 +74,11 @@ test.describe("Kuchyňa", () => {
 });
 
 test.describe("Nakladanie (#487)", () => {
-  /**
-   * Seed dáta pokrývajú len časť dní, takže predvolený deň (dnešok) môže byť
-   * bez jedálnička. Vrátime sa po dňoch dozadu, kým sa neobjavia stanoviská —
-   * inak by test padal podľa toho, ktorý deň v týždni práve beží.
-   */
-  async function gotoDayWithData(page: Page): Promise<boolean> {
-    for (let i = 0; i < 7; i++) {
-      if (await page.locator(".zpk-station").count()) return true;
-      await page.click('button[aria-label="Predchádzajúci deň"]');
-      await page.waitForTimeout(400);
-    }
-    return (await page.locator(".zpk-station").count()) > 0;
-  }
+  // Podklad si testy vytvoria samy: seed má objednávky, ale jedálniček zadáva
+  // admin, takže v čerstvom prostredí by sa inak len preskočili.
+  test.beforeAll(async ({ request }) => {
+    await ensureMealPlan(request, defaultKuchynaDay());
+  });
 
   /**
    * Stav nakladania žije v DB a prežije beh testu, takže sa nesmie
@@ -101,7 +93,6 @@ test.describe("Nakladanie (#487)", () => {
 
   test("stanoviská sa dajú prepínať a prvé je predvolené", async ({ page }) => {
     await loginAsKuchyna(page);
-    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
     const stations = page.locator(".zpk-station");
     await expect(stations.first()).toHaveClass(/is-active/);
 
@@ -114,7 +105,6 @@ test.describe("Nakladanie (#487)", () => {
 
   test("odklikávanie je priamo v riadku prevádzky", async ({ page }) => {
     await loginAsKuchyna(page);
-    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
     const row = page.locator("tr.client-row").first();
     const tick = row.locator(".zpk-tick");
     await expect(tick).toBeVisible();
@@ -133,7 +123,6 @@ test.describe("Nakladanie (#487)", () => {
 
   test("postup stanoviska sa počíta", async ({ page }) => {
     await loginAsKuchyna(page);
-    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
     const progress = page.locator(".zpk-station-progress");
     await expect(progress).toBeVisible();
 
@@ -146,8 +135,9 @@ test.describe("Nakladanie (#487)", () => {
 
   test("stanovisko mení, ktorá položka sa odklikáva", async ({ page }) => {
     await loginAsKuchyna(page);
-    test.skip(!(await gotoDayWithData(page)), "žiadny deň so seed dátami");
     const stations = page.locator(".zpk-station");
+    // `count()` nečaká — bez tohto by sa spýtal skôr, než sa stanoviská načítajú.
+    await expect(stations.first()).toBeVisible();
     test.skip((await stations.count()) < 2, "deň má jediné stanovisko");
 
     const row = page.locator("tr.client-row").first();

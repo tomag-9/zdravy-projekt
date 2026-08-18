@@ -66,6 +66,7 @@ const celok = {
       company_name: "Celok login",
       is_edupage: false,
       prevadzka_ids: [],
+      password_status: "success",
     },
     {
       user_id: 502,
@@ -73,6 +74,7 @@ const celok = {
       company_name: "Prevádzka login",
       is_edupage: false,
       prevadzka_ids: [101],
+      password_status: "success",
     },
   ],
 };

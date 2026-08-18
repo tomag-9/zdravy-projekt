@@ -6,7 +6,7 @@ class Migration(migrations.Migration):
     """Granulárne oprávnenia per sekcia (#484). Čisto aditívne."""
 
     dependencies = [
-        ("api", "0071_loading_status"),
+        ("api", "0074_loading_status"),
     ]
 
     operations = [

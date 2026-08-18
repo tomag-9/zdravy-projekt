@@ -41,7 +41,7 @@ def build_prevadzka_overview(target_date):
         is_edupage = prevadzka.celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
         order = orders_by_prevadzka.get(prevadzka.id)
         data = {}
-        flags = {"attention": [], "config_notes": []}
+        flags = {"attention": [], "config_notes": [], "unmapped_diets": []}
         counts = meal_counts(data)
         delivery_status = "missing"
         if order is not None:
@@ -57,6 +57,8 @@ def build_prevadzka_overview(target_date):
                 flags = {
                     "attention": order.scrape_flags.get("attention", []) or [],
                     "config_notes": order.scrape_flags.get("config_notes", []) or [],
+                    "unmapped_diets": order.scrape_flags.get("unmapped_diets", [])
+                    or [],
                 }
 
         row = {
@@ -67,7 +69,9 @@ def build_prevadzka_overview(target_date):
             "delivery_status": delivery_status,
             "counts": counts,
             "flags": flags,
-            "has_warning": bool(flags["attention"] or flags["config_notes"]),
+            "has_warning": bool(
+                flags["attention"] or flags["config_notes"] or flags["unmapped_diets"]
+            ),
         }
         (edupage_rows if is_edupage else app_rows).append(row)
 

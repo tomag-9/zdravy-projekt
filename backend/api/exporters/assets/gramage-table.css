@@ -34,13 +34,28 @@
     box-shadow: 0 1px 0 rgba(23,53,5,0.16);
 }
 .zpa-gram thead th { background-clip: padding-box; }
-.zpa-gram .meal-sep { box-shadow: inset 1px 0 rgba(23,53,5,0.22); }
-.zpa-gram thead .meal-sep { box-shadow: inset 1px 0 rgba(255,255,255,0.32); }
+/* Predel medzi jedlami je hrubší než mriežka riadkov — kuchyňa v tabuľke
+ * hľadala, kde končia raňajky a začína obed (spätná väzba 17. 8. 2026). */
+.zpa-gram .meal-sep { box-shadow: inset 3px 0 rgba(23,53,5,0.38); }
+.zpa-gram thead .meal-sep { box-shadow: inset 3px 0 rgba(255,255,255,0.55); }
 .zpa-gram thead .grp { color: #fff; text-align: center; font-family: var(--font-display); font-weight: 700; font-size: 12.5px; }
 .zpa-gram thead .grp small { display: block; max-width: 128px; margin: 0 auto; font-weight: 400; font-size: 10px; opacity: 0.8; text-transform: none; letter-spacing: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zpa-gram thead .comp { color: #fff; text-align: center; font-size: 11px; font-weight: 500; }
 .zpa-gram thead .comp small { display: block; font-size: 9.5px; opacity: 0.7; white-space: nowrap; }
 .zpa-gram .corner { background: var(--green-900); color: var(--bg-cream); text-align: left; font-family: var(--font-display); font-weight: 700; font-size: 12px; position: sticky; left: 0; z-index: 7; }
+/* Nadradený pás hlavičky — jedno políčko na jedlo (Raňajky / Obed / Olovrant). */
+.zpa-gram thead .mealband {
+    color: #fff; text-align: center;
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
+    text-transform: uppercase; letter-spacing: var(--tracking-caps);
+    padding: 8px;
+}
+.zpa-gram thead .mb-break { background: #8A5709; }
+.zpa-gram thead .mb-lunch { background: #24310E; }
+.zpa-gram thead .mb-snack { background: #63283F; }
+.zpa-gram thead .mb-other { background: var(--green-800); }
+.zpa-gram thead .mb-note { background: var(--green-900); }
+
 /* meal hues */
 /* meal hues — seven visually distinct families (raňajky ≠ olovrant;
  * Menu A/B/C/V each its own colour). -1 header, -2 sub-header, -cell tint. */
@@ -58,23 +73,32 @@
     text-transform: uppercase; letter-spacing: var(--tracking-caps);
     padding: 9px 16px;
 }
+/* Výdajný bod kuchyne. Vidieť, že tu začína druhá tabuľka (v tlači aj druhý
+ * list), ale bez krikľavého pásu — stačí tmavý pruh a tenká červená linka. */
+.zpa-gram tbody .block-band td {
+    background: var(--green-900); color: #fff;
+    font-size: 12px; letter-spacing: var(--tracking-caps);
+    padding: 10px 16px;
+    border-top: 2px solid var(--coral-600);
+}
+/* Trasa — jemný červený pás. Musí byť vidieť, kde trasa začína, ale nesmie
+ * prekričať dáta: sýta výplň cez celý riadok bola priveľká (17. 8. 2026). */
 .zpa-gram .route-row td {
-    min-width: 0; padding: 12px 16px 7px;
-    background: linear-gradient(180deg, rgba(114,136,75,0.08), rgba(114,136,75,0.03));
-    border-top: 2px solid rgba(114,136,75,0.28);
-    border-bottom: 1px solid rgba(114,136,75,0.14);
+    min-width: 0; padding: 7px 16px;
+    background: rgba(201,46,82,0.07);
+    border-top: 1px solid rgba(201,46,82,0.35);
+    border-bottom: 1px solid rgba(201,46,82,0.16);
 }
 .zpa-gram .route-pill {
-    display: inline-flex; align-items: center; gap: 10px; max-width: 100%;
-    padding: 6px 10px 6px 12px; border-radius: var(--radius-pill);
-    background: #fff; color: var(--green-900);
-    border: 1px solid rgba(114,136,75,0.28);
-    box-shadow: 0 1px 0 rgba(23,53,5,0.04);
-    font-family: var(--font-display); font-weight: 700; font-size: 12.5px;
+    display: inline-flex; align-items: center; gap: 8px; max-width: 100%;
+    padding: 3px 10px; border-radius: var(--radius-pill);
+    background: #fff; color: var(--coral-600);
+    border: 1px solid rgba(201,46,82,0.30);
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
 }
 .zpa-gram .route-pill::before {
-    content: ""; width: 7px; height: 7px; border-radius: 999px;
-    background: var(--green-600); flex: 0 0 auto;
+    content: ""; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--coral-600); flex: 0 0 auto;
 }
 .zpa-gram .route-pill > span {
     min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -151,6 +175,12 @@
 .zpa-gram .note-delivery td { background: rgba(255,201,92,0.14); color: var(--mustard-700); }
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
+
+/* Prázdny stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky,
+ * na obrazovke ostáva prázdny. */
+.zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
+.zpa-gram thead .grp-note,
+.zpa-gram thead .comp-note { background: var(--green-900); }
 
 /* Farebná bodka pred názvom diéty. Na obrazovke ju kreslí DietColorSwatch,
  * v PDF gramage_table_html._swatch — obe len dosadia `background`. */

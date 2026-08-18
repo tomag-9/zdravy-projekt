@@ -1,5 +1,6 @@
 import io
 from datetime import date
+from decimal import Decimal
 
 import openpyxl
 import pytest
@@ -321,6 +322,38 @@ class MealTemplateCatalogApiTest(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         template.refresh_from_db()
         self.assertFalse(template.is_active)
+
+    def test_admin_can_rename_a_component(self):
+        """Kuchyňa si chcela prepísať „Hlavná zložka" na vlastné pomenovanie.
+
+        Popis váhy (`weight_label`) a `base_weight_grams` sa musia prepočítať zo
+        zložiek — inak by v katalógu ostala stará váha a tabuľka by ukazovala
+        niečo iné než katalóg.
+        """
+        self.client.force_authenticate(user=self.admin)
+        template = MealTemplate.objects.get(name="Olovrant 1")
+
+        response = self.client.patch(
+            f"/api/admin/meal-templates/{template.id}/",
+            {
+                "name": "Olovrant 1 - pečivo",
+                "components": [
+                    {"label": "Pečivo", "grams": "60", "unit": "g"},
+                    {"label": "Nátierka", "grams": "40", "unit": "g"},
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        template.refresh_from_db()
+        self.assertEqual(template.name, "Olovrant 1 - pečivo")
+        self.assertEqual(
+            [c["label"] for c in template.components], ["Pečivo", "Nátierka"]
+        )
+        self.assertEqual(template.base_weight_grams, Decimal("100.00"))
+        # Popis váhy nesie gramáže, nie názvy zložiek — musí sedeť s novými číslami.
+        self.assertEqual(template.weight_label, "60g + 40g")
 
     def test_creating_a_template_without_weight_data_is_rejected(self):
         self.client.force_authenticate(user=self.admin)

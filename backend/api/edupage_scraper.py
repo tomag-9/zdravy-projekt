@@ -42,6 +42,26 @@ ALLOWED_DIET_NAMES = {
     "NO ZELER",
     "DIA",
 }
+
+
+def allowed_diet_names() -> set[str]:
+    """Povolené diéty = aktívne `Diet` z DB ∪ zabudovaný zoznam.
+
+    Škola pridá do EduPage novú diétu kedykoľvek (Cvernička, 17. 8. 2026). Keby sa
+    whitelist držal len v kóde, každá takáto diéta by čakala na nasadenie; takto ju
+    stačí založiť v appke a najbližší scrape ju už pozná. Zabudovaný zoznam ostáva
+    ako poistka, keby DB bola prázdna (testy, čerstvá inštalácia pred seedom).
+
+    Import modelu je lokálny zámerne — modul sa načítava aj mimo Django kontextu
+    (parser testy, skripty) a nesmie na import ťahať ORM.
+    """
+    from api.models import Diet
+
+    names = set(ALLOWED_DIET_NAMES)
+    names.update(Diet.objects.filter(is_active=True).values_list("name", flat=True))
+    return names
+
+
 DEFAULT_PORTION_NAME = "Škôlka"
 PORTION_CODE_MAP = {
     "0": "Škôlka",
@@ -262,7 +282,12 @@ class ScrapeResult:
     order_data_by_prevadzka: dict[str, dict[str, Any]] = field(default_factory=dict)
     # EduPage riadky, ktoré nesadli na žiadnu prevádzku. Neprázdne = neúplný scrape.
     unmatched_prevadzka: list[str] = field(default_factory=list)
+    # Diéty, ktoré appka nepozná. Porcie sa NEZAHADZUJÚ (celkový počet musí sedieť),
+    # zapíšu sa pod názvom z EduPage a admin ich vidí ako upozornenie.
     unmapped_letters: list[str] = field(default_factory=list)
+    # `unmapped_letters` rozpadnuté podľa prevádzky, do ktorej porcie padli.
+    # Prázdne pri jedno-prevádzkovom scrape (vtedy platí `unmapped_letters`).
+    unmapped_by_prevadzka: dict[str, list[str]] = field(default_factory=dict)
     # Scrape zlyhal štrukturálne — volajúci z toho robí "neimportuj nič".
     warnings: list[str] = field(default_factory=list)
     # Scrape prebehol, ale per-prevádzka config nesedí s realitou (škola zmenila
@@ -289,12 +314,17 @@ class EdupageScraper:
         mealsguest_url: str,
         target_date: date,
         prevadzka_matches: dict[str, list[str]] | None = None,
+        allowed_diets: set[str] | None = None,
     ) -> ScrapeResult:
         url = self._inject_date(mealsguest_url, target_date)
         html = self._fetch(url)
         config = config_pre_url(mealsguest_url)
         result = self._parse(
-            html, target_date, config=config, prevadzka_matches=prevadzka_matches
+            html,
+            target_date,
+            config=config,
+            prevadzka_matches=prevadzka_matches,
+            allowed_diets=allowed_diets,
         )
         if config is not None:
             result = apply_config(result, config)
@@ -600,6 +630,7 @@ class EdupageScraper:
         target_date: date,
         config: PrevadzkaConfig | None = None,
         prevadzka_matches: dict[str, list[str]] | None = None,
+        allowed_diets: set[str] | None = None,
     ) -> ScrapeResult:
         prehlad_raw = self._extract_block(html, "prehlad")
         nazov_menu_raw = self._extract_block(html, "nazovMenu")
@@ -609,6 +640,11 @@ class EdupageScraper:
         warnings: list[str] = []
         unmapped: list[str] = []
         attention: list[str] = []
+        # Normalizovaný index, aby `no milk` z EduPage sadlo na našu `NO MILK` a
+        # nezaložilo druhú, len inak písanú diétu.
+        allowed_by_key = {
+            _normalise_key(name): name for name in (allowed_diets or ALLOWED_DIET_NAMES)
+        }
         letter_hook = config.letter_hook if config is not None else None
         payer_hook = config.payer_hook if config is not None else None
 
@@ -636,6 +672,8 @@ class EdupageScraper:
         unmatched: list[str] = []
         # bucket (názov prevádzky) -> flagy, ktoré do neho reálne padli
         attention_buckets: dict[str, set[str]] = {}
+        # to isté pre neznáme diéty (`unmapped`)
+        unmapped_buckets: dict[str, set[str]] = {}
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -662,6 +700,7 @@ class EdupageScraper:
                 portion_override = rule.portion if rule else None
 
                 flag_label: str | None = None
+                unmapped_label: str | None = None
                 if rule is not None and (rule.menu or rule.diet):
                     menu_variant = rule.menu
                     diet_name = rule.diet
@@ -673,11 +712,20 @@ class EdupageScraper:
                     diet_name = None
                     if menu_variant is None:
                         diet_name = self.resolve_diet_name(skratka, nazov)
-                        if diet_name not in ALLOWED_DIET_NAMES:
-                            unmapped.append(f"{letter}:{diet_name}")
-                            continue
-                        if diet_name == letter and letter not in nazov_menu:
-                            unmapped.append(letter)
+                        canonical = allowed_by_key.get(_normalise_key(diet_name))
+                        if canonical is not None:
+                            diet_name = canonical
+                            if diet_name == letter and letter not in nazov_menu:
+                                unmapped_label = letter
+                        else:
+                            # Neznámu diétu NEZAHADZUJEME: skorší `continue` tu zmazal
+                            # celý riadok vrátane počtu porcií, takže kuchyni chýbali
+                            # jedlá a nikde to nebolo vidno (Cvernička, 17. 8. 2026).
+                            # Radšej ju zapíšeme pod názvom z EduPage a nahlásime —
+                            # admin ju založí v appke a od ďalšieho behu je známa.
+                            unmapped_label = f"{letter}:{diet_name}"
+                        if unmapped_label is not None:
+                            unmapped.append(unmapped_label)
 
                 tp = letter_data.get("typ_platitela", {})
                 if not isinstance(tp, dict):
@@ -731,6 +779,10 @@ class EdupageScraper:
                     for bucket in buckets:
                         if flag_label is not None:
                             attention_buckets.setdefault(bucket, set()).add(flag_label)
+                        if unmapped_label is not None:
+                            unmapped_buckets.setdefault(bucket, set()).add(
+                                unmapped_label
+                            )
 
                         counts_by_meal = counts.setdefault(bucket, {})
                         meal_counts = counts_by_meal.setdefault(meal_key, {})
@@ -776,7 +828,12 @@ class EdupageScraper:
             order_data=order_data,
             order_data_by_prevadzka=by_prevadzka,
             unmatched_prevadzka=sorted(set(unmatched)),
-            unmapped_letters=list(set(unmapped)),
+            unmapped_letters=sorted(set(unmapped)),
+            unmapped_by_prevadzka={
+                bucket: sorted(labels)
+                for bucket, labels in unmapped_buckets.items()
+                if bucket and labels
+            },
             warnings=warnings,
             attention=sorted(set(attention)),
             attention_by_prevadzka={

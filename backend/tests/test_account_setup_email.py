@@ -9,6 +9,7 @@ from django.contrib.auth.models import User
 from django.core import mail
 
 from api.services.notification_service import (
+    ACCOUNT_SETUP_INTRO,
     OPERATIONS_MANUAL_FILENAME,
     OPERATIONS_MANUAL_PATH,
     NotificationService,
@@ -70,3 +71,33 @@ class TestAccountSetupEmailAttachment:
         assert message.attachments == []
         assert "https://example.com/set-password?token=abc" in message.body
         assert "V prílohe" not in message.body
+
+
+@pytest.mark.django_db
+class TestAccountSetupEmailIntro:
+    """Úvodný text klienta ide pred odkaz na heslo — je to jediný e-mail, ktorý
+    prevádzka dostane, takže vysvetlenie „prečo" nemá kam inam ísť."""
+
+    def test_intro_comes_before_the_password_link(self, new_user):
+        NotificationService.send_account_setup_email(
+            user=new_user, setup_url="https://example.com/set-password?token=abc"
+        )
+
+        body = mail.outbox[0].body
+        assert ACCOUNT_SETUP_INTRO in body
+        assert body.index(ACCOUNT_SETUP_INTRO) < body.index(
+            "https://example.com/set-password?token=abc"
+        )
+        # Pozdrav ostáva úplne hore, úvod až za ním.
+        assert body.startswith("Dobrý deň ")
+        assert body.rstrip().endswith("Stanislav Šulc\nZdravý projekt")
+
+    def test_intro_keeps_the_deadlines_and_contact(self, new_user):
+        """Časy uzávierok a telefón sú to, kvôli čomu e-mail vznikol."""
+        NotificationService.send_account_setup_email(
+            user=new_user, setup_url="https://example.com/set-password?token=abc"
+        )
+
+        body = mail.outbox[0].body
+        assert "21:00" in body and "7:30" in body
+        assert "0903186328" in body

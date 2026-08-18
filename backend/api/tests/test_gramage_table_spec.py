@@ -128,11 +128,12 @@ def test_there_is_no_separate_count_column():
     """Počet je odznak v labeli, nie vlastný stĺpec — inak sa tlač rozíde s obrazovkou."""
     spec = build_table_spec(_payload())
 
-    assert spec["total_columns"] == 1 + 3
-    assert len(spec["header"]["components"]) == 3
+    # 1 = názov riadku, 3 = zložky, 1 = prázdny stĺpec „Poznámka".
+    assert spec["total_columns"] == 1 + 3 + 1
+    assert len(spec["header"]["components"]) == 3 + 1
     sub_row = next(r for r in spec["rows"] if r["kind"] == "sub-row")
     assert sub_row["cells"][0]["count"] == "8"
-    assert len(sub_row["cells"]) == 1 + 3
+    assert len(sub_row["cells"]) == 1 + 3 + 1
 
 
 def test_every_second_sub_row_is_striped():
@@ -169,7 +170,9 @@ def _sub_rows_by_client(spec):
 def test_header_keeps_the_template_name():
     spec = build_table_spec(_payload())
 
-    assert [g["sub"] for g in spec["header"]["groups"]] == [
+    assert [
+        g["sub"] for g in spec["header"]["groups"] if "grp-note" not in g["css"]
+    ] == [
         "Hrášková",
         "Kuracie",
         "Vege",
@@ -218,10 +221,10 @@ def test_client_row_carries_the_screen_metadata():
 
 def test_empty_routes_are_skipped():
     payload = _payload(
-        blocks=[
+        vydaje=[
             {
-                "id": 1,
-                "name": "Blok 1",
+                "key": "A",
+                "name": "Výdaj A",
                 "routes": [
                     {"id": 1, "name": "Prázdna trasa", "rows": []},
                     {"id": 2, "name": "Plná trasa", "rows": _payload()["rows"]},
@@ -264,7 +267,9 @@ def test_totals_row_uses_a_dash_for_empty_columns():
     """Obrazovka tu dnes píše „0", čo si protirečí s telom tabuľky — spec to zjednocuje."""
     spec = build_table_spec(_payload())
 
-    assert spec["footer"][-1]["cells"][-1]["text"] == "—"
+    # Posledná bunka je prázdna „Poznámka"; gramáž je tá pred ňou.
+    assert spec["footer"][-1]["cells"][-1]["css"] == "cell-note meal-sep"
+    assert spec["footer"][-1]["cells"][-2]["text"] == "—"
 
 
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
@@ -310,7 +315,13 @@ def _with_breakfast_and_snack():
 
 
 def _group_labels(spec):
-    return [group["text"] for group in spec["header"]["groups"]]
+    """Názvy stĺpcových skupín bez koncového stĺpca „Poznámka" — ten nie je
+    jedlo a s filtrom sekcií nemá nič spoločné."""
+    return [
+        group["text"]
+        for group in spec["header"]["groups"]
+        if "grp-note" not in group["css"]
+    ]
 
 
 def test_no_filter_means_the_complete_table():
@@ -429,3 +440,127 @@ def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
         "note-delivery",
         "summary-std",
     ]
+
+
+# ── Poznámkový stĺpec a pás jedál ────────────────────────────────────────────
+
+
+def test_note_column_is_empty_on_every_data_row():
+    """Prázdny stĺpec na ručné poznámky do vytlačenej tabuľky.
+
+    `meal-sep` na poslednom stĺpci je zámerne rovnaké ako medzi ostatnými
+    jedlami — bez neho by čiara medzi posledným jedlom (napr. Olovrant) a
+    Poznámkou chýbala, hoci medzi Raňajkami/Obedom/Olovrantom je.
+    """
+    spec = build_table_spec(_payload())
+
+    assert spec["header"]["groups"][-1]["text"] == "Poznámka"
+    data_rows = [
+        row
+        for row in spec["rows"] + spec["footer"]
+        # Pásy a poznámky idú cez celú šírku, tie posledný stĺpec nemajú.
+        if row["kind"]
+        in {"sub-row", "summary-std", "summary-diet", "portion-row", "total"}
+    ]
+    assert data_rows
+    for row in data_rows:
+        assert row["cells"][-1] == {"text": "", "css": "cell-note meal-sep"}
+
+
+def test_meal_band_merges_soup_with_main_course():
+    """Polievka a menu tvoria jeden „Obed"; raňajky a olovrant vlastné pásy."""
+    spec = build_table_spec(_with_breakfast_and_snack())
+
+    bands = [(band["text"], band["colspan"]) for band in spec["header"]["meals"]]
+    # Posledný pás patrí stĺpcu „Poznámka" a je bez názvu.
+    assert bands[-1][0] == ""
+    assert [text for text, _ in bands[:-1]] == [
+        "Obed",
+        "Raňajky / desiata",
+        "Olovrant",
+    ]
+    # Šírka pásov spolu sedí s počtom zložiek v hlavičke.
+    assert sum(span for _, span in bands) == len(spec["header"]["components"])
+
+
+# ── Filter výdajných bodov ───────────────────────────────────────────────────
+
+
+def _two_vydaje_payload():
+    """Dva výdajné body, každý s jednou prevádzkou — kuchyňa vydáva z dvoch miest."""
+    rows = _payload()["rows"]
+    return _payload(
+        vydaje=[
+            {
+                "key": "A",
+                "name": "Výdaj A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
+            },
+            {
+                "key": "B",
+                "name": "Výdaj B",
+                "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
+            },
+        ],
+        rows=[],
+        unassigned_rows=[],
+    )
+
+
+def _band_texts(spec):
+    return [
+        row["cells"][0]["text"] for row in spec["rows"] if "block-band" in row["css"]
+    ]
+
+
+def test_vydaj_filter_prints_a_single_dispatch_point():
+    spec = build_table_spec(_two_vydaje_payload(), vydaje=["B"])
+
+    assert _band_texts(spec) == ["Výdaj B"]
+    assert [vydaj["selected"] for vydaj in spec["vydaje"]] == [False, True]
+
+
+def test_unknown_or_empty_vydaj_selection_falls_back_to_everything():
+    payload = _two_vydaje_payload()
+
+    assert _band_texts(build_table_spec(payload)) == ["Výdaj A", "Výdaj B"]
+    assert _band_texts(build_table_spec(payload, vydaje=["nezmysel"])) == [
+        "Výdaj A",
+        "Výdaj B",
+    ]
+
+
+def test_every_vydaj_but_the_first_starts_on_a_new_page():
+    spec = build_table_spec(_two_vydaje_payload())
+
+    bands = [row for row in spec["rows"] if "block-band" in row["css"]]
+    assert "page-break" not in bands[0]["css"]
+    assert "page-break" in bands[1]["css"]
+
+
+def test_filtered_vydaj_totals_ignore_the_other_vydaj():
+    """Pri tlači jedného výdajného bodu nesmie v pätke svietiť gramáž celého dňa.
+
+    `data["totals"]` je predpočítaný súčet za celý deň — fixture mu dá hodnotu,
+    ktorú jeden blok dosiahnuť nemôže, takže je vidieť, či ju filtrovaná pätka
+    naozaj prepočítala z vlastných riadkov.
+    """
+    payload = _two_vydaje_payload()
+    payload["totals"] = [["9999.00"], ["9999.00"], []]
+
+    full = build_table_spec(payload)
+    single = build_table_spec(payload, vydaje=["A"])
+
+    assert full["footer"][-1]["cells"][1]["text"] == "9999"
+    # 8 porcií bez diét × 200 g polievky v jedinom výdaji.
+    assert single["footer"][-1]["cells"][1]["text"] == "1600"
+
+
+def test_unassigned_prevadzky_stay_out_of_a_filtered_print():
+    payload = _two_vydaje_payload()
+    payload["unassigned_rows"] = _payload()["rows"]
+
+    assert "Nepriradené prevádzky" in _band_texts(build_table_spec(payload))
+    assert "Nepriradené prevádzky" not in _band_texts(
+        build_table_spec(payload, vydaje=["A"])
+    )

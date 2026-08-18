@@ -48,7 +48,7 @@ def unset_roles(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("api", "0069_userprofile_role"),
+        ("api", "0072_userprofile_role"),
     ]
 
     operations = [

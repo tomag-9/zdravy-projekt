@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         # Prečíslované pri integrácii: rolová vetva obsadila 0069–0073.
-        ("api", "0073_demote_admins_to_admin_role"),
+        ("api", "0076_demote_admins_to_admin_role"),
     ]
 
     operations = [

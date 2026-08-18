@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ("api", "0074_prevadzkaclosure"),
+        ("api", "0077_prevadzkaclosure"),
     ]
 
     operations = [

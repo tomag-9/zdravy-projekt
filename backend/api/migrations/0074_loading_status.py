@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
-        ("api", "0070_backfill_user_roles"),
+        ("api", "0073_backfill_user_roles"),
     ]
 
     operations = [

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle, Send } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
@@ -9,6 +9,8 @@ import { logger } from '../../lib/logger';
 import { fetchAllPages } from '../../lib/pagination';
 import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
+import { LoginPasswordStatusBadge } from "./facility/LoginPasswordStatus";
+import { resendLoginInvite } from "./facility/loginInvite";
 import { PrevadzkaFields, type EdupageConnectionOption, type PrevadzkaForm } from "./facility/PrevadzkaFields";
 import { EMPTY_LOGIN } from "./facility/constants";
 import PrevadzkaClosures from "./facility/PrevadzkaClosures";
@@ -157,6 +159,9 @@ const ClientDetail: React.FC = () => {
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
   const [showResetConfirmation, setShowResetConfirmation] = useState(false);
+
+  // Resend pozvánky pre konkrétny login (pending/failed stav hesla)
+  const [resendingLoginId, setResendingLoginId] = useState<number | null>(null);
 
   // Objednávka si diéty pamätá pod názvom, nie pod ID. Katalóg preto hľadáme
   // podľa mena, aby sme k nemu vedeli dokresliť farbu ako inde v admine.
@@ -323,6 +328,18 @@ const ClientDetail: React.FC = () => {
     } finally {
       setSendingReset(false);
     }
+  };
+
+  const handleResendInvite = async (login: Login) => {
+    setResendingLoginId(login.user_id);
+    const result = await resendLoginInvite(apiFetch, API, login);
+    if (result.ok) {
+      success(`Pozvánka bola znova odoslaná na ${login.email}.`);
+      if (celok) await fetchCelok(celok.id);
+    } else {
+      toastError(result.detail || "Nepodarilo sa odoslať pozvánku.");
+    }
+    setResendingLoginId(null);
   };
 
   const handleDeleteOrder = async () => {
@@ -906,6 +923,17 @@ const ClientDetail: React.FC = () => {
                       <div className="lr-sub">{login.email}</div>
                     </div>
                     {login.is_edupage && <Badge tone="teal">EduPage</Badge>}
+                    <LoginPasswordStatusBadge status={login.password_status} />
+                    {(login.password_status === "pending" || login.password_status === "failed") && (
+                      <IconButton
+                        onClick={() => handleResendInvite(login)}
+                        disabled={resendingLoginId === login.user_id}
+                        title="Znova odoslať pozvánku na nastavenie hesla"
+                        aria-label={`Znova odoslať pozvánku pre ${login.email}`}
+                      >
+                        <Send />
+                      </IconButton>
+                    )}
                     <IconButton
                       onClick={() => openEditLogin(login)}
                       title="Upraviť login"

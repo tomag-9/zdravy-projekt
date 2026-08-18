@@ -39,7 +39,7 @@ def restore(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("api", "0072_section_permission"),
+        ("api", "0075_section_permission"),
     ]
 
     operations = [

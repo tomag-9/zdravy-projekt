@@ -9,7 +9,8 @@ class Migration(migrations.Migration):
     """
 
     dependencies = [
-        ("api", "0068_alter_eventlog_event_type"),
+        # Prečíslované pri zosúladení s develop, ktorý obsadil 0069–0071.
+        ("api", "0071_delivery_route_vydaj"),
     ]
 
     operations = [

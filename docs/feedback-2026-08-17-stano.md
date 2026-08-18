@@ -1,0 +1,76 @@
+# Spätná väzba z prevádzky — 17. 8. 2026 (Stanislav Šulc, ZP)
+
+Zdroj: WhatsApp konverzácia Stano Šulc ↔ Tomáš Magula, 17. 8. 2026.
+
+## Stav
+- Manuálne zadávanie počtov cez appku išlo **všetkým prevádzkam bez problémov**.
+- Jediný problém dňa: **Cvernička** — nová diéta z EduPage sa nenačítala, lebo v appke
+  nebola zadaná.
+- Stano pripravuje **zoznam škôlok na pozvanie do ďalšieho kola testovania** (čaká sa naň).
+
+## Požiadavky
+
+### 1. Rozdelenie tabuľky na 2 clustre (najväčšia vec)
+Kuchyňa teraz vydáva stravu **z dvoch výdajných bodov súčasne** — Cluster 1 a Cluster 2.
+Jedna veľká tabuľka sa má rozdeliť na dve samostatné tabuľky:
+- každý cluster má **svoje trasy vo vlastnom poradí**,
+- poradie škôlok v rámci clustera sa má dať nastaviť **manuálne**.
+
+**Ujasnené (Stano, 16:51):** existujúca trasa **„Extra“ = Cluster 2**. Čiže clustre sa
+mapujú na trasy, nie je to nová nezávislá dimenzia — treba len skupinu trás priradiť
+clusteru a tlačiť/zobrazovať per cluster.
+
+Poznámka Tomáša: karta na úpravu trás a poradia už existuje — otázka je, či stačí nad ňou
+postaviť priradenie do clusterov.
+
+### 2. Čitateľnosť tabuľky
+- Jasnejšie oddelenie trás: **väčšie písmo, celý riadok hlavičky trasy červený**.
+- Jasnejšie označiť/oddeliť **raňajky / obed / olovrant**.
+
+### 3. Tlač — výber čo sa tlačí
+Možnosť vybrať, čo ide do tlače: iba raňajky / iba obed / iba olovrant / iba menu B, …
+**Funkcia už existuje** (vyfiltruj v tabuľke → tlač vytlačí len to), ale treba ju spraviť
+**intuitívnejšou / viditeľnejšou** v UI.
+
+### 4. Konfigurovateľné názvy
+Možnosť **premenovať „hlavná zložka“** a podobné popisky stĺpcov/zložiek.
+
+### 5. Prázdny stĺpec „Poznámka“
+Pridať do tabuľky ešte jeden prázdny stĺpec „Poznámka“ (na ručné dopísanie pri tlači).
+
+### 6. Nové diéty z EduPage
+Cvernička načítala z EduPage diétu, ktorú appka nepozná.
+- Dnešný stav: **úpravy v EduPage sa musia dorobiť manuálne** → zmeny treba hlásiť čo najskôr.
+- Otvorená otázka od Stana: „ako to upravíme?“ → zvážiť aspoň **detekciu neznámej diéty
+  pri scrape + upozornenie**, aby to nezapadlo, namiesto tichého vynechania.
+
+## Stav riešenia (vetva `feat/edupage-neznama-dieta`)
+
+| Požiadavka | Stav |
+| --- | --- |
+| Neznáma diéta z EduPage | hotové — porcie sa započítajú, diéta sa flagne v admin prehľade, whitelist berie diéty z DB |
+| Rozdelenie na clustre (výdajné body) | hotové — **výdaj je vlastnosť trasy** (select pri trase v karte Rozvoz: Výdaj A / B / C). Trasy výdaja A tvoria tabuľku A, trasy výdaja B tabuľku B; prevádzka patrí do výdaja svojej trasy. V PDF ide každý výdaj na vlastný list. Migrácia hodila trasy z bloku Trasa extra do Výdaja B. |
+| Výber clustra v prehľade a v trasách | hotové — dropdown „Výdaj" v Prehľade (platí aj pre tlač) a filter v karte Rozvoz |
+| Premenovanie blokov / presun trás medzi blokmi | hotové — v karte Rozvoz (bloky ostávajú organizačná vec rozvozu) |
+| Poradie trás a škôlok | už existovalo v karte Rozvoz |
+| Zvýraznenie trasy | hotové — jemný červený pás s pilulkou (prvá verzia bola príliš krikľavá, stlmené) |
+| Oddelenie raňajky / obed / olovrant | hotové — nadradený pás jedál v hlavičke + hrubší predel stĺpcov |
+| Výber čo tlačiť | hotové — filter je jedna karta (Jedlá / Výdajný bod) s vetou, čo pôjde do PDF |
+| Premenovanie „hlavná zložka" | hotové — Katalóg jedál → Upraviť |
+| Stĺpec „Poznámka" | hotové — prázdny stĺpec na konci tabuľky |
+
+## Otvorené / na doriešenie
+- **Zoznam škôlok do ďalšieho testovania** — čaká sa na Stana.
+- **Pomenovanie výdajov**: dnes natvrdo „Výdaj A / B / C". Ak ich chce prevádzka volať
+  inak (napr. „Cluster 1"), treba z toho spraviť číselník s CRUD-om — teraz je to
+  zmena v kóde + migrácia.
+- **Neznáma diéta z EduPage** sa hlási, ale nezakladá sama. Ak sa ukáže, že hlásenie
+  nikto nečíta včas, ďalší krok je auto-založenie diéty ako neaktívnej + notifikácia.
+- **Prevádzka bez trasy** („Nepriradené prevádzky") nepatrí do žiadneho výdaja — v celej
+  tabuľke je vidieť na konci, pri tlači jedného výdaja sa nezobrazí. Ak by mali chodiť
+  aj do konkrétneho výdaja, treba im dať trasu.
+- **Bloky rozvozu** (Bežné trasy / Trasa extra) sú po zavedení výdajov už len
+  organizačné zoskupenie trás v karte Rozvoz; príznaky `include_in_*_summary` slúžia iba
+  na predvolený výdaj pri seedovaní novej trasy. Ak sa ukážu ako mätúce, dajú sa zrušiť.
+- **Denný report / e-mail** posiela celú tabuľku (každý výdaj na vlastnom liste), nie
+  samostatný súbor per výdaj — zatiaľ to nikto nežiadal.

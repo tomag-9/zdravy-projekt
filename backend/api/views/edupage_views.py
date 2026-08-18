@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from .. import sections
 from ..edupage_scraper import (
     EdupageScraper,
+    allowed_diet_names,
     build_prevadzka_matches,
     nest_order_data_by_category,
     prevadzky_without_match,
@@ -110,6 +111,7 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
             )
         results = []
         scraper = EdupageScraper()
+        allowed_diets = allowed_diet_names()
 
         for operation in operations:
             prevadzky = list(operation["prevadzky"])
@@ -146,6 +148,7 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
                     operation["url"],
                     target_date,
                     prevadzka_matches=matches if len(prevadzky) > 1 else None,
+                    allowed_diets=allowed_diets,
                 )
             except Exception:
                 logger.exception(
@@ -172,7 +175,10 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
                 )
                 continue
 
-            if result.warnings or result.unmapped_letters:
+            # Zápis blokujú len štrukturálne warningy. Neznáma diéta ho nezastaví —
+            # porcie sú započítané pod názvom z EduPage a vrátia sa v
+            # `unmapped_letters`, nech ju admin vie založiť v appke.
+            if result.warnings:
                 results.append(
                     {
                         "connection_id": operation["connection_id"],
@@ -240,7 +246,9 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
             return Response({"ok": False, "error": "url must start with https://"})
 
         try:
-            result = EdupageScraper().scrape(url, datetime.date.today())
+            result = EdupageScraper().scrape(
+                url, datetime.date.today(), allowed_diets=allowed_diet_names()
+            )
         except Exception:
             logger.warning("test_url failed for %s", url, exc_info=True)
             return Response({"ok": False, "error": EDUPAGE_TEST_URL_ERROR})

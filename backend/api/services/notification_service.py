@@ -22,6 +22,53 @@ OPERATIONS_MANUAL_PATH = (
 )
 OPERATIONS_MANUAL_FILENAME = "Navod-pre-prevadzky.pdf"
 
+#: Úvod prvého e-mailu (text klienta, 18. 8. 2026). Prevádzka dostane pri založení
+#: loginu jediný e-mail, takže vysvetlenie, PREČO má odteraz objednávať cez
+#: aplikáciu, patrí pred odkaz na nastavenie hesla — nie do samostatnej správy,
+#: ktorú nikto nepošle (rovnaká úvaha ako pri návode v prílohe). Text je klientov,
+#: meniť ho len po dohode s ním.
+ACCOUNT_SETUP_INTRO = """v Zdravom Projekte testujeme našu novú aplikáciu na \
+nahlasovanie stravy. V momente kedy budeme zabezpečovať stravu pre viac ako 4000 \
+stravníkov to už bude nevyhnutnosť. Od začiatku, kedy sme začali variť stravu pre \
+Vaše deti používame excelovskú tabuľku pretkanú vzorcami, rôznymi farbami na \
+rozoznanie škôlok a diét, súčtami a ešte inými poznámkami. Tabuľka mala prvé roky \
+iba pár strán no v Júni tohto roka to už bolo vyše 17 strán a 100 subjektov. Na \
+prípravu tejto tabuľky sú potrební dvaja ľudia, ktorí počas 1,5 hodiny nepretržite \
+zapisujú Vaše nahlásené počty z emailov, starej aplikácie, whatsappu a sms, \
+popríprade telefonátov. Kvôli neskoršiemu nahláseniu stravy nám potom mešká aj \
+tabuľka a to sa samozrejme môže odzrkadliť na meškaní stravy pri dodaní u Vás. \
+Preto potrebujeme všetky objednávky zlúčiť do jednej aplikácie.
+
+Nová aplikácia má Vám aj nám uľahčiť nahlasovanie stravy, zamedziť chybovosti a \
+ešte k tomu zrýchliť celý proces. Stále platí, že sa chceme zlepšovať vo všetkom \
+čo robíme.
+
+V tejto fáze testovania by sme Vás chceli poprosiť o pomoc. Nižšie si nájdete \
+prihlasovacie údaje do aplikácie plus základné informácie s popisom a návodom.
+
+Aplikácia je jednoduchá a všetky potrebné informácie na jej ovládanie sú aj priamo \
+v aplikácii. Funguje na Windows počítači / Macbooku aj na smartfónoch a tabletoch.
+
+Týmto by som Vás chcel poprosiť o nahlasovanie počtov tak ako nahlasujete doteraz, \
+ale od zajtra Vás k tomu poprosím tie isté počty vyplniť aj do aplikácie. Je to \
+kvôli našej internej kontrole a testovaniu. Stále platia časy uzatvorenia \
+objednávok (raňajky/desiata do 21:00 predchádzajúceho dňa, obedy/olovranty do 7:30 \
+daného dňa). Od spustenia aplikácie 1.9.2026 je však veľmi potrebné tieto časy \
+dodržiavať lebo aplikácia sa po tomto čase uzamkne a Vaše objednávky už nepošle a \
+automaticky nakopíruje počty z predchádzajúceho dňa.
+
+Zároveň Vás chcem poprosiť pred začiatkom roka nahlásiť všetky nové typy a \
+kombinácie diét, nakoľko potrebujeme tieto diéty doplniť do aplikácie. Bez tohto \
+kroku pre nich nebudete vedieť stravu objednať.
+
+Pre akékoľvek otázky nás prosím kontaktujte na 0903186328"""
+
+#: Podpis pod prvým e-mailom — text je klientov, tak sa aj podpíše.
+ACCOUNT_SETUP_SIGNATURE = (
+    "Vopred ďakujem a verím, že touto cestou zlepšíme kvalitu našich služieb.\n\n"
+    "Stanislav Šulc\nZdravý projekt"
+)
+
 
 class NotificationService:
     """Send transactional notification emails."""
@@ -58,13 +105,14 @@ class NotificationService:
             )
             message = (
                 f"Dobrý deň {user_operation_name(user)},\n\n"
+                f"{ACCOUNT_SETUP_INTRO}\n\n"
                 "Bol vám vytvorený účet v systéme Zdravý projekt.\n\n"
                 "Pre aktiváciu účtu si prosím nastavte heslo kliknutím na odkaz nižšie:\n"
                 f"{setup_url}\n\n"
                 "Odkaz je platný 7 dní.\n\n"
                 f"{manual_paragraph}"
                 "Ak ste o tento účet nežiadali, tento e-mail ignorujte.\n\n"
-                "S pozdravom, Tím Zdravý projekt"
+                f"{ACCOUNT_SETUP_SIGNATURE}"
             )
             from_email = getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com")
 

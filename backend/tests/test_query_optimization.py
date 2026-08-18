@@ -145,12 +145,14 @@ class TestAdminCelokViewSetQueries:
             assert len(payload) == 5
 
         query_count = len(ctx.captured_queries)
-        # <= 6: #416 added a bounded visible_portion_types prefetch per prevádzka.
+        # <= 8: #416 added a bounded visible_portion_types prefetch per prevádzka
+        # (6); the login password-status badge added one more bounded prefetch
+        # each for celok- and prevádzka-scoped accesses (+2 = 8), not per row.
         # Rolový systém (#482) ani granulárne práva (#484) hranicu nezdvihli:
         # profil aktéra prináša `ProfileAwareJWTAuthentication` tým istým
         # dotazom, ktorým sa načítava používateľ, a overridy sedia priamo na
         # ňom (`section_overrides`), takže neznamenajú ďalšie kolo do DB.
-        assert query_count <= 6, f"Expected <= 6 queries, got {query_count}."
+        assert query_count <= 8, f"Expected <= 8 queries, got {query_count}."
         prevadzky = {
             prevadzka["nazov"]: prevadzka
             for celok_payload in payload

@@ -25,6 +25,7 @@ from ..models import (
     Celok,
     DailyOrder,
     EventLog,
+    PasswordResetToken,
     Prevadzka,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
@@ -120,12 +121,23 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
             )
 
     def get_queryset(self) -> QuerySet:
-        prevadzka_accesses = ProfilePrevadzkaAccess.objects.select_related(
-            "profile__user"
-        ).order_by("pk")
-        celok_accesses = ProfileCelokAccess.objects.select_related(
-            "profile__user"
-        ).order_by("pk")
+        active_reset_tokens_prefetch = Prefetch(
+            "profile__user__password_reset_tokens",
+            queryset=PasswordResetToken.objects.filter(used=False).order_by(
+                "-created_at"
+            ),
+            to_attr="_active_reset_tokens",
+        )
+        prevadzka_accesses = (
+            ProfilePrevadzkaAccess.objects.select_related("profile__user")
+            .prefetch_related(active_reset_tokens_prefetch)
+            .order_by("pk")
+        )
+        celok_accesses = (
+            ProfileCelokAccess.objects.select_related("profile__user")
+            .prefetch_related(active_reset_tokens_prefetch)
+            .order_by("pk")
+        )
         prevadzky = (
             Prevadzka.objects.select_related("celok", "edupage_connection")
             .annotate(orders_count=Count("orders", distinct=True))
