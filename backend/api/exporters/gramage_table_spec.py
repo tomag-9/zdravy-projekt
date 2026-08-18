@@ -27,6 +27,24 @@ from .gramage_dashboard_export import (
 
 EMPTY = "—"
 
+# Prázdny stĺpec na ručné poznámky pri tlači (požiadavka prevádzky 17. 8. 2026).
+NOTE_COLUMN_LABEL = "Poznámka"
+
+# Ktoré stĺpcové skupiny patria pod ktoré jedlo. Kuchyňa čítala tabuľku ako jeden
+# pás stĺpcov a hľadala, kde končia raňajky a začína obed — hlavička preto nesie
+# ešte jednu, nadradenú úroveň s názvom jedla.
+_MEAL_BANDS: dict[str, str] = {
+    "breakfast_snack": "Raňajky / desiata",
+    "soup": "Obed",
+    "main_course": "Obed",
+    "afternoon_snack": "Olovrant",
+}
+_MEAL_BAND_CSS: dict[str, str] = {
+    "Raňajky / desiata": "mb-break",
+    "Obed": "mb-lunch",
+    "Olovrant": "mb-snack",
+}
+
 
 def _decimal_text(value: Decimal) -> str:
     """Číslo do bunky: bez chvostových núl, s desatinnou čiarkou.
@@ -92,8 +110,21 @@ def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> li
     return keep or list(range(len(col_groups)))
 
 
+def _note_cell() -> dict:
+    """Prázdna bunka posledného stĺpca — miesto na ručnú poznámku vo vytlačenej
+    tabuľke. Nesie `meal-sep`, rovnako ako hlavička nad ňou (`grp-note`/`comp-note`)
+    — inak by oddeľovacia čiara medzi posledným jedlom a Poznámkou chýbala, hoci
+    medzi všetkými ostatnými jedlami je. Vracia sa nová inštancia, nie zdieľaný
+    dict, nech si ju renderer nemôže omylom premutovať naprieč riadkami."""
+    return {"text": "", "css": "cell-note meal-sep"}
+
+
 def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[dict]:
-    """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami."""
+    """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami.
+
+    Na konci vždy pribudne prázdna bunka stĺpca „Poznámka" — je súčasťou každého
+    dátového riadku, takže ju dopĺňa jedno miesto namiesto každého volajúceho.
+    """
     cells = []
     for position, (group_index, group) in enumerate(groups):
         grams = []
@@ -112,6 +143,7 @@ def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[di
                         "css": f"cell-num mh-{hues[position]}-cell{separator}",
                     }
                 )
+    cells.append(_note_cell())
     return cells
 
 
@@ -132,7 +164,47 @@ def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     return cell
 
 
-def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
+def _filter_vydaje(all_vydaje: list[dict], selected: list[str] | None) -> list[int]:
+    """Indexy výdajných bodov, ktoré sa majú vykresliť.
+
+    Výdaj sa vyberá kľúčom (`A`, `B` …), nie názvom — názov je len popiska a môže
+    sa zmeniť. Prázdny výber aj neznámy kľúč padnú späť na celú tabuľku (rovnako
+    ako filter sekcií), aby preklep v URL nevrátil prázdnu stranu.
+    """
+    if not selected:
+        return list(range(len(all_vydaje)))
+    wanted = {str(key) for key in selected}
+    keep = [
+        index
+        for index, vydaj in enumerate(all_vydaje)
+        if str(vydaj.get("key") or "") in wanted
+    ]
+    return keep or list(range(len(all_vydaje)))
+
+
+def _totals_from_summary(summary: list[dict]) -> list[list]:
+    """Riadok CELKOM z už spočítaného súhrnu porcií.
+
+    `data["totals"]` platí pre celý deň. Keď sa tlačí len jeden výdajný bod, sedeli
+    by v pätke gramáže druhého bodu — preto sa pri filtrovaní celkom počíta z tých
+    istých riadkov, z ktorých sa počítal súhrn (`portion_summary(data, rows)`
+    plní gramáž do stĺpca vlastnej skupiny, viď `portion_summary`).
+    """
+    return [
+        (
+            (item.get("col_grams") or [])[index]
+            if index < len(item.get("col_grams") or [])
+            else []
+        )
+        for index, item in enumerate(summary)
+    ]
+
+
+def build_table_spec(
+    data: dict,
+    sections: list[str] | None = None,
+    vydaje: list[str] | None = None,
+) -> dict:
     """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky."""
     all_groups = data.get("col_groups") or []
     keep = _filter_col_groups(all_groups, sections)
@@ -140,16 +212,31 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
     hues = [meal_hue(g.get("meal"), g.get("variant")) for _, g in groups]
 
     total_components = sum(len(g.get("components") or []) for _, g in groups)
-    total_columns = 1 + total_components
+    # 1 = názov prevádzky/riadku, +1 = prázdny stĺpec „Poznámka" na konci.
+    total_columns = 1 + total_components + 1
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
 
-    blocks = data.get("blocks") or []
-    if blocks:
-        for block_index, block in enumerate(blocks):
-            rows.append(_band("block-band", block.get("name") or "", total_columns))
-            for route in block.get("routes") or []:
+    all_vydaje = data.get("vydaje") or []
+    keep_vydaje = _filter_vydaje(all_vydaje, vydaje)
+    shown_vydaje = [all_vydaje[index] for index in keep_vydaje]
+    # Filter na konkrétny výdajný bod je „vytlač túto tabuľku" — nepriradené
+    # prevádzky doň nepatria a v celej tabuľke sa aj tak ukážu.
+    filtered = len(shown_vydaje) != len(all_vydaje)
+    if shown_vydaje:
+        for position, vydaj in enumerate(shown_vydaje):
+            # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
+            # vlastný list, nech si ho jeho obsluha vezme celý.
+            rows.append(
+                _band(
+                    "block-band",
+                    vydaj.get("name") or "",
+                    total_columns,
+                    css="band block-band" + (" page-break" if position else ""),
+                )
+            )
+            for route in vydaj.get("routes") or []:
                 route_rows = route.get("rows") or []
                 # Prázdne trasy sa nevykresľujú — obrazovka ich tiež preskakuje.
                 if not route_rows:
@@ -159,39 +246,59 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
                     rows.extend(
                         _client_rows(client_row, data, groups, hues, total_columns)
                     )
-            block_rows = [
+            vydaj_rows = [
                 r
-                for route in block.get("routes") or []
+                for route in vydaj.get("routes") or []
                 for r in route.get("rows") or []
             ]
             rows.extend(
                 _portion_summary_rows(
-                    f"Súhrn porcií {block_index + 1}",
-                    portion_summary(data, block_rows),
+                    f"Súhrn porcií — {vydaj.get('name') or position + 1}",
+                    portion_summary(data, vydaj_rows),
                     keep,
                     groups,
                     hues,
                     total_columns,
                 )
             )
-        unassigned = data.get("unassigned_rows") or []
+        unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
-            rows.append(_band("block-band", "Nepriradené prevádzky", total_columns))
+            rows.append(
+                _band(
+                    "block-band",
+                    "Nepriradené prevádzky",
+                    total_columns,
+                    css="band block-band page-break",
+                )
+            )
             for client_row in unassigned:
                 rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
     else:
         for client_row in data.get("rows") or []:
             rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
 
+    if filtered:
+        visible_rows = [
+            row
+            for vydaj in shown_vydaje
+            for route in vydaj.get("routes") or []
+            for row in route.get("rows") or []
+        ]
+        footer_summary = portion_summary(data, visible_rows)
+        footer_totals = _totals_from_summary(footer_summary)
+    else:
+        footer_summary = portion_summary(data)
+        footer_totals = data.get("totals") or []
+
     footer = _portion_summary_rows(
         "Porcie celkom",
-        portion_summary(data),
+        footer_summary,
         keep,
         groups,
         hues,
         total_columns,
     )
-    footer.append(_totals_row(data, keep, groups, hues))
+    footer.append(_totals_row(footer_totals, keep, groups, hues))
 
     return {
         "date": data.get("date"),
@@ -209,7 +316,43 @@ def build_table_spec(data: dict, sections: list[str] | None = None) -> dict:
             }
             for index, group in enumerate(all_groups)
         ],
+        # Prepínače výdajných bodov — tiež zo VŠETKÝCH, nech sa odfiltrovaný dá
+        # zapnúť späť.
+        "vydaje": [
+            {
+                "key": str(vydaj.get("key") or ""),
+                "name": str(vydaj.get("name") or ""),
+                "selected": index in set(keep_vydaje),
+            }
+            for index, vydaj in enumerate(all_vydaje)
+        ],
     }
+
+
+def _meal_band_cells(groups: list[dict]) -> list[dict]:
+    """Nadradený pás hlavičky: Raňajky / Obed / Olovrant.
+
+    Susedné stĺpcové skupiny toho istého jedla sa zlejú do jednej bunky (polievka
+    a všetky menu tvoria jeden „Obed"), takže hranica medzi jedlami je vidieť ako
+    jeden švík, nie ako séria malých nadpisov.
+    """
+    cells: list[dict] = []
+    for _, group in groups:
+        span = len(group.get("components") or [])
+        if not span:
+            continue
+        label = _MEAL_BANDS.get(str(group.get("meal") or ""), "Ostatné")
+        if cells and cells[-1]["text"] == label:
+            cells[-1]["colspan"] += span
+            continue
+        css = _MEAL_BAND_CSS.get(label, "mb-other")
+        separator = " meal-sep" if cells else ""
+        cells.append(
+            {"text": label, "css": f"mealband {css}{separator}", "colspan": span}
+        )
+    if cells:
+        cells.append({"text": "", "css": "mealband mb-note meal-sep", "colspan": 1})
+    return cells
 
 
 def _build_header(groups: list[dict], hues: list[str]) -> dict:
@@ -237,17 +380,27 @@ def _build_header(groups: list[dict], hues: list[str]) -> dict:
                     "css": f"comp mh-{hues[position]}-2{component_separator}",
                 }
             )
+    group_cells.append(
+        {
+            "text": NOTE_COLUMN_LABEL,
+            "sub": "",
+            "css": "grp grp-note meal-sep",
+            "colspan": 1,
+        }
+    )
+    component_cells.append({"text": "", "sub": "", "css": "comp comp-note meal-sep"})
     return {
         "corner": "Prevádzka / Riadok",
+        "meals": _meal_band_cells(groups),
         "groups": group_cells,
         "components": component_cells,
     }
 
 
-def _band(kind: str, text: str, total_columns: int) -> dict:
+def _band(kind: str, text: str, total_columns: int, css: str = "band") -> dict:
     return {
         "kind": kind,
-        "css": "band",
+        "css": css,
         "cells": [{"text": text, "colspan": total_columns}],
     }
 
@@ -436,9 +589,8 @@ def _portion_summary_rows(
 
 
 def _totals_row(
-    data: dict, keep: list[int], groups: list[dict], hues: list[str]
+    totals: list, keep: list[int], groups: list[dict], hues: list[str]
 ) -> dict:
-    totals = data.get("totals") or []
     cells = []
     for position, (group_index, group) in enumerate(groups):
         values = totals[group_index] if group_index < len(totals) else []
@@ -447,6 +599,7 @@ def _totals_row(
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             cells.append({"text": text or EMPTY, "css": separator.strip()})
+    cells.append(_note_cell())
     return {
         "kind": "total",
         "css": "total",

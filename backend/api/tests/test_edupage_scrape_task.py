@@ -50,6 +50,51 @@ def edupage_user(db):
 
 
 @pytest.mark.django_db
+def test_allowed_diet_names_includes_active_db_diets():
+    """Diéta založená v appke rozšíri whitelist scrapu bez nasadenia kódu;
+    neaktívna sa doň nedostane."""
+    from api.edupage_scraper import ALLOWED_DIET_NAMES, allowed_diet_names
+    from api.models import Diet
+
+    Diet.objects.create(name="NO KAKAO")
+    Diet.objects.create(name="ZRUŠENÁ", is_active=False)
+
+    names = allowed_diet_names()
+
+    assert "NO KAKAO" in names
+    assert "ZRUŠENÁ" not in names
+    assert ALLOWED_DIET_NAMES <= names
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_persists_unmapped_diets_flag(edupage_user, monkeypatch):
+    """Neznáma diéta sa dostane do scrape_flags, nech ju admin prehľad ukáže —
+    inak by o nej nikto nevedel (Cvernička, 17. 8. 2026)."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 5}, "diets": {"NO KAKAO": 5}}},
+            warnings=[],
+            unmapped_letters=["N:NO KAKAO"],
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    order = DailyOrder.objects.get(user=edupage_user, date=target_date)
+    assert order.scrape_flags["unmapped_diets"] == ["N:NO KAKAO"]
+    # a hlavne: porcie sa naozaj zapísali
+    assert order.data
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_uses_next_workday_for_day_before_meal(
     edupage_user, monkeypatch
 ):
@@ -63,7 +108,7 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
     today = datetime.date(2026, 6, 29)  # Monday
     seen_dates = []
 
-    def fake_scrape(self, url, target_date, prevadzka_matches=None):
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
         seen_dates.append(target_date)
         return _scrape_result(
             order_data={
@@ -107,7 +152,9 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def flagged_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def flagged_scrape(
+        self, url, scrape_date, prevadzka_matches=None, allowed_diets=None
+    ):
         return _scrape_result(
             order_data={"lunch": {"menuCounts": {"A": 5}}},
             warnings=[],
@@ -122,9 +169,12 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
     assert order.scrape_flags == {
         "attention": ["A:KZ?"],
         "config_notes": ["olovrant chýba"],
+        "unmapped_diets": [],
     }
 
-    def clean_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def clean_scrape(
+        self, url, scrape_date, prevadzka_matches=None, allowed_diets=None
+    ):
         return _scrape_result(
             order_data={"lunch": {"menuCounts": {"A": 5}}}, warnings=[]
         )
@@ -133,7 +183,11 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
     scrape_edupage_orders_task.run(date_str=target_date.isoformat())
 
     order.refresh_from_db()
-    assert order.scrape_flags == {"attention": [], "config_notes": []}
+    assert order.scrape_flags == {
+        "attention": [],
+        "config_notes": [],
+        "unmapped_diets": [],
+    }
 
 
 @pytest.mark.django_db
@@ -175,7 +229,7 @@ def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
         return _scrape_result(
             order_data={"lunch": {"menuCounts": {"A": 8}}},
             order_data_by_prevadzka={
@@ -184,6 +238,8 @@ def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
             },
             attention=["A:ZD?"],
             attention_by_prevadzka={"Jolly 1": ["A:ZD?"]},
+            unmapped_letters=["Z:Nová diéta"],
+            unmapped_by_prevadzka={"Jolly 1": ["Z:Nová diéta"]},
             config_notes=["olovrant chýba"],
             warnings=[],
         )
@@ -196,9 +252,14 @@ def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
     assert o1.scrape_flags == {
         "attention": ["A:ZD?"],
         "config_notes": ["olovrant chýba"],
+        "unmapped_diets": ["Z:Nová diéta"],
     }
     # Jolly 2 nemá flag, ale zdieľané config_notes áno.
-    assert o2.scrape_flags == {"attention": [], "config_notes": ["olovrant chýba"]}
+    assert o2.scrape_flags == {
+        "attention": [],
+        "config_notes": ["olovrant chýba"],
+        "unmapped_diets": [],
+    }
 
 
 @pytest.mark.django_db
@@ -241,7 +302,7 @@ def test_edupage_scrape_records_explicit_zero_when_structurally_empty(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
         return _scrape_result(order_data={}, warnings=[], unmapped_letters=[])
 
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
@@ -273,7 +334,7 @@ def test_edupage_scrape_skips_without_recording_on_real_scrape_failure(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
         return _scrape_result(
             order_data={},
             warnings=["prehlad block not found in HTML"],
@@ -304,7 +365,7 @@ def test_edupage_scrape_skips_without_recording_on_unmapped_letters(
     )
     target_date = datetime.date(2026, 6, 30)
 
-    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
         return _scrape_result(order_data={}, warnings=[], unmapped_letters=["Z:Z"])
 
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
@@ -340,7 +401,7 @@ def test_edupage_scrape_merges_requested_meals_without_replacing_existing_day(
         },
     )
 
-    def fake_scrape(self, url, scrape_date, prevadzka_matches=None):
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
         assert scrape_date == target_date
         return _scrape_result(
             order_data={

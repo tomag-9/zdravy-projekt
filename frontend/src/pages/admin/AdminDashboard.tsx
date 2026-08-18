@@ -4,7 +4,7 @@ import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { PageHead, Button, Card, Badge, Empty } from "./ui";
+import { PageHead, Button, Card, Badge, Empty, Select } from "./ui";
 import { DietColorSwatch } from "./DietColorSwatch";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -127,11 +127,21 @@ interface SpecSection {
   selected: boolean;
 }
 
+interface SpecVydaj {
+  key: string;
+  name: string;
+  selected: boolean;
+}
+
 interface TableSpec {
   total_columns: number;
   sections: SpecSection[];
+  /** Výdajné body kuchyne — každý sa dá zobraziť a vytlačiť sám. */
+  vydaje: SpecVydaj[];
   header: {
     corner: string;
+    /** Nadradený pás hlavičky: Raňajky / Obed / Olovrant. */
+    meals?: Array<{ text: string; css: string; colspan: number }>;
     groups: Array<{ text: string; sub: string; css: string; colspan: number }>;
     components: Array<{ text: string; sub: string; css: string }>;
   };
@@ -243,13 +253,19 @@ const AdminDashboard: React.FC = () => {
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
   const [sections, setSections] = useState<string[]>([]);
+  // Prázdny výber = všetky výdajné body; inak práve ten jeden vybratý.
+  const [vydaj, setVydaj] = useState<string>("");
 
-  // Ktoré sekcie (raňajky / polievka / menu / olovrant) sa zobrazujú. Prázdny
-  // výber = kompletná tabuľka. Rovnaký filter dostane obrazovka aj PDF, takže
-  // vytlačíš presne to, čo vidíš.
+  // Ktoré sekcie (raňajky / polievka / menu / olovrant) a ktoré výdajné body sa
+  // zobrazujú. Prázdny výber = kompletná tabuľka. Rovnaký filter dostane
+  // obrazovka aj PDF, takže vytlačíš presne to, čo vidíš.
   const sectionQuery = useMemo(
-    () => sections.map((key) => `&section=${encodeURIComponent(key)}`).join(""),
-    [sections],
+    () =>
+      [
+        ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
+        ...(vydaj ? [`&vydaj=${encodeURIComponent(vydaj)}`] : []),
+      ].join(""),
+    [sections, vydaj],
   );
 
   const fetchData = useCallback(async () => {
@@ -464,22 +480,24 @@ const AdminDashboard: React.FC = () => {
 
         {!loading && data && hasData && (
           <>
-            <SectionFilter
+            <PrintFilter
               sections={data.spec.sections}
-              onToggle={(key) =>
-                setSections((current) => {
-                  // Prázdny výber znamená „všetko", takže prvé odkliknutie musí
-                  // vychádzať zo skutočne zobrazených sekcií, nie z prázdna.
-                  const base = current.length
-                    ? current
-                    : data.spec.sections.map((section) => section.key);
-                  const next = base.includes(key)
-                    ? base.filter((item) => item !== key)
-                    : [...base, key];
-                  return next.length === data.spec.sections.length ? [] : next;
-                })
+              vydaje={data.spec.vydaje ?? []}
+              vydaj={vydaj}
+              onToggleSection={(key) =>
+                setSections((current) =>
+                  toggleSelection(
+                    current,
+                    key,
+                    data.spec.sections.map((section) => section.key),
+                  ),
+                )
               }
-              onReset={() => setSections([])}
+              onVydajChange={setVydaj}
+              onReset={() => {
+                setSections([]);
+                setVydaj("");
+              }}
             />
             <GramageTable data={data} />
           </>
@@ -633,34 +651,85 @@ const OrderCountsTable: React.FC<{ report: OrderReport }> = ({ report }) => {
   );
 };
 
-// ── Filter sekcií ─────────────────────────────────────────────────────────────
+// ── Filter zobrazenia a tlače ────────────────────────────────────────────────
 // Rovnaký výber ide na obrazovku aj do PDF — čo vidíš, to vytlačíš.
 
-const SectionFilter: React.FC<{
-  sections: SpecSection[];
+/**
+ * Prepnutie jednej položky vo filtri. Prázdny výber znamená „všetko", takže
+ * prvé odkliknutie musí vychádzať zo skutočne zobrazených položiek, nie z
+ * prázdna; a keď sú nakoniec vybraté všetky, vraciame sa na prázdno.
+ */
+const toggleSelection = (current: string[], value: string, all: string[]): string[] => {
+  const base = current.length ? current : all;
+  const next = base.includes(value) ? base.filter((item) => item !== value) : [...base, value];
+  return next.length === all.length ? [] : next;
+};
+
+const FilterRow: React.FC<{
+  label: string;
+  items: Array<{ key: string; label: string; selected: boolean }>;
   onToggle: (key: string) => void;
+}> = ({ label, items, onToggle }) => (
+  <div className="row">
+    <span className="lbl">{label}</span>
+    {items.map((item) => (
+      <button
+        key={item.key}
+        type="button"
+        className={`chip${item.selected ? " on" : ""}`}
+        aria-pressed={item.selected}
+        onClick={() => onToggle(item.key)}
+      >
+        {item.label}
+      </button>
+    ))}
+  </div>
+);
+
+const PrintFilter: React.FC<{
+  sections: SpecSection[];
+  vydaje: SpecVydaj[];
+  vydaj: string;
+  onToggleSection: (key: string) => void;
+  onVydajChange: (key: string) => void;
   onReset: () => void;
-}> = ({ sections, onToggle, onReset }) => {
-  const allSelected = sections.every((section) => section.selected);
+}> = ({ sections, vydaje, vydaj, onToggleSection, onVydajChange, onReset }) => {
+  const allSelected = sections.every((section) => section.selected) && !vydaj;
   return (
     <div className="zpa-section-filter">
-      <span className="lbl">Zobraziť</span>
-      {sections.map((section) => (
-        <button
-          key={section.key}
-          type="button"
-          className={`chip${section.selected ? " on" : ""}`}
-          aria-pressed={section.selected}
-          onClick={() => onToggle(section.key)}
-        >
-          {section.label}
-        </button>
-      ))}
-      {!allSelected && (
-        <button type="button" className="reset" onClick={onReset}>
-          Zobraziť všetko
-        </button>
+      <FilterRow
+        label="Jedlá"
+        items={sections.map((section) => ({ ...section, key: section.key }))}
+        onToggle={onToggleSection}
+      />
+      {vydaje.length > 1 && (
+        <div className="row">
+          <span className="lbl">Výdaj</span>
+          <Select
+            value={vydaj}
+            onChange={(e) => onVydajChange(e.target.value)}
+            style={{ width: "auto" }}
+            aria-label="Výdajný bod"
+          >
+            <option value="">Všetky výdaje</option>
+            {vydaje.map((item) => (
+              <option key={item.key} value={item.key}>{item.name}</option>
+            ))}
+          </Select>
+        </div>
       )}
+      <div className="row">
+        <span className="hint">
+          {allSelected
+            ? "Tlačí sa celá tabuľka. Odkliknutím vyberieš, čo sa má zobraziť aj vytlačiť."
+            : "Do PDF ide presne tento výber."}
+        </span>
+        {!allSelected && (
+          <button type="button" className="reset" onClick={onReset}>
+            Zobraziť všetko
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -760,6 +829,8 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
     );
   };
 
+  const mealBands = spec.header.meals ?? [];
+
   // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení.
   const visibleRows = spec.rows.filter(
     (row) => !row.collapsible || expandedClients.includes(row.group_id ?? ""),
@@ -770,8 +841,20 @@ const GramageTable: React.FC<{ data: GramageDashboard }> = ({ data }) => {
       <div className="zpa-table-wrap zpa-gram-wrap">
         <table className="zpa-gram">
           <thead>
+            {mealBands.length > 0 && (
+              <tr>
+                <th className="corner" rowSpan={3}>{spec.header.corner}</th>
+                {mealBands.map((band, index) => (
+                  <th key={index} className={band.css} colSpan={band.colspan}>
+                    {band.text}
+                  </th>
+                ))}
+              </tr>
+            )}
             <tr>
-              <th className="corner" rowSpan={2}>{spec.header.corner}</th>
+              {mealBands.length === 0 && (
+                <th className="corner" rowSpan={2}>{spec.header.corner}</th>
+              )}
               {spec.header.groups.map((group, index) => (
                 <th key={index} className={group.css} colSpan={group.colspan}>
                   {group.text}<small>{group.sub}</small>

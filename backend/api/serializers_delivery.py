@@ -33,6 +33,7 @@ class DeliveryRouteSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "block",
+            "vydaj",
             "name",
             "driver",
             "departure_time",

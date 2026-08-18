@@ -162,14 +162,28 @@ def render_table(spec: dict) -> str:
         f"<small>{escape(str(component.get('sub') or ''))}</small></th>"
         for component in header.get("components") or []
     )
+    meals = "".join(
+        f"<th{_attrs(**{'class': band.get('css'), 'colspan': band.get('colspan')})}>"
+        f"{escape(str(band.get('text') or ''))}</th>"
+        for band in header.get("meals") or []
+    )
     body = "".join(_row(row) for row in spec.get("rows") or [])
     footer = "".join(_row(row) for row in spec.get("footer") or [])
 
+    # Hlavička má tri poschodia (jedlo → stĺpcová skupina → zložka). Rohová bunka
+    # ich preklenie všetky, preto sa `rowspan` odvíja od toho, či spec pás jedál
+    # nesie — bez neho ostáva hlavička dvojposchodová.
+    corner = (
+        f'<th class="corner" rowspan="{3 if meals else 2}">'
+        f"{escape(str(header.get('corner') or ''))}</th>"
+    )
+    head_rows = ([f"<tr>{corner}{meals}</tr>"] if meals else []) + [
+        f"<tr>{groups}</tr>" if meals else f"<tr>{corner}{groups}</tr>",
+        f"<tr>{components}</tr>",
+    ]
     return (
         '<table class="zpa-gram">'
-        f'<thead><tr><th class="corner" rowspan="2">'
-        f"{escape(str(header.get('corner') or ''))}</th>{groups}</tr>"
-        f"<tr>{components}</tr></thead>"
+        f"<thead>{''.join(head_rows)}</thead>"
         f"<tbody>{body}</tbody>"
         f"<tfoot>{footer}</tfoot>"
         "</table>"

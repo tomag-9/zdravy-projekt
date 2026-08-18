@@ -74,7 +74,7 @@ class TestScrapeLogsItsRun:
         monkeypatch.setattr(timezone, "localdate", lambda: MONDAY)
         monkeypatch.setattr(
             "api.edupage_scraper.EdupageScraper.scrape",
-            lambda self, url, target_date, prevadzka_matches=None: ScrapeResult(
+            lambda self, url, target_date, prevadzka_matches=None, allowed_diets=None: ScrapeResult(
                 date=target_date, order_data={"lunch": {"menuCounts": {"A": 5}}}
             ),
         )
@@ -99,7 +99,7 @@ class TestScrapeLogsItsRun:
         _settings()
         monkeypatch.setattr(timezone, "localdate", lambda: MONDAY)
 
-        def boom(self, url, target_date, prevadzka_matches=None):
+        def boom(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
             raise RuntimeError("EduPage nedostupné")
 
         monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", boom)
