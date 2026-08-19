@@ -10,6 +10,8 @@ DEMO_ADMIN_PASSWORD = "admin"
 DEMO_OPERATION_EMAIL = "prevadzka@example.com"
 DEMO_OPERATION_PASSWORD = "prevadzka"
 DEMO_OPERATION_CELOK = "Demo prevádzka"
+DEMO_SPRAVCA_EMAIL = "spravca@example.com"
+DEMO_SPRAVCA_PASSWORD = "spravca"
 DEMO_KUCHYNA_EMAIL = "kuchyna@example.com"
 DEMO_KUCHYNA_PASSWORD = "kuchyna"
 # Demo login je zámerne viac-prevádzkový: jedno-prevádzkový celok nikdy
@@ -128,7 +130,44 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f'Operation user "{DEMO_OPERATION_EMAIL}" already exists')
 
+        self._ensure_demo_spravca()
         self._ensure_demo_kuchyna()
+
+    def _ensure_demo_spravca(self) -> None:
+        """Demo login pre rolu Admin (#483).
+
+        Bez neho sa nedá vyskúšať okresanie práv: `admin@example.com` je
+        superadmin, takže vidí všetko a rozdiel oproti adminovi nie je vidieť.
+        """
+        from api.models import UserProfile
+
+        user, created = self._get_or_create_demo_user(
+            email=DEMO_SPRAVCA_EMAIL,
+            legacy_username="spravca",
+            is_staff=True,
+            is_superuser=False,
+        )
+        user.is_staff = True
+        user.is_superuser = False
+        user.set_password(DEMO_SPRAVCA_PASSWORD)
+        user.save()
+
+        profile = getattr(user, "profile", None)
+        if profile is None:
+            profile = UserProfile(user=user, company_name="Demo admin")
+            profile.role = UserProfile.Role.ADMIN
+            profile._skip_default_facility = True
+            profile.save()
+        elif profile.role != UserProfile.Role.ADMIN:
+            profile.role = UserProfile.Role.ADMIN
+            profile.save(update_fields=["role"])
+
+        if created:
+            self.stdout.write(
+                self.style.SUCCESS(f'Created admin user "{DEMO_SPRAVCA_EMAIL}"')
+            )
+        else:
+            self.stdout.write(f'Admin user "{DEMO_SPRAVCA_EMAIL}" already exists')
 
     def _ensure_demo_kuchyna(self) -> None:
         """Demo login pre rolu Kuchyňa (#486).
