@@ -24,6 +24,7 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 PERIODIC_TASK_NAME_AUTO_ORDER = "auto-order-daily"
+PERIODIC_TASK_NAME_EVENT_LOG_PURGE = "event-log-purge-daily"
 PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 # Reports must land *after* the Edupage scrape, which now runs exactly at the

@@ -268,7 +268,7 @@ export default function App() {
                 <Route path="settings" element={<SuperadminRoute><Section section={SECTION.nastavenia}><SystemSettings /></Section></SuperadminRoute>} />
                 <Route path="push-notifications" element={<Section section={SECTION.notifikacie}><PushNotificationsAdmin /></Section>} />
                 <Route path="holidays" element={<Section section={SECTION.volneDni}><HolidaysAdmin /></Section>} />
-                <Route path="logs" element={<SuperadminRoute><Section section={SECTION.logy}><AdminLogs /></Section></SuperadminRoute>} />
+                <Route path="logs" element={<Section section={SECTION.udalosti}><AdminLogs /></Section>} />
               </Route>
 
               {/* Kuchyňa Routes */}

@@ -179,10 +179,11 @@ class TestBackfillInvariants:
 class TestSuperadminOnlySections:
     """#483 — správa loginov, logy a systémové nastavenia sú len pre superadmina."""
 
+    # `event-logs` tu zámerne NIE JE — audit vidí aj admin, viď
+    # `TestEventLogVsSystemLogs` nižšie.
     SUPERADMIN_ONLY = [
         "/api/admin/users/",
         "/api/admin/logs/",
-        "/api/admin/event-logs/",
     ]
 
     @pytest.mark.parametrize("url", SUPERADMIN_ONLY)
@@ -308,3 +309,34 @@ class TestNoOpProperty:
         res = admin_client.get("/api/user/profile/")
         assert res.status_code == 200
         assert res.data["role"] == roles.SUPERADMIN
+
+
+class TestEventLogVsSystemLogs:
+    """Audit vidí admin, systémové logy nie (#483).
+
+    Rozdiel je vecný: „Udalosti" hovoria, kto čo v systéme zmenil — to admin
+    pri svojej práci potrebuje. Systémové logy sú prevádzková diagnostika
+    a ostávajú superadminovi.
+    """
+
+    def test_admin_reads_the_audit_trail(self, plain_admin_client):
+        assert plain_admin_client.get("/api/admin/event-logs/").status_code == 200
+
+    def test_admin_cannot_read_system_logs(self, plain_admin_client):
+        assert plain_admin_client.get("/api/admin/logs/").status_code == 403
+
+    def test_superadmin_reads_both(self, admin_client):
+        assert admin_client.get("/api/admin/event-logs/").status_code == 200
+        assert admin_client.get("/api/admin/logs/").status_code == 200
+
+    def test_client_reads_neither(self, authenticated_client):
+        assert authenticated_client.get("/api/admin/event-logs/").status_code == 403
+        assert authenticated_client.get("/api/admin/logs/").status_code == 403
+
+    def test_admin_sees_the_audit_section_but_not_system_logs(self):
+        from api import access, roles, sections
+
+        user = _user("audit@example.com", role=roles.ADMIN)
+        levels = access.effective_map(user)
+        assert sections.UDALOSTI in levels
+        assert sections.LOGY not in levels

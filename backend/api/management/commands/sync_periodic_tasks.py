@@ -52,6 +52,42 @@ class Command(BaseCommand):
             help="Delete all daily report tasks (use with caution).",
         )
 
+    def _ensure_event_log_purge(self) -> None:
+        """Denné mazanie starých udalostí (retencia 7 dní).
+
+        Nezávisí od `GlobalSettings` ani od deadlinov, preto sa zakladá zvlášť
+        a bezpodmienečne — inak by tabuľka udalostí rástla donekonečna.
+        """
+        import json
+
+        from django.conf import settings as dj_settings
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        from api.signals import PERIODIC_TASK_NAME_EVENT_LOG_PURGE
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute=30,
+            hour=3,
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+            timezone=dj_settings.TIME_ZONE,
+        )
+        PeriodicTask.objects.update_or_create(
+            name=PERIODIC_TASK_NAME_EVENT_LOG_PURGE,
+            defaults={
+                "task": "api.tasks.purge_old_event_logs_task",
+                "crontab": schedule,
+                "args": json.dumps([]),
+                "kwargs": json.dumps({}),
+                "enabled": True,
+                "description": "Zmaže záznamy udalostí staršie než 7 dní.",
+            },
+        )
+        self.stdout.write(
+            self.style.SUCCESS("Event log purge task synced (denne 03:30)")
+        )
+
     def handle(self, *args, **options):
         from django_celery_beat.models import PeriodicTask
 
@@ -60,6 +96,8 @@ class Command(BaseCommand):
             PERIODIC_TASK_NAME_REPORT_ALL,
             PERIODIC_TASK_NAME_REPORT_BREAKFAST,
         )
+
+        self._ensure_event_log_purge()
 
         # Get GlobalSettings
         try:

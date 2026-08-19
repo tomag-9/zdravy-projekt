@@ -36,7 +36,7 @@ const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/diets', label: 'Diéty', icon: Salad, section: SECTION.diety },
     { kind: 'item', to: '/admin/settings', label: 'Systémové nastavenia', icon: Sliders, superadminOnly: true, section: SECTION.nastavenia },
     { kind: 'item', to: '/admin/holidays', label: 'Voľné dni', icon: Umbrella, section: SECTION.volneDni },
-    { kind: 'item', to: '/admin/logs', label: 'Logy', icon: Scroll, superadminOnly: true, section: SECTION.logy },
+    { kind: 'item', to: '/admin/logs', label: 'Udalosti', icon: Scroll, section: SECTION.udalosti },
     { kind: 'section', label: 'Komunikácia', icon: Bell },
     { kind: 'item', to: '/admin/push-notifications', label: 'Notifikácie', icon: Bell, section: SECTION.notifikacie },
     { kind: 'section', label: 'Oprávnenia', icon: Shield },
