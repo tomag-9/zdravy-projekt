@@ -13,9 +13,20 @@ from .exceptions import (
     ClosedDayOrderModificationError,
     HolidayOrderNotAllowedError,
     OrderDeadlinePassedError,
+    PrevadzkaClosureOrderNotAllowedError,
 )
-from .models import ClosedDay, DailyOrder, Diet, Holiday, PortionType, Prevadzka
+from .models import (
+    ClosedDay,
+    DailyOrder,
+    Diet,
+    Holiday,
+    PortionType,
+    Prevadzka,
+    PrevadzkaClosure,
+)
 from .order_data import OrderData, safe_count
+from .roles import is_admin_or_above
+from .scheduling import is_prevadzka_closed
 from .services.prevadzka_service import (
     PrevadzkaNedostupna,
     PrevadzkaNejednoznacna,
@@ -313,18 +324,34 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _enforce_holiday_restriction(
         self, user: Any, status: str, date: datetime.date
     ) -> None:
-        """Disallow non-staff, non-draft orders on holidays.
+        """Disallow non-admin, non-draft orders on holidays.
 
-        Staff bypass is keyed off the authenticated actor (request.user) so
-        that staff acting on behalf of a client can still submit on holidays.
-        Falls back to the order owner's is_staff if no request context exists.
+        Obídenie je viazané na prihláseného aktéra (request.user), aby admin
+        konajúci za klienta vedel objednať aj na sviatok. Rola, nie `is_staff` —
+        kuchyňa toto obísť nesmie (#482).
+        Falls back to the order owner's role if no request context exists.
+        """
+        request = self.context.get("request")
+        actor = getattr(request, "user", None)
+        acting_admin = is_admin_or_above(actor) or is_admin_or_above(user)
+        if not acting_admin and status != "draft":
+            if Holiday.objects.filter(date=date).exists():
+                raise HolidayOrderNotAllowedError()
+
+    def _enforce_prevadzka_closure(
+        self, user: Any, status: str, date: datetime.date, prevadzka: Prevadzka
+    ) -> None:
+        """Ako `_enforce_holiday_restriction`, ale pre voľno JEDNEJ prevádzky (#490).
+
+        Samostatná metóda, lebo prevádzku pozná až `_resolve_prevadzka()` —
+        globálne voľno sa dá overiť skôr, toto až po nej.
         """
         request = self.context.get("request")
         actor = getattr(request, "user", None)
         is_staff = getattr(actor, "is_staff", False) or getattr(user, "is_staff", False)
         if not is_staff and status != "draft":
-            if Holiday.objects.filter(date=date).exists():
-                raise HolidayOrderNotAllowedError()
+            if is_prevadzka_closed(date, prevadzka):
+                raise PrevadzkaClosureOrderNotAllowedError()
 
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
@@ -348,12 +375,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 {"user": "User must be provided in request context or validated data."}
             )
         input_status = validated_data.get("status", "submitted")
-        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+        is_admin = is_admin_or_above(getattr(request, "user", None))
 
         self._enforce_day_open(validated_data["date"])
         self._enforce_holiday_restriction(user, input_status, validated_data["date"])
 
         prevadzka = self._resolve_prevadzka(user, validated_data)
+        self._enforce_prevadzka_closure(
+            user, input_status, validated_data["date"], prevadzka
+        )
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -361,7 +391,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             existing_order = DailyOrder.objects.filter(
                 prevadzka=prevadzka, date=validated_data["date"]
             ).first()
-            if not is_staff:
+            if not is_admin:
                 self._validate_deadlines(
                     validated_data["date"],
                     validated_data.get("data", {}),
@@ -386,7 +416,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             .only("data")
             .first()
         )
-        if not is_staff:
+        if not is_admin:
             self._validate_deadlines(
                 validated_data["date"],
                 new_data,
@@ -441,7 +471,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     def _resolve_prevadzka(user, validated_data: Dict[str, Any]) -> Prevadzka:
         """Za ktorú prevádzku sa objednáva. Pri viacerých ju musí klient poslať."""
         explicit = validated_data.pop("prevadzka", None)
-        if explicit is not None and getattr(user, "is_staff", False):
+        if explicit is not None and is_admin_or_above(user):
             return explicit
         try:
             return vyber_prevadzku(user, explicit.pk if explicit else None)
@@ -457,12 +487,16 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         new_data = validated_data.get("data", instance.data)
         request = self.context.get("request")
         user = validated_data.get("user") or instance.user
-        is_staff = getattr(getattr(request, "user", None), "is_staff", False)
+        is_admin = is_admin_or_above(getattr(request, "user", None))
 
         self._enforce_day_open(instance.date)
         self._enforce_holiday_restriction(user, input_status, instance.date)
+        if instance.prevadzka_id:
+            self._enforce_prevadzka_closure(
+                user, input_status, instance.date, instance.prevadzka
+            )
 
-        if not is_staff:
+        if not is_admin:
             self._validate_deadlines(
                 instance.date, new_data, input_status, instance.data
             )
@@ -517,12 +551,7 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
         data = super().to_representation(instance)
         request = self.context.get("request")
         user = getattr(request, "user", None)
-        is_admin = bool(
-            user is not None
-            and (
-                getattr(user, "is_staff", False) or getattr(user, "is_superuser", False)
-            )
-        )
+        is_admin = is_admin_or_above(user)
         if not is_admin:
             data.pop("report_email_recipients", None)
         return data
@@ -532,6 +561,36 @@ class HolidaySerializer(serializers.ModelSerializer):
     class Meta:
         model = Holiday
         fields = ["id", "date", "reason"]
+
+
+class PrevadzkaClosureSerializer(serializers.ModelSerializer):
+    """Voľno jednej prevádzky (#490) — deň alebo rozsah."""
+
+    prevadzka_nazov = serializers.CharField(source="prevadzka.nazov", read_only=True)
+
+    class Meta:
+        model = PrevadzkaClosure
+        fields = [
+            "id",
+            "prevadzka",
+            "prevadzka_nazov",
+            "date_from",
+            "date_to",
+            "reason",
+            "created_at",
+        ]
+        read_only_fields = ["created_at"]
+
+    def validate(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        # Pri PATCHi príde len jedno pole — druhý koniec doplň z inštancie,
+        # inak by sa dal rozsah "obrátiť" čiastočnou úpravou.
+        date_from = attrs.get("date_from") or getattr(self.instance, "date_from", None)
+        date_to = attrs.get("date_to") or getattr(self.instance, "date_to", None)
+        if date_from and date_to and date_to < date_from:
+            raise serializers.ValidationError(
+                {"date_to": "Koniec voľna nesmie byť pred jeho začiatkom."}
+            )
+        return attrs
 
 
 class PrevadzkaDietSerializer(serializers.ModelSerializer):

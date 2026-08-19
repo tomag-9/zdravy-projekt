@@ -154,3 +154,48 @@ export function overlapArea(a: Box, b: Box): number {
   const h = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
   return w > 0 && h > 0 ? w * h : 0;
 }
+
+/**
+ * Založí jedálniček na daný deň cez admin API (#487).
+ *
+ * Seed vytvára objednávky, ale jedálniček zadáva admin — čerstvé prostredie
+ * ho teda nemá a testy nakladania by sa len preskočili. Radšej si podklad
+ * vytvoria samy, než aby ticho nič neoverovali.
+ *
+ * Idempotentné: `DailyMealPlanSerializer.create` je upsert podľa dátumu.
+ */
+export async function ensureMealPlan(
+  request: import("@playwright/test").APIRequestContext,
+  dateKey: string,
+): Promise<void> {
+  const login = await request.post("/api/token/", {
+    data: { email: ADMIN_LOGIN.email, password: ADMIN_LOGIN.password },
+  });
+  const { access } = await login.json();
+  const headers = { Authorization: `Bearer ${access}` };
+
+  const templatesRes = await request.get("/api/admin/meal-templates/", { headers });
+  const templates: Array<{ id: number; category: string }> = await templatesRes.json();
+
+  // Po jednej šablóne z každej kategórie — stačí na stĺpce prehľadu.
+  const seen = new Set<string>();
+  const items = templates
+    .filter((t) => !seen.has(t.category) && seen.add(t.category))
+    .map((t) => ({ template_id: t.id, menu_variant: "" }));
+
+  await request.post("/api/admin/meal-plans/", {
+    headers,
+    data: { date: dateKey, items_write: items },
+  });
+}
+
+/** Deň, ktorý kuchyňská obrazovka otvára — dnešok, alebo posledný pracovný deň. */
+export function defaultKuchynaDay(): string {
+  const d = new Date();
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0"),
+  ].join("-");
+}

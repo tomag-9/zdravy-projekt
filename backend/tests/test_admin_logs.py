@@ -21,7 +21,9 @@ def admin_user(db):
         username="admin-logs@example.com",
         email="admin-logs@example.com",
         password="password",
+        # Systémové nastavenia a logy patria od #483 superadminovi.
         is_staff=True,
+        is_superuser=True,
     )
 
 

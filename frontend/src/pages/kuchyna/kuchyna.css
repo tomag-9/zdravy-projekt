@@ -1,0 +1,334 @@
+/*
+ * Kuchyňa — tablet UI (#486).
+ *
+ * Návrhové pravidlá, ktoré tu platia a v admin konzole nie:
+ *  - klikacie plochy min. 48×48 px (odporúčanie pre dotyk),
+ *  - žiadny `:hover` ako jediný nositeľ informácie — tablet hover nemá,
+ *    stavy sa preto kreslia cez `:active`,
+ *  - väčšie základné písmo, obrazovka sa číta z ruky pri linke.
+ */
+
+.zpk-app {
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg, #f7f7f4);
+}
+
+/* ── Hlavička ──────────────────────────────────────────────────────────── */
+
+.zpk-topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: #fff;
+    border-bottom: 1px solid var(--line, #e6e6e0);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.zpk-topbar img {
+    height: 34px;
+}
+
+.zpk-badge {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    background: rgba(0, 151, 167, 0.12);
+    color: var(--teal-500, #0097a7);
+}
+
+.zpk-spacer {
+    flex: 1;
+}
+
+.zpk-user {
+    font-size: 15px;
+    color: var(--ink-2, #4a4a45);
+}
+
+.zpk-logout {
+    min-width: 48px;
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 12px;
+    background: #fff;
+    color: var(--ink-2, #4a4a45);
+    cursor: pointer;
+}
+
+.zpk-logout:active {
+    background: var(--line, #e6e6e0);
+}
+
+.zpk-logout svg {
+    width: 22px;
+    height: 22px;
+}
+
+/* ── Obsah ─────────────────────────────────────────────────────────────── */
+
+.zpk-main {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* ── Prepínač dňa ──────────────────────────────────────────────────────── */
+
+.zpk-daybar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.zpk-daybtn {
+    min-width: 56px;
+    min-height: 56px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 14px;
+    background: #fff;
+    color: var(--ink-1, #23231f);
+    cursor: pointer;
+}
+
+.zpk-daybtn:active {
+    background: var(--line, #e6e6e0);
+}
+
+.zpk-daybtn svg {
+    width: 26px;
+    height: 26px;
+}
+
+.zpk-day {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.zpk-day-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+    color: var(--green-900, #2f3a1f);
+    text-align: center;
+    /* Prvé písmeno dňa vracia toLocaleDateString malé. */
+    text-transform: capitalize;
+}
+
+.zpk-today {
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 14px;
+    color: var(--ink-2, #4a4a45);
+    cursor: pointer;
+}
+
+.zpk-today:active {
+    background: var(--line, #e6e6e0);
+}
+
+/* ── Stavy ─────────────────────────────────────────────────────────────── */
+
+.zpk-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 64px 20px;
+    color: var(--ink-mute, #8a8a80);
+    font-size: 16px;
+    text-align: center;
+}
+
+.zpk-empty svg {
+    width: 34px;
+    height: 34px;
+}
+
+.zpk-spin {
+    animation: zpk-spin 1s linear infinite;
+}
+
+@keyframes zpk-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .zpk-spin {
+        animation: none;
+    }
+}
+
+/* ── Tabuľka ───────────────────────────────────────────────────────────── */
+
+/* Rozbaľovanie prevádzky je na tablete hlavná interakcia, tak nech sa dá
+   trafiť prstom. Tabuľka sama scrolluje vodorovne vo vlastnom kontajneri. */
+.zpk-gram .client-toggle {
+    min-height: 52px;
+}
+
+/* ── Stanoviská ────────────────────────────────────────────────────────── */
+
+/* Kto naberá, má na starosti jednu položku a prechádza s ňou prevádzky.
+   Výber stanoviska preto riadi, čo sa odklikáva v riadkoch tabuľky. */
+.zpk-stations {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.zpk-stations-label {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink-2, #4a4a45);
+}
+
+.zpk-station-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.zpk-station {
+    min-height: 48px;
+    padding: 0 18px;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 999px;
+    background: #fff;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--ink-2, #4a4a45);
+    cursor: pointer;
+}
+
+.zpk-station.is-active {
+    background: var(--green-900, #2f3a1f);
+    border-color: var(--green-900, #2f3a1f);
+    color: #fff;
+}
+
+.zpk-station-progress {
+    margin-left: auto;
+    font-size: 15px;
+    color: var(--ink-mute, #8a8a80);
+}
+
+/* ── Odklikávanie v riadku tabuľky ─────────────────────────────────────── */
+
+.zpk-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    padding-right: 12px;
+}
+
+/* Zámerne bez textu: klientsky riadok nesie meno prevádzky aj súčet porcií a
+   široké tlačidlo ich tlačilo. Čo sa odklikáva, hovorí výber stanoviska hore.
+   Plocha ostáva 48×48 px — naberá sa v rukaviciach. */
+.zpk-tick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--line, #e6e6e0);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.zpk-tick:active {
+    background: var(--line, #e6e6e0);
+}
+
+.zpk-tick:disabled {
+    opacity: 0.6;
+}
+
+.zpk-tick.is-loaded {
+    border-color: var(--green-700, #72884b);
+    background: rgba(114, 136, 75, 0.10);
+    color: var(--green-700, #72884b);
+}
+
+.zpk-tick-box {
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--line, #e6e6e0);
+    border-radius: 8px;
+    background: #fff;
+    color: #fff;
+}
+
+.zpk-tick.is-loaded .zpk-tick-box {
+    background: var(--green-700, #72884b);
+    border-color: var(--green-700, #72884b);
+}
+
+.zpk-tick-box svg {
+    width: 17px;
+    height: 17px;
+}
+
+.zpk-confirm {
+    min-height: 48px;
+    padding: 0 16px;
+    border: 1px solid var(--green-900, #2f3a1f);
+    border-radius: 12px;
+    background: var(--green-900, #2f3a1f);
+    color: #fff;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.zpk-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(114, 136, 75, 0.16);
+    color: var(--green-700, #72884b);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.zpk-done svg {
+    width: 16px;
+    height: 16px;
+}

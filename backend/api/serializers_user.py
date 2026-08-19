@@ -16,6 +16,7 @@ from .models import (
     ProfilePrevadzkaAccess,
     UserProfile,
 )
+from .roles import role_for_flags
 
 
 class DietSerializer(serializers.ModelSerializer):
@@ -236,6 +237,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
     onboarding_completed = serializers.BooleanField(
         source="profile.onboarding_completed", required=False
     )
+    role = serializers.SerializerMethodField()
+    sections = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -253,8 +256,26 @@ class UserProfileSerializer(serializers.ModelSerializer):
             "settings",
             "profile",
             "is_staff",
+            "role",
+            "sections",
         ]
-        read_only_fields = ["id", "date_joined", "is_staff"]
+        read_only_fields = ["id", "date_joined", "is_staff", "role", "sections"]
+
+    def get_role(self, obj: User) -> str:
+        """Rola cez `role_of` — login bez profilu ju odvodí zo starých príznakov."""
+        from .roles import role_of
+
+        return role_of(obj)
+
+    def get_sections(self, obj: User) -> Dict[str, str]:
+        """Efektívne úrovne prístupu k sekciám (#484).
+
+        Frontend z toho gejtuje menu aj režim „len na čítanie". Je to len
+        zrkadlo — skutočná zábrana je `SectionAccess` na endpointoch.
+        """
+        from .access import effective_map
+
+        return effective_map(obj)
 
     def validate_email(self, value: str) -> str:
         """Enforce unique email for profile updates."""
@@ -400,6 +421,15 @@ class AdminUserSerializer(serializers.ModelSerializer):
         write_only=True,
     )
 
+    role = serializers.ChoiceField(
+        choices=UserProfile.Role.choices,
+        required=False,
+        help_text=(
+            "Rola loginu (#482). Ak sa neuvedie, odvodí sa z `is_staff` — "
+            "tým ostáva správanie existujúcich klientov nezmenené."
+        ),
+    )
+
     class Meta:
         model = User
         fields = [
@@ -414,6 +444,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "company_name",
             "celok",
             "prevadzky",
+            "role",
         ]
 
     def validate_email(self, value: str) -> str:
@@ -442,6 +473,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         company_name = validated_data.pop("company_name", "") or ""
         celok = validated_data.pop("celok", None)
         prevadzky = validated_data.pop("prevadzky", None)
+        role = validated_data.pop("role", None)
         # Normalize email and keep username in sync to satisfy uniqueness constraints.
         normalized_email = validated_data["email"].lower()
         # Check both email and username to prevent IntegrityError on save
@@ -460,7 +492,18 @@ class AdminUserSerializer(serializers.ModelSerializer):
         # Ak je zadaný celok, nastavíme ho hneď pri vytvorení — tým sa vypne
         # auto-vytvorenie vlastného celku v `on_user_profile_saved` signáli.
         profile = UserProfile(user=user, company_name=company_name)
-        profile._skip_default_facility = celok is not None or bool(prevadzky)
+        # Bez explicitnej role sa odvodí zo `is_staff`, aby vytváranie klientov
+        # aj adminov cez existujúce volania fungovalo presne ako doteraz.
+        profile.role = role or role_for_flags(
+            is_staff=user.is_staff, is_superuser=user.is_superuser
+        )
+        # Vlastný celok/prevádzka dávajú zmysel len zákazníckemu loginu. Kuchyňa
+        # ani admin ich dostať nesmú — inak by im systém generoval objednávky.
+        profile._skip_default_facility = (
+            celok is not None
+            or bool(prevadzky)
+            or profile.role != UserProfile.Role.KLIENT
+        )
         profile.save()
         # Login „na prevádzku": obmedz rozsah na vybrané prevádzky (M2M). Prázdne =
         # celý celok. Validujeme, že prevádzky patria zadanému celku.
@@ -535,6 +578,7 @@ class AdminUserSerializer(serializers.ModelSerializer):
         company_name = validated_data.pop("company_name", serializers.empty)
         celok = validated_data.pop("celok", serializers.empty)
         prevadzky = validated_data.pop("prevadzky", serializers.empty)
+        role = validated_data.pop("role", None)
         settings_serializer = None
         if settings_data is not None:
             if not hasattr(instance, "profile"):
@@ -613,5 +657,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
 
         if settings_serializer is not None:
             settings_serializer.save()
+
+        # `role` musí ostať v súlade s `is_staff` — inak by prepnutie príznaku
+        # v admin UI nechalo profilu starú rolu a `role_of` by po #483 vrátila
+        # nesprávnu odpoveď. Profil tu už nemusí existovať (legacy loginy).
+        profile = getattr(instance, "profile", None)
+        if profile is not None:
+            new_role = role or role_for_flags(
+                is_staff=instance.is_staff, is_superuser=instance.is_superuser
+            )
+            if profile.role != new_role:
+                profile.role = new_role
+                profile.save(update_fields=["role"])
 
         return instance

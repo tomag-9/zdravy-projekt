@@ -66,6 +66,29 @@ def admin_client(api_client, admin_user):
 
 
 @pytest.fixture
+def plain_admin_user(db):
+    """Rola `admin` — teda BEZ sekcií, ktoré #483 presunul na superadmina."""
+    from api.models import UserProfile
+
+    user = User.objects.create_user(
+        username="plainadmin@example.com",
+        email="plainadmin@example.com",
+        password="admin123",
+        is_staff=True,
+    )
+    profile = UserProfile(user=user, role=UserProfile.Role.ADMIN)
+    profile._skip_default_facility = True
+    profile.save()
+    return user
+
+
+@pytest.fixture
+def plain_admin_client(api_client, plain_admin_user):
+    api_client.force_authenticate(user=plain_admin_user)
+    return api_client
+
+
+@pytest.fixture
 def order_payload():
     """Default payload used by integration/e2e order API tests."""
     return {
