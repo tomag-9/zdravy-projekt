@@ -72,6 +72,11 @@ interface Celok {
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
+// Issue #504 — zoznam celkov sa renderoval celý naraz, bez stránkovania.
+// Zoznam ide cez jeden (cachovaný) API request, takže stránkovanie je len
+// klientske — netreba pre pár desiatok celkov riešiť server-side limit/offset.
+const CELKY_PAGE_SIZE = 20;
+
 // ── Celok form ──────────────────────────────────────────────────
 interface CelokForm {
   nazov: string;
@@ -95,6 +100,7 @@ const FacilityManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
+  const [page, setPage] = useState(1);
 
   // Prevádzka add
   const [modalCelok, setModalCelok] = useState<Celok | null>(null);
@@ -157,6 +163,10 @@ const FacilityManager: React.FC = () => {
   useEffect(() => {
     fetchCelky();
   }, [fetchCelky]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchTerm]);
 
   const openConnectionEditor = (connection: EdupageConnection | null) => {
     setConnectionsOpen(false);
@@ -446,6 +456,9 @@ const FacilityManager: React.FC = () => {
       normalizeForSearch(c.billing_name ?? "").includes(term) ||
       c.prevadzky.some((p) => normalizeForSearch(p.nazov).includes(term)),
   );
+  const pageCount = Math.max(1, Math.ceil(filtered.length / CELKY_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount);
+  const paged = filtered.slice((safePage - 1) * CELKY_PAGE_SIZE, safePage * CELKY_PAGE_SIZE);
 
   return (
     <>
@@ -469,7 +482,7 @@ const FacilityManager: React.FC = () => {
             <div className="c" style={{ color: "var(--ink-mute)", padding: 32 }}>Žiadne celky</div>
           ) : (
             <div className="zpa-celok-list">
-              {filtered.map((celok) => {
+              {paged.map((celok) => {
                 const open = expanded.has(celok.id);
                 return (
                   <div key={celok.id} className="zpa-celok">
@@ -566,6 +579,20 @@ const FacilityManager: React.FC = () => {
             </div>
           )}
         </Card>
+
+        {pageCount > 1 && (
+          <div className="c" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+            <Button variant="secondary" sm onClick={() => setPage((p) => p - 1)} disabled={safePage <= 1}>
+              Predchádzajúca
+            </Button>
+            <span style={{ fontSize: 13, color: "var(--ink-mute)" }}>
+              Strana {safePage} / {pageCount} ({filtered.length} {filtered.length === 1 ? "celok" : "celkov"})
+            </span>
+            <Button variant="secondary" sm onClick={() => setPage((p) => p + 1)} disabled={safePage >= pageCount}>
+              Ďalšia
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Prevádzka add */}
