@@ -445,9 +445,12 @@ class TestPasswordResetFlow:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         # Issue #461: token bol už použitý → odlišná hláška od "expiroval"/"neplatný".
-        assert (
-            response.data["detail"] == "Tento odkaz už bol použitý, požiadajte o nový."
+        # Znenie posiela používateľa rovno na prihlásenie: heslo si už nastavil,
+        # nový odkaz nepotrebuje (onboarding škôlok, 19. 8. 2026).
+        assert response.data["detail"] == (
+            "Tento odkaz už bol použitý — heslo máte nastavené a môžete sa prihlásiť."
         )
+        assert response.data["code"] == "used"
 
     def test_password_reset_confirm_error_messages_are_distinguishable(
         self, api_client, user

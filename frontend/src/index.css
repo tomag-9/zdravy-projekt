@@ -1492,6 +1492,17 @@ select {
     margin: 0 18px 12px;
 }
 .zp-banner svg { width: 14px; height: 14px; stroke-width: 2; }
+
+/* Pravidlá hesla na obrazovke „Nastavte si heslo". Sú vypísané dopredu, lebo
+ * validátor odmieta heslo podobné e-mailu a bez tejto nápovedy to používateľ
+ * zistí až treťou neúspešnou hláškou. */
+.zp-hint-list {
+    margin: 0 0 12px;
+    padding-left: 18px;
+    color: var(--ink-3);
+    font-size: 12px;
+    line-height: 1.6;
+}
 .zp-banner--locked { background: var(--bg-cream-soft); color: var(--ink-3); }
 .zp-banner--holiday {
     margin: 0 20px 16px;

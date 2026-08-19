@@ -131,28 +131,46 @@ def request_password_reset(email: str) -> None:
     send_password_reset_email(user=user, token=token_value)
 
 
+class PasswordResetError(ValueError):
+    """Chyba pri uplatnení odkazu, ktorá so sebou nesie strojovo čitateľný kód.
+
+    Text je pre používateľa, `code` pre frontend: podľa neho vie ponúknuť ďalší
+    krok namiesto holej červenej hlášky — pri už uplatnenom odkaze prihlásenie,
+    pri vypršanom vyžiadanie nového.
+    """
+
+    def __init__(self, message: str, code: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 def confirm_password_reset(token: str, new_password: str) -> None:
     """
     Validate *token* and set *new_password* on the associated user.
 
     Raises:
-        ValueError: if the token is invalid, expired, or already used.
+        PasswordResetError: if the token is invalid, expired, already used, or
+            the new password does not pass the configured validators.
     """
     try:
         reset_token = PasswordResetToken.objects.select_related("user").get(token=token)
     except PasswordResetToken.DoesNotExist:
         # Token neexistuje vôbec (napr. účet bol medzitým zmazaný/nahradený) —
         # nerozlišujeme prečo, aby sme neprezradili nič o existencii účtu.
-        raise ValueError("Neplatný odkaz.")
+        raise PasswordResetError("Neplatný odkaz.", "invalid")
 
     # Rozlíšené hlášky pre "už použitý" vs. "skutočne expiroval" — obe sú bezpečné
     # na zobrazenie (neprezrádzajú nič o cieľovom účte), ale pomáhajú admin/klient
     # diagnostike namiesto jednej generickej hlášky pre všetko (issue #461).
     if reset_token.used:
-        raise ValueError("Tento odkaz už bol použitý, požiadajte o nový.")
+        raise PasswordResetError(
+            "Tento odkaz už bol použitý — heslo máte nastavené a môžete sa "
+            "prihlásiť.",
+            "used",
+        )
 
     if reset_token.is_expired:
-        raise ValueError("Odkaz vypršal, požiadajte o nový.")
+        raise PasswordResetError("Odkaz vypršal, požiadajte o nový.", "expired")
 
     user = reset_token.user
 
@@ -162,7 +180,9 @@ def confirm_password_reset(token: str, new_password: str) -> None:
         validate_password_strength(new_password, user=user)
     except DRFValidationError as exc:
         messages = exc.detail if isinstance(exc.detail, list) else [exc.detail]
-        raise ValueError(" ".join(str(m) for m in messages)) from exc
+        raise PasswordResetError(
+            " ".join(str(m) for m in messages), "weak_password"
+        ) from exc
 
     user.set_password(new_password)
     user.save(update_fields=["password"])

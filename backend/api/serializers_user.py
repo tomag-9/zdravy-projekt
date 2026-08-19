@@ -66,12 +66,35 @@ class PortionTypeSettingsSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "sort_order", "is_active"]
 
 
+#: Slovenské znenie hlášok z `AUTH_PASSWORD_VALIDATORS`. Django ich prekladá cez
+#: `LANGUAGE_CODE`, ktorý je `en-us` (a meniť ho kvôli hláškam by prepísalo aj
+#: formáty dátumov a čísel v celej appke), takže si ich mapujeme sami podľa kódu
+#: chyby. Škôlky pri onboardingu videli anglické vety a nevedeli, čo majú opraviť.
+#:
+#: `password_too_similar` je najčastejší prípad: prihlasovacie meno je e-mail, tak
+#: heslo odvodené od názvu škôlky validátor odmietne — hláška to musí povedať.
+PASSWORD_ERROR_MESSAGES = {
+    "password_too_similar": (
+        "Heslo je príliš podobné vašej e-mailovej adrese. "
+        "Zvoľte heslo, ktoré neobsahuje časti adresy."
+    ),
+    "password_too_short": "Heslo musí mať aspoň 8 znakov.",
+    "password_too_common": "Toto heslo je príliš bežné. Zvoľte menej obvyklé.",
+    "password_entirely_numeric": "Heslo nemôže byť zložené iba z číslic.",
+}
+
+
 def validate_password_strength(password: str, user: User | None = None) -> str:
     """Validate passwords with Django's configured AUTH_PASSWORD_VALIDATORS."""
     try:
         validate_password(password, user=user)
     except DjangoValidationError as exc:
-        raise serializers.ValidationError(exc.messages) from exc
+        # Neznámy kód necháme v pôvodnom znení — lepšie anglická veta než žiadna.
+        spravy = [
+            PASSWORD_ERROR_MESSAGES.get(chyba.code, message)
+            for chyba, message in zip(exc.error_list, exc.messages)
+        ]
+        raise serializers.ValidationError(spravy) from exc
     return password
 
 
