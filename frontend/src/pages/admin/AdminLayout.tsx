@@ -25,8 +25,8 @@ import AdminProfileModal from './AdminProfileModal';
 
 
 const NAV: NavEntry[] = [
-    { kind: 'item', to: '/admin/dashboard', label: 'Prehľad', icon: Gauge, section: SECTION.dashboard },
-    { kind: 'item', to: '/admin/prevadzka-overview', label: 'Dodanie podkladov', icon: ClipboardCheck, section: SECTION.podklady },
+    { kind: 'item', to: '/admin/dashboard', label: 'Tabuľka', icon: Gauge, section: SECTION.dashboard },
+    { kind: 'item', to: '/admin/prevadzka-overview', label: 'Kontrola objednávok', icon: ClipboardCheck, section: SECTION.podklady },
     { kind: 'item', to: '/admin/delivery-layout', label: 'Poradie a trasy', icon: RouteIcon, section: SECTION.trasy },
     { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays, section: SECTION.jedalnicek },
     { kind: 'item', to: '/admin/meal-catalog', label: 'Katalóg jedál', icon: BookOpen, section: SECTION.katalog },

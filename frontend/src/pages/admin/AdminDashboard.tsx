@@ -332,7 +332,7 @@ const AdminDashboard: React.FC = () => {
   return (
     <>
       <PageHead
-        eyebrow="Prehľad"
+        eyebrow="Tabuľka"
         title="Gramáž jedál"
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
