@@ -14,18 +14,44 @@ interface AdUser {
   last_name: string;
   is_active: boolean;
   is_staff: boolean;
+  role?: ManagedRole;
 }
+
+/** Role spravované na tejto obrazovke (#483). Klienti sem nepatria. */
+type ManagedRole = 'admin' | 'superadmin' | 'kuchyna';
+
+const ROLE_LABELS: Record<ManagedRole, string> = {
+  admin: 'Admin',
+  superadmin: 'Superadmin',
+  kuchyna: 'Kuchyňa',
+};
+
+/** Kuchyňa nie je `is_staff` — do admin rozhrania nevidí, má vlastnú cestu. */
+/** Mapovanie na existujúce badge modifikátory v admin.css. */
+const ROLE_BADGE: Record<ManagedRole, string> = {
+  admin: 'zpa-badge--green',
+  superadmin: 'zpa-badge--peach',
+  kuchyna: 'zpa-badge--teal',
+};
+
+const ROLE_IS_STAFF: Record<ManagedRole, boolean> = {
+  admin: true,
+  superadmin: true,
+  kuchyna: false,
+};
 
 interface AdminCreateForm {
   email: string;
   first_name: string;
   last_name: string;
+  role: ManagedRole;
 }
 
 const EMPTY_ADMIN_FORM: AdminCreateForm = {
   email: "",
   first_name: "",
   last_name: "",
+  role: "admin",
 };
 
 const AdminUserList: React.FC = () => {
@@ -46,10 +72,15 @@ const AdminUserList: React.FC = () => {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const list = await fetchAllPages<AdUser>(apiFetch,
-        `${import.meta.env.VITE_API_URL || "/api"}/admin/users/?is_staff=true&page_size=100`,
-      );
-      setUsers(list.filter((u) => u.is_staff === true));
+      // Dva dopyty: kuchyňa nie je `is_staff`, takže by ju prvý filter minul.
+      const base = `${import.meta.env.VITE_API_URL || "/api"}/admin/users/`;
+      const [staff, kuchyna] = await Promise.all([
+        fetchAllPages<AdUser>(apiFetch, `${base}?is_staff=true&page_size=100`),
+        fetchAllPages<AdUser>(apiFetch, `${base}?role=kuchyna&page_size=100`),
+      ]);
+      const byId = new Map<number, AdUser>();
+      for (const u of [...staff, ...kuchyna]) byId.set(u.id, u);
+      setUsers([...byId.values()].sort((a, b) => a.email.localeCompare(b.email)));
     } catch (e) {
       logger.error(e);
     } finally {
@@ -74,11 +105,15 @@ const AdminUserList: React.FC = () => {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...adminForm, is_staff: true, is_active: true }),
+          body: JSON.stringify({
+            ...adminForm,
+            is_staff: ROLE_IS_STAFF[adminForm.role],
+            is_active: true,
+          }),
         },
       );
       if (res.ok) {
-        success("Admin účet bol úspešne vytvorený.");
+        success(`${ROLE_LABELS[adminForm.role]} účet bol úspešne vytvorený.`);
         setCreateMode(null);
         setAdminForm(EMPTY_ADMIN_FORM);
         fetchUsers();
@@ -129,11 +164,11 @@ const AdminUserList: React.FC = () => {
     <>
       <PageHead
         eyebrow="Oprávnenia"
-        title="Správa adminov"
-        desc="Spravujte admin účty a ich prístupové údaje."
+        title="Správa prístupov"
+        desc="Spravujte admin, superadmin a kuchyňa účty a ich prístupové údaje."
         actions={
           <Button onClick={() => { setCreateMode("admin"); setAdminForm(EMPTY_ADMIN_FORM); }}>
-            <Plus /> Pridať admina
+            <Plus /> Pridať účet
           </Button>
         }
       />
@@ -146,15 +181,16 @@ const AdminUserList: React.FC = () => {
             <table className="zpa-table">
               <thead>
                 <tr>
-                  <th>Admin</th>
+                  <th>Účet</th>
+                  <th>Rola</th>
                   <th className="r">Akcie</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={2} className="c" style={{ color: "var(--ink-mute)", padding: "32px" }}>Načítavam…</td></tr>
+                  <tr><td colSpan={3} className="c" style={{ color: "var(--ink-mute)", padding: "32px" }}>Načítavam…</td></tr>
                 ) : filteredUsers.length === 0 ? (
-                  <tr><td colSpan={2} className="c" style={{ color: "var(--ink-mute)", padding: "32px" }}>Žiadni admini</td></tr>
+                  <tr><td colSpan={3} className="c" style={{ color: "var(--ink-mute)", padding: "32px" }}>Žiadne účty</td></tr>
                 ) : (
                   filteredUsers.map((user) => (
                     <tr key={user.id}>
@@ -170,6 +206,13 @@ const AdminUserList: React.FC = () => {
                             <div style={{ fontSize: 12, color: "var(--ink-3)" }}>{user.email}</div>
                           </div>
                         </div>
+                      </td>
+                      <td>
+                        {(() => {
+                          // `role` môže chýbať, kým beží staršia verzia backendu.
+                          const r = user.role ?? (user.is_staff ? "admin" : "kuchyna");
+                          return <span className={`zpa-badge ${ROLE_BADGE[r]}`}>{ROLE_LABELS[r]}</span>;
+                        })()}
                       </td>
                       <td className="r">
                         <div style={{ display: "inline-flex", gap: 4 }}>
@@ -193,7 +236,7 @@ const AdminUserList: React.FC = () => {
       {/* ── Create admin modal ── */}
       {createMode === "admin" && (
         <Modal
-          title="Pridať admina"
+          title="Pridať účet"
           onClose={() => setCreateMode(null)}
           foot={
             <>
@@ -216,8 +259,24 @@ const AdminUserList: React.FC = () => {
             <Field label="Email" req>
               <Input type="email" required value={adminForm.email} onChange={(e) => setAdminForm((f) => ({ ...f, email: e.target.value }))} />
             </Field>
+            <Field label="Rola" req>
+              <select
+                className="zpa-input"
+                value={adminForm.role}
+                onChange={(e) => setAdminForm((f) => ({ ...f, role: e.target.value as ManagedRole }))}
+              >
+                {(Object.keys(ROLE_LABELS) as ManagedRole[]).map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+            </Field>
             <p style={{ fontSize: 12.5, color: "var(--ink-mute)", margin: 0 }}>
-              Admin dostane email s odkazom na nastavenie hesla.
+              {adminForm.role === "kuchyna"
+                ? "Kuchyňa vidí len prehľad nakladania, nie admin sekcie."
+                : adminForm.role === "superadmin"
+                  ? "Superadmin má navyše správu prístupov, logy a systémové nastavenia."
+                  : "Admin nevidí správu prístupov, logy ani systémové nastavenia."}
+              {" "}Účet dostane email s odkazom na nastavenie hesla.
             </p>
           </form>
         </Modal>

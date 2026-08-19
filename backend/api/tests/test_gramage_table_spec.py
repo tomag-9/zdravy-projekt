@@ -180,17 +180,29 @@ def test_header_keeps_the_template_name():
 
 
 def test_notes_come_before_the_subtotals():
+    """Poznámka prevádzky už vlastný riadok nemá — je v stĺpci Poznámka."""
     spec = build_table_spec(_payload())
 
     assert _kinds(spec) == [
         "client",
         "sub-row",
         "sub-row",
-        "note-admin",
         "note-delivery",
         "summary-std",
         "summary-diet",
     ]
+
+
+def test_include_summary_rows_false_drops_client_subtotals():
+    """Issue #510: PDF export has no collapsed state, sub-rows are always
+    shown, so the per-client subtotal rows would just duplicate numbers
+    already printed one row up."""
+    spec = build_table_spec(_payload(), include_summary_rows=False)
+
+    kinds = _kinds(spec)
+    assert "summary-std" not in kinds
+    assert "summary-diet" not in kinds
+    assert kinds == ["client", "sub-row", "sub-row", "note-delivery"]
 
 
 def test_zero_grams_render_as_a_dash_not_a_zero():
@@ -217,6 +229,27 @@ def test_client_row_carries_the_screen_metadata():
 
     assert client["cells"][0]["meta"] == "štandard 8, diéty 2"
     assert client["cells"][0]["meta_right"] == "spolu porcií 10"
+
+
+def test_client_row_shows_the_prevadzka_note_in_the_note_column():
+    """Issue #513: poznámka prevádzky musí byť vidno hneď na zbalenom riadku
+    klienta (v stĺpci Poznámka), nielen v collapsible note-admin sub-riadku."""
+    spec = build_table_spec(_payload())
+    client = next(r for r in spec["rows"] if r["kind"] == "client")
+
+    assert client["cells"][1]["text"] == "bez cibule"
+    assert "cell-note" in client["cells"][1]["css"]
+    total_columns = spec["total_columns"]
+    assert client["cells"][0]["colspan"] == total_columns - 1
+
+
+def test_client_row_note_column_is_empty_without_a_prevadzka_note():
+    payload = _payload()
+    payload["rows"][0]["admin_order_note"] = ""
+    spec = build_table_spec(payload)
+    client = next(r for r in spec["rows"] if r["kind"] == "client")
+
+    assert client["cells"][1]["text"] == ""
 
 
 def test_empty_routes_are_skipped():
@@ -436,7 +469,6 @@ def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
     assert [r["kind"] for r in lunch["rows"]] == [
         "client",
         "sub-row",
-        "note-admin",
         "note-delivery",
         "summary-std",
     ]

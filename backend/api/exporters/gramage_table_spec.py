@@ -204,8 +204,16 @@ def build_table_spec(
     data: dict,
     sections: list[str] | None = None,
     vydaje: list[str] | None = None,
+    include_summary_rows: bool = True,
 ) -> dict:
-    """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky."""
+    """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky.
+
+    `include_summary_rows=False` vynechá per-klientske "Súčet bez diét" a
+    diétne súhrnné riadky (`summary-std`/`summary-diet`). Na obrazovke majú
+    zmysel len pri zbalenom klientovi (#510) — v statickom PDF exporte sú
+    sub-riadky vždy "rozbalené" a súhrny by len duplikovali čísla o riadok
+    vyššie, takže PDF volajúci túto funkciu volajú s `False`.
+    """
     all_groups = data.get("col_groups") or []
     keep = _filter_col_groups(all_groups, sections)
     groups = [(index, all_groups[index]) for index in keep]
@@ -244,7 +252,14 @@ def build_table_spec(
                 rows.append(_route_row(route, total_columns))
                 for client_row in route_rows:
                     rows.extend(
-                        _client_rows(client_row, data, groups, hues, total_columns)
+                        _client_rows(
+                            client_row,
+                            data,
+                            groups,
+                            hues,
+                            total_columns,
+                            include_summary_rows,
+                        )
                     )
             vydaj_rows = [
                 r
@@ -272,10 +287,23 @@ def build_table_spec(
                 )
             )
             for client_row in unassigned:
-                rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
+                rows.extend(
+                    _client_rows(
+                        client_row,
+                        data,
+                        groups,
+                        hues,
+                        total_columns,
+                        include_summary_rows,
+                    )
+                )
     else:
         for client_row in data.get("rows") or []:
-            rows.extend(_client_rows(client_row, data, groups, hues, total_columns))
+            rows.extend(
+                _client_rows(
+                    client_row, data, groups, hues, total_columns, include_summary_rows
+                )
+            )
 
     if filtered:
         visible_rows = [
@@ -424,9 +452,19 @@ def _route_row(route: dict, total_columns: int) -> dict:
 
 
 def _client_rows(
-    row: dict, data: dict, groups: list[dict], hues: list[str], total_columns: int
+    row: dict,
+    data: dict,
+    groups: list[dict],
+    hues: list[str],
+    total_columns: int,
+    include_summary_rows: bool = True,
 ) -> list[dict]:
-    """Klientsky pás, jeho podriadky, poznámky a medzisúčty — v poradí obrazovky."""
+    """Klientsky pás, jeho podriadky, poznámky a medzisúčty — v poradí obrazovky.
+
+    `include_summary_rows=False` (PDF, #510) vynecháva medzisúčty na konci —
+    v statickom exporte sú sub-riadky vždy rozbalené, takže by len duplikovali
+    čísla, ktoré sú už vypísané vyššie.
+    """
     key = str(row.get("row_key") or row.get("client_id") or row.get("client") or "")
 
     # Počty sa sčítavajú z riadkov, ktoré filter naozaj nechal — inak by na
@@ -455,11 +493,20 @@ def _client_rows(
     if diet_total:
         meta += f", diéty {format_count(diet_total)}"
 
+    # #513 — poznámka prevádzky (nastavenie „Poznámka k objednávke") je vidno
+    # hneď na zbalenom riadku klienta, v stĺpci Poznámka. Predtým žila len
+    # v `collapsible` sub-riadku, takže kým sa klient nerozbalil, admin o nej
+    # nevedel; ten sub-riadok už nie je, aby text nebol v tabuľke dvakrát.
+    admin_order_note = str(row.get("admin_order_note") or "").strip()
+
     out: list[dict] = [
         {
             "kind": "client",
             "css": "client-row",
             "group_id": key,
+            # Kuchyňa vešia na klientsky riadok odklikávanie naloženia (#487),
+            # a potrebuje k tomu prevádzku ako číslo — nie parsovanie `group_id`.
+            "prevadzka_id": row.get("prevadzka_id"),
             "cells": [
                 {
                     "text": row.get("client") or "",
@@ -467,8 +514,13 @@ def _client_rows(
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
-                    "colspan": total_columns,
-                }
+                    "colspan": total_columns - 1,
+                },
+                (
+                    {"text": admin_order_note, "css": "cell-note client-note"}
+                    if admin_order_note
+                    else _note_cell()
+                ),
             ],
         }
     ]
@@ -504,11 +556,10 @@ def _client_rows(
             }
         )
 
-    # Poznámky idú PRED medzisúčty — tak ich má obrazovka.
-    for kind, label, note in (
-        ("note-admin", "Poznámka k objednávke:", row.get("admin_order_note")),
-        ("note-delivery", "Rozvoz:", row.get("delivery_note")),
-    ):
+    # Poznámky idú PRED medzisúčty — tak ich má obrazovka. `note-admin` sa už
+    # nevypisuje: odkedy má klientsky riadok vlastný stĺpec Poznámka (#513),
+    # bol by ten istý text v tabuľke dvakrát.
+    for kind, label, note in (("note-delivery", "Rozvoz:", row.get("delivery_note")),):
         if note and str(note).strip():
             out.append(
                 {
@@ -526,7 +577,7 @@ def _client_rows(
                 }
             )
 
-    if standard_count:
+    if include_summary_rows and standard_count:
         out.append(
             {
                 "kind": "summary-std",
@@ -535,7 +586,10 @@ def _client_rows(
                 + _gram_cells(row.get("standard_col_grams") or [], groups, hues),
             }
         )
-    for diet in row.get("diet_summary_rows") or []:
+    diet_summary_rows = (
+        row.get("diet_summary_rows") or [] if include_summary_rows else []
+    )
+    for diet in diet_summary_rows:
         name = str(diet.get("name") or "")
         # Diéta, ktorá vo viditeľných jedlách nie je, nemá čo sumarizovať.
         if name not in diet_counts:

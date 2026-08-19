@@ -3,11 +3,16 @@ import { useAuth } from "../context/auth";
 import { useNavigate, Link } from "react-router-dom";
 import { useIsPC } from "../hooks/useIsPC";
 import { useStableViewportHeight } from "../hooks/useStableViewportHeight";
+import { isAdminOrAbove, isKuchyna } from "../lib/roles";
 import { Eye, EyeOff } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
+// Po jednom logine na rolu — rozdiely v oprávneniach sa inak nedajú
+// preklikať (`admin@example.com` je superadmin, nie obyčajný admin).
 const DEV_LOGIN_USERS = [
-  { label: "Admin", email: "admin@example.com", password: "admin" },
+  { label: "Superadmin", email: "admin@example.com", password: "admin" },
+  { label: "Admin", email: "spravca@example.com", password: "spravca" },
+  { label: "Kuchyňa", email: "kuchyna@example.com", password: "kuchyna" },
   { label: "Prevádzka", email: "prevadzka@example.com", password: "prevadzka" },
 ];
 
@@ -35,10 +40,15 @@ const LoginPage: React.FC = () => {
   }, []);
 
   // Navigate once user profile is loaded — this fires AFTER React commits state,
-  // so user.is_staff is guaranteed to be correct
+  // so the role is guaranteed to be correct
   useEffect(() => {
     if (isAuthenticated && user !== null) {
-      navigate(user.is_staff ? "/admin" : "/home", { replace: true });
+      const home = isAdminOrAbove(user)
+        ? "/admin"
+        : isKuchyna(user)
+          ? "/kuchyna"
+          : "/home";
+      navigate(home, { replace: true });
     }
   }, [isAuthenticated, user, navigate]);
 

@@ -122,6 +122,41 @@ class TestOrderUpdate:
         order = DailyOrder.objects.get()
         assert order.data == new_data
 
+    def test_manual_submit_over_auto_order_clears_is_auto(
+        self, authenticated_client, user
+    ):
+        """Issue #507: submitting real data over an auto-generated placeholder
+        (created by auto_order_service after deadline, `is_auto=True`) must
+        clear the flag — otherwise the admin overview keeps flagging it "na
+        kontrolu" forever, even after the client actually filled it in."""
+        url = reverse("dailyorder-list")
+        DailyOrder.objects.create(user=user, date=MONDAY, data=EMPTY_DATA, is_auto=True)
+
+        response = authenticated_client.post(
+            url, {"date": str(MONDAY), "data": NON_EMPTY_DATA}, format="json"
+        )
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+        order = DailyOrder.objects.get()
+        assert order.data == NON_EMPTY_DATA
+        assert order.is_auto is False
+
+    def test_patch_over_auto_order_clears_is_auto(self, authenticated_client, user):
+        """Same as above, via PATCH (DailyOrderSerializer.update())."""
+        order = DailyOrder.objects.create(
+            user=user, date=MONDAY, data=EMPTY_DATA, is_auto=True
+        )
+
+        url = reverse("dailyorder-detail", args=[order.id])
+        response = authenticated_client.patch(
+            url, {"data": NON_EMPTY_DATA}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        order.refresh_from_db()
+        assert order.data == NON_EMPTY_DATA
+        assert order.is_auto is False
+
     def test_user_can_only_update_own_orders(self, authenticated_client, user):
         """User cannot update another user's order."""
         other_user = User.objects.create_user(

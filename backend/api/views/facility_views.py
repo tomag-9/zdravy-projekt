@@ -18,8 +18,16 @@ from __future__ import annotations
 
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q, QuerySet
-from rest_framework import permissions, viewsets
+from rest_framework import viewsets
+from rest_framework.response import Response
 
+from .. import sections
+from ..cache_service import (
+    ADMIN_CELOK_LIST_TIMEOUT,
+    get_admin_celok_list_cache_key,
+    get_cached,
+    set_cached,
+)
 from ..models import (
     Celok,
     DailyOrder,
@@ -29,6 +37,7 @@ from ..models import (
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
 )
+from ..permissions import IsAdminOrAbove, SectionAccess
 from ..serializers_facilities import AdminCelokSerializer, AdminPrevadzkaSerializer
 from ..services.event_log_service import build_model_diff, log_event
 
@@ -57,7 +66,8 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = AdminCelokSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.PREVADZKY
     pagination_class = None
 
     def perform_create(self, serializer):
@@ -117,6 +127,30 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
                 },
             )
 
+    def list(self, request, *args, **kwargs):
+        """Return the celok/prevádzka tree, cached when unfiltered (1h TTL).
+
+        `get_queryset()` builds a deeply nested tree (celky → prevádzky →
+        prístupy → reset tokeny) on every call — expensive to serialize even
+        though the queries themselves are already prefetched. Only the
+        unfiltered response is cached because that's what `FacilityManager.tsx`
+        fetches on load (it filters client-side); a `?search=` request is
+        served uncached. Cache is invalidated via signal handlers whenever a
+        model feeding this queryset changes (see api/signals.py).
+        """
+        if request.query_params.get("search", "").strip():
+            return super().list(request, *args, **kwargs)
+
+        cache_key = get_admin_celok_list_cache_key()
+        cached_data = get_cached(cache_key)
+        if cached_data is not None:
+            return Response(cached_data)
+
+        response = super().list(request, *args, **kwargs)
+        if response.status_code == 200:
+            set_cached(cache_key, response.data, timeout=ADMIN_CELOK_LIST_TIMEOUT)
+        return response
+
     def get_queryset(self) -> QuerySet:
         active_reset_tokens_prefetch = Prefetch(
             "profile__user__password_reset_tokens",
@@ -175,7 +209,8 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
     """Plný CRUD nad prevádzkami pre správu celkov."""
 
     serializer_class = AdminPrevadzkaSerializer
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.PREVADZKY
     pagination_class = None
 
     def perform_create(self, serializer):

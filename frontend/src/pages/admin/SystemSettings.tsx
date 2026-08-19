@@ -5,6 +5,15 @@ import { useToast } from '../../context/ToastContext';
 import { logger } from '../../lib/logger';
 import { PageHead, Card, CardHead, Button, Field, Input, Toggle } from './ui';
 
+type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report';
+
+const TABS: { key: SettingsTab; label: string }[] = [
+    { key: 'deadlines', label: 'Uzávierky' },
+    { key: 'edupage', label: 'EduPage' },
+    { key: 'contact', label: 'Kontakt' },
+    { key: 'report', label: 'Denný report' },
+];
+
 interface GlobalSettings {
     deadline_breakfast: string;
     deadline_breakfast_is_day_before: boolean;
@@ -40,6 +49,7 @@ const SystemSettings: React.FC = () => {
         client_contact_phone: '',
     });
     const [loading, setLoading] = useState(true);
+    const [activeTab, setActiveTab] = useState<SettingsTab>('deadlines');
     const [newRecipient, setNewRecipient] = useState('');
     const [scrapeDate, setScrapeDate] = useState(() => {
         const now = new Date();
@@ -246,8 +256,22 @@ const SystemSettings: React.FC = () => {
         <>
             <PageHead eyebrow="Nastavenia" title="Systémové nastavenia" />
 
-            <div className="zpa-stack" style={{ maxWidth: 860 }}>
+            <div className="zpa-tabs" style={{ maxWidth: 'fit-content' }}>
+                {TABS.map((t) => (
+                    <button
+                        key={t.key}
+                        type="button"
+                        onClick={() => setActiveTab(t.key)}
+                        className={`zpa-tab${activeTab === t.key ? ' active' : ''}`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            <div className="zpa-stack" style={{ maxWidth: 860, marginTop: 20 }}>
                 {/* Deadlines */}
+                {activeTab === 'deadlines' && (
                 <Card pad>
                     <CardHead title="Časy uzávierok objednávok" />
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 8 }}>
@@ -261,8 +285,10 @@ const SystemSettings: React.FC = () => {
                         </div>
                     </form>
                 </Card>
+                )}
 
                 {/* EduPage automation */}
+                {activeTab === 'edupage' && (
                 <Card pad>
                     <CardHead title="EduPage automatika" />
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginTop: 8 }}>
@@ -311,8 +337,10 @@ const SystemSettings: React.FC = () => {
                         <Button type="button" onClick={saveSettings}>Uložiť EduPage</Button>
                     </div>
                 </Card>
+                )}
 
                 {/* Contact */}
+                {activeTab === 'contact' && (
                 <Card pad>
                     <CardHead title="Kontakt pre prevádzky" desc="Tieto údaje sa zobrazujú prevádzkam pri porciách a diétach." />
                     <div className="zpa-grid-2" style={{ marginTop: 8 }}>
@@ -325,8 +353,10 @@ const SystemSettings: React.FC = () => {
                         <Button type="button" onClick={saveSettings}>Uložiť kontakt</Button>
                     </div>
                 </Card>
+                )}
 
                 {/* Report email recipients */}
+                {activeTab === 'report' && (
                 <Card pad>
                     <CardHead title="Príjemcovia denného reportu" desc="Na tieto e-mailové adresy bude automaticky zasielaný denný prehľad objednávok (XLSX)." />
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 24, marginTop: 8 }}>
@@ -379,6 +409,9 @@ const SystemSettings: React.FC = () => {
                         </ul>
                     )}
                 </Card>
+                )}
+
+                {/* Billing coefficients */}
             </div>
         </>
     );

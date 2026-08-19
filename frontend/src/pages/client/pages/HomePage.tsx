@@ -22,6 +22,7 @@ import { useToast } from "../../../context/ToastContext";
 import OrderSummaryModal from "../components/order/OrderSummaryModal";
 import OrderService, { DailyOrder } from "../services/OrderService";
 import { OrderRequestError } from "../hooks/useOrder";
+import { stepBusinessDay, toDateKey } from "../../../lib/businessDay";
 import TourOverlay from "../components/onboarding/TourOverlay";
 import { logger } from '../../../lib/logger';
 import { fetchAllPages } from '../../../lib/pagination';
@@ -66,12 +67,14 @@ interface MonthlySummary {
   items: { label: string; count: number }[];
 }
 
-/** First workday strictly after today (Mon–Fri). */
+/** First workday strictly after today (Mon–Fri).
+ *
+ * Sviatky ani voľno prevádzky sa tu neriešia: je to len počiatočný dátum, ktorý
+ * si `/api/orders/planned/` aj tak prepíše skutočným zoznamom dní na objednanie
+ * (ten už `PrevadzkaClosure` rešpektuje). */
 function firstNextWorkday(): string {
   const d = OrderService.getServerNow();
-  d.setDate(d.getDate() + 1);
-  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
-  return OrderService.toLocalDateString(d);
+  return toDateKey(stepBusinessDay(d, 1) ?? d);
 }
 
 const HomePage = () => {

@@ -11,8 +11,16 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..cache_service import (
+    GRAMAGE_DASHBOARD_TIMEOUT,
+    get_cached,
+    get_gramage_dashboard_cache_key,
+    set_cached,
+)
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
+from ..permissions import IsAdminOrAbove, IsKuchynaOrAbove
+from ..roles import is_admin_or_above
 from ..serializers_menu import (
     DailyMealPlanSerializer,
     MealTemplateSerializer,
@@ -23,6 +31,27 @@ from ..utils import parse_date_param
 from .audit_mixins import AuditedModelViewSetMixin
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _cached_gramage_dashboard_data(date_str: str) -> dict:
+    """`MealPlanService.gramage_dashboard()` result, cached per date (5 min TTL).
+
+    The aggregation (orders × plan items × diety × portion types) is pure
+    Python work over the day's data and identical for the screen and the PDF
+    export, so both share this cache. No write-side invalidation — same
+    tradeoff as `daily-stats`: the underlying orders change too often to
+    track per-write, so a short TTL bounds the staleness instead. Callers
+    still apply their own `section`/`vydaj` filtering (build_table_spec) on
+    top of the cached, unfiltered data.
+    """
+    cache_key = get_gramage_dashboard_cache_key(date_str)
+    cached_data = get_cached(cache_key)
+    if cached_data is not None:
+        return cached_data
+
+    data = MealPlanService.gramage_dashboard(date_str)
+    set_cached(cache_key, data, timeout=GRAMAGE_DASHBOARD_TIMEOUT)
+    return data
 
 
 class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
@@ -37,11 +66,11 @@ class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = PortionType.objects.all()
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(is_active=True)
         return qs
 
@@ -60,11 +89,11 @@ class MealTemplateViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ["list", "retrieve"]:
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         qs = MealTemplate.objects.all()
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(is_active=True)
         category = self.request.query_params.get("category")
         if category:
@@ -88,23 +117,28 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     def _is_admin_route(self) -> bool:
         return self.request.path.startswith("/api/admin/")
 
+    #: Prehľady nakladania — kuchyňa ich len číta, meniť nesmie nič (#486).
+    KUCHYNA_READABLE_ACTIONS = {"gramage_dashboard", "gramage_dashboard_pdf"}
+
     def get_permissions(self):
         if (
             self.action in ["list", "retrieve", "by_date"]
             and not self._is_admin_route()
         ):
             return [permissions.IsAuthenticated()]
-        return [permissions.IsAdminUser()]
+        if self.action in self.KUCHYNA_READABLE_ACTIONS:
+            return [IsKuchynaOrAbove()]
+        return [IsAdminOrAbove()]
 
     def get_queryset(self):
         item_queryset = MealPlanItem.objects.select_related("template__diet", "diet")
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             item_queryset = item_queryset.filter(template__is_active=True)
         qs = DailyMealPlan.objects.prefetch_related(
             Prefetch("items", queryset=item_queryset),
             "enrolled_counts__portion_type",
         ).order_by("-date")
-        if not self.request.user.is_staff:
+        if not is_admin_or_above(self.request.user):
             qs = qs.filter(items__template__is_active=True).distinct()
         from_date = self.request.query_params.get("from")
         to_date = self.request.query_params.get("to")
@@ -285,7 +319,7 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
         date = parse_date_param(date_str)
-        data = MealPlanService.gramage_dashboard(date.isoformat())
+        data = _cached_gramage_dashboard_data(date.isoformat())
         # Hotový popis tabuľky — obrazovka aj PDF ho renderujú z rovnakého spec-u,
         # aby sa nemali ako rozísť (viď gramage_table_spec).
         from ..exporters.gramage_table_spec import build_table_spec
@@ -304,7 +338,7 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
         date = parse_date_param(date_str)
-        data = MealPlanService.gramage_dashboard(date.isoformat())
+        data = _cached_gramage_dashboard_data(date.isoformat())
         # Tá istá tabuľka ako na obrazovke: rovnaký spec, rovnaké CSS, len
         # namiesto Reactu ju do HTML zloží gramage_table_html a WeasyPrint
         # z toho spraví papier.
@@ -315,7 +349,11 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         sections = request.query_params.getlist("section") or None
         vydaje = request.query_params.getlist("vydaj") or None
-        spec = build_table_spec(data, sections=sections, vydaje=vydaje)
+        # #510 — PDF nemá „zbalený" stav, sub-riadky sú vždy vidno, takže
+        # medzisúčty za klienta by len duplikovali čísla o riadok vyššie.
+        spec = build_table_spec(
+            data, sections=sections, vydaje=vydaje, include_summary_rows=False
+        )
         pdf_bytes = HTML(string=render_document(spec)).write_pdf()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"

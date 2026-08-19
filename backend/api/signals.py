@@ -24,6 +24,7 @@ from django.dispatch import receiver
 logger = logging.getLogger(__name__)
 
 PERIODIC_TASK_NAME_AUTO_ORDER = "auto-order-daily"
+PERIODIC_TASK_NAME_EVENT_LOG_PURGE = "event-log-purge-daily"
 PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
 # Reports must land *after* the Edupage scrape, which now runs exactly at the
@@ -675,3 +676,34 @@ def on_user_profile_saved(sender, instance, created, **kwargs):
     except Exception as exc:
         logger.exception("Error creating default Celok/Prevadzka: %s", exc)
         _capture_signal_failure(exc, "user_profile_saved")
+
+
+@receiver(post_save, sender="api.Celok")
+@receiver(post_delete, sender="api.Celok")
+@receiver(post_save, sender="api.Prevadzka")
+@receiver(post_delete, sender="api.Prevadzka")
+@receiver(post_save, sender="api.ProfileCelokAccess")
+@receiver(post_delete, sender="api.ProfileCelokAccess")
+@receiver(post_save, sender="api.ProfilePrevadzkaAccess")
+@receiver(post_delete, sender="api.ProfilePrevadzkaAccess")
+@receiver(post_save, sender="api.UserProfile")
+@receiver(post_delete, sender="api.UserProfile")
+@receiver(post_save, sender="api.PasswordResetToken")
+@receiver(post_delete, sender="api.PasswordResetToken")
+@receiver(post_save, sender="auth.User")
+@receiver(post_delete, sender="auth.User")
+def on_admin_celok_list_input_changed(sender, instance, **kwargs):
+    """Invalidate the cached `/admin/celky/` list (#504 perf follow-up).
+
+    Every one of these models feeds `AdminCelokViewSet.get_queryset()`
+    (celok/prevádzka tree, prístupy, loginy, aktívne reset tokeny) — any write
+    to them can change what that endpoint returns, so the cache is cleared
+    unconditionally rather than tracked per-field.
+    """
+    try:
+        from api.cache_service import clear_admin_celok_list_cache
+
+        clear_admin_celok_list_cache()
+    except Exception as exc:
+        logger.exception("Error clearing admin celok list cache: %s", exc)
+        _capture_signal_failure(exc, "admin_celok_list_input_changed")

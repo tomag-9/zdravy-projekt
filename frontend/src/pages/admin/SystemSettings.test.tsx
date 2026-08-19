@@ -59,6 +59,7 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         const user = userEvent.setup();
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'Denný report' }));
 
         // Wait for initial load
         await waitFor(() => {
@@ -82,6 +83,7 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         const user = userEvent.setup();
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'Denný report' }));
 
         // Wait for initial load
         await waitFor(() => {
@@ -102,6 +104,7 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         const user = userEvent.setup();
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'Denný report' }));
 
         await waitFor(() => {
             expect(screen.getByText('existing@example.com')).toBeInTheDocument();
@@ -122,6 +125,7 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         const user = userEvent.setup();
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'Denný report' }));
 
         await waitFor(() => {
             expect(screen.getByText('existing@example.com')).toBeInTheDocument();
@@ -142,6 +146,7 @@ describe('SystemSettings - Report Recipients Auto-Save', () => {
         const user = userEvent.setup();
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'EduPage' }));
 
         await waitFor(() => {
             expect(screen.getByText('EduPage automatika')).toBeInTheDocument();
@@ -206,6 +211,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
         });
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'EduPage' }));
         const btn = await screen.findByRole('button', { name: /Načítať z EduPage/i });
         await user.click(btn);
 
@@ -236,6 +242,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
         });
 
         render(<SystemSettings />);
+        await user.click(await screen.findByRole('button', { name: 'EduPage' }));
         await user.click(await screen.findByRole('button', { name: /Načítať z EduPage/i }));
 
         await waitFor(() => {

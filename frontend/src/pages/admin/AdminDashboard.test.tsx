@@ -378,6 +378,30 @@ describe("GramageTable renders straight from the spec", () => {
     expect(screen.queryByText("Škôlka - Obed Menu A")).not.toBeInTheDocument();
   });
 
+  it("shows the prevádzka note in the note column even while collapsed (#513)", async () => {
+    const withNote = {
+      ...GRAMAGE_WITH_ROWS,
+      spec: {
+        ...GRAMAGE_WITH_ROWS.spec,
+        rows: [
+          {
+            ...GRAMAGE_WITH_ROWS.spec.rows[0],
+            cells: [
+              { ...GRAMAGE_WITH_ROWS.spec.rows[0].cells[0], colspan: 1 },
+              { text: "bez cibule", css: "cell-note client-note" },
+            ],
+          },
+          ...GRAMAGE_WITH_ROWS.spec.rows.slice(1),
+        ],
+      },
+    };
+    mockDashboardRequests(withNote);
+    render(<AdminDashboard />);
+
+    // Vidno hneď, bez rozbalenia klienta.
+    expect(await screen.findByText("bez cibule")).toBeInTheDocument();
+  });
+
   it("reveals the sub-rows with their spec classes and colour on expand", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<AdminDashboard />);

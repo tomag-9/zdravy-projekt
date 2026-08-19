@@ -17,6 +17,7 @@ from api.management.commands.init_roles import DEMO_ADMIN_EMAIL, DEMO_OPERATION_
 
 from ..exceptions import InvalidCredentialsError, MissingRequiredFieldError
 from ..metrics import login_attempts_total
+from ..roles import role_of
 from ..throttles import LoginRateThrottle
 
 logger = logging.getLogger(__name__)
@@ -142,6 +143,10 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         # DB query (avoids both a per-rotation SELECT and the exception-fallback
         # path that would silently promote an admin to a 30-day token).
         refresh["is_staff"] = user.is_staff
+        # `role` je len informatívny claim; autorizácia sa vždy rozhoduje z DB.
+        # Tokeny vydané pred #482 ho nemajú, preto ho rotácia nikdy nesmie
+        # vyžadovať — inak by deploy odhlásil každého prihláseného admina.
+        refresh["role"] = role_of(user)
 
         # Store on the instance so the view can read the lifetime without re-parsing
         self._refresh = refresh

@@ -8,9 +8,12 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from api.roles import klient_q
+
 from ..exceptions import ClosedDayOrderModificationError
 from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
+from ..scheduling import closed_dates_for_prevadzky, is_weekend, next_business_day
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +24,14 @@ def _is_order_empty(data: Dict[str, Any]) -> bool:
 
 
 def _next_workday(from_date: datetime.date) -> datetime.date:
-    """Return the next Monday-Friday date strictly after from_date."""
-    d = from_date + datetime.timedelta(days=1)
-    while d.weekday() >= 5:  # 5=Sat, 6=Sun
-        d += datetime.timedelta(days=1)
-    return d
+    """Najbližší deň na objednanie striktne po `from_date`.
+
+    Cez `api.scheduling`, takže okrem víkendu preskočí aj celosystémový
+    `Holiday` — auto-objednávka nemá mieriť na deň, kedy kuchyňa nevarí (#489).
+    Voľno konkrétnej prevádzky sa tu riešiť nedá (dátum je jeden pre celý beh),
+    rieši sa nižšie preskočením tej prevádzky.
+    """
+    return next_business_day(from_date + datetime.timedelta(days=1))
 
 
 def _last_non_empty_order(user: User, before_date: datetime.date) -> DailyOrder | None:
@@ -119,7 +125,7 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         target_date = _next_workday(today)
 
     # Safety: never auto-order on weekends
-    if target_date.weekday() >= 5:
+    if is_weekend(target_date):
         logger.info(
             "apply_auto_orders: target_date %s is a weekend, skipping.", target_date
         )
@@ -137,7 +143,9 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         )
         return {"created": [], "skipped": 0, "date": str(target_date)}
 
-    clients = list(User.objects.filter(is_staff=False, is_active=True))
+    # Rola, nie `is_staff`: kuchyňa má tiež `is_staff=False` a takýto dotaz
+    # by jej začal generovať auto-objednávky (#482).
+    clients = list(User.objects.filter(klient_q(), is_active=True))
     client_ids = [c.id for c in clients]
 
     # Auto-objednávky sa vedú per prevádzka, nie per login: celok s tromi
@@ -166,15 +174,30 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             templates_by_prevadzka[order.prevadzka_id] = order
 
     edupage_prevadzka_ids = _edupage_prevadzka_ids()
+    # Voľno prevádzky (#490): auto-objednávka ho musí rešpektovať rovnako ako
+    # víkend — inak by prevádzka na prázdninách dostávala jedlo každý deň.
+    closed_prevadzka_ids = {
+        pid
+        for pid, days in closed_dates_for_prevadzky(
+            list(templates_by_prevadzka), target_date, target_date
+        ).items()
+        if days
+    }
     clients_by_id = {c.id: c for c in clients}
     created = []
     skipped = 0
     skipped_edupage = 0
+    skipped_closed = 0
 
     for prevadzka_id, template in templates_by_prevadzka.items():
         if prevadzka_id in edupage_prevadzka_ids:
             skipped += 1
             skipped_edupage += 1
+            continue
+
+        if prevadzka_id in closed_prevadzka_ids:
+            skipped += 1
+            skipped_closed += 1
             continue
 
         # Already has an order for this date (manual or previous auto)?
@@ -241,8 +264,9 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         )
 
     logger.info(
-        "apply_auto_orders: skipped %d EduPage-driven prevadzky on %s",
+        "apply_auto_orders: skipped %d EduPage-driven a %d zatvorených prevádzok on %s",
         skipped_edupage,
+        skipped_closed,
         target_date,
     )
     logger.info(

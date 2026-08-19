@@ -5,6 +5,7 @@ from typing import Any, List
 
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models
 from django.utils import timezone
 
@@ -259,11 +260,37 @@ class GlobalSettings(models.Model):
 class UserProfile(models.Model):
     """Login-level údaje; doménové dáta žijú na Celok/Prevadzka/access modeloch."""
 
+    class Role(models.TextChoices):
+        KLIENT = "klient", "Klient"
+        ADMIN = "admin", "Admin"
+        SUPERADMIN = "superadmin", "Superadmin"
+        KUCHYNA = "kuchyna", "Kuchyňa"
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="profile")
     company_name = models.CharField(
         max_length=255,
         blank=True,
         help_text="Interný názov prevádzky (používa sa interne)",
+    )
+    role = models.CharField(
+        max_length=20,
+        choices=Role.choices,
+        default=Role.KLIENT,
+        db_index=True,
+        help_text=(
+            "Rola loginu (#482). `is_staff` zostáva odvodeným zrkadlom pre Django "
+            "admin — autoritatívna je táto hodnota, čítaj ju cez `api.roles.role_of`."
+        ),
+    )
+    section_overrides = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text=(
+            "Granulárne oprávnenia per sekcia (#484) ako {sekcia: úroveň}. "
+            'Chýbajúci kľúč znamená „podľa role", nie „bez prístupu". Býva to '
+            "pár položiek a číta sa pri každom requeste, preto sedí na profile "
+            "a nie vo vlastnej tabuľke — príde spolu s ním jedným dotazom."
+        ),
     )
     created_at = models.DateTimeField(auto_now_add=True)
     onboarding_completed = models.BooleanField(
@@ -836,6 +863,60 @@ class Holiday(models.Model):
         return f"Voľný deň {self.date}{suffix}"
 
 
+class PrevadzkaClosure(models.Model):
+    """Voľno JEDNEJ prevádzky — deň alebo súvislý rozsah (napr. prázdniny škôlky).
+
+    Zámerne nie `Holiday`: `Holiday` je celosystémové voľno kuchyne (nevarí sa
+    nikde), toto zavrie len konkrétnu prevádzku, kým ostatné objednávajú ďalej.
+    Preto aj rozsah namiesto riadku na deň — prázdniny sú súvislý úsek a admin
+    ho má vedieť zrušiť jedným klikom, nie mazať 14 riadkov.
+    """
+
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="closures"
+    )
+    date_from = models.DateField(db_index=True)
+    date_to = models.DateField(db_index=True)
+    reason = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date_from", "prevadzka_id"]
+        verbose_name = "voľno prevádzky"
+        verbose_name_plural = "voľná prevádzky"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(date_to__gte=models.F("date_from")),
+                name="prevadzka_closure_range_ordered",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["prevadzka", "date_from", "date_to"],
+                name="prevadzka_closure_lookup",
+            )
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.date_from and self.date_to and self.date_to < self.date_from:
+            raise DjangoValidationError(
+                {"date_to": "Koniec voľna nesmie byť pred jeho začiatkom."}
+            )
+
+    def covers(self, day: datetime.date) -> bool:
+        return self.date_from <= day <= self.date_to
+
+    def __str__(self) -> str:
+        span = (
+            str(self.date_from)
+            if self.date_from == self.date_to
+            else f"{self.date_from} – {self.date_to}"
+        )
+        suffix = f" ({self.reason})" if self.reason else ""
+        return f"Voľno {self.prevadzka_id}: {span}{suffix}"
+
+
 class PushSubscription(models.Model):
     """
     Web Push subscription for a user device/browser.
@@ -918,3 +999,72 @@ class PushNotificationAttempt(models.Model):
 
     def __str__(self) -> str:
         return f"PushNotificationAttempt({self.status}, …{self.endpoint[-20:]})"
+
+
+class LoadingStatus(models.Model):
+    """Odkliknutie, že položka je pre danú prevádzku a deň naložená (#487).
+
+    `item_key` je kľúč stĺpcovej skupiny z gramážového prehľadu
+    (`col_groups[].key` — napr. `soup`, `main_course_A`, `afternoon_snack_diet_3`).
+    Je odvodený z obsahu jedálnička, nie z poradia riadkov, takže prežije
+    prekreslenie tabuľky aj zmenu triedenia prevádzok.
+
+    Riadok sa nemaže ani pri odškrtnutí — `is_loaded=False` si ponecháva stopu,
+    kto a kedy naposledy stav zmenil. Kuchyňa je rola s viacerými účtami, takže
+    „kto to odklikol" je pri reklamácii podstatná informácia.
+    """
+
+    date = models.DateField(db_index=True)
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="loading_statuses"
+    )
+    item_key = models.CharField(
+        max_length=100, help_text="Kľúč stĺpcovej skupiny z gramážového prehľadu."
+    )
+    is_loaded = models.BooleanField(default=True)
+    marked_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="loading_marks",
+    )
+    marked_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ["date", "prevadzka", "item_key"]
+        indexes = [models.Index(fields=["date", "prevadzka"])]
+        ordering = ["date", "prevadzka_id", "item_key"]
+
+    def __str__(self) -> str:
+        stav = "naložené" if self.is_loaded else "nenaložené"
+        return f"{self.date} {self.prevadzka}: {self.item_key} — {stav}"
+
+
+class PrevadzkaLoadingConfirmation(models.Model):
+    """Finálne potvrdenie, že prevádzka je celá naložená (#487).
+
+    Samostatný model, nie `item_key=""` na `LoadingStatus` — potvrdenie je iná
+    vec než položka a miešať ich do jednej tabuľky by si vyžiadalo strážiť
+    magickú hodnotu kľúča.
+    """
+
+    date = models.DateField(db_index=True)
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="loading_confirmations"
+    )
+    confirmed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="loading_confirmations",
+    )
+    confirmed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["date", "prevadzka"]
+        ordering = ["-confirmed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.date} {self.prevadzka}: naložené"
