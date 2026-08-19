@@ -444,7 +444,13 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                         validated_data["date"],
                     )
                 order.data = new_data
-                order.save(update_fields=["data", "updated_at"])
+                # Issue #507: a manual submit overwriting an auto-generated
+                # placeholder (`is_auto=True`, created by auto_order_service
+                # after the deadline) is real, reviewed data now — clear the
+                # flag so admin overview stops flagging it "na kontrolu"
+                # forever, even after someone actually filled it in.
+                order.is_auto = False
+                order.save(update_fields=["data", "is_auto", "updated_at"])
             except DailyOrder.DoesNotExist:
                 # Wrap create() in its own savepoint so that if IntegrityError is
                 # raised (another request raced us to INSERT), only this savepoint
@@ -508,7 +514,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         instance.data = new_data
-        instance.save(update_fields=["data", "updated_at"])
+        # Issue #507: see the matching comment in create() above.
+        instance.is_auto = False
+        instance.save(update_fields=["data", "is_auto", "updated_at"])
         return instance
 
 
