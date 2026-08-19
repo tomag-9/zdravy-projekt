@@ -180,13 +180,13 @@ def test_header_keeps_the_template_name():
 
 
 def test_notes_come_before_the_subtotals():
+    """Poznámka prevádzky už vlastný riadok nemá — je v stĺpci Poznámka."""
     spec = build_table_spec(_payload())
 
     assert _kinds(spec) == [
         "client",
         "sub-row",
         "sub-row",
-        "note-admin",
         "note-delivery",
         "summary-std",
         "summary-diet",
@@ -202,7 +202,7 @@ def test_include_summary_rows_false_drops_client_subtotals():
     kinds = _kinds(spec)
     assert "summary-std" not in kinds
     assert "summary-diet" not in kinds
-    assert kinds == ["client", "sub-row", "sub-row", "note-admin", "note-delivery"]
+    assert kinds == ["client", "sub-row", "sub-row", "note-delivery"]
 
 
 def test_zero_grams_render_as_a_dash_not_a_zero():
@@ -469,7 +469,6 @@ def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
     assert [r["kind"] for r in lunch["rows"]] == [
         "client",
         "sub-row",
-        "note-admin",
         "note-delivery",
         "summary-std",
     ]

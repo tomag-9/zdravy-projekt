@@ -4,16 +4,14 @@ import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
 import { logger } from '../../lib/logger';
 import { PageHead, Card, CardHead, Button, Field, Input, Toggle } from './ui';
-import BillingCoefficientsTab from './settings/BillingCoefficientsTab';
 
-type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report' | 'coefficients';
+type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report';
 
 const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'deadlines', label: 'Uzávierky' },
     { key: 'edupage', label: 'EduPage' },
     { key: 'contact', label: 'Kontakt' },
     { key: 'report', label: 'Denný report' },
-    { key: 'coefficients', label: 'Koeficienty a porcie' },
 ];
 
 interface GlobalSettings {
@@ -414,7 +412,6 @@ const SystemSettings: React.FC = () => {
                 )}
 
                 {/* Billing coefficients */}
-                {activeTab === 'coefficients' && <BillingCoefficientsTab />}
             </div>
         </>
     );
