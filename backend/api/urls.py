@@ -10,6 +10,7 @@ from .views import (
     AdminFacilityPrevadzkaViewSet,
     AdminHolidayViewSet,
     AdminLogViewSet,
+    AdminPrevadzkaClosureViewSet,
     AdminPrevadzkaDeliveryViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
@@ -24,15 +25,18 @@ from .views import (
     GlobalSettingsViewSet,
     HolidayListViewSet,
     InboxViewSet,
+    LoadingViewSet,
     LogoutView,
     MealTemplateViewSet,
     PasswordResetConfirmView,
     PasswordResetRequestView,
     PlannedOrdersViewSet,
     PortionTypeViewSet,
+    PrevadzkaClosureListViewSet,
     PrevadzkaViewSet,
     PushSubscribeView,
     SafeTokenRefreshView,
+    SectionPermissionViewSet,
     UserProfileViewSet,
     VapidPublicKeyView,
 )
@@ -52,6 +56,11 @@ router.register(
     basename="admin-facility-prevadzka",
 )
 router.register(r"admin/users", AdminUserViewSet, basename="admin-user")
+router.register(
+    r"admin/section-permissions",
+    SectionPermissionViewSet,
+    basename="admin-section-permission",
+)
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
 router.register(r"admin/event-logs", AdminEventLogViewSet, basename="admin-event-log")
 router.register(
@@ -69,6 +78,7 @@ router.register(
     AdminPrevadzkaDeliveryViewSet,
     basename="admin-prevadzka-delivery",
 )
+router.register(r"kuchyna/loading", LoadingViewSet, basename="kuchyna-loading")
 router.register(r"admin/summary", AdminSummaryViewSet, basename="adminsummary")
 router.register(
     r"admin/global-settings",
@@ -87,6 +97,14 @@ router.register(r"admin/meal-templates", MealTemplateViewSet, basename="meal-tem
 router.register(r"meal-plans", DailyMealPlanViewSet, basename="client-meal-plan")
 router.register(r"admin/holidays", AdminHolidayViewSet, basename="admin-holiday")
 router.register(r"holidays", HolidayListViewSet, basename="holiday")
+router.register(
+    r"admin/prevadzka-closures",
+    AdminPrevadzkaClosureViewSet,
+    basename="admin-prevadzka-closure",
+)
+router.register(
+    r"prevadzka-closures", PrevadzkaClosureListViewSet, basename="prevadzka-closure"
+)
 router.register(r"inbox", InboxViewSet, basename="inbox")
 router.register(
     r"admin/edupage-connections",

@@ -2,7 +2,8 @@
 Cache service for managing application-level caching.
 
 Provides centralized cache key management and TTL configuration
-for frequently accessed data: GlobalSettings, Diet, and daily stats.
+for frequently accessed data: GlobalSettings, Diet, daily stats, the admin
+celok/prevádzka list and the gramage dashboard.
 
 Includes fallback handling for Redis timeouts/connection failures to prevent
 cache errors from crashing the application.
@@ -19,11 +20,20 @@ logger = logging.getLogger(__name__)
 GLOBAL_SETTINGS_CACHE_KEY = "global_settings"
 DIET_LIST_CACHE_KEY = "diet_list"
 DAILY_STATS_CACHE_KEY_PREFIX = "daily_stats"
+ADMIN_CELOK_LIST_CACHE_KEY = "admin_celok_list"
+GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX = "gramage_dashboard"
 
 # Cache timeout (TTL) constants in seconds
 GLOBAL_SETTINGS_TIMEOUT = 3600  # 1 hour
 DIET_LIST_TIMEOUT = 86400  # 24 hours (static data)
 DAILY_STATS_TIMEOUT = 300  # 5 minutes
+# Invalidated explicitly via signals on write (see api/signals.py), so the TTL
+# here is only a poistka for writes that bypass the ORM (e.g. bulk_update).
+ADMIN_CELOK_LIST_TIMEOUT = 3600  # 1 hour
+# No write-side invalidation (same tradeoff as daily stats) — the underlying
+# data (orders, meal plan) changes too often to track per-write, so a short
+# TTL bounds the staleness instead.
+GRAMAGE_DASHBOARD_TIMEOUT = 300  # 5 minutes
 
 
 def get_global_settings_cache_key() -> str:
@@ -39,6 +49,21 @@ def get_diet_list_cache_key() -> str:
 def get_daily_stats_cache_key(date_str: str) -> str:
     """Return the cache key for daily stats by date (YYYY-MM-DD format)."""
     return f"{DAILY_STATS_CACHE_KEY_PREFIX}:{date_str}"
+
+
+def get_admin_celok_list_cache_key() -> str:
+    """Return the cache key for the unfiltered admin celok/prevádzka list.
+
+    Only the unfiltered (no ``?search=``) response is cached — that's the
+    payload `FacilityManager.tsx` fetches on every page load (it filters
+    client-side), so this key covers the common case.
+    """
+    return ADMIN_CELOK_LIST_CACHE_KEY
+
+
+def get_gramage_dashboard_cache_key(date_str: str) -> str:
+    """Return the cache key for the gramage dashboard by date (YYYY-MM-DD)."""
+    return f"{GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX}:{date_str}"
 
 
 def get_cached(key: str) -> Optional[Any]:
@@ -140,6 +165,16 @@ def clear_diet_list_cache() -> None:
     # (Safe fallback when wildcard delete is unsupported.)
     delete_cached(base_key)
     delete_cached(f"{base_key}:page=1")
+
+
+def clear_admin_celok_list_cache() -> None:
+    """Clear the cached admin celok/prevádzka list.
+
+    Called from signal handlers whenever a model that feeds
+    `AdminCelokViewSet.get_queryset()` changes (Celok, Prevádzka, prístupy,
+    loginy/profily, aktívne reset tokeny).
+    """
+    delete_cached(get_admin_celok_list_cache_key())
 
 
 def clear_daily_stats_cache(date_str: Optional[str] = None) -> None:

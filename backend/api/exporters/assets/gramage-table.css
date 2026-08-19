@@ -138,6 +138,10 @@
     font-family: var(--font-display); font-weight: 700; color: var(--green-900); font-size: 16px; text-align: left;
 }
 .zpa-gram .client-toggle:hover { background: rgba(201,150,35,0.14); }
+/* Klientsky riadok môže vpravo niesť akciu (odklikávanie naloženia, #487).
+   Bez akcie vyzerá presne ako predtým — toggle vyplní celú šírku. */
+.zpa-gram .client-line { display: flex; align-items: center; }
+.zpa-gram .client-line > .client-toggle { flex: 1; min-width: 0; }
 .zpa-gram .client-toggle .meta { font-weight: 500; font-size: 12px; color: var(--ink-3); }
 .zpa-gram .client-toggle .chev { transition: transform 200ms; display: inline-flex; }
 .zpa-gram .client-toggle .chev.open { transform: rotate(90deg); }
@@ -172,9 +176,20 @@
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
-/* Prázdny stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky,
- * na obrazovke ostáva prázdny. */
+/* Stĺpec „Poznámka" — bez poznámky prevádzky doň kuchyňa píše rukou do
+ * vytlačenej tabuľky (#513: predtým bol na obrazovke vždy prázdny). */
 .zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
+/* Poznámka prevádzky na klientskom riadku — `.client-row td` inak nastaví
+ * padding:0 a žltú výplň pre toggle bunku, tu treba vlastný priestor a
+ * čitateľný text na tmavšom podklade (#513). */
+.zpa-gram .client-row .client-note {
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--green-900);
+    white-space: normal;
+    vertical-align: middle;
+}
 .zpa-gram thead .grp-note,
 .zpa-gram thead .comp-note { background: var(--green-900); }
 

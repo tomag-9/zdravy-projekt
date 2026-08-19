@@ -42,6 +42,7 @@ from .holiday_views import AdminHolidayViewSet, HolidayListViewSet
 
 # Inbox views
 from .inbox_views import InboxViewSet
+from .loading_views import LoadingViewSet
 
 # Meal plan views
 from .meal_plan_views import (
@@ -58,21 +59,33 @@ from .order_views import (
     PrevadzkaViewSet,
 )
 
+# Voľno prevádzky (#490)
+from .prevadzka_closure_views import (
+    AdminPrevadzkaClosureViewSet,
+    PrevadzkaClosureListViewSet,
+)
+
 # Push notification views
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
 
 # Report views
 from .report_views import AdminSummaryViewSet
+from .section_permission_views import SectionPermissionViewSet
 
 # Settings views
 from .settings_views import GlobalSettingsViewSet, UserProfileViewSet
 
 __all__ = [
+    "SectionPermissionViewSet",
+    "LoadingViewSet",
     # Authentication
     "EmailTokenObtainPairSerializer",
     # Holidays
     "AdminHolidayViewSet",
     "HolidayListViewSet",
+    # Voľno prevádzky
+    "AdminPrevadzkaClosureViewSet",
+    "PrevadzkaClosureListViewSet",
     "EmailTokenObtainPairView",
     "LogoutView",
     "PasswordResetRequestView",

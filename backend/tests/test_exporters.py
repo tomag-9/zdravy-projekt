@@ -321,5 +321,8 @@ class TestGramageDashboardExports:
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
         html = render_table(build_table_spec(data))
 
-        assert "<strong>Poznámka k objednávke:</strong> bez cibule" in html
         assert "<strong>Rozvoz:</strong> zadný vchod" in html
+        # Poznámka prevádzky žije v stĺpci Poznámka na klientskom riadku.
+        # Vlastný sub-riadok už nemá — bol by to ten istý text dvakrát.
+        assert '<td class="cell-note client-note">bez cibule</td>' in html
+        assert "Poznámka k objednávke:" not in html

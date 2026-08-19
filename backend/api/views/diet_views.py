@@ -12,6 +12,7 @@ from ..cache_service import (
     set_cached,
 )
 from ..models import Diet
+from ..permissions import IsAdminOrAbove
 from ..serializers_user import DietSerializer
 from ..services.meal_plan_service import resolve_diet_menu_variants
 from ..utils import parse_date_param
@@ -53,7 +54,7 @@ class DietViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             "destroy",
             "reorder",
         ]:
-            return [permissions.IsAdminUser()]
+            return [IsAdminOrAbove()]
         return super().get_permissions()
 
     @action(detail=False, methods=["post"], url_path="reorder")

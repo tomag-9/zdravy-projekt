@@ -13,7 +13,13 @@ Slovenský systém objednávania školských jedál.
   aby sa nezdvojil; rozdelenie po školách cez `edupage_match` prefix).
 
 ## Príkazy
-- **Backend testy:** `docker compose -f compose/dev.yml exec -T backend python -m pytest <path> --no-cov -q`
+- **Backend testy:** `docker compose -f compose/dev.yml exec -T backend python -m pytest --no-cov -q`
+  Bez cesty! `pytest.ini` má dve testpaths (`tests`, `api/tests`) — spustenie len nad
+  `api/tests` prehliadne legacy vetvu (stalo sa v PR #501).
+- **Backend lint ako v CI:** `black --check .`, `isort --check-only .`,
+  `mypy api --ignore-missing-imports` — spúšťaj z `backend/`. Pre-commit hook kontroluje
+  len staged súbory, CI celý adresár; verzie v `.pre-commit-config.yaml` musia sedieť
+  s `backend/requirements.txt`, inak hook prejde a CI padne.
 - **Django check:** `docker compose -f compose/dev.yml exec -T backend python manage.py check`
 - **Frontend:** `cd frontend && npx tsc --noEmit && npm run lint && npx vitest run`
 

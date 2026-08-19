@@ -148,6 +148,10 @@ class TestAdminCelokViewSetQueries:
         # <= 8: #416 added a bounded visible_portion_types prefetch per prevádzka
         # (6); the login password-status badge added one more bounded prefetch
         # each for celok- and prevádzka-scoped accesses (+2 = 8), not per row.
+        # Rolový systém (#482) ani granulárne práva (#484) hranicu nezdvihli:
+        # profil aktéra prináša `ProfileAwareJWTAuthentication` tým istým
+        # dotazom, ktorým sa načítava používateľ, a overridy sedia priamo na
+        # ňom (`section_overrides`), takže neznamenajú ďalšie kolo do DB.
         assert query_count <= 8, f"Expected <= 8 queries, got {query_count}."
         prevadzky = {
             prevadzka["nazov"]: prevadzka
@@ -270,9 +274,10 @@ class TestPlannedOrdersViewSetQueries:
             assert response.status_code == status.HTTP_200_OK
 
         query_count = len(ctx.captured_queries)
-        # After query optimization, total queries should be <= 4
+        # After query optimization, total queries should be <= 5
         # (includes main list query, helper logic like _last_non_empty_order, user settings
-        # lookup, and #416's bounded visible_portion_types prefetch)
+        # lookup, #416's bounded visible_portion_types prefetch, and #490's single
+        # PrevadzkaClosure lookup for the whole window)
         assert (
-            query_count <= 4
-        ), f"Expected <= 4 queries, got {query_count}. Possible N+1 issue."
+            query_count <= 5
+        ), f"Expected <= 5 queries, got {query_count}. Possible N+1 issue."

@@ -66,9 +66,24 @@ def admin_user(db):
     )
 
 
+def _with_profile(user):
+    """Používateľ tak, ako ho podá autentifikácia — teda aj s profilom.
+
+    `force_authenticate` obchádza `ProfileAwareJWTAuthentication`, ktorá profil
+    ťahá cez `select_related`. Bez tohto by testy merali o dotaz viac než
+    produkcia, lebo rolový systém siahne na `user.profile` pri každom requeste.
+    """
+    return User.objects.select_related("profile").get(pk=user.pk)
+
+
 @pytest.fixture
 def authenticated_client(api_client, user):
-    """Authenticated API client fixture."""
+    """Authenticated API client fixture.
+
+    Zámerne dostáva tú istú inštanciu ako fixture `user` — časť testov ju po
+    vytvorení klienta ešte mení (napr. nastaví `is_staff`) a očakáva, že sa to
+    na requeste prejaví.
+    """
     api_client.force_authenticate(user=user)
     return api_client
 
@@ -76,7 +91,7 @@ def authenticated_client(api_client, user):
 @pytest.fixture
 def admin_authenticated_client(api_client, admin_user):
     """Admin authenticated API client fixture."""
-    api_client.force_authenticate(user=admin_user)
+    api_client.force_authenticate(user=_with_profile(admin_user))
     return api_client
 
 

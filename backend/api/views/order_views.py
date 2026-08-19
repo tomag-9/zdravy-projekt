@@ -15,6 +15,8 @@ from rest_framework.response import Response
 
 from ..exceptions import ClientOnlyError, ClosedDayOrderModificationError
 from ..models import ClosedDay, DailyOrder, EventLog
+from ..permissions import IsAdminOrAbove
+from ..roles import is_admin_or_above, is_klient
 from ..serializers import DailyOrderSerializer, PrevadzkaSerializer
 from ..services import OrderService
 from ..services.event_log_service import build_nested_dict_diff, log_event
@@ -59,7 +61,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         prevadzka_id = self.request.query_params.get("prevadzka")
-        if user.is_staff:
+        if is_admin_or_above(user):
             user_id = self.request.query_params.get("user_id")
             if user_id:
                 try:
@@ -87,7 +89,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
             except (TypeError, ValueError):
                 raise ValidationError({"prevadzka": "Must be an integer."})
             if (
-                not user.is_staff
+                not is_admin_or_above(user)
                 and not dostupne_prevadzky(user).filter(pk=prevadzka_id_int).exists()
             ):
                 raise ValidationError(
@@ -115,7 +117,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 without specifying a ``user_id``.
             ValidationError: When ``user_id`` refers to another staff account.
         """
-        if self.request.user.is_staff:
+        if is_admin_or_above(self.request.user):
             user_id = self.request.query_params.get("user_id")
             if not user_id:
                 if "prevadzka" in serializer.validated_data:
@@ -129,9 +131,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 except (TypeError, ValueError):
                     raise ValidationError({"user_id": "Must be an integer."})
                 target_user = get_object_or_404(User, pk=user_id_int)
-                if target_user.is_staff:
+                if not is_klient(target_user):
                     raise ValidationError(
-                        {"user_id": "Cannot create orders for staff users."}
+                        {
+                            "user_id": "Objednávky sa dajú vytvárať len klientskym loginom."
+                        }
                     )
                 order = serializer.save(user=target_user)
             if order.pk is None:
@@ -173,7 +177,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         )
         order = serializer.save()
         if (
-            self.request.user.is_staff
+            is_admin_or_above(self.request.user)
             and target_user is not None
             and target_user.pk != self.request.user.pk
         ):
@@ -203,7 +207,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance: DailyOrder) -> None:
         if ClosedDay.objects.filter(date=instance.date).exists():
             raise ClosedDayOrderModificationError()
-        should_log = self.request.user.is_staff and (
+        should_log = is_admin_or_above(self.request.user) and (
             instance.user_id != self.request.user.pk
         )
         order_id = instance.pk
@@ -302,7 +306,7 @@ class AdminAutoOrderViewSet(viewsets.ViewSet):
     POST /api/admin/trigger-auto-orders/  { "date": "YYYY-MM-DD" }  (date optional)
     """
 
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsAdminOrAbove]
 
     def create(self, request: Request) -> Response:
         date_str = request.data.get("date")

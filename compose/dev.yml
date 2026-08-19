@@ -1,12 +1,22 @@
 services:
   db:
-    image: postgres:15-alpine
+    # #506 — major bump z 15 → 18. Nie je binárne kompatibilné: existujúci
+    # `postgres_data_dev` volume prvýkrát naštartuje s 18 zlyhá. Dev nemá čo
+    # zachovať, tak volume jednoducho zahoď a nechaj seed reťaz v tomto súbore
+    # (real_initial_seed_prevadzky → ... → sync_periodic_tasks) postaviť ho
+    # znova: `docker compose -f compose/dev.yml down -v && docker compose -f
+    # compose/dev.yml up -d`.
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-zdravy_projekt_dev}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
-      - postgres_data_dev:/var/lib/postgresql/data
+      # 18+ images store data one level up (pg_ctlcluster-style, versioned
+      # subdir under here) — mounting straight at .../data like the old 15
+      # image did makes the entrypoint refuse to start (see docker-library/
+      # postgres#1259). Needs the fresh volume from the #506 comment above.
+      - postgres_data_dev:/var/lib/postgresql
     ports:
       - "5432:5432"
     healthcheck:

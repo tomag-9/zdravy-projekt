@@ -21,7 +21,7 @@ describe("PrevadzkaOverview", () => {
 
     render(<PrevadzkaOverview />);
 
-    await screen.findByText("Dodanie podkladov");
+    await screen.findByText("Kontrola objednávok");
     expect(screen.queryByRole("button", { name: /PDF/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /XLSX/i })).not.toBeInTheDocument();
     expect(mockApiFetch.mock.calls.every(([url]) => !String(url).includes("-xlsx") && !String(url).includes("-pdf"))).toBe(true);
