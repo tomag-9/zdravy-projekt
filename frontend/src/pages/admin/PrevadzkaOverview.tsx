@@ -194,7 +194,7 @@ const PrevadzkaOverview: React.FC = () => {
     <>
       <PageHead
         eyebrow="Prevádzky"
-        title="Dodanie podkladov"
+        title="Kontrola objednávok"
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
         actions={
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto" }} />
