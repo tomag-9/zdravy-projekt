@@ -13,6 +13,9 @@ const SetPasswordPage: React.FC = () => {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  // Odkaz už bol uplatnený — nie je to chyba používateľa, heslo má nastavené a
+  // potrebuje sa už len prihlásiť. Preto namiesto červenej hlášky ponúkneme login.
+  const [alreadyUsed, setAlreadyUsed] = useState(false);
   const [success, setSuccess] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,6 +33,7 @@ const SetPasswordPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setAlreadyUsed(false);
 
     if (newPassword !== confirmPassword) {
       setError("Heslá sa nezhodujú.");
@@ -52,6 +56,7 @@ const SetPasswordPage: React.FC = () => {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
+        setAlreadyUsed(data.code === "used");
         setError(data.detail || "Nepodarilo sa nastaviť heslo. Odkaz mohol vypršať.");
         return;
       }
@@ -122,14 +127,33 @@ const SetPasswordPage: React.FC = () => {
             />
           </div>
 
+          {/* Pravidlá sú tu vopred, nie až v chybovej hláške: heslo odvodené od
+              názvu škôlky validátor odmieta, lebo prihlasovacie meno je e-mail. */}
+          <ul className="zp-hint-list">
+            <li>aspoň 8 znakov</li>
+            <li>nesmie sa podobať na vašu e-mailovú adresu</li>
+            <li>nie iba číslice a nie bežné heslo</li>
+          </ul>
+
           {error && (
             <div className="zp-banner" style={{ marginBottom: 12, marginLeft: 0, marginRight: 0, width: "100%" }}>
               ⚠ {error}
             </div>
           )}
 
+          {alreadyUsed && (
+            <Link
+              to="/login"
+              className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
+              style={{ marginTop: 8, textAlign: "center", textDecoration: "none" }}
+            >
+              Prejsť na prihlásenie
+            </Link>
+          )}
+
           <button
             type="submit"
+            hidden={alreadyUsed}
             disabled={isLoading || !token}
             className="zp-btn zp-btn--primary zp-btn--block zp-btn--lg"
             style={{ marginTop: 8 }}

@@ -371,8 +371,15 @@ class PasswordResetConfirmView(APIView):
             # show (does not leak whether an account exists) but distinguishes
             # *why* it failed — used / expired / invalid — instead of a single
             # generic string for every case (issue #461).
+            #
+            # `code` ide von preto, aby sa frontend nemusel rozhodovať podľa textu
+            # hlášky: pri už uplatnenom odkaze ponúkne prihlásenie namiesto toho,
+            # aby používateľa nechal na slepej ulici.
             return Response(
-                {"detail": str(exc) or PASSWORD_RESET_CONFIRM_ERROR},
+                {
+                    "detail": str(exc) or PASSWORD_RESET_CONFIRM_ERROR,
+                    "code": getattr(exc, "code", "invalid"),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

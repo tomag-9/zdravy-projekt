@@ -338,3 +338,63 @@ class TestPasswordResetConfirmEndpoint:
             self._url(), {"token": token.token, "new_password": "SecondPass2!"}
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+class TestPasswordErrorsAreUnderstandable:
+    """Hlášky pri nastavovaní hesla — onboarding škôlok, 19. 8. 2026.
+
+    Škôlky videli anglické vety z Django validátorov a nevedeli, čo majú opraviť;
+    jedna sa kvôli tomu nedostala do appky vôbec.
+    """
+
+    def test_password_similar_to_email_is_explained_in_slovak(self, user):
+        """Prihlasovacie meno je e-mail, tak heslo odvodené od neho neprejde."""
+        from api.password_reset_service import PasswordResetError
+
+        token_obj = PasswordResetToken.objects.create(
+            user=user,
+            token="token-similar-heslo",
+            expires_at=timezone.now() + datetime.timedelta(hours=1),
+        )
+
+        with pytest.raises(PasswordResetError) as chyba:
+            confirm_password_reset(
+                token=token_obj.token, new_password=user.email.split("@")[0]
+            )
+
+        assert "podobné" in str(chyba.value)
+        assert chyba.value.code == "weak_password"
+
+    def test_used_token_tells_the_user_to_log_in(self, user):
+        """Druhé kliknutie na odkaz nie je chyba — heslo už je nastavené."""
+        from api.password_reset_service import PasswordResetError
+
+        used = PasswordResetToken.objects.create(
+            user=user,
+            token="token-uz-pouzity",
+            expires_at=timezone.now() + datetime.timedelta(hours=1),
+            used=True,
+        )
+
+        with pytest.raises(PasswordResetError) as chyba:
+            confirm_password_reset(token=used.token, new_password="CelkomIneHeslo9!")
+
+        assert "prihlásiť" in str(chyba.value)
+        assert chyba.value.code == "used"
+
+    def test_api_returns_code_so_frontend_can_offer_login(self, api_client, user):
+        used = PasswordResetToken.objects.create(
+            user=user,
+            token="token-api-pouzity",
+            expires_at=timezone.now() + datetime.timedelta(hours=1),
+            used=True,
+        )
+
+        response = api_client.post(
+            reverse("password_reset_confirm"),
+            {"token": used.token, "new_password": "CelkomIneHeslo9!"},
+        )
+
+        assert response.status_code == 400
+        assert response.data["code"] == "used"
+        assert "prihlásiť" in response.data["detail"]
