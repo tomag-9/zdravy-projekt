@@ -193,6 +193,18 @@ def test_notes_come_before_the_subtotals():
     ]
 
 
+def test_include_summary_rows_false_drops_client_subtotals():
+    """Issue #510: PDF export has no collapsed state, sub-rows are always
+    shown, so the per-client subtotal rows would just duplicate numbers
+    already printed one row up."""
+    spec = build_table_spec(_payload(), include_summary_rows=False)
+
+    kinds = _kinds(spec)
+    assert "summary-std" not in kinds
+    assert "summary-diet" not in kinds
+    assert kinds == ["client", "sub-row", "sub-row", "note-admin", "note-delivery"]
+
+
 def test_zero_grams_render_as_a_dash_not_a_zero():
     spec = build_table_spec(_payload())
     sub_row = next(r for r in spec["rows"] if r["kind"] == "sub-row")

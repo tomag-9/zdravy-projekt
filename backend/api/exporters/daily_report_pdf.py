@@ -78,7 +78,9 @@ def build_report_pdf_bytes(
         )
         return None
 
-    spec = build_table_spec(data, sections=sections)
+    # #510 — PDF nemá „zbalený" stav, sub-riadky sú vždy vidno, takže
+    # medzisúčty za klienta by len duplikovali čísla o riadok vyššie.
+    spec = build_table_spec(data, sections=sections, include_summary_rows=False)
     title = "Denný prehľad objednávok"
     if meals:
         title += " — " + ", ".join(MEAL_LABELS.get(m, m) for m in meals)

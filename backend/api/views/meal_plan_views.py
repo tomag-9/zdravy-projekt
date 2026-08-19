@@ -349,7 +349,11 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         sections = request.query_params.getlist("section") or None
         vydaje = request.query_params.getlist("vydaj") or None
-        spec = build_table_spec(data, sections=sections, vydaje=vydaje)
+        # #510 — PDF nemá „zbalený" stav, sub-riadky sú vždy vidno, takže
+        # medzisúčty za klienta by len duplikovali čísla o riadok vyššie.
+        spec = build_table_spec(
+            data, sections=sections, vydaje=vydaje, include_summary_rows=False
+        )
         pdf_bytes = HTML(string=render_document(spec)).write_pdf()
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"
