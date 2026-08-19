@@ -7,8 +7,12 @@ import { isAdminOrAbove, isKuchyna } from "../lib/roles";
 import { Eye, EyeOff } from "lucide-react";
 
 const API_URL = import.meta.env.VITE_API_URL || "/api";
+// Po jednom logine na rolu — rozdiely v oprávneniach sa inak nedajú
+// preklikať (`admin@example.com` je superadmin, nie obyčajný admin).
 const DEV_LOGIN_USERS = [
-  { label: "Admin", email: "admin@example.com", password: "admin" },
+  { label: "Superadmin", email: "admin@example.com", password: "admin" },
+  { label: "Admin", email: "spravca@example.com", password: "spravca" },
+  { label: "Kuchyňa", email: "kuchyna@example.com", password: "kuchyna" },
   { label: "Prevádzka", email: "prevadzka@example.com", password: "prevadzka" },
 ];
 
