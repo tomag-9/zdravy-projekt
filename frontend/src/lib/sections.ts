@@ -22,6 +22,7 @@ export const SECTION = {
     objednavky: 'objednavky',
     nakladanie: 'nakladanie',
     nastavenia: 'nastavenia',
+    udalosti: 'udalosti',
     logy: 'logy',
     pristupy: 'pristupy',
 } as const;

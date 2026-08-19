@@ -12,7 +12,7 @@ from rest_framework.response import Response
 from .. import sections
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
-from ..permissions import IsSuperadmin, SectionAccess
+from ..permissions import IsAdminOrAbove, IsSuperadmin, SectionAccess
 from ..serializers_user import AdminUserSerializer
 from ..services.event_log_service import log_event
 from .audit_mixins import AuditedModelViewSetMixin
@@ -298,8 +298,9 @@ class AdminLogViewSet(viewsets.ViewSet):
 )
 class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = AdminEventLogSerializer
-    permission_classes = [IsSuperadmin, SectionAccess]
-    section = sections.LOGY
+    # Audit vidí aj admin — je to prehľad úkonov v systéme, nie diagnostika.
+    permission_classes = [IsAdminOrAbove, SectionAccess]
+    section = sections.UDALOSTI
 
     def get_queryset(self):
         # Profily sa ťahajú spolu s používateľmi: meno pre tabuľku ich číta pre

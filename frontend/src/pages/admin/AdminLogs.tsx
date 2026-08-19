@@ -11,6 +11,7 @@ import {
 
 import { useAuth } from '../../context/auth';
 import { logger } from '../../lib/logger';
+import { SECTION, canRead } from '../../lib/sections';
 import { PageHead, Button, Card, Field, Input, Select, SearchBox } from './ui';
 import type { BadgeTone } from './eventLogDisplay';
 import { actorDisplay, eventTone, targetDisplay } from './eventLogDisplay';
@@ -150,8 +151,14 @@ function LevelBadge({ level, muted }: { level: string; muted?: boolean }) {
 }
 
 export default function AdminLogs() {
-    const { apiFetch } = useAuth();
+    const { apiFetch, user } = useAuth();
+    // Systémové logy sú prevádzková diagnostika — vidí ich len superadmin.
+    // Audit („Udalosti") je pre admina, preto je obrazovka pod sekciou `udalosti`.
+    const canSeeSystem = canRead(user?.sections, SECTION.logy);
     const [activeTab, setActiveTab] = useState<ActiveTab>('events');
+    useEffect(() => {
+        if (!canSeeSystem && activeTab === 'system') setActiveTab('events');
+    }, [canSeeSystem, activeTab]);
 
     const [events, setEvents] = useState<EventLogEntry[]>([]);
     const [eventCount, setEventCount] = useState(0);
@@ -265,9 +272,11 @@ export default function AdminLogs() {
                         <button type="button" onClick={() => setActiveTab('events')} className={`zpa-tab${activeTab === 'events' ? ' active' : ''}`}>
                             Udalosti (audit)
                         </button>
-                        <button type="button" onClick={() => setActiveTab('system')} className={`zpa-tab${activeTab === 'system' ? ' active' : ''}`}>
-                            Systémové logy
-                        </button>
+                        {canSeeSystem && (
+                            <button type="button" onClick={() => setActiveTab('system')} className={`zpa-tab${activeTab === 'system' ? ' active' : ''}`}>
+                                Systémové logy
+                            </button>
+                        )}
                     </div>
                 </Card>
 

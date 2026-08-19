@@ -56,6 +56,7 @@ PREVADZKY = "prevadzky"
 DIETY = "diety"
 VOLNE_DNI = "volne_dni"
 NOTIFIKACIE = "notifikacie"
+UDALOSTI = "udalosti"
 OBJEDNAVKY = "objednavky"
 NAKLADANIE = "nakladanie"
 NASTAVENIA = "nastavenia"
@@ -72,11 +73,15 @@ SECTIONS: tuple[Section, ...] = (
     Section(DIETY, "Diéty", roles.ADMIN),
     Section(VOLNE_DNI, "Voľné dni", roles.ADMIN),
     Section(NOTIFIKACIE, "Notifikácie", roles.ADMIN),
+    # Audit vlastných úkonov patrí adminovi — vidí, kto čo zmenil.
+    Section(UDALOSTI, "Udalosti (audit)", roles.ADMIN),
     Section(OBJEDNAVKY, "Objednávky", roles.ADMIN),
     # Nakladanie je jediná sekcia, ktorú vidí aj kuchyňa.
     Section(NAKLADANIE, "Nakladanie", roles.KUCHYNA),
     Section(NASTAVENIA, "Systémové nastavenia", roles.SUPERADMIN),
-    Section(LOGY, "Logy a udalosti", roles.SUPERADMIN),
+    # Systémové logy sú prevádzková diagnostika, nie audit — tie ostávajú
+    # superadminovi.
+    Section(LOGY, "Systémové logy", roles.SUPERADMIN),
     Section(PRISTUPY, "Správa prístupov", roles.SUPERADMIN),
 )
 

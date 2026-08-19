@@ -965,3 +965,47 @@ def send_daily_report_task(
             "send_daily_report_task", exc, {"meals": meals, "date": date_str}
         )
         raise self.retry(exc=exc)
+
+
+#: Ako dlho sa držia záznamy o udalostiach. Audit slúži na dohľadanie „kto čo
+#: zmenil" v čerstvej prevádzke, nie na dlhodobú archiváciu — bez stropu
+#: tabuľka rastie donekonečna.
+EVENT_LOG_RETENTION_DAYS = 7
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def purge_old_event_logs_task(self, days: int | None = None):
+    """Zmaže záznamy udalostí staršie než `days` (default 7).
+
+    Beží denne. Maže po dávkach, aby jedna transakcia nedržala zámok nad celou
+    tabuľkou, keď sa raz nakopí väčší objem.
+    """
+    import datetime
+
+    from api.models import EventLog
+
+    retention = EVENT_LOG_RETENTION_DAYS if days is None else int(days)
+    cutoff = timezone.now() - datetime.timedelta(days=retention)
+
+    try:
+        deleted_total = 0
+        while True:
+            batch_ids = list(
+                EventLog.objects.filter(created_at__lt=cutoff).values_list(
+                    "pk", flat=True
+                )[:1000]
+            )
+            if not batch_ids:
+                break
+            deleted, _ = EventLog.objects.filter(pk__in=batch_ids).delete()
+            deleted_total += deleted
+
+        logger.info(
+            "purge_old_event_logs_task: zmazaných %s udalostí starších než %s dní",
+            deleted_total,
+            retention,
+        )
+        return {"deleted": deleted_total, "retention_days": retention}
+    except DatabaseError as exc:
+        logger.warning("purge_old_event_logs_task: DB chyba, skúšam znova: %s", exc)
+        raise self.retry(exc=exc)
