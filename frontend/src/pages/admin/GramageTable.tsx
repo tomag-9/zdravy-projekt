@@ -114,6 +114,10 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
 
     if (row.kind === "client") {
       const cell = row.cells[0];
+      // #513 — poznámka prevádzky (ak je nastavená) ide do stĺpca Poznámka
+      // hneď na tomto (vždy viditeľnom) riadku, nie len do collapsible
+      // note-admin sub-riadku nižšie.
+      const noteCell = row.cells[1];
       const isExpanded = expandedClients.includes(row.group_id ?? "");
       const action =
         renderClientAction && row.prevadzka_id != null
@@ -134,6 +138,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
               {action}
             </div>
           </td>
+          {noteCell && <td className={noteCell.css} title={noteCell.text || undefined}>{noteCell.text}</td>}
         </tr>
       );
     }

@@ -323,3 +323,6 @@ class TestGramageDashboardExports:
 
         assert "<strong>Poznámka k objednávke:</strong> bez cibule" in html
         assert "<strong>Rozvoz:</strong> zadný vchod" in html
+        # #513 — poznámka prevádzky je aj v stĺpci Poznámka na klientskom
+        # riadku, nielen v collapsible note-admin sub-riadku vyššie.
+        assert '<td class="cell-note client-note">bez cibule</td>' in html

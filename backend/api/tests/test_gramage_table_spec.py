@@ -231,6 +231,27 @@ def test_client_row_carries_the_screen_metadata():
     assert client["cells"][0]["meta_right"] == "spolu porcií 10"
 
 
+def test_client_row_shows_the_prevadzka_note_in_the_note_column():
+    """Issue #513: poznámka prevádzky musí byť vidno hneď na zbalenom riadku
+    klienta (v stĺpci Poznámka), nielen v collapsible note-admin sub-riadku."""
+    spec = build_table_spec(_payload())
+    client = next(r for r in spec["rows"] if r["kind"] == "client")
+
+    assert client["cells"][1]["text"] == "bez cibule"
+    assert "cell-note" in client["cells"][1]["css"]
+    total_columns = spec["total_columns"]
+    assert client["cells"][0]["colspan"] == total_columns - 1
+
+
+def test_client_row_note_column_is_empty_without_a_prevadzka_note():
+    payload = _payload()
+    payload["rows"][0]["admin_order_note"] = ""
+    spec = build_table_spec(payload)
+    client = next(r for r in spec["rows"] if r["kind"] == "client")
+
+    assert client["cells"][1]["text"] == ""
+
+
 def test_empty_routes_are_skipped():
     payload = _payload(
         vydaje=[

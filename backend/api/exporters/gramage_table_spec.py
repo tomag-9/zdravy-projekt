@@ -493,6 +493,12 @@ def _client_rows(
     if diet_total:
         meta += f", diéty {format_count(diet_total)}"
 
+    # #513 — poznámka prevádzky (nastavenie „Poznámka k objednávke") musí byť
+    # vidno hneď na zbalenom riadku klienta, v stĺpci Poznámka. Predtým žila
+    # len v `note-admin` sub-riadku nižšie, ktorý je `collapsible` — kým sa
+    # klient nerozbalil, admin o poznámke nevedel.
+    admin_order_note = str(row.get("admin_order_note") or "").strip()
+
     out: list[dict] = [
         {
             "kind": "client",
@@ -508,8 +514,13 @@ def _client_rows(
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
-                    "colspan": total_columns,
-                }
+                    "colspan": total_columns - 1,
+                },
+                (
+                    {"text": admin_order_note, "css": "cell-note client-note"}
+                    if admin_order_note
+                    else _note_cell()
+                ),
             ],
         }
     ]
@@ -545,9 +556,12 @@ def _client_rows(
             }
         )
 
-    # Poznámky idú PRED medzisúčty — tak ich má obrazovka.
+    # Poznámky idú PRED medzisúčty — tak ich má obrazovka. `note-admin` je tu
+    # popri stĺpci Poznámka na klientskom riadku zámerne — ten je úzky (jeden
+    # stĺpec), tento dá plný text bez orezania (aj v PDF, kde nič nie je
+    # zbalené).
     for kind, label, note in (
-        ("note-admin", "Poznámka k objednávke:", row.get("admin_order_note")),
+        ("note-admin", "Poznámka k objednávke:", admin_order_note),
         ("note-delivery", "Rozvoz:", row.get("delivery_note")),
     ):
         if note and str(note).strip():

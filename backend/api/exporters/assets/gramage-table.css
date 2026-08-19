@@ -176,9 +176,20 @@
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
-/* Prázdny stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky,
- * na obrazovke ostáva prázdny. */
+/* Stĺpec „Poznámka" — bez poznámky prevádzky doň kuchyňa píše rukou do
+ * vytlačenej tabuľky (#513: predtým bol na obrazovke vždy prázdny). */
 .zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
+/* Poznámka prevádzky na klientskom riadku — `.client-row td` inak nastaví
+ * padding:0 a žltú výplň pre toggle bunku, tu treba vlastný priestor a
+ * čitateľný text na tmavšom podklade (#513). */
+.zpa-gram .client-row .client-note {
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--green-900);
+    white-space: normal;
+    vertical-align: middle;
+}
 .zpa-gram thead .grp-note,
 .zpa-gram thead .comp-note { background: var(--green-900); }
 
