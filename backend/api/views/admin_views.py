@@ -9,7 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from .. import sections
+from .. import roles, sections
 from ..logging_buffer import get_log_records
 from ..models import Celok, EventLog, Prevadzka
 from ..permissions import IsAdminOrAbove, IsSuperadmin, SectionAccess
@@ -98,9 +98,48 @@ class AdminUserViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
 
     serializer_class = AdminUserSerializer
-    permission_classes = [IsSuperadmin, SectionAccess]
     section = sections.PRISTUPY
     pagination_class = AdminUserPagination
+
+    #: Akcie, kde bežný klientsky login (škôlka) smie stačiť admin — zakladanie
+    #: nového loginu pri onboardingu je rutinná práca, nie „Správa prístupov".
+    #: `list` tu zámerne chýba: to je AdminUserList.tsx (obrazovka spravujúca
+    #: interné admin/superadmin/kuchyňa účty), tá superadmin-only ostáva.
+    _RELAXABLE_ACTIONS = {
+        "create",
+        "retrieve",
+        "update",
+        "partial_update",
+        "destroy",
+        "resend_invite",
+    }
+    _INTERNAL_ROLES = {roles.ADMIN, roles.SUPERADMIN, roles.KUCHYNA}
+
+    def get_permissions(self):
+        """Klientsky login smie spravovať aj admin; interná rola (admin/
+        superadmin/kuchyňa) ostáva výhradne superadminovi (#501 predtým
+        zamklo VŠETKY loginy vrátane bežného zakladania škôlky — to blokovalo
+        rutinný onboarding, nie len citlivú zmenu roly)."""
+        if self.action in self._RELAXABLE_ACTIONS and not self._touches_internal_role():
+            self.section = sections.PREVADZKY
+            return [IsAdminOrAbove(), SectionAccess()]
+        self.section = sections.PRISTUPY
+        return [IsSuperadmin(), SectionAccess()]
+
+    def _touches_internal_role(self) -> bool:
+        requested_role = getattr(self.request, "data", {}).get("role")
+        if requested_role in self._INTERNAL_ROLES:
+            return True
+        pk = self.kwargs.get("pk")
+        if pk is not None:
+            current_role = (
+                User.objects.filter(pk=pk)
+                .values_list("profile__role", flat=True)
+                .first()
+            )
+            if current_role in self._INTERNAL_ROLES:
+                return True
+        return False
 
     def get_queryset(self):
         accessible_prevadzky = Prevadzka.objects.filter(
