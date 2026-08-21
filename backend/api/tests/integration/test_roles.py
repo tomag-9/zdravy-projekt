@@ -176,6 +176,49 @@ class TestBackfillInvariants:
         assert user.profile.role == roles.ADMIN
 
 
+class TestAdminManagesClientLoginsOnly:
+    """Admin smie spravovať bežný klientsky login (onboarding škôlky), ale nie
+    interné admin/superadmin/kuchyňa účty — tie ostávajú superadminovi (#483
+    zamklo pôvodne úplne všetko na `/admin/users/`, čo blokovalo aj rutinné
+    zakladanie klientov)."""
+
+    def test_plain_admin_creates_client_login(self, plain_admin_client):
+        res = plain_admin_client.post(
+            "/api/admin/users/", {"email": "nova.skolka@example.com"}, format="json"
+        )
+        assert res.status_code == 201, res.data
+        assert User.objects.get(email="nova.skolka@example.com").profile.role == (
+            roles.KLIENT
+        )
+
+    def test_plain_admin_cannot_create_internal_login(self, plain_admin_client):
+        res = plain_admin_client.post(
+            "/api/admin/users/",
+            {"email": "novy.admin@example.com", "role": roles.ADMIN},
+            format="json",
+        )
+        assert res.status_code == 403
+
+    def test_plain_admin_cannot_escalate_client_to_admin(self, plain_admin_client):
+        target = _user("skolka@example.com", role=roles.KLIENT)
+        res = plain_admin_client.patch(
+            f"/api/admin/users/{target.pk}/", {"role": roles.ADMIN}, format="json"
+        )
+        assert res.status_code == 403
+
+    def test_plain_admin_cannot_delete_existing_internal_login(
+        self, plain_admin_client
+    ):
+        target = _user("other-admin@example.com", role=roles.ADMIN)
+        res = plain_admin_client.delete(f"/api/admin/users/{target.pk}/")
+        assert res.status_code == 403
+
+    def test_plain_admin_still_cannot_list_users(self, plain_admin_client):
+        """`list` je AdminUserList.tsx — obrazovka na interné účty, tá ostáva
+        superadmin-only aj po uvoľnení klientskeho onboardingu."""
+        assert plain_admin_client.get("/api/admin/users/").status_code == 403
+
+
 class TestSuperadminOnlySections:
     """#483 — správa loginov, logy a systémové nastavenia sú len pre superadmina."""
 
