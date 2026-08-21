@@ -77,6 +77,18 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         poznamka="Olovrant EduPage < XLSX — kandidát na reconcile (krok 5).",
     ),
     PrevadzkaConfig(
+        subdomena="skolkacvernicka",
+        ucty=("Cvernička",),
+        olovrant_mode=_C,
+        poznamka=(
+            "Olovrant EduPage < XLSX, rovnaká rodina ako msfilipaneriho/rozmanita "
+            "(~4-5 detí denne, overené reconcile-real 17.-21.8.2026 — appka scrapuje "
+            "EduPage do písmena zhodne, reálny nedostatok je v tom, čo škola cez "
+            "EduPage vôbec eviduje). Predtým bez config riadku, teda aj bez "
+            "config_notes diagnostiky pri úplnom výpadku olovrant jid-u."
+        ),
+    ),
+    PrevadzkaConfig(
         subdomena="fantastickaskolka",
         ucty=("MŠ Fantastická",),
         olovrant_mode=_C,
