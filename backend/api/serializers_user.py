@@ -470,6 +470,17 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "role",
         ]
 
+    def to_representation(self, instance: User) -> Dict[str, Any]:
+        """`role` žije na `profile`, nie na `User` — bez `source` ho DRF na výstupe
+        potichu vynechá (`required=False` → `SkipField`), lebo `User.role`
+        neexistuje. Zoznam správcov (`AdminUserList.tsx`) tak nedostal `role` vôbec
+        a padal na `is_staff` fallback, ktorý superadmina aj kuchyňu ukazoval ako
+        obyčajného admina."""
+        data = super().to_representation(instance)
+        if hasattr(instance, "profile"):
+            data["role"] = instance.profile.role
+        return data
+
     def validate_email(self, value: str) -> str:
         """Enforce unique email for admin create/update."""
         normalized_email = value.lower()
