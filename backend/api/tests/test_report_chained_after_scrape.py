@@ -136,7 +136,8 @@ class TestChainedReportDispatch:
         """Víkend/sviatok — scrape sa preskočí, report nemá čo hlásiť."""
         _settings()
         _stub_scrape(monkeypatch)
-        monkeypatch.setattr("api.tasks._cron_skip_check", lambda name: "weekend")
+        saturday = datetime.date(2026, 8, 8)
+        monkeypatch.setattr(timezone, "localdate", lambda: saturday)
 
         with patch("api.tasks.send_daily_report_task.apply_async") as apply_async:
             result = scrape_edupage_orders_task.run(

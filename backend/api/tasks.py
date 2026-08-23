@@ -632,6 +632,7 @@ def scrape_edupage_orders_task(
                 return {"error": "invalid_meal_type", "meal_types": meal_types}
 
         date_to_meals: dict[datetime.date, list[str] | None]
+        skipped_meals: list[str] = []
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
             date_to_meals = {target_date: meal_types}
@@ -659,19 +660,28 @@ def scrape_edupage_orders_task(
                     "disabled": True,
                 }
 
-            if (reason := _cron_skip_check("scrape_edupage_orders_task")) is not None:
-                return {
-                    "scraped": 0,
-                    "errors": 0,
-                    "skipped": 0,
-                    "dates": [],
-                    "meal_types": meal_types,
-                    "skipped_run": True,
-                    "reason": reason,
-                }
+            from api.scheduling import day_off_reason
 
             today = timezone.localdate()
+
+            # The skip decision must be per meal's *target* date, not "today":
+            # a day-before meal (e.g. breakfast scraped Sunday evening for
+            # Monday) is scheduled to fire exactly on days today is a
+            # weekend — checking today here would silently kill every
+            # day-before scrape (found live on 2026-08-23, olovrant/breakfast
+            # never scraped for the following Monday).
             if meal_types is None:
+                if (reason := day_off_reason(today)) is not None:
+                    _log_cron_skip_event("scrape_edupage_orders_task", reason, today)
+                    return {
+                        "scraped": 0,
+                        "errors": 0,
+                        "skipped": 0,
+                        "dates": [],
+                        "meal_types": meal_types,
+                        "skipped_run": True,
+                        "reason": reason,
+                    }
                 date_to_meals = {today: None}
             else:
                 date_to_meals = {}
@@ -680,9 +690,27 @@ def scrape_edupage_orders_task(
                         gs, f"deadline_{meal_type}_is_day_before", False
                     )
                     target_date = _next_workday(today) if is_day_before else today
+                    if day_off_reason(target_date) is not None:
+                        skipped_meals.append(meal_type)
+                        continue
                     target_meals = date_to_meals.setdefault(target_date, [])
                     assert target_meals is not None
                     target_meals.append(meal_type)
+
+                if not date_to_meals:
+                    # Every meal's target date is a day off — a genuine full
+                    # skip, same as the meal_types=None case.
+                    reason = day_off_reason(today) or "configured_day_off"
+                    _log_cron_skip_event("scrape_edupage_orders_task", reason, today)
+                    return {
+                        "scraped": 0,
+                        "errors": 0,
+                        "skipped": 0,
+                        "dates": [],
+                        "meal_types": meal_types,
+                        "skipped_run": True,
+                        "reason": reason,
+                    }
 
         scraper = EdupageScraper()
         # Whitelist diét sa číta raz za beh — je rovnaký pre všetky prevádzky.
@@ -849,6 +877,8 @@ def scrape_edupage_orders_task(
             "dates": [str(target_date) for target_date in date_to_meals],
             "meal_types": meal_types,
         }
+        if skipped_meals:
+            summary["skipped_meals"] = skipped_meals
         dispatched = _dispatch_chained_reports(
             chained_reports,
             [str(target_date) for target_date in date_to_meals],
