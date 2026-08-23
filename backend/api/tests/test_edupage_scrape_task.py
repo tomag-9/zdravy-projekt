@@ -141,6 +141,81 @@ def test_edupage_scrape_uses_next_workday_for_day_before_meal(
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_day_before_meal_runs_on_a_weekend_evening(
+    edupage_user, monkeypatch
+):
+    """Found live on 2026-08-23: a day-before meal (breakfast/olovrant) fires
+    Sunday evening to import Monday's orders — Celery Beat's crontab (see
+    `_day_of_week` in api/signals.py) deliberately schedules it on Sun–Thu
+    for exactly this reason. The skip check must look at the *target* date
+    (Monday, a workday), not "today" (Sunday, a weekend) — else this run
+    would be silently dropped every single week."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(21, 0),
+        deadline_breakfast_is_day_before=True,
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    sunday = datetime.date(2026, 8, 23)
+    monday = datetime.date(2026, 8, 24)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result(
+            order_data={"breakfast": {"menuCounts": {"A": 3}, "diets": {}}},
+            warnings=[],
+        )
+
+    monkeypatch.setattr(timezone, "localdate", lambda: sunday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(meal_types=["breakfast"])
+
+    assert result.get("skipped_run") is not True
+    assert result["dates"] == [str(monday)]
+    assert seen_dates == [monday]
+    assert DailyOrder.objects.filter(user=edupage_user, date=monday).exists()
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_skips_only_the_meal_whose_target_is_a_day_off(
+    edupage_user, monkeypatch
+):
+    """Mixed run: a day-before meal targeting Monday must scrape, while a
+    same-day meal targeting Sunday itself must be skipped — per meal, not
+    for the whole task."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(21, 0),
+        deadline_breakfast_is_day_before=True,
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    sunday = datetime.date(2026, 8, 23)
+    monday = datetime.date(2026, 8, 24)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result(
+            order_data={"breakfast": {"menuCounts": {"A": 3}, "diets": {}}},
+            warnings=[],
+        )
+
+    monkeypatch.setattr(timezone, "localdate", lambda: sunday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(meal_types=["breakfast", "lunch"])
+
+    assert result.get("skipped_run") is not True
+    assert result["dates"] == [str(monday)]
+    assert seen_dates == [monday]
+    assert result["skipped_meals"] == ["lunch"]
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
     """Upozornenia scrapu sa uložia do DailyOrder.scrape_flags a pri čistom
     behu sa vyčistia, nech admin prehľad nezobrazuje starý výkričník."""
