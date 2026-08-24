@@ -35,7 +35,7 @@ weasyprint==69.0
 pywebpush==2.4.0
 
 # Production server
-gunicorn==23.0.0
+gunicorn==26.1.0
 whitenoise==6.9.0
 
 # requests compatibility: avoid RequestsDependencyWarning with chardet>=6
