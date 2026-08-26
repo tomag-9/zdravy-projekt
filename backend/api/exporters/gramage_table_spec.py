@@ -233,6 +233,12 @@ def build_table_spec(
     # prevádzky doň nepatria a v celej tabuľke sa aj tak ukážu.
     filtered = len(shown_vydaje) != len(all_vydaje)
     if shown_vydaje:
+        # Klastre 1 a 2 (spravidla Vydaj A a B) chcú navyše spoločný medzisúčet
+        # — kým klaster 3 (British School, #531) je nová, samostatná trasa.
+        # Viazané na POZÍCIU v `shown_vydaje`, nie na Vydaj.key: pri filtrovanej
+        # tlači je poradie stále "prvý zobrazený, druhý zobrazený", takže sa to
+        # správa rozumne aj keď sa niekedy vynechá stredný klaster z výberu.
+        first_two_rows: list[dict] = []
         for position, vydaj in enumerate(shown_vydaje):
             # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
             # vlastný list, nech si ho jeho obsluha vezme celý.
@@ -266,9 +272,11 @@ def build_table_spec(
                 for route in vydaj.get("routes") or []
                 for r in route.get("rows") or []
             ]
+            if position < 2:
+                first_two_rows.extend(vydaj_rows)
             rows.extend(
                 _portion_summary_rows(
-                    f"Súhrn porcií — {vydaj.get('name') or position + 1}",
+                    f"Sumár {position + 1}",
                     portion_summary(data, vydaj_rows),
                     keep,
                     groups,
@@ -276,6 +284,21 @@ def build_table_spec(
                     total_columns,
                 )
             )
+            # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
+            # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
+            # bez tretieho klastra). Zmysel má, až keď je aj tretí (British
+            # School), voči ktorému sa medzisúčet prvých dvoch odlišuje.
+            if position == 1 and len(shown_vydaje) > 2:
+                rows.extend(
+                    _portion_summary_rows(
+                        "Sumár 1 a 2",
+                        portion_summary(data, first_two_rows),
+                        keep,
+                        groups,
+                        hues,
+                        total_columns,
+                    )
+                )
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
@@ -319,7 +342,7 @@ def build_table_spec(
         footer_totals = data.get("totals") or []
 
     footer = _portion_summary_rows(
-        "Porcie celkom",
+        "Sumár dokopy",
         footer_summary,
         keep,
         groups,

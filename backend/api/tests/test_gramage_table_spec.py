@@ -596,3 +596,84 @@ def test_unassigned_prevadzky_stay_out_of_a_filtered_print():
     assert "Nepriradené prevádzky" not in _band_texts(
         build_table_spec(payload, vydaje=["A"])
     )
+
+
+# ── Sumáre pri troch výdajných bodoch (#531 — British School = Cluster C) ────
+
+
+def _three_vydaje_payload():
+    """Tri výdajné body — British School je prvý reálny 3. klaster."""
+    rows = _payload()["rows"]
+    return _payload(
+        vydaje=[
+            {
+                "key": "A",
+                "name": "Výdaj A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
+            },
+            {
+                "key": "B",
+                "name": "Výdaj B",
+                "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
+            },
+            {
+                "key": "C",
+                "name": "Výdaj C",
+                "routes": [{"id": 3, "name": "British School", "rows": rows}],
+            },
+        ],
+        rows=[],
+        unassigned_rows=[],
+    )
+
+
+def _portion_summary_titles(spec):
+    return [
+        row["cells"][0]["text"]
+        for row in spec["rows"]
+        if "portion-summary-band" in row["css"]
+    ]
+
+
+def test_three_vydaje_get_numbered_summaries_and_a_combined_first_two():
+    spec = build_table_spec(_three_vydaje_payload())
+
+    assert _portion_summary_titles(spec) == [
+        "Sumár 1",
+        "Sumár 2",
+        "Sumár 1 a 2",
+        "Sumár 3",
+    ]
+    assert spec["footer"][0]["cells"][0]["text"] == "Sumár dokopy"
+
+
+def test_combined_first_two_summary_equals_the_portion_summary_over_both():
+    from api.exporters.gramage_dashboard_export import portion_summary
+
+    payload = _three_vydaje_payload()
+    spec = build_table_spec(payload)
+    rows = [r for r in spec["rows"] if r["kind"] == "portion-row"]
+    # Sumár 1, Sumár 2, Sumár 1 a 2, Sumár 3 — v tomto poradí, 3 riadky každý
+    # (Polievka, Menu A, Menu B podľa fixture).
+    combined_rows = rows[6:9]
+
+    vydaj_a_rows = payload["vydaje"][0]["routes"][0]["rows"]
+    vydaj_b_rows = payload["vydaje"][1]["routes"][0]["rows"]
+    expected = portion_summary(payload, [*vydaj_a_rows, *vydaj_b_rows])
+
+    assert [row["cells"][0]["count"] for row in combined_rows] == [
+        format_count(item["count"]) for item in expected
+    ]
+
+
+def test_two_vydaje_do_not_get_a_combined_summary():
+    """Kombinovaný medzisúčet dáva zmysel len keď je čo kombinovať navyše."""
+    spec = build_table_spec(_two_vydaje_payload())
+
+    assert _portion_summary_titles(spec) == ["Sumár 1", "Sumár 2"]
+
+
+def test_filtering_to_a_single_vydaj_drops_the_combined_summary():
+    spec = build_table_spec(_three_vydaje_payload(), vydaje=["C"])
+
+    assert _portion_summary_titles(spec) == ["Sumár 1"]
