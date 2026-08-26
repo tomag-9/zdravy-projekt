@@ -41,6 +41,10 @@ ALLOWED_DIET_NAMES = {
     "NO SOJA",
     "NO ZELER",
     "DIA",
+    "VEGAN",
+    "NO BRAVCOVINA",
+    "NO CERVENE MASO",
+    "NO CUKOR",
 }
 
 
@@ -166,6 +170,11 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "nozemiak": "NO ZEMIAK",
     "dia": "DIA",
     "diabet": "DIA",
+    # British School (#531) hlási po anglicky — mapujeme na slovenské Diet.name.
+    "vegan": "VEGAN",
+    "nopork": "NO BRAVCOVINA",
+    "noredmeat": "NO CERVENE MASO",
+    "nosugar": "NO CUKOR",
 }
 
 # Meal category by service-hour range (vydaj_od hour)

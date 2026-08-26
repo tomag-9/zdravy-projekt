@@ -77,6 +77,7 @@ def test_init_reference_data_enables_default_diets_for_empty_prevadzky():
         "NO ZELER",
     }
     assert "DIA" not in enabled_diets
+    assert "VEGAN" not in enabled_diets
 
 
 @pytest.mark.django_db

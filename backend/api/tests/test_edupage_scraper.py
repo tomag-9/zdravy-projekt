@@ -144,6 +144,19 @@ class TestResolveDietName(unittest.TestCase):
         self.assertEqual(self._r("PV", "Palisády V"), "VEGGIE")
         self.assertEqual(self._r("SV", "Stupava V"), "VEGGIE")
 
+    def test_british_school_english_diet_labels_map_to_slovak_names(self):
+        """British School (#531) hlási diéty po anglicky, ukladáme ich pod
+        slovenským Diet.name (spätná väzba: preložiť, nie nechať po anglicky)."""
+        cases = [
+            ("F", "Vegan", "VEGAN"),
+            ("O", "noPork", "NO BRAVCOVINA"),
+            ("Q", "noRedMeat", "NO CERVENE MASO"),
+            ("T", "noSugar", "NO CUKOR"),
+        ]
+        for skratka, nazov, expected in cases:
+            with self.subTest(skratka=skratka, nazov=nazov):
+                self.assertEqual(self._r(skratka, nazov), expected)
+
 
 class TestResolveMenuVariant(unittest.TestCase):
     def _r(self, sk, naz):
@@ -171,6 +184,10 @@ class TestResolveMenuVariant(unittest.TestCase):
         self.assertEqual(self._r("PA", "Palisády A"), "A")
         self.assertEqual(self._r("PB", "Palisády B"), "B")
         self.assertEqual(self._r("PC", "Menu C"), "C")
+
+    def test_menu_d_is_menu_variant_not_an_unknown_diet(self):
+        """British School (#531) hlási 4. menu ako "Menu D" — nemá byť diéta."""
+        self.assertEqual(self._r("D", "Menu D"), "D")
 
 
 class TestBuildJidMap(unittest.TestCase):

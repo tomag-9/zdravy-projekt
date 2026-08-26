@@ -2,10 +2,13 @@
 
 Na rozdiel od `seed_new_edupage_2026_08` celok a prevádzka British School ešte
 neexistujú — tento seed ich vytvorí a rovno prepojí na EduPage guest link
-dodaný priamo v zadaní issue. Rozvozová trasa (Cluster C — prvé reálne použitie
-`Vydaj.C`) sa nastavuje ručne cez admin Rozvoz, nie tu: v čase písania seedu nie
-je jasné, na akú fyzickú trasu British School reálne patrí, tak nechávame
-prevádzku bez `delivery_route` a upozorníme na stdout.
+dodaný priamo v zadaní issue.
+
+Rozvozová trasa: podľa spätnej väzby (26. 8. 2026) je jedno, či British School
+ide pod nový Cluster C alebo pod existujúci blok "Trasa extra" — dôležité je
+len mať trasu priradenú. Ideme na Cluster C, prvé reálne použitie `Vydaj.C`
+(#531 pôvodne vzniklo presne kvôli tomuto), v rámci existujúceho bloku
+"Trasa extra" (nezakladáme nový blok).
 
     python manage.py seed_british_school_2026_08
     python manage.py seed_british_school_2026_08 --dry-run
@@ -14,10 +17,30 @@ prevádzku bez `delivery_route` a upozorníme na stdout.
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
-from api.models import Celok, EdupageConnection, Prevadzka
+from api.models import (
+    Celok,
+    DeliveryBlock,
+    DeliveryRoute,
+    Diet,
+    EdupageConnection,
+    Prevadzka,
+    Vydaj,
+)
 
 BRITISH_SCHOOL_URL = "https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45"
 BRITISH_SCHOOL_NAME = "British School"
+BRITISH_SCHOOL_ROUTE_BLOCK = "Trasa extra"
+# Anglické EduPage diéty (Vegan/noPork/noRedMeat/noSugar), preložené do
+# slovenských Diet.name (edupage_scraper._NAZOV_KEYWORD_MAP) — nie sú
+# default-visible pre každú prevádzku (reference_data.OPERATION_SPECIFIC_DIETS),
+# tak ich British School potrebuje zapnuté explicitne, aby ich admin/klient
+# reálne videl v appke.
+BRITISH_SCHOOL_DIET_NAMES = [
+    "VEGAN",
+    "NO BRAVCOVINA",
+    "NO CERVENE MASO",
+    "NO CUKOR",
+]
 
 
 class Command(BaseCommand):
@@ -66,11 +89,57 @@ class Command(BaseCommand):
             f"{'vytvorená' if prevadzka_created else 'už existuje'}, "
             "pripojené na EduPage"
         )
+
+        diets = Diet.objects.filter(name__in=BRITISH_SCHOOL_DIET_NAMES)
+        found_names = set(diets.values_list("name", flat=True))
+        missing_names = set(BRITISH_SCHOOL_DIET_NAMES) - found_names
+        if missing_names:
+            self.stdout.write(
+                self.style.WARNING(
+                    "  British School: diéty "
+                    f"{sorted(missing_names)} v DB chýbajú (spusti "
+                    "init_reference_data skôr) — visible_diets nedopĺňam."
+                )
+            )
+        else:
+            prevadzka.visible_diets.add(*diets)
+            self.stdout.write(
+                "  British School: diéty "
+                f"{sorted(found_names)} zapnuté (visible_diets)"
+            )
+
+        block = DeliveryBlock.objects.filter(name=BRITISH_SCHOOL_ROUTE_BLOCK).first()
+        if block is None:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"  British School: blok '{BRITISH_SCHOOL_ROUTE_BLOCK}' "
+                    "neexistuje (spusti seed_real_delivery_layout skôr) — "
+                    "trasu priraď ručne cez admin Rozvoz."
+                )
+            )
+        else:
+            route, route_created = DeliveryRoute.objects.get_or_create(
+                name=BRITISH_SCHOOL_NAME,
+                defaults={
+                    "block": block,
+                    "vydaj": Vydaj.C,
+                    "sort_order": 99,
+                    "is_active": True,
+                },
+            )
+            if prevadzka.delivery_route_id != route.pk:
+                prevadzka.delivery_route = route
+                prevadzka.save(update_fields=["delivery_route"])
+            self.stdout.write(
+                "  British School: trasa "
+                f"{'vytvorená' if route_created else 'už existuje'} "
+                f"(Cluster C, blok '{BRITISH_SCHOOL_ROUTE_BLOCK}'), priradená prevádzke"
+            )
+
         self.stdout.write(
             self.style.WARNING(
-                "  British School: rozvozová trasa (Cluster/Vydaj C) sa musí "
-                "nastaviť ručne cez admin Rozvoz. Po prvom live scrape over "
-                "edupage_match a potvrď počty s kontaktnou osobou."
+                "  British School: po prvom live scrape over edupage_match "
+                "a potvrď počty s kontaktnou osobou."
             )
         )
 
