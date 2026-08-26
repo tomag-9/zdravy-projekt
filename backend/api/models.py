@@ -82,8 +82,9 @@ class DailyOrder(models.Model):
         blank=True,
         help_text=(
             "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
-            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...]}. "
-            "Prázdne pri ručných objednávkach a pri scrape bez upozornení."
+            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...], "
+            "'uncertain_diets': [...]}. Prázdne pri ručných objednávkach a "
+            "pri scrape bez upozornení."
         ),
     )
     is_auto = models.BooleanField(

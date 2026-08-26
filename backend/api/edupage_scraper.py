@@ -100,6 +100,7 @@ _SKRATKA_MAP: dict[str, str] = {
     "NOM": "NO MILK",
     "NG": "NO GLUTEN",
     "NOG": "NO GLUTEN",
+    "NOGLUTEN": "NO GLUTEN",  # MŠ Dobrého Pastiera píše skratku vypísanú celú
     "NGNM": "NO MILK/NO GLUTEN",
     "NMNG": "NO MILK/NO GLUTEN",
     "NMG": "NO MILK/NO GLUTEN",
@@ -118,9 +119,11 @@ _SKRATKA_MAP: dict[str, str] = {
     "NMNO": "NO MILK",
     "NMZ": "NO MILK",
     "NMZD": "NO MILK",
+    "PNM": "NO MILK",  # MŠ Edulienka: "PnM" (Palisády no Milk)
     "V": "VEGGIE",
     "VEG": "VEGGIE",
     "VE": "VEGGIE",
+    "VEGE": "VEGGIE",  # British School píše po anglicky "Vege"
     "PV": "VEGGIE",
     "SV": "VEGGIE",
     "VEGETAR": "VEGGIE",
@@ -297,6 +300,13 @@ class ScrapeResult:
     # `unmapped_letters` rozpadnuté podľa prevádzky, do ktorej porcie padli.
     # Prázdne pri jedno-prevádzkovom scrape (vtedy platí `unmapped_letters`).
     unmapped_by_prevadzka: dict[str, list[str]] = field(default_factory=dict)
+    # Diéty, ktoré appka rozpoznala len heuristikou (fuzzy suffix/keyword scan, nie
+    # exaktnou skratkou zo `_SKRATKA_MAP`), aj keď výsledný názov je medzi povolenými.
+    # Počty a priradenie sa NEMENIA — je to len signál pre admina na kontrolu, nie
+    # signál zlyhania (nesmie sa miešať do `warnings`/`unmapped_letters`).
+    uncertain_letters: list[str] = field(default_factory=list)
+    # `uncertain_letters` rozpadnuté podľa prevádzky, analogicky k `unmapped_by_prevadzka`.
+    uncertain_by_prevadzka: dict[str, list[str]] = field(default_factory=dict)
     # Scrape zlyhal štrukturálne — volajúci z toho robí "neimportuj nič".
     warnings: list[str] = field(default_factory=list)
     # Scrape prebehol, ale per-prevádzka config nesedí s realitou (škola zmenila
@@ -535,45 +545,65 @@ class EdupageScraper:
         1. Known skratka (abbreviation) exact match
         2. Keyword scan on normalised nazov
         3. Fallback: return nazov as-is (stored under that name in diets)
+
+        Tenký wrapper nad `_resolve_diet_name_with_confidence` — vracia len názov,
+        bez confidence flagu. Signatúra/návratový typ zostávajú nezmenené zámerne,
+        volá sa priamo z testov (`TestResolveDietName`).
+        """
+        name, _ = EdupageScraper._resolve_diet_name_with_confidence(skratka, nazov)
+        return name
+
+    @staticmethod
+    def _resolve_diet_name_with_confidence(
+        skratka: str, nazov: str
+    ) -> tuple[str, bool]:
+        """Ako `resolve_diet_name`, ale aj s flagom, či sme si istí.
+
+        `is_exact=True` len pre presnú zhodu v `_SKRATKA_MAP` — všetko ostatné (suffix
+        heuristiky, keyword scan, fallback echo) je fuzzy odhad. `is_exact=False`
+        neznamená, že výsledok je zlý (fuzzy matching bežne funguje správne), len že
+        appka si nie je istá a admin by ho mal vedieť skontrolovať (viď #527: nová/
+        nezvyčajná diéta môže zdieľať fragment s existujúcou skratkou a tíško sa
+        priradiť nesprávne).
         """
         sk = skratka.strip().upper()
         if sk in _SKRATKA_MAP:
-            return _SKRATKA_MAP[sk]
+            return _SKRATKA_MAP[sk], True
 
         compact_sk = _normalise_key(skratka)
         if any(fragment in compact_sk for fragment in ("nmng", "ngnm", "bmbg")):
-            return "NO MILK/NO GLUTEN"
+            return "NO MILK/NO GLUTEN", False
         if compact_sk.endswith("nmg") or compact_sk.endswith("ngm"):
-            return "NO MILK/NO GLUTEN"
+            return "NO MILK/NO GLUTEN", False
         if compact_sk.endswith("ngh"):
-            return "NO GLUTEN"
+            return "NO GLUTEN", False
         if compact_sk.endswith("nnn") or "nonono" in compact_sk:
-            return "NONONO"
+            return "NONONO", False
         if compact_sk.endswith("hit") or compact_sk.endswith("his"):
-            return "HISTAMIN"
+            return "HISTAMIN", False
         if compact_sk.endswith("ng") or compact_sk.endswith("nog"):
-            return "NO GLUTEN"
+            return "NO GLUTEN", False
         if compact_sk.endswith("nm") or compact_sk.endswith("nom"):
-            return "NO MILK"
+            return "NO MILK", False
         if compact_sk.endswith("nomo"):
-            return "NO MILK"
+            return "NO MILK", False
         if compact_sk.endswith("ne") or compact_sk.startswith("ne"):
-            return "NO EGG"
+            return "NO EGG", False
         if compact_sk.endswith("h") and re.search(r"(?:^|\s)H\s*$", nazov):
-            return "HISTAMIN"
+            return "HISTAMIN", False
 
         key = _normalise_key(f"{skratka} {nazov}")
 
         if sk.endswith("V") and re.search(r"(?:^|\s)V\s*$", nazov, re.IGNORECASE):
-            return "VEGGIE"
+            return "VEGGIE", False
 
         for fragment, diet_name in sorted(
             _NAZOV_KEYWORD_MAP.items(), key=lambda item: len(item[0]), reverse=True
         ):
             if fragment in key:
-                return diet_name
+                return diet_name, False
 
-        return nazov.strip() or skratka.strip()
+        return nazov.strip() or skratka.strip(), False
 
     @staticmethod
     def resolve_payer_portion_name(nazov: str, portion_code: str) -> str:
@@ -648,6 +678,7 @@ class EdupageScraper:
 
         warnings: list[str] = []
         unmapped: list[str] = []
+        uncertain: list[str] = []
         attention: list[str] = []
         # Normalizovaný index, aby `no milk` z EduPage sadlo na našu `NO MILK` a
         # nezaložilo druhú, len inak písanú diétu.
@@ -683,6 +714,8 @@ class EdupageScraper:
         attention_buckets: dict[str, set[str]] = {}
         # to isté pre neznáme diéty (`unmapped`)
         unmapped_buckets: dict[str, set[str]] = {}
+        # to isté pre neisto (fuzzy) namatchnuté diéty (`uncertain`)
+        uncertain_buckets: dict[str, set[str]] = {}
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -710,6 +743,7 @@ class EdupageScraper:
 
                 flag_label: str | None = None
                 unmapped_label: str | None = None
+                uncertain_label: str | None = None
                 if rule is not None and (rule.menu or rule.diet):
                     menu_variant = rule.menu
                     diet_name = rule.diet
@@ -720,12 +754,19 @@ class EdupageScraper:
                     menu_variant = self.resolve_menu_variant(skratka, nazov)
                     diet_name = None
                     if menu_variant is None:
-                        diet_name = self.resolve_diet_name(skratka, nazov)
+                        diet_name, diet_is_exact = (
+                            self._resolve_diet_name_with_confidence(skratka, nazov)
+                        )
                         canonical = allowed_by_key.get(_normalise_key(diet_name))
                         if canonical is not None:
                             diet_name = canonical
                             if diet_name == letter and letter not in nazov_menu:
                                 unmapped_label = letter
+                            elif not diet_is_exact:
+                                # Fuzzy match (nie exaktná skratka) padol medzi povolené
+                                # diéty — počty ostávajú, ale appka si nie je istá, tak
+                                # to nahlási na kontrolu namiesto tichej istoty (#527).
+                                uncertain_label = f"{letter}:{skratka}→{diet_name}"
                         else:
                             # Neznámu diétu NEZAHADZUJEME: skorší `continue` tu zmazal
                             # celý riadok vrátane počtu porcií, takže kuchyni chýbali
@@ -735,6 +776,8 @@ class EdupageScraper:
                             unmapped_label = f"{letter}:{diet_name}"
                         if unmapped_label is not None:
                             unmapped.append(unmapped_label)
+                        if uncertain_label is not None:
+                            uncertain.append(uncertain_label)
 
                 tp = letter_data.get("typ_platitela", {})
                 if not isinstance(tp, dict):
@@ -792,6 +835,10 @@ class EdupageScraper:
                             unmapped_buckets.setdefault(bucket, set()).add(
                                 unmapped_label
                             )
+                        if uncertain_label is not None:
+                            uncertain_buckets.setdefault(bucket, set()).add(
+                                uncertain_label
+                            )
 
                         counts_by_meal = counts.setdefault(bucket, {})
                         meal_counts = counts_by_meal.setdefault(meal_key, {})
@@ -841,6 +888,12 @@ class EdupageScraper:
             unmapped_by_prevadzka={
                 bucket: sorted(labels)
                 for bucket, labels in unmapped_buckets.items()
+                if bucket and labels
+            },
+            uncertain_letters=sorted(set(uncertain)),
+            uncertain_by_prevadzka={
+                bucket: sorted(labels)
+                for bucket, labels in uncertain_buckets.items()
                 if bucket and labels
             },
             warnings=warnings,

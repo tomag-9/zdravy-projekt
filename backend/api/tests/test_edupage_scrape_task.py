@@ -170,6 +170,7 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
         "attention": ["A:KZ?"],
         "config_notes": ["olovrant chýba"],
         "unmapped_diets": [],
+        "uncertain_diets": [],
     }
 
     def clean_scrape(
@@ -187,6 +188,7 @@ def test_edupage_scrape_persists_attention_flags(edupage_user, monkeypatch):
         "attention": [],
         "config_notes": [],
         "unmapped_diets": [],
+        "uncertain_diets": [],
     }
 
 
@@ -240,6 +242,8 @@ def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
             attention_by_prevadzka={"Jolly 1": ["A:ZD?"]},
             unmapped_letters=["Z:Nová diéta"],
             unmapped_by_prevadzka={"Jolly 1": ["Z:Nová diéta"]},
+            uncertain_letters=["Y:XY→NO MILK"],
+            uncertain_by_prevadzka={"Jolly 2": ["Y:XY→NO MILK"]},
             config_notes=["olovrant chýba"],
             warnings=[],
         )
@@ -253,12 +257,15 @@ def test_edupage_scrape_splits_attention_flags_per_prevadzka(monkeypatch):
         "attention": ["A:ZD?"],
         "config_notes": ["olovrant chýba"],
         "unmapped_diets": ["Z:Nová diéta"],
+        "uncertain_diets": [],
     }
-    # Jolly 2 nemá flag, ale zdieľané config_notes áno.
+    # Jolly 2 nemá attention/unmapped flag, ale má svoj uncertain flag a
+    # zdieľané config_notes.
     assert o2.scrape_flags == {
         "attention": [],
         "config_notes": ["olovrant chýba"],
         "unmapped_diets": [],
+        "uncertain_diets": ["Y:XY→NO MILK"],
     }
 
 
@@ -375,6 +382,40 @@ def test_edupage_scrape_skips_without_recording_on_unmapped_letters(
     assert not DailyOrder.objects.filter(user=edupage_user, date=target_date).exists()
     assert result["scraped"] == 0
     assert result["skipped"] == 1
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_saves_normally_despite_uncertain_diets(
+    edupage_user, monkeypatch
+):
+    """#527: `uncertain_letters` je len informačný "over ma" flag (ako
+    `config_notes`), nie signál zlyhania — nesmie spustiť skip-on-failure guard
+    (na rozdiel od `unmapped_letters`, viď test vyššie)."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 5}, "diets": {"NO MILK": 5}}},
+            warnings=[],
+            unmapped_letters=[],
+            uncertain_letters=["A:XY→NO MILK"],
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    order = DailyOrder.objects.get(user=edupage_user, date=target_date)
+    assert order.data
+    assert order.scrape_flags["uncertain_diets"] == ["A:XY→NO MILK"]
+    assert result["scraped"] == 1
+    assert result["skipped"] == 0
 
 
 @pytest.mark.django_db

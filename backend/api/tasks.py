@@ -786,9 +786,13 @@ def scrape_edupage_orders_task(
                         unmapped_for_prevadzka = result.unmapped_by_prevadzka.get(
                             nazov, []
                         )
+                        uncertain_for_prevadzka = result.uncertain_by_prevadzka.get(
+                            nazov, []
+                        )
                     else:
                         attention_for_prevadzka = result.attention
                         unmapped_for_prevadzka = result.unmapped_letters
+                        uncertain_for_prevadzka = result.uncertain_letters
 
                     nested_order_data = nest_order_data_by_category(
                         data_by_nazov.get(nazov, {}), nazov
@@ -803,6 +807,8 @@ def scrape_edupage_orders_task(
                     # Skutočné zlyhanie scrapu (chýbajúci/pokazený prehlad blok,
                     # nezmapované písmeno, riadok bez prevádzky) - neprepisujeme
                     # existujúce dáta prázdnom, mohli by sme zmazať platné počty.
+                    # `uncertain_letters` sem zámerne nepatrí — je to len "over ma"
+                    # signál (ako `config_notes`), nie signál zlyhania scrapu.
                     if not imported_data and (
                         result.warnings or result.unmapped_letters
                     ):
@@ -838,6 +844,7 @@ def scrape_edupage_orders_task(
                             "attention": list(attention_for_prevadzka),
                             "config_notes": list(result.config_notes),
                             "unmapped_diets": list(unmapped_for_prevadzka),
+                            "uncertain_diets": list(uncertain_for_prevadzka),
                         }
                         order.save(update_fields=["data", "scrape_flags", "updated_at"])
                     scraped += 1
