@@ -478,7 +478,7 @@ class MealPlanService:
         from ..models import DailyMealPlan, DailyOrder, DeliveryRoute, Diet, PortionType
 
         MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
-        VARIANT_ORDER = ["A", "B", "C", "V"]
+        VARIANT_ORDER = ["A", "B", "C", "D", "V"]
         # An order's "lunch" selection covers both the soup and the main course
         # (they're ordered together); other order meals map 1:1.
         ORDER_MEAL_TO_PLAN_MEALS = {

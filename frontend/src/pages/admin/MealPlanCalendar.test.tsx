@@ -106,7 +106,7 @@ describe("DayEditorPanel menu variant weights", () => {
     ]);
   });
 
-  it("expands a legacy variant-less main course into equal A/B/C/V slots", async () => {
+  it("expands a legacy variant-less main course into equal A/B/C/D/V slots", async () => {
     const user = userEvent.setup();
     renderEditor([
       {
@@ -123,6 +123,7 @@ describe("DayEditorPanel menu variant weights", () => {
     expect(screen.getByLabelText("Menu A")).toHaveValue("10");
     expect(screen.getByLabelText("Menu B")).toHaveValue("10");
     expect(screen.getByLabelText("Menu C")).toHaveValue("10");
+    expect(screen.getByLabelText("Menu D")).toHaveValue("10");
     expect(screen.getByLabelText("Menu V")).toHaveValue("10");
 
     await user.click(screen.getByText("Uložiť"));
@@ -132,6 +133,7 @@ describe("DayEditorPanel menu variant weights", () => {
         { template_id: 10, menu_variant: "A" },
         { template_id: 10, menu_variant: "B" },
         { template_id: 10, menu_variant: "C" },
+        { template_id: 10, menu_variant: "D" },
         { template_id: 10, menu_variant: "V" },
       ]);
     });

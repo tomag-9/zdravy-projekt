@@ -13,5 +13,5 @@ export const GROUP_CONFIG: Record<string, string[]> = {
     'Škôlka': ['A'],
     'ZŠ 1.stupeň': ['A', 'B', 'V'],
     'ZŠ 2.stupeň': ['A', 'B', 'V'],
-    'Dospelý (SŠ)': ['A', 'B', 'C', 'V']
+    'Dospelý (SŠ)': ['A', 'B', 'C', 'D', 'V']
 };

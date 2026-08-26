@@ -174,8 +174,8 @@ _MEAL_BY_HOUR: list[tuple[int, str]] = [
     (15, "lunch"),  # vydaj_od 10:00–14:59
 ]
 _DEFAULT_MEAL = "olovrant"  # vydaj_od ≥ 15:00
-_MENU_NAME_RE = re.compile(r"^(?:menu\s*)?([ABC])$", re.IGNORECASE)
-_PREFIXED_MENU_NAME_RE = re.compile(r"(?:^|\s)(?:menu\s*)?([ABC])$", re.IGNORECASE)
+_MENU_NAME_RE = re.compile(r"^(?:menu\s*)?([ABCD])$", re.IGNORECASE)
+_PREFIXED_MENU_NAME_RE = re.compile(r"(?:^|\s)(?:menu\s*)?([ABCD])$", re.IGNORECASE)
 _CLASSIC_MENU_NAMES = {
     "klasik",
     "classic",

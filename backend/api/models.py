@@ -189,7 +189,7 @@ def _default_all_meals() -> List[str]:
 
 
 def _default_visible_menus() -> List[str]:
-    return ["A", "B", "C", "V"]
+    return ["A", "B", "C", "D", "V"]
 
 
 class GlobalSettings(models.Model):
