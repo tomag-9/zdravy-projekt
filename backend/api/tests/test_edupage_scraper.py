@@ -89,6 +89,56 @@ class TestResolveDietName(unittest.TestCase):
     def test_unknown_fallback_empty_nazov_returns_skratka(self):
         self.assertEqual(self._r("XZ", ""), "XZ")
 
+    def test_real_edupage_aliases_promoted_to_exact_skratka(self):
+        """Bezpečné fuzzy matche pozorované na reálnom EduPage (over_edupage
+        check, 26. 8. 2026) — školy ich píšu takto konzistentne, tak sú
+        povýšené na exaktnú `_SKRATKA_MAP` zhodu (žiadny `uncertain` šum)."""
+        cases = [
+            ("NoGluten", "NoGluten", "NO GLUTEN"),  # MŠ Dobrého Pastiera
+            ("PnM", "Palisády nM", "NO MILK"),  # MŠ Edulienka
+            ("Vege", "Vege", "VEGGIE"),  # British School
+        ]
+        for skratka, nazov, expected in cases:
+            with self.subTest(skratka=skratka, nazov=nazov):
+                name, is_exact = EdupageScraper._resolve_diet_name_with_confidence(
+                    skratka, nazov
+                )
+                self.assertEqual(name, expected)
+                self.assertTrue(is_exact)
+
+    def test_confidence_exact_skratka_is_exact(self):
+        name, is_exact = EdupageScraper._resolve_diet_name_with_confidence(
+            "NM", "NoMilk"
+        )
+        self.assertEqual(name, "NO MILK")
+        self.assertTrue(is_exact)
+
+    def test_confidence_fuzzy_keyword_is_not_exact(self):
+        name, is_exact = EdupageScraper._resolve_diet_name_with_confidence(
+            "XYZ", "NoMilk"
+        )
+        self.assertEqual(name, "NO MILK")
+        self.assertFalse(is_exact)
+
+    def test_confidence_fuzzy_suffix_is_not_exact(self):
+        name, is_exact = EdupageScraper._resolve_diet_name_with_confidence(
+            "PnMG", "Palisády nMG"
+        )
+        self.assertEqual(name, "NO MILK/NO GLUTEN")
+        self.assertFalse(is_exact)
+
+    def test_confidence_fallback_is_not_exact(self):
+        name, is_exact = EdupageScraper._resolve_diet_name_with_confidence(
+            "ABC", "menu A"
+        )
+        self.assertEqual(name, "menu A")
+        self.assertFalse(is_exact)
+
+    def test_resolve_diet_name_unaffected_by_confidence_split(self):
+        # `resolve_diet_name` musí byť naďalej tenký string-only wrapper.
+        self.assertEqual(self._r("NM", "NoMilk"), "NO MILK")
+        self.assertEqual(self._r("XYZ", "NoMilk"), "NO MILK")
+
     def test_real_edupage_prefixed_no_milk_aliases(self):
         cases = [
             ("BM", "Bruško bezMliečne"),
@@ -781,6 +831,70 @@ class TestParse(unittest.TestCase):
             znama.order_data,
             {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {"NO KAKAO": 4}}}},
         )
+
+    def test_fuzzy_matched_diet_is_uncertain_but_counted_normally(self):
+        """#527: skratka mimo `_SKRATKA_MAP`, ktorá fuzzy-matchne na povolenú diétu,
+        sa počíta rovnako ako doteraz (žiadny unmapped flag), ale appka si to
+        poznamená ako neisté na kontrolu — namiesto tichej istoty."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "2": {
+                        "Z": {
+                            "typ_platitela": {"1": {"o": 2}},
+                            "porcia": {},
+                            "v_skupina": {},
+                        },
+                    }
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        # "XYZ" nie je v `_SKRATKA_MAP`, ale nazov obsahuje "NoMilk" → fuzzy hit.
+        nazov_menu = {"Z": {"skratka": "XYZ", "nazov": "NoMilk"}}
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            [],
+            self._typy([(1, "MŠ Klasik", 0)]),
+            self.DATE_STR,
+        )
+        result = self._scrape_html(html)
+
+        self.assertEqual(result.unmapped_letters, [])
+        self.assertEqual(result.uncertain_letters, ["Z:XYZ→NO MILK"])
+        self.assertEqual(
+            result.order_data,
+            {"lunch": {"Škôlka": {"menuCounts": {"A": 2}, "diets": {"NO MILK": 2}}}},
+        )
+
+    def test_exact_skratka_match_is_not_uncertain(self):
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "2": {
+                        "A": {
+                            "typ_platitela": {"1": {"o": 2}},
+                            "porcia": {},
+                            "v_skupina": {},
+                        },
+                    }
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {"A": {"skratka": "NM", "nazov": "NoMilk"}}
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            [],
+            self._typy([(1, "MŠ Klasik", 0)]),
+            self.DATE_STR,
+        )
+        result = self._scrape_html(html)
+        self.assertEqual(result.uncertain_letters, [])
 
 
 class TestFetchError(unittest.TestCase):
