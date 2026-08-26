@@ -633,14 +633,14 @@ const PrintFilter: React.FC<{
       />
       {vydaje.length > 1 && (
         <div className="row">
-          <span className="lbl">Výdaj</span>
+          <span className="lbl">Cluster</span>
           <Select
             value={vydaj}
             onChange={(e) => onVydajChange(e.target.value)}
             style={{ width: "auto" }}
-            aria-label="Výdajný bod"
+            aria-label="Cluster"
           >
-            <option value="">Všetky výdaje</option>
+            <option value="">Všetky clustre</option>
             {vydaje.map((item) => (
               <option key={item.key} value={item.key}>{item.name}</option>
             ))}

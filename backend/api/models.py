@@ -393,16 +393,19 @@ class Celok(models.Model):
 
 
 class Vydaj(models.TextChoices):
-    """Výdajný bod kuchyne, z ktorého ide jedlo von.
+    """Výdajný bod kuchyne (na obrazovke "Cluster"), z ktorého ide jedlo von.
 
     Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku.
     Výdaj je vlastnosť TRASY: prevádzka patrí do toho výdaja, v ktorého trase
     stojí, takže sa nastavuje na jednom mieste a nemá si ako protirečiť.
+
+    Kľúče (`A`/`B`/`C`) sú interné a nemenia sa (#531) — premenované je len
+    zobrazované meno "Výdaj X" → "Cluster X".
     """
 
-    A = "A", "Výdaj A"
-    B = "B", "Výdaj B"
-    C = "C", "Výdaj C"
+    A = "A", "Cluster A"
+    B = "B", "Cluster B"
+    C = "C", "Cluster C"
 
 
 class Prevadzka(models.Model):

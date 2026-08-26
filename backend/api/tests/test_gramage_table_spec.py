@@ -257,7 +257,7 @@ def test_empty_routes_are_skipped():
         vydaje=[
             {
                 "key": "A",
-                "name": "Výdaj A",
+                "name": "Cluster A",
                 "routes": [
                     {"id": 1, "name": "Prázdna trasa", "rows": []},
                     {"id": 2, "name": "Plná trasa", "rows": _payload()["rows"]},
@@ -525,12 +525,12 @@ def _two_vydaje_payload():
         vydaje=[
             {
                 "key": "A",
-                "name": "Výdaj A",
+                "name": "Cluster A",
                 "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
             },
             {
                 "key": "B",
-                "name": "Výdaj B",
+                "name": "Cluster B",
                 "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
             },
         ],
@@ -548,17 +548,17 @@ def _band_texts(spec):
 def test_vydaj_filter_prints_a_single_dispatch_point():
     spec = build_table_spec(_two_vydaje_payload(), vydaje=["B"])
 
-    assert _band_texts(spec) == ["Výdaj B"]
+    assert _band_texts(spec) == ["Cluster B"]
     assert [vydaj["selected"] for vydaj in spec["vydaje"]] == [False, True]
 
 
 def test_unknown_or_empty_vydaj_selection_falls_back_to_everything():
     payload = _two_vydaje_payload()
 
-    assert _band_texts(build_table_spec(payload)) == ["Výdaj A", "Výdaj B"]
+    assert _band_texts(build_table_spec(payload)) == ["Cluster A", "Cluster B"]
     assert _band_texts(build_table_spec(payload, vydaje=["nezmysel"])) == [
-        "Výdaj A",
-        "Výdaj B",
+        "Cluster A",
+        "Cluster B",
     ]
 
 
@@ -608,17 +608,17 @@ def _three_vydaje_payload():
         vydaje=[
             {
                 "key": "A",
-                "name": "Výdaj A",
+                "name": "Cluster A",
                 "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
             },
             {
                 "key": "B",
-                "name": "Výdaj B",
+                "name": "Cluster B",
                 "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
             },
             {
                 "key": "C",
-                "name": "Výdaj C",
+                "name": "Cluster C",
                 "routes": [{"id": 3, "name": "British School", "rows": rows}],
             },
         ],

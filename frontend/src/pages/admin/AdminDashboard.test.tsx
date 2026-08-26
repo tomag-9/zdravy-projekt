@@ -468,14 +468,14 @@ describe("Filter sekcií", () => {
       spec: {
         ...GRAMAGE_WITH_ROWS.spec,
         vydaje: [
-          { key: "A", name: "Výdaj A", selected: true },
-          { key: "B", name: "Výdaj B", selected: true },
+          { key: "A", name: "Cluster A", selected: true },
+          { key: "B", name: "Cluster B", selected: true },
         ],
       },
     });
     render(<AdminDashboard />);
 
-    fireEvent.change(await screen.findByLabelText("Výdajný bod"), {
+    fireEvent.change(await screen.findByLabelText("Cluster"), {
       target: { value: "B" },
     });
 
