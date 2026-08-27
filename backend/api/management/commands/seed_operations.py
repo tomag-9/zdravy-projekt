@@ -44,3 +44,6 @@ class Command(BaseCommand):
             management.call_command(
                 "seed_new_edupage_2026_08", verbosity=options.get("verbosity", 1)
             )
+            management.call_command(
+                "seed_british_school_2026_08", verbosity=options.get("verbosity", 1)
+            )

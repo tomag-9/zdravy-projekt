@@ -24,10 +24,12 @@ Slovenský systém objednávania školských jedál.
 - **Frontend:** `cd frontend && npx tsc --noEmit && npm run lint && npx vitest run`
 
 ## Seedy
-Bežia idempotentne v dvoch cestách v **rovnakom poradí**: prod `deploy_bootstrap.py`,
+Bežia idempotentne v dvoch cestách v **rovnakom poradí**: prod `seed_operations.py`
+(manuálne, nie pri každom deployi — to rieši len statické kroky v `deploy_bootstrap.py`),
 dev inline reťaz v `compose/dev.yml`
 (migrate → real_initial_seed_prevadzky → seed_prevadzky_edupage → seed_zdrave_brusko →
-seed_real_delivery_layout → seed_merge_celky → sync_periodic_tasks).
+seed_real_delivery_layout → seed_merge_celky → seed_new_edupage_2026_08 →
+seed_british_school_2026_08 → sync_periodic_tasks).
 
 ## Pravidlá
 - **Commit / PR** len na výslovné vyžiadanie. Pred commitom zelený suite.

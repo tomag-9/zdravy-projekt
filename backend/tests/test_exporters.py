@@ -252,21 +252,17 @@ class TestGramageDashboardExports:
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
         assert len(data["vydaje"]) == 2
         assert len(data["unassigned_rows"]) == 1
-        expected_summaries = [
-            (
-                f"Súhrn porcií — {vydaj['name']}",
-                portion_summary(
-                    data,
-                    [
-                        row
-                        for route in vydaj.get("routes", [])
-                        for row in route.get("rows", [])
-                    ],
-                ),
-            )
+        vydaj_rows = [
+            [row for route in vydaj.get("routes", []) for row in route.get("rows", [])]
             for vydaj in data["vydaje"]
         ]
-        expected_summaries.append(("Porcie celkom", portion_summary(data)))
+        expected_summaries = [
+            (f"Sumár {index + 1}", portion_summary(data, rows))
+            for index, rows in enumerate(vydaj_rows)
+        ]
+        # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
+        # identický so "Sumár dokopy"); ten sa objaví až od 3 klastrov (#531).
+        expected_summaries.append(("Sumár dokopy", portion_summary(data)))
 
         rendered = _rendered_rows(data)
         for title, expected_rows in expected_summaries:

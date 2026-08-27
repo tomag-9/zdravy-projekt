@@ -769,7 +769,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
     const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus;
     const adminVisibleMenus = adminVisibleMenusSetting == null
-        ? ['A', 'B', 'C', 'V']
+        ? ['A', 'B', 'C', 'D', 'V']
         : adminVisibleMenusSetting;
 
     const resolvedVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') =>

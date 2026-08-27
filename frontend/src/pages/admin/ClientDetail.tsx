@@ -88,7 +88,7 @@ interface DailyOrder {
   data: OrderData;
 }
 
-const ALL_MENUS = ["A", "B", "C", "V"];
+const ALL_MENUS = ["A", "B", "C", "D", "V"];
 const ALL_MEALS = ["breakfast", "lunch", "olovrant"];
 const API = import.meta.env.VITE_API_URL || "/api";
 const MEAL_LABELS: Record<string, string> = {

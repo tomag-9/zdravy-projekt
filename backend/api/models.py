@@ -82,8 +82,9 @@ class DailyOrder(models.Model):
         blank=True,
         help_text=(
             "Poznámky z posledného EduPage scrapu tejto objednávky, napr. "
-            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...]}. "
-            "Prázdne pri ručných objednávkach a pri scrape bez upozornení."
+            "{'attention': [...], 'config_notes': [...], 'unmapped_diets': [...], "
+            "'uncertain_diets': [...]}. Prázdne pri ručných objednávkach a "
+            "pri scrape bez upozornení."
         ),
     )
     is_auto = models.BooleanField(
@@ -189,7 +190,7 @@ def _default_all_meals() -> List[str]:
 
 
 def _default_visible_menus() -> List[str]:
-    return ["A", "B", "C", "V"]
+    return ["A", "B", "C", "D", "V"]
 
 
 class GlobalSettings(models.Model):
@@ -393,16 +394,19 @@ class Celok(models.Model):
 
 
 class Vydaj(models.TextChoices):
-    """Výdajný bod kuchyne, z ktorého ide jedlo von.
+    """Výdajný bod kuchyne (na obrazovke "Cluster"), z ktorého ide jedlo von.
 
     Kuchyňa vydáva stravu z dvoch miest súčasne a každé chce vlastnú tabuľku.
     Výdaj je vlastnosť TRASY: prevádzka patrí do toho výdaja, v ktorého trase
     stojí, takže sa nastavuje na jednom mieste a nemá si ako protirečiť.
+
+    Kľúče (`A`/`B`/`C`) sú interné a nemenia sa (#531) — premenované je len
+    zobrazované meno "Výdaj X" → "Cluster X".
     """
 
-    A = "A", "Výdaj A"
-    B = "B", "Výdaj B"
-    C = "C", "Výdaj C"
+    A = "A", "Cluster A"
+    B = "B", "Cluster B"
+    C = "C", "Cluster C"
 
 
 class Prevadzka(models.Model):

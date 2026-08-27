@@ -45,7 +45,7 @@ const CATEGORY_LABELS: Record<MealCategory, string> = {
   afternoon_snack: "Olovrant",
 };
 
-const MAIN_COURSE_VARIANTS = ["A", "B", "C", "V"] as const;
+const MAIN_COURSE_VARIANTS = ["A", "B", "C", "D", "V"] as const;
 type MainCourseVariant = (typeof MAIN_COURSE_VARIANTS)[number];
 type SelectionKey = Exclude<MealCategory, "main_course"> | `main_course_${MainCourseVariant}`;
 
@@ -55,6 +55,7 @@ const EMPTY_SELECTION: Record<SelectionKey, number | ""> = {
   main_course_A: "",
   main_course_B: "",
   main_course_C: "",
+  main_course_D: "",
   main_course_V: "",
   afternoon_snack: "",
 };

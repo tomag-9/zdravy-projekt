@@ -17,6 +17,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .gramage_dashboard_export import (
+    blend_with_white,
     component_subtitle,
     diet_color,
     group_label,
@@ -26,6 +27,11 @@ from .gramage_dashboard_export import (
 )
 
 EMPTY = "—"
+
+# Podfarbenie riadku, keď je diéta zložená z 3+ diét naraz (#536) — v takom
+# prípade podfarbenie podľa jednej konkrétnej zložky pôsobilo náhodne, tak má
+# pevnú, na kombinácii nezávislú farbu. Text riadku ostáva farbou prvej diéty.
+COMBO_DIET_FALLBACK_BACKGROUND = "F97316"
 
 # Prázdny stĺpec na ručné poznámky pri tlači (požiadavka prevádzky 17. 8. 2026).
 NOTE_COLUMN_LABEL = "Poznámka"
@@ -164,6 +170,29 @@ def _label_cell(text: str, count: object, css: str = "lbl", **extra) -> dict:
     return cell
 
 
+def _diet_text_and_background(data: dict, row_like: dict) -> tuple[str, str]:
+    """Farba textu a podfarbenie riadku diéty (#536).
+
+    Jedna diéta: obe farbou tej diéty. Kombinácia dvoch: text hlavnej
+    (prvej), podfarbenie sekundárnej. Kombinácia troch a viac: text prvej,
+    podfarbenie pevnou oranžovou — farba jednej z troch a viac zložiek by
+    pôsobila náhodne, nič konkrétne by neoznačovala.
+    """
+    base_colors = [
+        str(color).lstrip("#").upper()
+        for color in (
+            row_like.get("diet_base_colors") or row_like.get("base_colors") or []
+        )
+        if color
+    ]
+    if len(base_colors) >= 3:
+        return base_colors[0], COMBO_DIET_FALLBACK_BACKGROUND
+    if len(base_colors) == 2:
+        return base_colors[0], base_colors[1]
+    own = diet_color(data, row_like)
+    return own, own
+
+
 def _filter_vydaje(all_vydaje: list[dict], selected: list[str] | None) -> list[int]:
     """Indexy výdajných bodov, ktoré sa majú vykresliť.
 
@@ -233,6 +262,12 @@ def build_table_spec(
     # prevádzky doň nepatria a v celej tabuľke sa aj tak ukážu.
     filtered = len(shown_vydaje) != len(all_vydaje)
     if shown_vydaje:
+        # Klastre 1 a 2 (spravidla Vydaj A a B) chcú navyše spoločný medzisúčet
+        # — kým klaster 3 (British School, #531) je nová, samostatná trasa.
+        # Viazané na POZÍCIU v `shown_vydaje`, nie na Vydaj.key: pri filtrovanej
+        # tlači je poradie stále "prvý zobrazený, druhý zobrazený", takže sa to
+        # správa rozumne aj keď sa niekedy vynechá stredný klaster z výberu.
+        first_two_rows: list[dict] = []
         for position, vydaj in enumerate(shown_vydaje):
             # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
             # vlastný list, nech si ho jeho obsluha vezme celý.
@@ -266,9 +301,11 @@ def build_table_spec(
                 for route in vydaj.get("routes") or []
                 for r in route.get("rows") or []
             ]
+            if position < 2:
+                first_two_rows.extend(vydaj_rows)
             rows.extend(
                 _portion_summary_rows(
-                    f"Súhrn porcií — {vydaj.get('name') or position + 1}",
+                    f"Sumár {position + 1}",
                     portion_summary(data, vydaj_rows),
                     keep,
                     groups,
@@ -276,6 +313,21 @@ def build_table_spec(
                     total_columns,
                 )
             )
+            # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
+            # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
+            # bez tretieho klastra). Zmysel má, až keď je aj tretí (British
+            # School), voči ktorému sa medzisúčet prvých dvoch odlišuje.
+            if position == 1 and len(shown_vydaje) > 2:
+                rows.extend(
+                    _portion_summary_rows(
+                        "Sumár 1 a 2",
+                        portion_summary(data, first_two_rows),
+                        keep,
+                        groups,
+                        hues,
+                        total_columns,
+                    )
+                )
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
@@ -319,7 +371,7 @@ def build_table_spec(
         footer_totals = data.get("totals") or []
 
     footer = _portion_summary_rows(
-        "Porcie celkom",
+        "Sumár dokopy",
         footer_summary,
         keep,
         groups,
@@ -536,7 +588,9 @@ def _client_rows(
             f"↳ {label}" if is_diet else label,
             sub_row.get("count"),
         )
+        text_hex = background_hex = None
         if is_diet:
+            text_hex, background_hex = _diet_text_and_background(data, sub_row)
             cell["swatch"] = {
                 "color": f"#{diet_color(data, sub_row)}",
                 "base_colors": sub_row.get("diet_base_colors") or [],
@@ -547,10 +601,9 @@ def _client_rows(
                 "css": ("sub-row diet" if is_diet else "sub-row") + zebra,
                 "group_id": key,
                 "collapsible": True,
-                "color": (
-                    f"#{readable_text_color(diet_color(data, sub_row))}"
-                    if is_diet
-                    else None
+                "color": f"#{readable_text_color(text_hex)}" if is_diet else None,
+                "background": (
+                    f"#{blend_with_white(background_hex)}" if is_diet else None
                 ),
                 "cells": [cell] + gram_cells,
             }
@@ -595,11 +648,13 @@ def _client_rows(
         if name not in diet_counts:
             continue
         hex_color = diet_color(data, diet)
+        text_hex, background_hex = _diet_text_and_background(data, diet)
         out.append(
             {
                 "kind": "summary-diet",
                 "css": "summ-diet",
-                "color": f"#{readable_text_color(hex_color)}",
+                "color": f"#{readable_text_color(text_hex)}",
+                "background": f"#{blend_with_white(background_hex)}",
                 "cells": [
                     _label_cell(
                         name,

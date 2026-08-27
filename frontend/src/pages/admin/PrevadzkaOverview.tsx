@@ -24,7 +24,12 @@ interface OverviewRow {
   delivered: boolean;
   delivery_status?: "missing" | "manual_zero" | "auto" | "manual";
   counts: OverviewCounts;
-  flags: { attention: string[]; config_notes: string[]; unmapped_diets?: string[] };
+  flags: {
+    attention: string[];
+    config_notes: string[];
+    unmapped_diets?: string[];
+    uncertain_diets?: string[];
+  };
   has_warning: boolean;
 }
 
@@ -81,7 +86,15 @@ const StatusDot: React.FC<{ row: OverviewRow; source: "edupage" | "app" }> = ({ 
     const unmapped = (row.flags.unmapped_diets ?? []).map(
       (d) => `neznáma diéta z EduPage: ${d} — založ ju v appke`,
     );
-    const notes = [...row.flags.config_notes, ...row.flags.attention, ...unmapped].join("\n");
+    const uncertain = (row.flags.uncertain_diets ?? []).map(
+      (d) => `neistá zhoda diéty z EduPage: ${d} — over, či je správne priradená`,
+    );
+    const notes = [
+      ...row.flags.config_notes,
+      ...row.flags.attention,
+      ...unmapped,
+      ...uncertain,
+    ].join("\n");
     return (
       <span className="zpa-statusdot warn" title={`Dodané, ale skontroluj:\n${notes}`}>
         <AlertTriangle />
@@ -104,12 +117,21 @@ const MealCount: React.FC<{ label: string; value: number; strong?: boolean }> = 
 
 const OverviewRowItem: React.FC<{ row: OverviewRow; source: "edupage" | "app" }> = ({ row, source }) => {
   const showCelok = row.celok && row.celok !== row.nazov;
+  const dietWarnings = [
+    ...(row.flags.unmapped_diets ?? []),
+    ...(row.flags.uncertain_diets ?? []),
+  ];
   return (
     <div className="zpa-ovrow">
       <StatusDot row={row} source={source} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div className="nm">{row.nazov}</div>
         {showCelok && <div className="sub">{row.celok}</div>}
+        {dietWarnings.length > 0 && (
+          <div className="sub" style={{ color: "var(--mustard-700)" }}>
+            {dietWarnings.join(", ")}
+          </div>
+        )}
       </div>
       <div className="zpa-ovcounts">
         <MealCount label="R" value={row.counts.breakfast} />

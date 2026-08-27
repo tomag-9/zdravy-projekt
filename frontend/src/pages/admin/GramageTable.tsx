@@ -30,6 +30,8 @@ export interface SpecRow {
   group_id?: string;
   collapsible?: boolean;
   color?: string | null;
+  /** Podfarbenie riadku diéty — hlavná/vedľajšia farba kombinovanej diéty (#536). */
+  background?: string | null;
   /** Len na riadkoch `kind: "client"` — cieľ odklikávania naloženia (#487). */
   prevadzka_id?: number | null;
 }
@@ -110,7 +112,10 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
   // Riadok si nesie triedy aj farbu zo spec-u — tu sa už nič nerozhoduje,
   // len prekladá na značky (viď backend/api/exporters/gramage_table_spec.py).
   const renderRow = (row: SpecRow, index: number) => {
-    const style = row.color ? { color: row.color } : undefined;
+    const style =
+      row.color || row.background
+        ? { color: row.color ?? undefined, backgroundColor: row.background ?? undefined }
+        : undefined;
 
     if (row.kind === "client") {
       const cell = row.cells[0];

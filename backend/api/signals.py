@@ -44,6 +44,17 @@ WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
 
+# British School (#535): its own EduPage connection is scraped on a dedicated
+# crontab, entirely separate from the shared GlobalSettings meal deadlines
+# every other celok uses — 12:15 the day before, so its dashboard row is ready
+# well ahead of the (much later) generic deadlines. Name matches
+# `seed_british_school_2026_08.BRITISH_SCHOOL_NAME`; kept as a local literal
+# rather than importing a management command module here.
+BRITISH_SCHOOL_CONNECTION_NAME = "British School"
+BRITISH_SCHOOL_SCRAPE_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}british-school"
+BRITISH_SCHOOL_SCRAPE_HOUR = 12
+BRITISH_SCHOOL_SCRAPE_MINUTE = 15
+
 # Cron musí bežať v ten deň, na ktorý je úloha nastavená — nie v ten, ktorého sa
 # týka jedlo. Úloha so `is_day_before` deadlinom obsluhuje NASLEDUJÚCI pracovný
 # deň (`_next_workday`), takže musí bežať v jeho predvečer: pre pondelok je to
@@ -424,6 +435,18 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
         _capture_signal_failure(exc, "push_reminder_schedule")
 
 
+def _british_school_connection_id() -> int | None:
+    from api.models import EdupageConnection
+
+    return (
+        EdupageConnection.objects.filter(
+            name=BRITISH_SCHOOL_CONNECTION_NAME, is_active=True
+        )
+        .values_list("pk", flat=True)
+        .first()
+    )
+
+
 def _sync_edupage_scrape_schedule(settings_instance) -> None:
     """
     Create or update Celery Beat PeriodicTasks that fire exactly at each distinct
@@ -459,6 +482,11 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
             return
 
         all_meal_types = ["breakfast", "lunch", "olovrant"]
+
+        # British School has its own dedicated scrape (12:15 the day before,
+        # see `_sync_british_school_scrape_schedule`) — exclude it here so it
+        # isn't scraped a second time at the shared deadlines below.
+        british_school_connection_id = _british_school_connection_id()
 
         # Group meal types by deadline time and target-day rule.
         groups: dict[tuple[datetime.time, bool], list[str]] = {}
@@ -506,6 +534,11 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                         {
                             "meal_types": sorted(meal_types_group),
                             "chained_reports": chained_reports,
+                            "exclude_connection_ids": (
+                                [british_school_connection_id]
+                                if british_school_connection_id
+                                else None
+                            ),
                         }
                     ),
                     "enabled": True,
@@ -541,6 +574,78 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
     except Exception as exc:
         logger.exception("Failed to sync edupage scrape periodic tasks: %s", exc)
         _capture_signal_failure(exc, "edupage_scrape_schedule")
+
+
+def _sync_british_school_scrape_schedule(settings_instance) -> None:
+    """British School (#535): scraped daily at 12:15 the day before, Sun–Thu,
+    on its own crontab — independent of the shared GlobalSettings meal
+    deadlines every other celok uses (`_sync_edupage_scrape_schedule`).
+
+    A no-op (task deleted, if present) while the British School EduPage
+    connection doesn't exist yet or automatic scraping is switched off.
+    """
+    try:
+        from django.conf import settings
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+    except ImportError:
+        logger.warning(
+            "django_celery_beat not installed – skipping British School scrape schedule sync."
+        )
+        return
+
+    try:
+        connection_id = _british_school_connection_id()
+        auto_scrape_enabled = getattr(
+            settings_instance, "edupage_auto_scrape_enabled", True
+        )
+        if connection_id is None or not auto_scrape_enabled:
+            deleted_count, _ = PeriodicTask.objects.filter(
+                name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
+            ).delete()
+            if deleted_count:
+                logger.info(
+                    "British School scrape task removed (connection missing or "
+                    "auto-scrape disabled)"
+                )
+            return
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute=BRITISH_SCHOOL_SCRAPE_MINUTE,
+            hour=BRITISH_SCHOOL_SCRAPE_HOUR,
+            day_of_week=DAY_OF_WEEK_DAY_BEFORE,
+            day_of_month="*",
+            month_of_year="*",
+            timezone=settings.TIME_ZONE,
+        )
+        PeriodicTask.objects.update_or_create(
+            name=BRITISH_SCHOOL_SCRAPE_TASK_NAME,
+            defaults={
+                "task": "api.tasks.scrape_edupage_orders_task",
+                "crontab": schedule,
+                "args": json.dumps([]),
+                "kwargs": json.dumps(
+                    {
+                        "connection_id": connection_id,
+                        "target_next_workday": True,
+                    }
+                ),
+                "enabled": True,
+                "description": (
+                    "British School EduPage scrape: fires 12:15 the day before "
+                    "(Sun–Thu), importing the next workday's orders."
+                ),
+            },
+        )
+        logger.info(
+            "British School scrape task synced: %02d:%02d Sun-Thu (tz: %s)",
+            BRITISH_SCHOOL_SCRAPE_HOUR,
+            BRITISH_SCHOOL_SCRAPE_MINUTE,
+            settings.TIME_ZONE,
+        )
+
+    except Exception as exc:
+        logger.exception("Failed to sync British School scrape periodic task: %s", exc)
+        _capture_signal_failure(exc, "british_school_scrape_schedule")
 
 
 def _sync_weekly_reminder_schedule() -> None:
@@ -597,6 +702,7 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_push_reminder_schedule(instance)
         _sync_weekly_reminder_schedule()
         _sync_edupage_scrape_schedule(instance)
+        _sync_british_school_scrape_schedule(instance)
 
         # Invalidate GlobalSettings cache
         from api.cache_service import clear_global_settings_cache
