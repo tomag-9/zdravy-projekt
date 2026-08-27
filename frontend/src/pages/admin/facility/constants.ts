@@ -26,7 +26,7 @@ export const EMPTY_PREVADZKA: PrevadzkaForm = {
  * Kľúče musia sedieť s `api.models.Vydaj`.
  */
 export const VYDAJE = [
-  { key: "A", label: "Výdaj A" },
-  { key: "B", label: "Výdaj B" },
-  { key: "C", label: "Výdaj C" },
+  { key: "A", label: "Cluster A" },
+  { key: "B", label: "Cluster B" },
+  { key: "C", label: "Cluster C" },
 ] as const;

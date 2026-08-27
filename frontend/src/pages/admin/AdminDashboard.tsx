@@ -9,7 +9,7 @@ import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "
 import {
   prevWeekday,
   nextWeekday,
-  lastWeekdayToday,
+  dashboardMaxDate,
   toDateString,
   isWeekday,
   formatDay as formatDate,
@@ -167,7 +167,9 @@ interface ClosedDayResponse {
 const AdminDashboard: React.FC = () => {
   const { apiFetch } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
-  const maxDate = useMemo(() => lastWeekdayToday(), []);
+  // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
+  // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
+  const maxDate = useMemo(() => dashboardMaxDate(), []);
   const actualToday = useMemo(() => toDateString(new Date()), []);
   const [date, setDate] = useState(maxDate);
   const [data, setData] = useState<GramageDashboard | null>(null);
@@ -381,7 +383,12 @@ const AdminDashboard: React.FC = () => {
                 style={{ width: "auto" }}
               />
               {date === actualToday && <Badge tone="orange">Dnes</Badge>}
-              {date === maxDate && date !== actualToday && <Badge tone="gray">Posledný pracovný deň</Badge>}
+              {date === maxDate && date !== actualToday && date > actualToday && (
+                <Badge tone="orange">Zajtra</Badge>
+              )}
+              {date === maxDate && date !== actualToday && date < actualToday && (
+                <Badge tone="gray">Posledný pracovný deň</Badge>
+              )}
             </div>
             <button
               className="zpa-navchip"
@@ -633,14 +640,14 @@ const PrintFilter: React.FC<{
       />
       {vydaje.length > 1 && (
         <div className="row">
-          <span className="lbl">Výdaj</span>
+          <span className="lbl">Cluster</span>
           <Select
             value={vydaj}
             onChange={(e) => onVydajChange(e.target.value)}
             style={{ width: "auto" }}
-            aria-label="Výdajný bod"
+            aria-label="Cluster"
           >
-            <option value="">Všetky výdaje</option>
+            <option value="">Všetky clustre</option>
             {vydaje.map((item) => (
               <option key={item.key} value={item.key}>{item.name}</option>
             ))}

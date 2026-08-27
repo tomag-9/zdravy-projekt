@@ -513,16 +513,16 @@ const DeliveryLayoutAdmin: React.FC = () => {
       <PageHead
         eyebrow="Rozvoz"
         title="Poradie a trasy"
-        desc="Rozdelenie prevádzok do blokov a trás. Výdaj sa nastavuje na trase — trasy výdaja A tvoria tabuľku A, trasy výdaja B tabuľku B."
+        desc="Rozdelenie prevádzok do blokov a trás. Cluster sa nastavuje na trase — trasy Cluster A tvoria tabuľku A, trasy Cluster B tabuľku B."
         actions={
           <>
             <Select
               value={vydajFilter}
               onChange={(e) => setVydajFilter(e.target.value)}
               style={{ width: "auto" }}
-              aria-label="Výdajný bod"
+              aria-label="Cluster"
             >
-              <option value="">Všetky výdaje</option>
+              <option value="">Všetky clustre</option>
               {VYDAJE.map((item) => (
                 <option key={item.key} value={item.key}>{item.label}</option>
               ))}
@@ -592,7 +592,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                         value={route.vydaj || "A"}
                         onChange={(e) => void setRouteVydaj(route, e.target.value)}
                         style={{ width: "auto" }}
-                        aria-label={`Výdaj — ${route.name}`}
+                        aria-label={`Cluster — ${route.name}`}
                       >
                         {VYDAJE.map((item) => (
                           <option key={item.key} value={item.key}>{item.label}</option>
@@ -792,7 +792,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 <Input type="time" value={newRouteTime} onChange={(e) => setNewRouteTime(e.target.value)} />
               </Field>
             </div>
-            <Field label="Výdaj" hint="(ktorá tabuľka trasu obsahuje)">
+            <Field label="Cluster" hint="(ktorá tabuľka trasu obsahuje)">
               <Select value={newRouteVydaj} onChange={(e) => setNewRouteVydaj(e.target.value)}>
                 {VYDAJE.map((item) => (
                   <option key={item.key} value={item.key}>{item.label}</option>

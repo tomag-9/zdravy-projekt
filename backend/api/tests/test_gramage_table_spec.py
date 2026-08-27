@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from api.exporters.gramage_dashboard_export import blend_with_white, readable_text_color
 from api.exporters.gramage_table_spec import build_table_spec, format_count, format_gram
 
 GRAMS = {"label": "Mäso", "base_grams": "300", "unit": "g"}
@@ -257,7 +258,7 @@ def test_empty_routes_are_skipped():
         vydaje=[
             {
                 "key": "A",
-                "name": "Výdaj A",
+                "name": "Cluster A",
                 "routes": [
                     {"id": 1, "name": "Prázdna trasa", "rows": []},
                     {"id": 2, "name": "Plná trasa", "rows": _payload()["rows"]},
@@ -281,6 +282,42 @@ def test_diet_rows_get_a_readable_font_colour_and_a_swatch():
     # Swatch drží pôvodnú farbu diéty, text stmavenú (čitateľnú) verziu.
     assert diet["cells"][0]["swatch"]["color"] == "#F59E0B"
     assert diet["color"] == "#966107"
+    # Jedna diéta (bez kombinácie): podfarbenie je odtieň tej istej farby (#536).
+    assert diet["background"] == f"#{blend_with_white('F59E0B')}"
+
+
+def test_combined_diet_of_two_colours_by_main_and_secondary():
+    """Kombinovaná diéta z dvoch: text farbou hlavnej, podfarbenie vedľajšej (#536)."""
+    payload = _payload()
+    payload["rows"][0]["diet_summary_rows"][0]["base_colors"] = ["#F59E0B", "#EF4444"]
+    payload["rows"][0]["sub_rows"][1]["diet_base_colors"] = ["#F59E0B", "#EF4444"]
+
+    spec = build_table_spec(payload)
+
+    summary = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert summary["color"] == f"#{readable_text_color('F59E0B')}"
+    assert summary["background"] == f"#{blend_with_white('EF4444')}"
+
+    sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert sub_row["color"] == f"#{readable_text_color('F59E0B')}"
+    assert sub_row["background"] == f"#{blend_with_white('EF4444')}"
+
+
+def test_combined_diet_of_three_or_more_uses_fixed_orange_background():
+    """Kombinácia troch a viac diét: text prvej, podfarbenie pevnou oranžovou,
+    lebo farba jednej z troch a viac zložiek by pôsobila náhodne (#536)."""
+    payload = _payload()
+    colors = ["#F59E0B", "#EF4444", "#16A34A"]
+    payload["rows"][0]["diet_summary_rows"][0]["base_colors"] = colors
+    payload["rows"][0]["sub_rows"][1]["diet_base_colors"] = colors
+
+    spec = build_table_spec(payload)
+
+    summary = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert summary["color"] == f"#{readable_text_color('F59E0B')}"
+    assert summary["background"] == f"#{blend_with_white('F97316')}"
 
 
 def test_footer_is_the_portion_summary_plus_the_grand_total():
@@ -525,12 +562,12 @@ def _two_vydaje_payload():
         vydaje=[
             {
                 "key": "A",
-                "name": "Výdaj A",
+                "name": "Cluster A",
                 "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
             },
             {
                 "key": "B",
-                "name": "Výdaj B",
+                "name": "Cluster B",
                 "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
             },
         ],
@@ -548,17 +585,17 @@ def _band_texts(spec):
 def test_vydaj_filter_prints_a_single_dispatch_point():
     spec = build_table_spec(_two_vydaje_payload(), vydaje=["B"])
 
-    assert _band_texts(spec) == ["Výdaj B"]
+    assert _band_texts(spec) == ["Cluster B"]
     assert [vydaj["selected"] for vydaj in spec["vydaje"]] == [False, True]
 
 
 def test_unknown_or_empty_vydaj_selection_falls_back_to_everything():
     payload = _two_vydaje_payload()
 
-    assert _band_texts(build_table_spec(payload)) == ["Výdaj A", "Výdaj B"]
+    assert _band_texts(build_table_spec(payload)) == ["Cluster A", "Cluster B"]
     assert _band_texts(build_table_spec(payload, vydaje=["nezmysel"])) == [
-        "Výdaj A",
-        "Výdaj B",
+        "Cluster A",
+        "Cluster B",
     ]
 
 
@@ -596,3 +633,84 @@ def test_unassigned_prevadzky_stay_out_of_a_filtered_print():
     assert "Nepriradené prevádzky" not in _band_texts(
         build_table_spec(payload, vydaje=["A"])
     )
+
+
+# ── Sumáre pri troch výdajných bodoch (#531 — British School = Cluster C) ────
+
+
+def _three_vydaje_payload():
+    """Tri výdajné body — British School je prvý reálny 3. klaster."""
+    rows = _payload()["rows"]
+    return _payload(
+        vydaje=[
+            {
+                "key": "A",
+                "name": "Cluster A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": rows}],
+            },
+            {
+                "key": "B",
+                "name": "Cluster B",
+                "routes": [{"id": 2, "name": "Trasa extra 1", "rows": rows}],
+            },
+            {
+                "key": "C",
+                "name": "Cluster C",
+                "routes": [{"id": 3, "name": "British School", "rows": rows}],
+            },
+        ],
+        rows=[],
+        unassigned_rows=[],
+    )
+
+
+def _portion_summary_titles(spec):
+    return [
+        row["cells"][0]["text"]
+        for row in spec["rows"]
+        if "portion-summary-band" in row["css"]
+    ]
+
+
+def test_three_vydaje_get_numbered_summaries_and_a_combined_first_two():
+    spec = build_table_spec(_three_vydaje_payload())
+
+    assert _portion_summary_titles(spec) == [
+        "Sumár 1",
+        "Sumár 2",
+        "Sumár 1 a 2",
+        "Sumár 3",
+    ]
+    assert spec["footer"][0]["cells"][0]["text"] == "Sumár dokopy"
+
+
+def test_combined_first_two_summary_equals_the_portion_summary_over_both():
+    from api.exporters.gramage_dashboard_export import portion_summary
+
+    payload = _three_vydaje_payload()
+    spec = build_table_spec(payload)
+    rows = [r for r in spec["rows"] if r["kind"] == "portion-row"]
+    # Sumár 1, Sumár 2, Sumár 1 a 2, Sumár 3 — v tomto poradí, 3 riadky každý
+    # (Polievka, Menu A, Menu B podľa fixture).
+    combined_rows = rows[6:9]
+
+    vydaj_a_rows = payload["vydaje"][0]["routes"][0]["rows"]
+    vydaj_b_rows = payload["vydaje"][1]["routes"][0]["rows"]
+    expected = portion_summary(payload, [*vydaj_a_rows, *vydaj_b_rows])
+
+    assert [row["cells"][0]["count"] for row in combined_rows] == [
+        format_count(item["count"]) for item in expected
+    ]
+
+
+def test_two_vydaje_do_not_get_a_combined_summary():
+    """Kombinovaný medzisúčet dáva zmysel len keď je čo kombinovať navyše."""
+    spec = build_table_spec(_two_vydaje_payload())
+
+    assert _portion_summary_titles(spec) == ["Sumár 1", "Sumár 2"]
+
+
+def test_filtering_to_a_single_vydaj_drops_the_combined_summary():
+    spec = build_table_spec(_three_vydaje_payload(), vydaje=["C"])
+
+    assert _portion_summary_titles(spec) == ["Sumár 1"]

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   businessDays,
+  dashboardMaxDate,
   dayOffReason,
   isDayOff,
   nextBusinessDay,
@@ -13,6 +14,11 @@ import {
 const monday = () => new Date(2026, 7, 10);
 const saturday = () => new Date(2026, 7, 8);
 const sunday = () => new Date(2026, 7, 9);
+const atHour = (date: Date, hour: number) => {
+  const result = new Date(date);
+  result.setHours(hour, 0, 0, 0);
+  return result;
+};
 
 describe("previousBusinessDay", () => {
   it("leaves a weekday unchanged", () => {
@@ -75,5 +81,35 @@ describe("businessDays", () => {
       closures: new Set(["2026-08-12"]),
     });
     expect(days.map(toDateKey)).toEqual(["2026-08-10", "2026-08-13", "2026-08-14"]);
+  });
+});
+
+// #535 — British School sa scrapuje 12:15 deň vopred, dashboard preto
+// odomyká zajtrajšok o 12:00, pokiaľ samo zajtra nie je voľno.
+describe("dashboardMaxDate", () => {
+  it("stays on today before noon", () => {
+    expect(dashboardMaxDate(atHour(monday(), 11))).toBe("2026-08-10");
+  });
+
+  it("unlocks tomorrow from noon on a weekday whose tomorrow is a workday", () => {
+    expect(dashboardMaxDate(atHour(monday(), 12))).toBe("2026-08-11");
+  });
+
+  it("does not unlock past a weekend — Friday noon stays on Friday", () => {
+    const friday = new Date(2026, 7, 7);
+    expect(dashboardMaxDate(atHour(friday, 12))).toBe("2026-08-07");
+  });
+
+  it("unlocks Monday from Sunday noon, matching the Sun–Thu scrape crontab", () => {
+    expect(dashboardMaxDate(atHour(sunday(), 12))).toBe("2026-08-10");
+  });
+
+  it("does not unlock a tomorrow that is a holiday", () => {
+    const holidays = new Set(["2026-08-11"]);
+    expect(dashboardMaxDate(atHour(monday(), 12), { holidays })).toBe("2026-08-10");
+  });
+
+  it("saturday noon stays on the last business day (Friday)", () => {
+    expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-07");
   });
 });

@@ -12,8 +12,15 @@ from api.edupage import (
     config_pre_url,
     subdomena_z_url,
 )
+from api.edupage.overrides.britishschool import (
+    british_school_letter_hook,
+    british_school_payer_hook,
+)
+from api.edupage.overrides.cvernicka import cvernicka_letter_hook
+from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
 from api.edupage.overrides.krasnanko import krasnanko_letter_hook
 from api.edupage.overrides.skolickams import skolickams_payer_hook
+from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
 from api.edupage_scraper import (
     EdupageScraper,
     ScrapeResult,
@@ -83,6 +90,26 @@ class TestConfigPreUrl(unittest.TestCase):
 
     def test_skolickams_has_payer_hook(self):
         cfg = config_pre_url("https://skolickams.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.payer_hook)
+
+    def test_cvernicka_has_letter_hook(self):
+        cfg = config_pre_url("https://skolkacvernicka.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_felixkarloveska_has_letter_hook(self):
+        cfg = config_pre_url(
+            "https://msfelixkarloveska.edupage.org/menu/mealsGuest?id=x"
+        )
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_zdravebrusko_has_letter_hook(self):
+        cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_british_school_has_letter_and_payer_hook(self):
+        cfg = config_pre_url("https://zdravyprojekt.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg)
+        self.assertIsNotNone(cfg.letter_hook)
         self.assertIsNotNone(cfg.payer_hook)
 
     def test_fantasticka_ms_and_zs_are_separate(self):
@@ -265,6 +292,240 @@ class TestLetterHookInParse(unittest.TestCase):
         res = EdupageScraper()._parse(html, TARGET, config=cfg)
         self.assertEqual(res.attention, ["G:XY!"])
         self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 3)
+
+
+class TestCvernickaLetterHook(unittest.TestCase):
+    """#527: obe skratky sa predtým fuzzy-matchovali len na NO MILK/NO GLUTEN,
+    hoci lepok sa v nich vôbec nevyskytuje (EduPage `nazov` to potvrdzuje)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return cvernicka_letter_hook("X", skratka, "")
+
+    def test_nmncnj_full_combo(self):
+        self.assertEqual(self._rule("nMnČnJ").diet, "NO MILK/NO KAKAO/NO JAHODA")
+
+    def test_seven_way_combo(self):
+        self.assertEqual(
+            self._rule("nMnOnJnPnČnŠnZEL").diet,
+            "NO MILK/NO ORECH/NO PARADAJKA/NO JAHODA/NO KAKAO/NO SKORICA/NO ZELER",
+        )
+
+    def test_horcica(self):
+        # Bez tohto pravidla `resolve_menu_variant` skratku potichu absorbuje
+        # do Menu A, lebo nazov obsahuje "Klasik" — žiadny unmapped/uncertain
+        # flag, diéta zmizne úplne (nájdené 27.8.2026 v Hárok1).
+        self.assertEqual(self._rule("AnHorčica").diet, "NO HORCICA")
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("nM"))
+
+
+class TestFelixKarloveskaLetterHook(unittest.TestCase):
+    """#527: 'NE bez O,A,S,S' sa fuzzy-matchovalo len na NO EGG — reálna
+    tabuľka (Felix/IUVENTA) má tento riadok ako EpiPen-úroveň alergiu."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return felixkarloveska_letter_hook("X", skratka, "")
+
+    def test_epipen_combo(self):
+        self.assertEqual(
+            self._rule("NE bez O,A,S,S").diet,
+            "NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM",
+        )
+
+    def test_case_insensitive(self):
+        self.assertEqual(
+            self._rule("ne bez o,a,s,s").diet,
+            "NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM",
+        )
+
+    def test_plain_ne_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("NE"))
+
+
+class TestZdravebruskoLetterHook(unittest.TestCase):
+    """#527: 'dsbNMNE' sa fuzzy-matchovalo len na NO EGG (endswith('ne') beží
+    skôr, než si engine všimne 'nm') — EduPage nazov='NoMilk/NoEgg' potvrdzuje
+    plnú kombináciu."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return zdravebrusko_letter_hook("X", skratka, "")
+
+    def test_dsbnmne_full_combo(self):
+        self.assertEqual(self._rule("dsbNMNE").diet, "NO MILK/NO EGG")
+
+    def test_plain_dsbnm_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("dsbNM"))
+
+
+class TestFixedLetterHooksInParse(unittest.TestCase):
+    """Integračný test: letter_hook beží pred fuzzy engine, takže tieto
+    skratky teraz idú priamo na plný názov a NEobjavia sa v `uncertain_letters`
+    (na rozdiel od fuzzy matchov, letter_hook je deklarovaná istota, nie odhad)."""
+
+    NASTAVENIA = [
+        {
+            "nazov": "vydaj_normal",
+            "hodnota": json.dumps({"2": {"vydaj_od": "11:00", "vydaj_do": "13:00"}}),
+        }
+    ]
+    TYPY = [{"hodnota": json.dumps({"18": {"nazov": "Klasik", "porcia": "0"}})}]
+
+    def _parse(self, skratka, config):
+        nazov_menu = {"E": {"skratka": skratka, "nazov": skratka}}
+        prehlad = {
+            "prehlad": {
+                TARGET.isoformat(): {"2": {"E": {"typ_platitela": {"18": {"o": 1}}}}}
+            }
+        }
+        html = _make_html(prehlad, nazov_menu, self.NASTAVENIA, self.TYPY)
+        return EdupageScraper()._parse(html, TARGET, config=config)
+
+    def test_cvernicka_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=cvernicka_letter_hook)
+        res = self._parse("nMnČnJ", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"],
+            {"NO MILK/NO KAKAO/NO JAHODA": 1},
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_cvernicka_horcica_resolves_as_diet_not_menu_a(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=cvernicka_letter_hook)
+        res = self._parse("AnHorčica", cfg)
+        self.assertEqual(res.order_data["lunch"]["Škôlka"]["diets"], {"NO HORCICA": 1})
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_felixkarloveska_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=felixkarloveska_letter_hook)
+        res = self._parse("NE bez O,A,S,S", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"],
+            {"NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM": 1},
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_zdravebrusko_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=zdravebrusko_letter_hook)
+        res = self._parse("dsbNMNE", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"], {"NO MILK/NO EGG": 1}
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+
+class TestBritishSchoolHooks(unittest.TestCase):
+    """#527: skratky s koncovým '+' zdieľajú viaceré deti s navzájom
+    odlišnými kombináciami — letter_hook necháva diétu na payer_hook."""
+
+    def test_letter_hook_suppresses_diet_for_plus_skratky(self):
+        rule = british_school_letter_hook("H", "nM+", "noMilk+")
+        self.assertIsNotNone(rule)
+        self.assertIsNone(rule.diet)
+        self.assertEqual(rule.menu, "A")
+
+    def test_letter_hook_falls_through_for_plain_skratky(self):
+        self.assertIsNone(british_school_letter_hook("G", "nM", "noMilk"))
+
+    def test_payer_hook_known_combinations(self):
+        cases = [
+            ("1.st. noMushroom", "NO HUBY"),
+            ("1.st. noMilk+reflux", "NO MILK/REFLUX"),
+            ("MŠ noMilk+reflux", "NO MILK/REFLUX"),
+            ("Učiteľ noMilk/VEGE", "NO MILK/VEGGIE"),
+            ("1.st. noNuts/noFish", "NO ORECH/NO FISH"),
+            ("1.st. noNuts/noKiwi", "NO ORECH/NO KIWI"),
+            ("2.st. noNuts/noAPP/noStr", "NO ORECH/NO JABLKO/NO JAHODA"),
+            ("3.st. noNuts/sezam", "NO ORECH/NO SEZAM"),
+            ("MŠ nonono+pork+berr", "NONONO/NO BRAVCOVINA/NO BOBULE"),
+            ("MŠ nonononANAnLEG HIT", "NONONO/NO ANANAS/NO STRUKOVINY/HISTAMIN"),
+        ]
+        for payer_name, expected in cases:
+            with self.subTest(payer_name=payer_name):
+                rule = british_school_payer_hook(payer_name)
+                self.assertIsNotNone(rule)
+                self.assertEqual(rule.diet, expected)
+
+    def test_payer_hook_unknown_falls_through_to_engine(self):
+        self.assertIsNone(british_school_payer_hook("2.st. noNuts/noBanana"))
+
+
+class TestBritishSchoolHooksInParse(unittest.TestCase):
+    """Rovnaká skratka `nN+`, 4 rôzne deti (payer) → 4 rôzne diéty naraz —
+    presne dôvod, prečo tu letter_hook sám nestačí."""
+
+    NASTAVENIA = [
+        {
+            "nazov": "vydaj_normal",
+            "hodnota": json.dumps({"2": {"vydaj_od": "11:00", "vydaj_do": "13:00"}}),
+        }
+    ]
+
+    def _cfg(self):
+        return _cfg(
+            OlovrantMode.NEZNAMY,
+            letter_hook=british_school_letter_hook,
+            payer_hook=british_school_payer_hook,
+        )
+
+    def test_same_letter_different_payers_resolve_to_different_diets(self):
+        nazov_menu = {"N": {"skratka": "nN+", "nazov": "noNuts+"}}
+        typy = [
+            {
+                "hodnota": json.dumps(
+                    {
+                        "72": {"nazov": "1.st. noNuts/noKiwi", "porcia": "0"},
+                        "73": {"nazov": "1.st. noNuts/noFish", "porcia": "0"},
+                    }
+                )
+            }
+        ]
+        prehlad = {
+            "prehlad": {
+                TARGET.isoformat(): {
+                    "2": {
+                        "N": {
+                            "typ_platitela": {
+                                "72": {"o": 1},
+                                "73": {"o": 1},
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        html = _make_html(prehlad, nazov_menu, self.NASTAVENIA, typy)
+        res = EdupageScraper()._parse(html, TARGET, config=self._cfg())
+        diets = res.order_data["lunch"]["Škôlka"]["diets"]
+        self.assertEqual(diets.get("NO ORECH/NO KIWI"), 1)
+        self.assertEqual(diets.get("NO ORECH/NO FISH"), 1)
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_unknown_payer_on_plus_letter_keeps_the_count(self):
+        # Payer_hook nepozná kombináciu → diet_name aj payer_diet ostanú None,
+        # takže sa diéta nepriradí, ale PORCIA sa nestratí (padne pod Menu A) —
+        # bezpečnejšie ako appke spadnúť alebo si niečo vymyslieť.
+        nazov_menu = {"N": {"skratka": "nN+", "nazov": "noNuts+"}}
+        typy = [
+            {
+                "hodnota": json.dumps(
+                    {"99": {"nazov": "4.st. noNuts/noBanana", "porcia": "0"}}
+                )
+            }
+        ]
+        prehlad = {
+            "prehlad": {
+                TARGET.isoformat(): {"2": {"N": {"typ_platitela": {"99": {"o": 1}}}}}
+            }
+        }
+        html = _make_html(prehlad, nazov_menu, self.NASTAVENIA, typy)
+        res = EdupageScraper()._parse(html, TARGET, config=self._cfg())
+        self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 1)
 
 
 class TestSkolickamsPayerHook(unittest.TestCase):

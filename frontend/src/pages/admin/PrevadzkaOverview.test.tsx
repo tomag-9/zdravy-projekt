@@ -41,4 +41,83 @@ describe("PrevadzkaOverview", () => {
     expect(weekday).not.toBe(0);
     expect(weekday).not.toBe(6);
   });
+
+  const baseRow = {
+    prevadzka_id: 1,
+    nazov: "MŠ Testovacia",
+    celok: "MŠ Testovacia",
+    delivered: true,
+    delivery_status: "manual" as const,
+    counts: { breakfast: 0, lunch: 5, olovrant: 0, total: 5 },
+    has_warning: true,
+  };
+
+  it("shows unmapped diets inline, not just in a hover tooltip", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [
+          {
+            ...baseRow,
+            flags: { attention: [], config_notes: [], unmapped_diets: ["N:NO KAKAO"] },
+          },
+        ],
+        app: [],
+      }),
+    });
+
+    render(<PrevadzkaOverview />);
+
+    await screen.findByText("Kontrola objednávok");
+    expect(screen.getByText(/NO KAKAO/)).toBeInTheDocument();
+  });
+
+  it("shows uncertain (fuzzy-matched) diets inline", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [
+          {
+            ...baseRow,
+            flags: {
+              attention: [],
+              config_notes: [],
+              unmapped_diets: [],
+              uncertain_diets: ["Z:XYZ→NO MILK"],
+            },
+          },
+        ],
+        app: [],
+      }),
+    });
+
+    render(<PrevadzkaOverview />);
+
+    await screen.findByText("Kontrola objednávok");
+    expect(screen.getByText(/XYZ→NO MILK/)).toBeInTheDocument();
+  });
+
+  it("does not render an extra warning line when there are no diet flags", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [
+          {
+            ...baseRow,
+            has_warning: false,
+            flags: { attention: [], config_notes: [], unmapped_diets: [], uncertain_diets: [] },
+          },
+        ],
+        app: [],
+      }),
+    });
+
+    render(<PrevadzkaOverview />);
+
+    await screen.findByText("MŠ Testovacia");
+    expect(screen.queryByText(/→/)).not.toBeInTheDocument();
+  });
 });

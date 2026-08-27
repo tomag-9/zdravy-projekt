@@ -222,9 +222,9 @@ def test_gramage_dashboard_groups_rows_by_delivery_layout_order():
     data = MealPlanService.gramage_dashboard(plan.date.isoformat())
 
     assert [row["client"] for row in data["rows"]] == ["A prevádzka", "B prevádzka"]
-    # Najvyššia úroveň tabuľky je výdajný bod prevádzky (default „Výdaj A"),
+    # Najvyššia úroveň tabuľky je výdajný bod prevádzky (default „Cluster A"),
     # poradie vnútri neho ostáva rozvozové.
-    assert data["vydaje"][0]["name"] == "Výdaj A"
+    assert data["vydaje"][0]["name"] == "Cluster A"
     assert data["vydaje"][0]["routes"][0]["name"] == "TRASA EXTRA"
     assert [row["client"] for row in data["vydaje"][0]["routes"][0]["rows"]] == [
         "A prevádzka",

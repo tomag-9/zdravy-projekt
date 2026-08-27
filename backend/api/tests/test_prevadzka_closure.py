@@ -30,12 +30,20 @@ from api.scheduling import (
     previous_business_day,
 )
 
-MONDAY = datetime.date(2026, 8, 24)
-TUESDAY = datetime.date(2026, 8, 25)
-WEDNESDAY = datetime.date(2026, 8, 26)
-THURSDAY = datetime.date(2026, 8, 27)
-FRIDAY = datetime.date(2026, 8, 28)
-SATURDAY = datetime.date(2026, 8, 29)
+# `TestOrderingIsBlocked` posts real orders through the API, which checks the
+# order date's deadline against wall-clock "now" — a hardcoded past week makes
+# those tests fail once real time catches up to it (happened here: the week
+# was 24.-29.8.2026, this module started failing on 26.8.2026). Anchor to a
+# Monday comfortably ahead of "today" instead, so the whole week's deadlines
+# stay in the future no matter when the suite runs.
+_TODAY = datetime.date.today()
+_NEXT_MONDAY_OFFSET = (7 - _TODAY.weekday()) % 7 or 7
+MONDAY = _TODAY + datetime.timedelta(days=_NEXT_MONDAY_OFFSET + 7)
+TUESDAY = MONDAY + datetime.timedelta(days=1)
+WEDNESDAY = MONDAY + datetime.timedelta(days=2)
+THURSDAY = MONDAY + datetime.timedelta(days=3)
+FRIDAY = MONDAY + datetime.timedelta(days=4)
+SATURDAY = MONDAY + datetime.timedelta(days=5)
 
 
 @pytest.fixture
