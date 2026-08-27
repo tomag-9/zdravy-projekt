@@ -77,6 +77,13 @@ h1 small {
  * gramáže. */
 .zpa-gram th,
 .zpa-gram td { min-width: 0; padding: 1mm 1.2mm; }
+/* Čiary medzi každými dvoma bunkami (#536) — bez farebného podkladu
+ * (čiernobiela tlač, iné DPI ako na obrazovke) sa v tabuľke bez mriežky
+ * strácala orientácia medzi bunkami. `meal-sep`, hlavička a pásy majú
+ * vlastné, výraznejšie čiary — tie prebijú túto len tam, kde treba. */
+.zpa-gram th,
+.zpa-gram td { border: 0.5pt solid rgba(23, 53, 5, 0.25); }
+.zpa-gram thead th { border-color: rgba(255, 255, 255, 0.28); }
 .zpa-gram th:first-child,
 .zpa-gram td:first-child { width: 42mm; min-width: 0; max-width: none; }
 /* Názov riadku sa v úzkom stĺpci musí zalomiť. Obrazovka ho skracuje „…"-om a
@@ -139,7 +146,9 @@ h1 small {
 .zpa-gram .mh-menuC-cell,
 .zpa-gram .mh-menuV-cell,
 .zpa-gram .mh-snack-cell { background: transparent; }
-.zpa-gram .sub-row.zebra td { background: #EDEDEA; }
+/* Diétny riadok má vlastné podfarbenie podľa (kombinovanej) diéty (#536) —
+ * pruh by ho na papieri prekryl neutrálnou sivou, tak sa mu vyhýba. */
+.zpa-gram .sub-row.zebra:not(.diet) td { background: #EDEDEA; }
 
 /* Každý výdajný bod (blok) začína na vlastnom liste — kuchyňa vydáva z dvoch
  * miest naraz a každé chce svoju tabuľku, nie polovicu spoločnej strany. */

@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 
+from api.exporters.gramage_dashboard_export import blend_with_white, readable_text_color
 from api.exporters.gramage_table_spec import build_table_spec, format_count, format_gram
 
 GRAMS = {"label": "Mäso", "base_grams": "300", "unit": "g"}
@@ -281,6 +282,42 @@ def test_diet_rows_get_a_readable_font_colour_and_a_swatch():
     # Swatch drží pôvodnú farbu diéty, text stmavenú (čitateľnú) verziu.
     assert diet["cells"][0]["swatch"]["color"] == "#F59E0B"
     assert diet["color"] == "#966107"
+    # Jedna diéta (bez kombinácie): podfarbenie je odtieň tej istej farby (#536).
+    assert diet["background"] == f"#{blend_with_white('F59E0B')}"
+
+
+def test_combined_diet_of_two_colours_by_main_and_secondary():
+    """Kombinovaná diéta z dvoch: text farbou hlavnej, podfarbenie vedľajšej (#536)."""
+    payload = _payload()
+    payload["rows"][0]["diet_summary_rows"][0]["base_colors"] = ["#F59E0B", "#EF4444"]
+    payload["rows"][0]["sub_rows"][1]["diet_base_colors"] = ["#F59E0B", "#EF4444"]
+
+    spec = build_table_spec(payload)
+
+    summary = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert summary["color"] == f"#{readable_text_color('F59E0B')}"
+    assert summary["background"] == f"#{blend_with_white('EF4444')}"
+
+    sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert sub_row["color"] == f"#{readable_text_color('F59E0B')}"
+    assert sub_row["background"] == f"#{blend_with_white('EF4444')}"
+
+
+def test_combined_diet_of_three_or_more_uses_fixed_orange_background():
+    """Kombinácia troch a viac diét: text prvej, podfarbenie pevnou oranžovou,
+    lebo farba jednej z troch a viac zložiek by pôsobila náhodne (#536)."""
+    payload = _payload()
+    colors = ["#F59E0B", "#EF4444", "#16A34A"]
+    payload["rows"][0]["diet_summary_rows"][0]["base_colors"] = colors
+    payload["rows"][0]["sub_rows"][1]["diet_base_colors"] = colors
+
+    spec = build_table_spec(payload)
+
+    summary = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert summary["color"] == f"#{readable_text_color('F59E0B')}"
+    assert summary["background"] == f"#{blend_with_white('F97316')}"
 
 
 def test_footer_is_the_portion_summary_plus_the_grand_total():

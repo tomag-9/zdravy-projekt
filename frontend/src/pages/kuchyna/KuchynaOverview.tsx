@@ -20,7 +20,8 @@ import { plural } from '../../lib/plural';
 import {
     prevWeekday,
     nextWeekday,
-    lastWeekdayToday,
+    dashboardMaxDate,
+    toDateString,
     formatDay,
 } from '../../lib/businessDay';
 import GramageTable, { type TableSpec } from '../admin/GramageTable';
@@ -57,7 +58,10 @@ interface LoadingOverview {
 const KuchynaOverview: React.FC = () => {
     const { apiFetch } = useAuth();
     const { error: toastError, success: toastSuccess } = useToast();
-    const maxDate = useMemo(() => lastWeekdayToday(), []);
+    // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
+    // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
+    const maxDate = useMemo(() => dashboardMaxDate(), []);
+    const actualToday = useMemo(() => toDateString(new Date()), []);
     const [date, setDate] = useState(maxDate);
     const [data, setData] = useState<DashboardResponse | null>(null);
     const [loading, setLoading] = useState(false);
@@ -220,7 +224,9 @@ const KuchynaOverview: React.FC = () => {
                     <span className="zpk-day-label">{formatDay(date)}</span>
                     {date !== maxDate && (
                         <button type="button" className="zpk-today" onClick={() => setDate(maxDate)}>
-                            Späť na dnešok
+                            {/* Po 12:00 je maxDate zajtrajšok (British School, #535) —
+                                tlačidlo vtedy nesmie tvrdiť, že vedie „na dnešok". */}
+                            {maxDate === actualToday ? 'Späť na dnešok' : 'Späť na najnovší deň'}
                         </button>
                     )}
                 </div>

@@ -111,11 +111,14 @@ def _cell(cell: dict) -> str:
 def _row(row: dict) -> str:
     kind = row.get("kind")
     cells = row.get("cells") or []
-    style = (
-        f' style="color: {escape(str(row["color"]), quote=True)}"'
-        if row.get("color")
-        else ""
-    )
+    style_parts = []
+    if row.get("color"):
+        style_parts.append(f"color: {escape(str(row['color']), quote=True)}")
+    if row.get("background"):
+        style_parts.append(
+            f"background-color: {escape(str(row['background']), quote=True)}"
+        )
+    style = f' style="{"; ".join(style_parts)}"' if style_parts else ""
     attrs = _attrs(**{"class": row.get("css")})
 
     if kind == "client":
