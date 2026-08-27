@@ -96,9 +96,14 @@ interface GramageTableProps {
    * vyzerá presne ako predtým; kuchyňa cez ňu vešia odklikávanie naloženia.
    */
   renderClientAction?: (prevadzkaId: number) => React.ReactNode;
+  /**
+   * Voliteľný klik na názov prevádzky — otvorí jej detail (#527). Kuchyňa
+   * ju neposiela, tam názov zostáva iba text.
+   */
+  onClientNameClick?: (prevadzkaId: number) => void;
 }
 
-const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction }) => {
+const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction, onClientNameClick }) => {
   const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
   const toggleClient = (key: string) => {
@@ -128,14 +133,36 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
         renderClientAction && row.prevadzka_id != null
           ? renderClientAction(row.prevadzka_id)
           : null;
+      const nameClickable = onClientNameClick && row.prevadzka_id != null;
       return (
-        <tr key={index} className={row.css}>
+        <tr key={index} id={row.prevadzka_id != null ? `prevadzka-row-${row.prevadzka_id}` : undefined} className={row.css}>
           <td colSpan={cell.colspan}>
             <div className="client-line">
               <button type="button" className="client-toggle" onClick={() => toggleClient(row.group_id ?? "")}>
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                   <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
-                  {cell.text}
+                  {nameClickable ? (
+                    <span
+                      className="client-name-link"
+                      role="link"
+                      tabIndex={0}
+                      title="Otvoriť detail prevádzky"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClientNameClick!(row.prevadzka_id!);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" && e.key !== " ") return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClientNameClick!(row.prevadzka_id!);
+                      }}
+                    >
+                      {cell.text}
+                    </span>
+                  ) : (
+                    cell.text
+                  )}
                   <span className="meta">{cell.meta}</span>
                 </span>
                 <span className="meta">{cell.meta_right}</span>

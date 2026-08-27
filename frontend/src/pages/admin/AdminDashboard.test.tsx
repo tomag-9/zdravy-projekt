@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminDashboard from "./AdminDashboard";
 
@@ -172,7 +173,7 @@ describe("AdminDashboard", () => {
   it("shows order counts when the selected date has orders but no meal plan", async () => {
     mockDashboardRequests(EMPTY_GRAMAGE, ORDER_REPORT);
 
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     expect(await screen.findByText("Počty objednávok bez gramáže")).toBeInTheDocument();
     expect(screen.getByText("Skolka Krasnanko")).toBeInTheDocument();
@@ -190,7 +191,7 @@ describe("AdminDashboard", () => {
   it("does not fetch the order-count fallback when gramaz data has a meal plan", async () => {
     mockDashboardRequests(GRAMAGE_WITH_PLAN);
 
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     expect(await screen.findAllByText("Menu B")).not.toHaveLength(0);
     expect(screen.queryByText("Hlavný chod Menu B")).not.toBeInTheDocument();
@@ -205,7 +206,7 @@ describe("AdminDashboard", () => {
   it("prefers category counts over top-level fallback counts", async () => {
     mockDashboardRequests(EMPTY_GRAMAGE, ORDER_REPORT_WITH_BOTH_SHAPES);
 
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     expect(await screen.findByText("Počty objednávok bez gramáže")).toBeInTheDocument();
     expect(screen.getByText("A: 12")).toBeInTheDocument();
@@ -233,7 +234,7 @@ describe("AdminDashboard", () => {
       throw new Error(`Unexpected URL ${url}`);
     });
 
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     const lockButton = await screen.findByRole("button", { name: /uzamknúť/i });
     fireEvent.click(lockButton);
@@ -268,7 +269,7 @@ describe("AdminDashboard", () => {
       throw new Error(`Unexpected URL ${url}`);
     });
 
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     const unlockButton = await screen.findByRole("button", { name: /odomknúť/i });
     fireEvent.click(unlockButton);
@@ -364,7 +365,7 @@ describe("GramageTable renders straight from the spec", () => {
 
   it("shows the header and footer but keeps client detail collapsed", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     expect(await screen.findByText("MŠ Testovacia")).toBeInTheDocument();
     // "Menu A" je aj chip filtra, preto hľadaj hlavičku vnútri tabuľky.
@@ -396,7 +397,7 @@ describe("GramageTable renders straight from the spec", () => {
       },
     };
     mockDashboardRequests(withNote);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     // Vidno hneď, bez rozbalenia klienta.
     expect(await screen.findByText("bez cibule")).toBeInTheDocument();
@@ -404,7 +405,7 @@ describe("GramageTable renders straight from the spec", () => {
 
   it("reveals the sub-rows with their spec classes and colour on expand", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole("button", { name: /MŠ Testovacia/ }));
 
@@ -420,7 +421,7 @@ describe("GramageTable renders straight from the spec", () => {
 
   it("renders the count as a badge, not as its own column", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     fireEvent.click(await screen.findByRole("button", { name: /MŠ Testovacia/ }));
 
@@ -438,7 +439,7 @@ describe("Filter sekcií", () => {
 
   it("re-fetches with the ticked sections and passes them to the export", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     // Odklik jednej sekcie pošle zvyšné dve — nie prázdny (= všetko) filter.
     fireEvent.click(await screen.findByRole("button", { name: "Olovrant" }));
@@ -473,7 +474,7 @@ describe("Filter sekcií", () => {
         ],
       },
     });
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     fireEvent.change(await screen.findByLabelText("Cluster"), {
       target: { value: "B" },
@@ -495,7 +496,7 @@ describe("Filter sekcií", () => {
 
   it("drops the filter entirely once everything is ticked again", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
-    render(<AdminDashboard />);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     const olovrant = await screen.findByRole("button", { name: "Olovrant" });
     fireEvent.click(olovrant);
