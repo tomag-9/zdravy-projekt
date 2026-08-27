@@ -13,8 +13,15 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from .base import OlovrantMode, PrevadzkaConfig
+from .overrides.britishschool import (
+    british_school_letter_hook,
+    british_school_payer_hook,
+)
+from .overrides.cvernicka import cvernicka_letter_hook
+from .overrides.felixkarloveska import felixkarloveska_letter_hook
 from .overrides.krasnanko import krasnanko_letter_hook
 from .overrides.skolickams import skolickams_payer_hook
+from .overrides.zdravebrusko import zdravebrusko_letter_hook
 
 _C = OlovrantMode.EDUPAGE
 
@@ -62,7 +69,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="zdravebrusko",
         ucty=("Ďumbierska", "Lamač", "Malý", "Heyrovského"),
         olovrant_mode=_C,
-        poznamka="SŠV → VEGGIE. Split areálov Lamač/Mal./Hey. rieši krok 3.",
+        poznamka=(
+            "SŠV → VEGGIE. Split areálov Lamač/Mal./Hey. rieši krok 3. "
+            "dsbNMNE fuzzy-matchovalo len na NO EGG (#527) — letter_hook "
+            "opravuje na NO MILK/NO EGG (EduPage nazov='NoMilk/NoEgg')."
+        ),
+        letter_hook=zdravebrusko_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="dobrodruzstvo",
@@ -85,8 +97,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "(~4-5 detí denne, overené reconcile-real 17.-21.8.2026 — appka scrapuje "
             "EduPage do písmena zhodne, reálny nedostatok je v tom, čo škola cez "
             "EduPage vôbec eviduje). Predtým bez config riadku, teda aj bez "
-            "config_notes diagnostiky pri úplnom výpadku olovrant jid-u."
+            "config_notes diagnostiky pri úplnom výpadku olovrant jid-u. "
+            "nMnČnJ a nMnOnJnPnČnŠnZEL fuzzy-matchovali obe len na "
+            "NO MILK/NO GLUTEN (#527, lepok sa v nich vôbec nevyskytuje) — "
+            "letter_hook opravuje na plné kombinované diéty."
         ),
+        letter_hook=cvernicka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="fantastickaskolka",
@@ -127,7 +143,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="msfelixkarloveska",
         ucty=("Felix",),
         olovrant_mode=_C,
-        poznamka="Referenčne čistá kategória C — sedí s XLSX presne.",
+        poznamka=(
+            "Referenčne čistá kategória C — sedí s XLSX presne. "
+            "'NE bez O,A,S,S' fuzzy-matchovalo len na NO EGG (#527) — "
+            "letter_hook opravuje na plnú EpiPen kombináciu podľa XLSX."
+        ),
+        letter_hook=felixkarloveska_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="krasnanko",
@@ -135,6 +156,20 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         olovrant_mode=_C,
         poznamka="Špeciál: skratky so Z (zamestnanec) a ZD (zam. detská porcia).",
         letter_hook=krasnanko_letter_hook,
+    ),
+    PrevadzkaConfig(
+        subdomena="zdravyprojekt",
+        ucty=("British School",),
+        olovrant_mode=OlovrantMode.NEZNAMY,
+        poznamka=(
+            "Nový onboarding (#531, 26.8.2026) — olovrant_mode zatiaľ "
+            "nepotvrdený, čaká na dáta. Skratky s koncovým '+' (nM+, NNN+, "
+            "nN+, HIT+) nesú len prvú diétu, zvyšok je v mene platiteľskej "
+            "skupiny — payer_hook priraďuje presné kombinácie (#527, viď "
+            "overrides/britishschool.py pre zdrojové EduPage labely)."
+        ),
+        letter_hook=british_school_letter_hook,
+        payer_hook=british_school_payer_hook,
     ),
 )
 
