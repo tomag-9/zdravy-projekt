@@ -937,33 +937,60 @@ class MealPlanService:
                         )
                         menu_counts = category.menu_counts
                         diets = category.diets
+                        # Dva vzájomne sa vylučujúce spôsoby balenia zvlášť pre tú
+                        # istú porciu - "zvlast" (bežné "zabaliť zvlášť") a
+                        # "zvlast_gn" (rovnaké, len s poznámkou "do GN" pre
+                        # kuchyňu). Súčet oboch pre daný kľúč nikdy neprekročí
+                        # objednaný počet (vynucuje to serializer).
                         pack_separately = (
                             category.pack_separately
                             if isinstance(category.pack_separately, dict)
                             else {}
                         )
+                        pack_separately_gn = (
+                            category.pack_separately_gn
+                            if isinstance(category.pack_separately_gn, dict)
+                            else {}
+                        )
+                        pack_menu_counts_by_target = {
+                            "zvlast": _extract_pack_counts(
+                                pack_separately.get("menus")
+                            ),
+                            "zvlast_gn": _extract_pack_counts(
+                                pack_separately_gn.get("menus")
+                            ),
+                        }
+                        pack_diet_counts_by_target = {
+                            "zvlast": _extract_pack_counts(
+                                pack_separately.get("diets")
+                            ),
+                            "zvlast_gn": _extract_pack_counts(
+                                pack_separately_gn.get("diets")
+                            ),
+                        }
 
                         total_diet_count = sum(
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()
                         )
-                        # "Zabaliť zvlášť" počty sú podmnožina štandardného/diétneho
-                        # riadku (vlastný "- zvlášť" riadok nižšie), nie navyše -
-                        # treba ich odpočítať skôr, ako sa vygeneruje zvyšný
+                        # "Zabaliť zvlášť" (a "...do GN") počty sú podmnožina
+                        # štandardného/diétneho riadku (vlastné "- zvlášť"/"- zvlášť
+                        # do GN" riadky nižšie), nie navyše - treba ich odpočítať
+                        # (súčet oboch cieľov) skôr, ako sa vygeneruje zvyšný
                         # "čistý" riadok, inak sa rovnaká osoba vypíše dvakrát.
-                        pack_menu_counts = _extract_pack_counts(
-                            pack_separately.get("menus")
-                        )
-                        pack_diet_counts = _extract_pack_counts(
-                            pack_separately.get("diets")
-                        )
-                        pack_by_variant = (
-                            {
-                                _normalize_variant(v): _safe_nonneg_int(c)
-                                for v, c in pack_menu_counts.items()
-                            }
-                            if is_variant_meal
-                            else {}
-                        )
+                        pack_by_variant: dict[str, int] = {}
+                        pack_diet_totals: dict[str, int] = {}
+                        if is_variant_meal:
+                            for pack_menu_counts in pack_menu_counts_by_target.values():
+                                for v, c in pack_menu_counts.items():
+                                    nv = _normalize_variant(v)
+                                    pack_by_variant[nv] = pack_by_variant.get(
+                                        nv, 0
+                                    ) + _safe_nonneg_int(c)
+                        for pack_diet_counts in pack_diet_counts_by_target.values():
+                            for diet_name, c in pack_diet_counts.items():
+                                pack_diet_totals[diet_name] = pack_diet_totals.get(
+                                    diet_name, 0
+                                ) + _safe_nonneg_int(c)
 
                         if is_variant_meal:
                             variant_counts = sorted(
@@ -1055,7 +1082,7 @@ class MealPlanService:
                         for diet_name, diet_count_raw in sorted(diets.items()):
                             diet_count = _safe_nonneg_int(diet_count_raw)
                             pack_diet_subtract = min(
-                                pack_diet_counts.get(diet_name, 0), diet_count
+                                pack_diet_totals.get(diet_name, 0), diet_count
                             )
                             diet_count -= pack_diet_subtract
                             if diet_count <= 0:
@@ -1093,98 +1120,117 @@ class MealPlanService:
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += billed_diet_count
 
-                        # Rovnaké vetvenie ako pri štandardnom riadku vyššie: pre
-                        # jedlo bez vlastných menu stĺpcov (napr. polievka - ide
-                        # o ten istý klik na "zabaliť zvlášť" pri obede) sa počty
-                        # najprv spočítajú do jedného celku, inak by sa gramáž
-                        # polievky hľadala v stĺpci "Menu A/B", ktorý polievka
-                        # nemá, a vyšla by nulová.
-                        if is_variant_meal:
-                            pack_variant_counts = sorted(
-                                (
-                                    (_normalize_variant(v), _safe_nonneg_int(c))
-                                    for v, c in pack_menu_counts.items()
-                                ),
-                                key=lambda kv: (
-                                    VARIANT_ORDER.index(kv[0])
-                                    if kv[0] in VARIANT_ORDER
-                                    else 99
-                                ),
-                            )
-                        else:
-                            total_pack = sum(
-                                _safe_nonneg_int(c) for c in pack_menu_counts.values()
-                            )
-                            pack_variant_counts = (
-                                [("", total_pack)] if total_pack > 0 else []
-                            )
+                        # Rovnaké generovanie pre oba vzájomne sa vylučujúce ciele
+                        # ("zvlast" / "zvlast_gn") - líšia sa len typom riadku a
+                        # popisom ("zvlášť" vs "zvlášť do GN").
+                        for target_type, label_suffix in (
+                            ("zvlast", "zvlášť"),
+                            ("zvlast_gn", "zvlášť do GN"),
+                        ):
+                            pack_menu_counts = pack_menu_counts_by_target[target_type]
+                            pack_diet_counts = pack_diet_counts_by_target[target_type]
 
-                        for variant, pack_count in pack_variant_counts:
-                            if pack_count <= 0:
-                                continue
-                            pack_grams = _col_grams(
-                                meal, variant, coeff, pack_count, portion_name
-                            )
-                            sub_rows.append(
-                                {
-                                    "type": "zvlast",
-                                    "meal": meal,
-                                    "variant": variant,
-                                    "portion_name": display_portion_name,
-                                    "label": (
-                                        f"{display_portion_name} - "
-                                        f"{'Menu ' + variant if variant else MEAL_LABELS[meal]} - zvlášť"
+                            # Rovnaké vetvenie ako pri štandardnom riadku vyššie:
+                            # pre jedlo bez vlastných menu stĺpcov (napr. polievka -
+                            # ide o ten istý klik na "zabaliť zvlášť" pri obede) sa
+                            # počty najprv spočítajú do jedného celku, inak by sa
+                            # gramáž polievky hľadala v stĺpci "Menu A/B", ktorý
+                            # polievka nemá, a vyšla by nulová.
+                            if is_variant_meal:
+                                pack_variant_counts = sorted(
+                                    (
+                                        (_normalize_variant(v), _safe_nonneg_int(c))
+                                        for v, c in pack_menu_counts.items()
                                     ),
-                                    "count": _billed_count(pack_count, billing_coeff),
-                                    "_heads": pack_count,
-                                    "col_grams": pack_grams,
-                                }
-                            )
-                            # Odpočítalo sa vyššie z "čistého" riadku len keď
-                            # is_variant_meal (inak sa zvlášť polievky nespočítava
-                            # samostatne, ale nechá na hlavnom chode) - dorátať do
-                            # súhrnu presne v tom istom prípade, nech sa hlava
-                            # nestratí, ale ani nezaráta dvakrát.
-                            if is_variant_meal and count_towards_summary:
-                                client_total_count += _billed_count(
-                                    pack_count, billing_coeff
+                                    key=lambda kv: (
+                                        VARIANT_ORDER.index(kv[0])
+                                        if kv[0] in VARIANT_ORDER
+                                        else 99
+                                    ),
+                                )
+                            else:
+                                total_pack = sum(
+                                    _safe_nonneg_int(c)
+                                    for c in pack_menu_counts.values()
+                                )
+                                pack_variant_counts = (
+                                    [("", total_pack)] if total_pack > 0 else []
                                 )
 
-                        for diet_name, pack_count in sorted(pack_diet_counts.items()):
-                            pack_diet_grams = _col_grams_diet(
-                                meal, diet_name, coeff, pack_count, portion_name
-                            )
-                            sub_rows.append(
-                                {
-                                    "type": "zvlast",
-                                    "meal": meal,
-                                    "portion_name": display_portion_name,
-                                    "diet_name": diet_name,
-                                    "label": (
-                                        f"{display_portion_name} - {diet_name} - zvlášť"
-                                    ),
-                                    "diet_color": diet_color_map.get(
-                                        diet_name, "#FDE68A"
-                                    ),
-                                    "count": _billed_count(pack_count, billing_coeff),
-                                    "_heads": pack_count,
-                                    "col_grams": pack_diet_grams,
-                                }
-                            )
-                            # Diétny počet sa vyššie odpočítal z "čistého"
-                            # diétneho riadku pri KAŽDOM meale (aj polievke),
-                            # preto sa tu vracia späť pri tom istom meale, kde sa
-                            # aj sčítaval (count_towards_summary) - odpočet a
-                            # spätné pripočítanie sa navzájom presne vyrušia.
-                            if count_towards_summary:
-                                if diet_name not in diet_summary_totals:
-                                    diet_summary_totals[diet_name] = (
-                                        _empty_group_totals()
+                            for variant, pack_count in pack_variant_counts:
+                                if pack_count <= 0:
+                                    continue
+                                pack_grams = _col_grams(
+                                    meal, variant, coeff, pack_count, portion_name
+                                )
+                                sub_rows.append(
+                                    {
+                                        "type": target_type,
+                                        "meal": meal,
+                                        "variant": variant,
+                                        "portion_name": display_portion_name,
+                                        "label": (
+                                            f"{display_portion_name} - "
+                                            f"{'Menu ' + variant if variant else MEAL_LABELS[meal]} - {label_suffix}"
+                                        ),
+                                        "count": _billed_count(
+                                            pack_count, billing_coeff
+                                        ),
+                                        "_heads": pack_count,
+                                        "col_grams": pack_grams,
+                                    }
+                                )
+                                # Odpočítalo sa vyššie z "čistého" riadku (súčet
+                                # oboch cieľov) len keď is_variant_meal (inak sa
+                                # zvlášť polievky nespočítava samostatne, ale
+                                # nechá na hlavnom chode) - dorátať do súhrnu
+                                # presne v tom istom prípade, nech sa hlava
+                                # nestratí, ale ani nezaráta dvakrát.
+                                if is_variant_meal and count_towards_summary:
+                                    client_total_count += _billed_count(
+                                        pack_count, billing_coeff
                                     )
-                                    diet_summary_counts[diet_name] = 0
-                                diet_summary_counts[diet_name] += _billed_count(
-                                    pack_count, billing_coeff
+
+                            for diet_name, pack_count in sorted(
+                                pack_diet_counts.items()
+                            ):
+                                pack_diet_grams = _col_grams_diet(
+                                    meal, diet_name, coeff, pack_count, portion_name
                                 )
+                                sub_rows.append(
+                                    {
+                                        "type": target_type,
+                                        "meal": meal,
+                                        "portion_name": display_portion_name,
+                                        "diet_name": diet_name,
+                                        "label": (
+                                            f"{display_portion_name} - {diet_name} - {label_suffix}"
+                                        ),
+                                        "diet_color": diet_color_map.get(
+                                            diet_name, "#FDE68A"
+                                        ),
+                                        "count": _billed_count(
+                                            pack_count, billing_coeff
+                                        ),
+                                        "_heads": pack_count,
+                                        "col_grams": pack_diet_grams,
+                                    }
+                                )
+                                # Diétny počet sa vyššie odpočítal z "čistého"
+                                # diétneho riadku (súčet oboch cieľov) pri KAŽDOM
+                                # meale (aj polievke), preto sa tu vracia späť pri
+                                # tom istom meale, kde sa aj sčítaval
+                                # (count_towards_summary) - odpočet a spätné
+                                # pripočítanie sa navzájom presne vyrušia.
+                                if count_towards_summary:
+                                    if diet_name not in diet_summary_totals:
+                                        diet_summary_totals[diet_name] = (
+                                            _empty_group_totals()
+                                        )
+                                        diet_summary_counts[diet_name] = 0
+                                    diet_summary_counts[diet_name] += _billed_count(
+                                        pack_count, billing_coeff
+                                    )
 
             for correction in order_data.get("__gram_corrections__", []):
                 if not isinstance(correction, dict):
@@ -1389,7 +1435,12 @@ class MealPlanService:
                 # Zlúčený riadok zastupuje viac jedál (obed nesie aj polievku),
                 # takže sa započíta do každého z nich.
                 _meals = [_sr["meal"], *(_sr.get("absorbed_meals") or [])]
-                if _sr["type"] == "standard":
+                # Vetví sa podľa toho, či ide o diétny riadok (má `diet_name`),
+                # nie podľa `type` - "zvlast"/"zvlast_gn" riadky sú komplementárna
+                # podmnožina toho istého "standard"/"diet" riadku (súčet oboch je
+                # celkový počet, viď odpočítanie vyššie), takže patria do tej
+                # istej agregácie ako ich "čistý" náprotivok.
+                if not _sr.get("diet_name"):
                     for _meal in _meals:
                         # Polievka nemá varianty — nesmie sa rozpadnúť na A/B.
                         _variant = (

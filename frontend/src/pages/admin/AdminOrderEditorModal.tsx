@@ -4,7 +4,7 @@ import DietSelector from '../client/components/order/DietSelector';
 import OrderFormBody from '../client/components/order/OrderFormBody';
 import OrderSummary from '../client/components/order/OrderSummary';
 import PackSeparatelySelector from '../client/components/order/PackSeparatelySelector';
-import OrderService, { DailyOrder, MealData } from '../client/services/OrderService';
+import OrderService, { DailyOrder, MealData, PackTarget } from '../client/services/OrderService';
 import { getVisibleMenusForMeal as resolveVisibleMenusForMeal } from '../client/hooks/useOrder';
 import { CATEGORIES } from '../client/config/constants';
 import { useAuth } from '../../context/auth';
@@ -92,33 +92,49 @@ function buildInitialOrder(categories: string[], existingOrder?: ExistingOrder |
     };
 }
 
-const buildPackSeparatelyItems = (categories: string[], mealData?: MealData) =>
+const packFieldFor = (target: PackTarget): 'packSeparately' | 'packSeparatelyGn' =>
+    target === 'gn' ? 'packSeparatelyGn' : 'packSeparately';
+const otherPackTarget = (target: PackTarget): PackTarget => (target === 'gn' ? 'zvlast' : 'gn');
+
+// Jedna porcia nemôže byť naraz "zvlášť" aj "zvlášť do GN" - dostupný počet pre
+// TENTO cieľ je objednané mínus to, čo už drží ten druhý (viď packSeparately.ts
+// na klientskej strane objednávky, kde platí rovnaké pravidlo).
+const buildPackSeparatelyItemsForTarget = (categories: string[], target: PackTarget, mealData?: MealData) =>
     categories.flatMap((category) => {
         const categoryData = mealData?.[category];
         if (!categoryData) return [];
 
+        const otherField = packFieldFor(otherPackTarget(target));
+
         const menuItems = Object.entries(categoryData.menuCounts || {})
             .filter(([, orderedCount]) => orderedCount > 0)
-            .map(([menuKey, orderedCount]) => ({
+            .map(([menuKey, rawOrderedCount]) => ({
                 category,
                 kind: 'menus' as const,
                 keyName: menuKey,
-                orderedCount,
-                count: categoryData.packSeparately?.menus?.[menuKey] || 0,
+                orderedCount: Math.max(0, rawOrderedCount - (categoryData[otherField]?.menus?.[menuKey] || 0)),
+                count: categoryData[packFieldFor(target)]?.menus?.[menuKey] || 0,
+                target,
             }));
 
         const dietItems = Object.entries(categoryData.diets || {})
             .filter(([, orderedCount]) => orderedCount > 0)
-            .map(([dietKey, orderedCount]) => ({
+            .map(([dietKey, rawOrderedCount]) => ({
                 category,
                 kind: 'diets' as const,
                 keyName: dietKey,
-                orderedCount,
-                count: categoryData.packSeparately?.diets?.[dietKey] || 0,
+                orderedCount: Math.max(0, rawOrderedCount - (categoryData[otherField]?.diets?.[dietKey] || 0)),
+                count: categoryData[packFieldFor(target)]?.diets?.[dietKey] || 0,
+                target,
             }));
 
         return [...menuItems, ...dietItems];
     });
+
+const buildPackSeparatelyItems = (categories: string[], mealData?: MealData) => [
+    ...buildPackSeparatelyItemsForTarget(categories, 'zvlast', mealData),
+    ...buildPackSeparatelyItemsForTarget(categories, 'gn', mealData),
+];
 
 const AdminOrderEditorModal: React.FC<Props> = ({
     clientId,
@@ -253,15 +269,16 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         kind: 'menus' | 'diets',
         key: string,
         count: number,
+        target: PackTarget = 'zvlast',
     ) => {
         if (meal === 'fullDay') {
             setFullDayData((prev) =>
-                OrderService.updatePackSeparately(wrapFullDay(prev), 'breakfast', category, kind, key, count).breakfast,
+                OrderService.updatePackSeparately(wrapFullDay(prev), 'breakfast', category, kind, key, count, target).breakfast,
             );
             return;
         }
 
-        setOrder((prev) => OrderService.updatePackSeparately(prev, meal, category, kind, key, count));
+        setOrder((prev) => OrderService.updatePackSeparately(prev, meal, category, kind, key, count, target));
     };
 
     const clearMeal = (meal: MealKey) => {

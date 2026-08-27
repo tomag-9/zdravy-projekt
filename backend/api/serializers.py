@@ -155,10 +155,19 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 f"{cls._MAX_NOTE_CHARS} znakov."
             )
 
+    # Dva vzájomne sa vylučujúce spôsoby balenia zvlášť pre tú istú porciu -
+    # "packSeparately" (bežné "zvlášť") a "packSeparatelyGn" (rovnaké, len
+    # s poznámkou "do GN" pre kuchyňu). Súčet oboch pre daný kľúč nesmie
+    # prekročiť objednaný počet.
+    _PACK_FIELDS = ("packSeparately", "packSeparatelyGn")
+
     @staticmethod
     def _is_leaf_payload(value: Any) -> bool:
         return isinstance(value, dict) and (
-            "menuCounts" in value or "diets" in value or "packSeparately" in value
+            "menuCounts" in value
+            or "diets" in value
+            or "packSeparately" in value
+            or "packSeparatelyGn" in value
         )
 
     def _validate_leaf(self, leaf: dict[str, Any], field_path: str) -> None:
@@ -166,40 +175,63 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             if sub_key in leaf:
                 self._validate_count_map(leaf[sub_key], f"{field_path}.{sub_key}")
 
-        if "packSeparately" not in leaf:
+        if not any(pack_field in leaf for pack_field in self._PACK_FIELDS):
             return
-
-        pack_separately = leaf["packSeparately"]
-        if not isinstance(pack_separately, dict):
-            raise serializers.ValidationError(
-                f"'{field_path}.packSeparately' musí byť objekt."
-            )
-
-        for sub_key in set(pack_separately) - {"menus", "diets"}:
-            raise serializers.ValidationError(
-                f"'{field_path}.packSeparately.{sub_key}' nie je podporované pole."
-            )
 
         raw_menu_counts = leaf.get("menuCounts")
         menu_counts = raw_menu_counts if isinstance(raw_menu_counts, dict) else {}
         raw_diets = leaf.get("diets")
         diets = raw_diets if isinstance(raw_diets, dict) else {}
 
+        pack_by_field: dict[str, dict[str, Any]] = {}
+        for pack_field in self._PACK_FIELDS:
+            if pack_field not in leaf:
+                continue
+            pack_separately = leaf[pack_field]
+            if not isinstance(pack_separately, dict):
+                raise serializers.ValidationError(
+                    f"'{field_path}.{pack_field}' musí byť objekt."
+                )
+
+            for sub_key in set(pack_separately) - {"menus", "diets"}:
+                raise serializers.ValidationError(
+                    f"'{field_path}.{pack_field}.{sub_key}' nie je podporované pole."
+                )
+
+            for sub_key, base_counts, label in (
+                ("menus", menu_counts, "menu"),
+                ("diets", diets, "diétu"),
+            ):
+                if sub_key not in pack_separately:
+                    continue
+                pack_counts = pack_separately[sub_key]
+                self._validate_count_map(
+                    pack_counts, f"{field_path}.{pack_field}.{sub_key}"
+                )
+                for key, value in pack_counts.items():
+                    base_value = base_counts.get(key, 0)
+                    if value > base_value:
+                        raise serializers.ValidationError(
+                            f"'{field_path}.{pack_field}.{sub_key}.{key}' nemôže byť väčšie než počet pre {label} '{key}'."
+                        )
+            pack_by_field[pack_field] = pack_separately
+
+        # Krížový limit: jedna porcia nemôže byť naraz "zvlášť" aj "zvlášť do GN".
+        zvlast = pack_by_field.get("packSeparately", {})
+        gn = pack_by_field.get("packSeparatelyGn", {})
         for sub_key, base_counts, label in (
             ("menus", menu_counts, "menu"),
             ("diets", diets, "diétu"),
         ):
-            if sub_key not in pack_separately:
-                continue
-            pack_counts = pack_separately[sub_key]
-            self._validate_count_map(
-                pack_counts, f"{field_path}.packSeparately.{sub_key}"
-            )
-            for key, value in pack_counts.items():
+            zvlast_counts = zvlast.get(sub_key, {}) or {}
+            gn_counts = gn.get(sub_key, {}) or {}
+            for key in set(zvlast_counts) | set(gn_counts):
+                combined = zvlast_counts.get(key, 0) + gn_counts.get(key, 0)
                 base_value = base_counts.get(key, 0)
-                if value > base_value:
+                if combined > base_value:
                     raise serializers.ValidationError(
-                        f"'{field_path}.packSeparately.{sub_key}.{key}' nemôže byť väčšie než počet pre {label} '{key}'."
+                        f"'{field_path}': súčet packSeparately.{sub_key}.{key} a "
+                        f"packSeparatelyGn.{sub_key}.{key} nemôže byť väčší než počet pre {label} '{key}'."
                     )
 
     @staticmethod

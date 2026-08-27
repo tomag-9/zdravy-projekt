@@ -8,6 +8,7 @@ import {
   getPackSeparatelyItemLabel,
   usePackSeparatelyUpdater,
   type PackSeparatelySection,
+  type PackTarget,
 } from "./packSeparately";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
@@ -50,6 +51,7 @@ interface OrderFormBodyProps {
     kind: "menus" | "diets",
     key: string,
     count: number,
+    target: PackTarget,
   ) => void;
   showSpecialDietNote: boolean;
   specialDietNote: string;
@@ -206,7 +208,7 @@ const OrderFormBody = ({
               style={{ flex: 1 }}
               onClick={() => onOpenPackSeparately()}
             >
-              <PackagePlus style={{ width: 12, height: 12 }} /> Pridať výnimku
+              <PackagePlus style={{ width: 12, height: 12 }} /> Zabaliť zvlášť
             </button>
           }
           statusMessage={null}
@@ -230,6 +232,7 @@ const OrderFormBody = ({
                       <div>
                         <span className="zp-diet-label">
                           {item.category} · {getPackSeparatelyItemLabel(item)}
+                          {item.target === "gn" && " · GN"}
                           <DietVariantHint kind={item.kind} menuVariant={item.menuVariant} />
                         </span>
                         <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>

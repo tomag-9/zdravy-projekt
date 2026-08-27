@@ -229,6 +229,65 @@ class TestOrderDataValidation:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "nemôže byť väčšie" in str(response.data)
 
+    def test_pack_separately_gn_subset_accepted(self, authenticated_client):
+        """ "Zabaliť zvlášť do GN" je nezávislé pole s rovnakou validáciou."""
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 3},
+                        "diets": {"Bez lepku": 2},
+                        "packSeparatelyGn": {
+                            "menus": {"A": 2},
+                            "diets": {"Bez lepku": 1},
+                        },
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_pack_separately_split_between_zvlast_and_gn_accepted(
+        self, authenticated_client
+    ):
+        """3 objednané: 2 "zvlášť" + 1 "do GN" - dokopy presne sedí, prijme sa."""
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 3},
+                        "diets": {},
+                        "packSeparately": {"menus": {"A": 2}},
+                        "packSeparatelyGn": {"menus": {"A": 1}},
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_pack_separately_zvlast_and_gn_combined_exceeding_base_rejected(
+        self, authenticated_client
+    ):
+        """Súčet "zvlášť" a "do GN" nesmie prekročiť objednaný počet, aj keď
+        každé zvlášť je v limite - jedna porcia sa nedá zabaliť dvakrát."""
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Dospelý (SŠ)": {
+                        "menuCounts": {"A": 3},
+                        "diets": {},
+                        "packSeparately": {"menus": {"A": 2}},
+                        "packSeparatelyGn": {"menus": {"A": 2}},
+                    }
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "nemôže byť väčší" in str(response.data)
+
     # ------------------------------------------------------------------ #
     # Non-integer counts
     # ------------------------------------------------------------------ #

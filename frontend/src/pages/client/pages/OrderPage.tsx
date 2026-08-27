@@ -16,7 +16,8 @@ import TourOverlay from "../components/onboarding/TourOverlay";
 import { useOnboarding } from "../../../context/OnboardingContext";
 import { logger } from '../../../lib/logger';
 import { dayOffReason, fromDateKey } from '../../../lib/businessDay';
-import { buildPackSeparatelyItems } from "../components/order/packSeparately";
+import { buildAllPackSeparatelyItems } from "../components/order/packSeparately";
+import type { PackTarget } from "../components/order/packSeparately";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
@@ -240,11 +241,11 @@ const OrderPage = () => {
   // blok „zabaliť zvlášť“ pri zapnutej celodenke nemal z čoho postaviť položky.
   const packSeparatelySections = (
     fullDayOrder
-      ? [{ meal: "fullDay" as const, mealLabel: "Celý deň", items: buildPackSeparatelyItems(fullDayData, enabledCategories, dietMenuVariantMap) }]
+      ? [{ meal: "fullDay" as const, mealLabel: "Celý deň", items: buildAllPackSeparatelyItems(fullDayData, enabledCategories, dietMenuVariantMap) }]
       : visibleMealsList.map(({ key, label }) => ({
           meal: key as MealKey,
           mealLabel: label,
-          items: buildPackSeparatelyItems(currentOrder[key as MealKey], enabledCategories, dietMenuVariantMap),
+          items: buildAllPackSeparatelyItems(currentOrder[key as MealKey], enabledCategories, dietMenuVariantMap),
         }))
   ).filter((section) => section.items.length > 0);
 
@@ -253,13 +254,14 @@ const OrderPage = () => {
     category: string,
     kind: "menus" | "diets",
     key: string,
-    count: number
+    count: number,
+    target: PackTarget
   ) => {
     if (meal === "fullDay") {
-      updateFullDayPackSeparately(category, kind, key, count);
+      updateFullDayPackSeparately(category, kind, key, count, target);
       return;
     }
-    updatePackSeparately(meal, category, kind, key, count);
+    updatePackSeparately(meal, category, kind, key, count, target);
   };
 
   const activePackSeparatelyItems = packSeparatelySections
@@ -580,8 +582,8 @@ const OrderPage = () => {
           isOpen={true}
           onClose={() => setActivePackSeparatelyModal(null)}
           sections={packSeparatelySections}
-          onUpdatePackSeparately={(meal, category, kind, key, count) =>
-            handleUpdatePackSeparately(meal, category, kind, key, count)
+          onUpdatePackSeparately={(meal, category, kind, key, count, target) =>
+            handleUpdatePackSeparately(meal, category, kind, key, count, target)
           }
         />
       )}

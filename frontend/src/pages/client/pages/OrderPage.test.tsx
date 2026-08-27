@@ -118,6 +118,7 @@ describe("buildPackSeparatelyItems", () => {
       linkedRow: "merged",
       orderedCount: 2,
       count: 0,
+      target: "zvlast",
     }]);
   });
 
@@ -131,6 +132,7 @@ describe("buildPackSeparatelyItems", () => {
         linkedRow: "merged",
         orderedCount: 2,
         count: 0,
+        target: "zvlast",
       },
       {
         category,
@@ -140,6 +142,7 @@ describe("buildPackSeparatelyItems", () => {
         linkedRow: "remainder",
         orderedCount: 3,
         count: 0,
+        target: "zvlast",
       },
     ]);
   });
@@ -152,6 +155,7 @@ describe("buildPackSeparatelyItems", () => {
         keyName: "A",
         orderedCount: 2,
         count: 0,
+        target: "zvlast",
       },
       {
         category,
@@ -160,6 +164,7 @@ describe("buildPackSeparatelyItems", () => {
         orderedCount: 1,
         count: 0,
         menuVariant: undefined,
+        target: "zvlast",
       },
     ]);
   });
