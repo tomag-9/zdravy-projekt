@@ -12,6 +12,7 @@ import {
   prevWeekday,
   nextWeekday,
   dashboardMaxDate,
+  dashboardDefaultDate,
   toDateString,
   isWeekday,
   formatDay as formatDate,
@@ -174,7 +175,7 @@ const AdminDashboard: React.FC = () => {
   // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
   const maxDate = useMemo(() => dashboardMaxDate(), []);
   const actualToday = useMemo(() => toDateString(new Date()), []);
-  const [date, setDate] = useState(maxDate);
+  const [date, setDate] = useState(() => dashboardDefaultDate());
   const [data, setData] = useState<GramageDashboard | null>(null);
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
   const [loading, setLoading] = useState(false);
