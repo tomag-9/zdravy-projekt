@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import PrevadzkaOverview from "./PrevadzkaOverview";
 
@@ -19,7 +20,7 @@ describe("PrevadzkaOverview", () => {
       json: async () => ({ date: "2026-08-10", edupage: [], app: [] }),
     });
 
-    render(<PrevadzkaOverview />);
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
 
     await screen.findByText("Kontrola objednávok");
     expect(screen.queryByRole("button", { name: /PDF/i })).not.toBeInTheDocument();
@@ -33,7 +34,7 @@ describe("PrevadzkaOverview", () => {
       json: async () => ({ date: "2026-08-10", edupage: [], app: [] }),
     });
 
-    render(<PrevadzkaOverview />);
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
 
     const input = await screen.findByDisplayValue(/^\d{4}-\d{2}-\d{2}$/);
     const [year, month, day] = (input as HTMLInputElement).value.split("-").map(Number);
@@ -67,7 +68,7 @@ describe("PrevadzkaOverview", () => {
       }),
     });
 
-    render(<PrevadzkaOverview />);
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
 
     await screen.findByText("Kontrola objednávok");
     expect(screen.getByText(/NO KAKAO/)).toBeInTheDocument();
@@ -93,7 +94,7 @@ describe("PrevadzkaOverview", () => {
       }),
     });
 
-    render(<PrevadzkaOverview />);
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
 
     await screen.findByText("Kontrola objednávok");
     expect(screen.getByText(/XYZ→NO MILK/)).toBeInTheDocument();
@@ -115,7 +116,7 @@ describe("PrevadzkaOverview", () => {
       }),
     });
 
-    render(<PrevadzkaOverview />);
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
 
     await screen.findByText("MŠ Testovacia");
     expect(screen.queryByText(/→/)).not.toBeInTheDocument();

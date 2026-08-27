@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   businessDays,
+  dashboardDefaultDate,
   dashboardMaxDate,
   dayOffReason,
   isDayOff,
@@ -111,5 +112,32 @@ describe("dashboardMaxDate", () => {
 
   it("saturday noon stays on the last business day (Friday)", () => {
     expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-07");
+  });
+});
+
+// #539 — tomorrow is navigable from noon (dashboardMaxDate above), but the
+// default view a freshly-opened dashboard shows stays on today until 21:00,
+// so nobody opens the table at 14:00 and lands on a day that's still running.
+describe("dashboardDefaultDate", () => {
+  it("stays on today at noon, even though tomorrow is already unlocked", () => {
+    expect(dashboardDefaultDate(atHour(monday(), 12))).toBe("2026-08-10");
+  });
+
+  it("stays on today just before 21:00", () => {
+    expect(dashboardDefaultDate(atHour(monday(), 20))).toBe("2026-08-10");
+  });
+
+  it("switches to tomorrow from 21:00 on a weekday whose tomorrow is a workday", () => {
+    expect(dashboardDefaultDate(atHour(monday(), 21))).toBe("2026-08-11");
+  });
+
+  it("does not switch past a weekend — Friday 21:00 stays on Friday", () => {
+    const friday = new Date(2026, 7, 7);
+    expect(dashboardDefaultDate(atHour(friday, 21))).toBe("2026-08-07");
+  });
+
+  it("does not switch to a tomorrow that is a holiday", () => {
+    const holidays = new Set(["2026-08-11"]);
+    expect(dashboardDefaultDate(atHour(monday(), 21), { holidays })).toBe("2026-08-10");
   });
 });

@@ -22,6 +22,7 @@ describe("PackSeparatelySelector", () => {
             linkedRow: "merged",
             orderedCount: 2,
             count: 0,
+            target: "zvlast",
           }],
         }]}
         onUpdatePackSeparately={onUpdate}
@@ -31,8 +32,8 @@ describe("PackSeparatelySelector", () => {
     expect(screen.getByText("Škôlka · Menu A (Veggie/No Fish)")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "+" }));
 
-    expect(onUpdate).toHaveBeenNthCalledWith(1, "lunch", "Škôlka", "menus", "A", 1);
-    expect(onUpdate).toHaveBeenNthCalledWith(2, "lunch", "Škôlka", "diets", "Veggie/No Fish", 1);
+    expect(onUpdate).toHaveBeenNthCalledWith(1, "lunch", "Škôlka", "menus", "A", 1, "zvlast");
+    expect(onUpdate).toHaveBeenNthCalledWith(2, "lunch", "Škôlka", "diets", "Veggie/No Fish", 1, "zvlast");
   });
 
   it("keeps merged and remainder counters independent while sharing the menu total", async () => {

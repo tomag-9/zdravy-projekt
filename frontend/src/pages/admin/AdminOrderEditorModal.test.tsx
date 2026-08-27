@@ -504,13 +504,13 @@ describe('AdminOrderEditorModal', () => {
 
         expect(screen.getByText('Zabaliť zvlášť')).toBeInTheDocument();
 
-        // Karta je zbalená, kým nie je nič označené, takže tlačidlo „Pridať výnimku“
+        // Karta je zbalená, kým nie je nič označené, takže tlačidlo „Zabaliť zvlášť“
         // ešte neexistuje — selector sa otvára prepínačom v hlavičke karty (rovnako
         // ako na klientskej strane).
         fireEvent.click(screen.getByRole('switch', { name: /Zabaliť zvlášť - prepnúť/i }));
 
         // „+“ je aj v riadkoch kategórií, tak sa držíme vnútra otvoreného selectora.
-        const sheet = screen.getByRole('heading', { name: 'Pridať výnimku' }).closest('.zp-sheet') as HTMLElement;
+        const sheet = screen.getByRole('heading', { name: 'Zabaliť zvlášť' }).closest('.zp-sheet') as HTMLElement;
         const row = within(sheet).getByText(/Škôlka · Menu A/i).closest('.zp-diet-row') as HTMLElement;
         fireEvent.click(within(row).getByLabelText('+'));
         fireEvent.click(within(sheet).getByLabelText('Zavrieť'));

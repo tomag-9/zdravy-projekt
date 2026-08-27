@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import OrderService, { CategoryData, DailyOrder, MealData } from '../services/OrderService';
+import OrderService, { CategoryData, DailyOrder, MealData, PackTarget } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
 import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
 import { logger } from '../../../lib/logger';
@@ -586,10 +586,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         category: string,
         kind: 'menus' | 'diets',
         key: string,
-        count: number
+        count: number,
+        target: PackTarget = 'zvlast'
     ) => {
         setFullDayData(prev =>
-            OrderService.updatePackSeparately(wrapFullDay(prev), 'breakfast', category, kind, key, count).breakfast
+            OrderService.updatePackSeparately(wrapFullDay(prev), 'breakfast', category, kind, key, count, target).breakfast
         );
     };
 
@@ -612,8 +613,9 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     ) => {
         if (!beforeCategory || !afterCategory) return;
         OrderService.getPackSeparatelyAdjustments(beforeCategory, afterCategory).forEach(
-            ({ count: nextCount }) => {
-                toastWarning(`Zvlášť počet znížený na ${nextCount} (limit objednávky).`);
+            ({ count: nextCount, target }) => {
+                const label = target === 'gn' ? 'Zvlášť do GN' : 'Zvlášť';
+                toastWarning(`${label} počet znížený na ${nextCount} (limit objednávky).`);
             }
         );
     };
@@ -650,14 +652,15 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         category: string,
         kind: 'menus' | 'diets',
         key: string,
-        count: number
+        count: number,
+        target: PackTarget = 'zvlast'
     ) => {
         setTouchedMeals(prev => {
             const next = new Set(prev);
             next.add(mealKey);
             return next;
         });
-        setCurrentOrder((prev) => ({ ...OrderService.updatePackSeparately(prev, mealKey, category, kind, key, count), status: 'draft' }));
+        setCurrentOrder((prev) => ({ ...OrderService.updatePackSeparately(prev, mealKey, category, kind, key, count, target), status: 'draft' }));
     };
 
     const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {

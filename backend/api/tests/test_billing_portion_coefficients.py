@@ -253,7 +253,7 @@ def test_dashboard_folds_predskolak_into_ms_row_like_the_real_workbook():
     sub_rows = data["rows"][0]["sub_rows"]
 
     # Predškolák nemá vlastný riadok — je zlúčený do MŠ, tak ako to píše klient.
-    assert [sr["label"] for sr in sub_rows] == ["Škôlka - Hlavný chod"]
+    assert [sr["label"] for sr in sub_rows] == ["Škôlka - Obed"]
     assert sub_rows[0]["count"] == Decimal("8.25")
     assert sub_rows[0]["col_grams"] == [["1650.00"]]
     assert data["rows"][0]["standard_total_count"] == Decimal("8.25")
@@ -293,9 +293,9 @@ def test_dashboard_keeps_predskolak_separate_without_coefficient():
 
     data = MealPlanService.gramage_dashboard(plan.date.isoformat())
     by_label = {sr["label"]: sr for sr in data["rows"][0]["sub_rows"]}
-    assert by_label["Škôlka - Hlavný chod"]["count"] == 7
-    assert by_label["Predškolák - Hlavný chod"]["count"] == 1
-    assert by_label["Predškolák - Hlavný chod"]["col_grams"] == [["250.00"]]
+    assert by_label["Škôlka - Obed"]["count"] == 7
+    assert by_label["Predškolák - Obed"]["count"] == 1
+    assert by_label["Predškolák - Obed"]["col_grams"] == [["250.00"]]
 
 
 @pytest.mark.django_db
@@ -343,6 +343,59 @@ def test_dashboard_emits_zvlast_row_without_inflating_standard_total():
         "Škôlka - NO MILK - zvlášť",
     ]
     assert [sr["count"] for sr in zvlast_rows] == [2, 1]
+
+
+@pytest.mark.django_db
+def test_dashboard_zvlast_and_zvlast_gn_are_mutually_exclusive_subsets():
+    """Tá istá porcia sa dá rozdeliť medzi "zvlášť" a "zvlášť do GN" -
+    súčet oboch je podmnožina, nikdy nemá nafúknuť celkový počet."""
+    call_command("init_reference_data")
+
+    template = MealTemplate.objects.create(
+        name="Obed 200g",
+        category="main_course",
+        components=[{"label": "Hlavné jedlo", "grams": "200", "unit": "g"}],
+        base_weight_grams="200",
+    )
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 15))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=template, category="main_course", menu_variant="A"
+    )
+
+    celok = Celok.objects.create(nazov="Pack GN")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Pack GN")
+    user = User.objects.create_user(username="packgn@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=plan.date,
+        data={
+            "lunch": {
+                "Škôlka": {
+                    "menuCounts": {"A": 5},
+                    "diets": {},
+                    "packSeparately": {"menus": {"A": 2}},
+                    "packSeparatelyGn": {"menus": {"A": 3}},
+                }
+            }
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+
+    # 5 objednaných, 2 zvlášť + 3 do GN -> nič neostáva "čisté".
+    assert row["standard_total_count"] == 5
+    assert row["total_count"] == 5
+
+    standard_rows = [sr for sr in row["sub_rows"] if sr["type"] == "standard"]
+    assert standard_rows == []
+
+    by_type = {sr["type"]: sr for sr in row["sub_rows"]}
+    assert by_type["zvlast"]["label"] == "Škôlka - Menu A - zvlášť"
+    assert by_type["zvlast"]["count"] == 2
+    assert by_type["zvlast_gn"]["label"] == "Škôlka - Menu A - zvlášť do GN"
+    assert by_type["zvlast_gn"]["count"] == 3
 
 
 # ── Formát počtu ──────────────────────────────────────────────────────────────

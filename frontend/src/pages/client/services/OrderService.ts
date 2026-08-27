@@ -15,7 +15,23 @@ export interface CategoryData {
         menus: Record<string, number>;
         diets: Record<string, number>;
     };
+    /** Rovnaká mechanika ako `packSeparately`, len s poznámkou „do GN“ pre kuchyňu.
+     * Jedna porcia nemôže byť naraz v oboch — pozri `PACK_TARGET_FIELD` nižšie. */
+    packSeparatelyGn?: {
+        menus: Record<string, number>;
+        diets: Record<string, number>;
+    };
 }
+
+/** Dva vzájomne sa vylučujúce spôsoby balenia zvlášť pre tú istú porciu. */
+export type PackTarget = 'zvlast' | 'gn';
+
+const PACK_TARGET_FIELD: Record<PackTarget, 'packSeparately' | 'packSeparatelyGn'> = {
+    zvlast: 'packSeparately',
+    gn: 'packSeparatelyGn',
+};
+
+const otherPackTarget = (target: PackTarget): PackTarget => (target === 'gn' ? 'zvlast' : 'gn');
 
 export interface MealData {
     [category: string]: CategoryData;
@@ -56,7 +72,8 @@ class OrderService {
         return {
             menuCounts,
             diets: DIETS.reduce((acc, diet) => ({ ...acc, [diet]: 0 }), {} as DietCounts),
-            packSeparately: this.createEmptyPackSeparately()
+            packSeparately: this.createEmptyPackSeparately(),
+            packSeparatelyGn: this.createEmptyPackSeparately()
         };
     }
 
@@ -168,14 +185,21 @@ class OrderService {
         category: string,
         kind: 'menus' | 'diets',
         key: string,
-        count: number
+        count: number,
+        target: PackTarget = 'zvlast'
     ): DailyOrder {
         const categoryData = currentOrder[mealKey][category];
-        const maxAllowed = kind === 'menus'
+        const rawMax = kind === 'menus'
             ? categoryData.menuCounts?.[key] || 0
             : categoryData.diets?.[key] || 0;
+        // Jedna porcia nemôže byť naraz "zvlášť" aj "zvlášť do GN" - kapacita pre
+        // tento cieľ je objednaný počet mínus to, čo už drží ten druhý.
+        const otherField = PACK_TARGET_FIELD[otherPackTarget(target)];
+        const otherCount = categoryData[otherField]?.[kind]?.[key] || 0;
+        const maxAllowed = Math.max(0, rawMax - otherCount);
         const nextCount = Math.min(Math.max(0, count), maxAllowed);
-        const currentPackSeparately = categoryData.packSeparately || this.createEmptyPackSeparately();
+        const field = PACK_TARGET_FIELD[target];
+        const currentPackSeparately = categoryData[field] || this.createEmptyPackSeparately();
         const nextKindCounts = { ...(currentPackSeparately[kind] || {}) };
 
         if (nextCount <= 0) {
@@ -190,7 +214,7 @@ class OrderService {
                 ...currentOrder[mealKey],
                 [category]: {
                     ...categoryData,
-                    packSeparately: this.cleanupPackSeparately({
+                    [field]: this.cleanupPackSeparately({
                         ...currentPackSeparately,
                         [kind]: nextKindCounts
                     })
@@ -200,50 +224,67 @@ class OrderService {
     }
 
     static getPackSeparatelyAdjustments(before: CategoryData, after: CategoryData) {
-        const adjustments: { kind: 'menus' | 'diets'; key: string; count: number }[] = [];
-        const previous = before.packSeparately || this.createEmptyPackSeparately();
-        const next = after.packSeparately || this.createEmptyPackSeparately();
+        const adjustments: { kind: 'menus' | 'diets'; key: string; count: number; target: PackTarget }[] = [];
 
-        (['menus', 'diets'] as const).forEach((kind) => {
-            const keys = new Set([
-                ...Object.keys(previous[kind] || {}),
-                ...Object.keys(next[kind] || {})
-            ]);
+        (['zvlast', 'gn'] as const).forEach((target) => {
+            const field = PACK_TARGET_FIELD[target];
+            const previous = before[field] || this.createEmptyPackSeparately();
+            const next = after[field] || this.createEmptyPackSeparately();
 
-            keys.forEach((key) => {
-                const prevCount = previous[kind]?.[key] || 0;
-                const nextCount = next[kind]?.[key] || 0;
-                if (nextCount < prevCount) {
-                    adjustments.push({ kind, key, count: nextCount });
-                }
+            (['menus', 'diets'] as const).forEach((kind) => {
+                const keys = new Set([
+                    ...Object.keys(previous[kind] || {}),
+                    ...Object.keys(next[kind] || {})
+                ]);
+
+                keys.forEach((key) => {
+                    const prevCount = previous[kind]?.[key] || 0;
+                    const nextCount = next[kind]?.[key] || 0;
+                    if (nextCount < prevCount) {
+                        adjustments.push({ kind, key, count: nextCount, target });
+                    }
+                });
             });
         });
 
         return adjustments;
     }
 
-    private static withClampedPackSeparately(categoryData: CategoryData): CategoryData {
-        const currentPackSeparately = categoryData.packSeparately || this.createEmptyPackSeparately();
-        const nextMenus = Object.entries(currentPackSeparately.menus || {}).reduce((acc, [key, value]) => {
-            const maxAllowed = categoryData.menuCounts?.[key] || 0;
-            const nextValue = Math.min(Math.max(0, value), maxAllowed);
-            if (nextValue > 0) acc[key] = nextValue;
-            return acc;
-        }, {} as Record<string, number>);
+    /** Zoradí jedno pole {menus,diets} počtov na maximum `rawMax(kind, key)`. */
+    private static clampPackFields(
+        packSeparately: { menus: Record<string, number>; diets: Record<string, number> },
+        rawMax: (kind: 'menus' | 'diets', key: string) => number
+    ) {
+        const clampKind = (kind: 'menus' | 'diets') =>
+            Object.entries(packSeparately[kind] || {}).reduce((acc, [key, value]) => {
+                const nextValue = Math.min(Math.max(0, value), Math.max(0, rawMax(kind, key)));
+                if (nextValue > 0) acc[key] = nextValue;
+                return acc;
+            }, {} as Record<string, number>);
 
-        const nextDiets = Object.entries(currentPackSeparately.diets || {}).reduce((acc, [key, value]) => {
-            const maxAllowed = categoryData.diets?.[key] || 0;
-            const nextValue = Math.min(Math.max(0, value), maxAllowed);
-            if (nextValue > 0) acc[key] = nextValue;
-            return acc;
-        }, {} as Record<string, number>);
+        return { menus: clampKind('menus'), diets: clampKind('diets') };
+    }
+
+    private static withClampedPackSeparately(categoryData: CategoryData): CategoryData {
+        const rawMax = (kind: 'menus' | 'diets', key: string) =>
+            kind === 'menus' ? categoryData.menuCounts?.[key] || 0 : categoryData.diets?.[key] || 0;
+
+        // "Zvlášť" sa zoradí ako prvé (dostane prednosť pri konflikte), "do GN"
+        // sa potom zmestí len do toho, čo "zvlášť" nezobralo - jedna porcia
+        // nesmie byť naraz v oboch.
+        const zvlast = this.clampPackFields(
+            categoryData.packSeparately || this.createEmptyPackSeparately(),
+            rawMax
+        );
+        const gn = this.clampPackFields(
+            categoryData.packSeparatelyGn || this.createEmptyPackSeparately(),
+            (kind, key) => rawMax(kind, key) - (zvlast[kind]?.[key] || 0)
+        );
 
         return {
             ...categoryData,
-            packSeparately: this.cleanupPackSeparately({
-                menus: nextMenus,
-                diets: nextDiets
-            })
+            packSeparately: this.cleanupPackSeparately(zvlast),
+            packSeparatelyGn: this.cleanupPackSeparately(gn)
         };
     }
 

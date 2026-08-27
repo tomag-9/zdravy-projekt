@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { PageHead, Card, Input } from "./ui";
 import { previousBusinessDay } from "../../lib/businessDay";
+import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -122,10 +124,12 @@ const OverviewRowItem: React.FC<{ row: OverviewRow; source: "edupage" | "app" }>
     ...(row.flags.uncertain_diets ?? []),
   ];
   return (
-    <div className="zpa-ovrow">
+    <div className="zpa-ovrow" id={`prevadzka-row-${row.prevadzka_id}`}>
       <StatusDot row={row} source={source} />
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div className="nm">{row.nazov}</div>
+        <Link to={`/admin/facilities/${row.prevadzka_id}`} className="zpa-ovrow-link" title="Otvoriť detail prevádzky">
+          <div className="nm">{row.nazov}</div>
+        </Link>
         {showCelok && <div className="sub">{row.celok}</div>}
         {dietWarnings.length > 0 && (
           <div className="sub" style={{ color: "var(--mustard-700)" }}>
@@ -211,6 +215,8 @@ const PrevadzkaOverview: React.FC = () => {
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
+
+  useScrollToHashRow(!loading && data != null);
 
   return (
     <>

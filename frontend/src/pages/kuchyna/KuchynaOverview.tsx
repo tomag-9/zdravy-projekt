@@ -21,6 +21,7 @@ import {
     prevWeekday,
     nextWeekday,
     dashboardMaxDate,
+    dashboardDefaultDate,
     toDateString,
     formatDay,
 } from '../../lib/businessDay';
@@ -60,9 +61,12 @@ const KuchynaOverview: React.FC = () => {
     const { error: toastError, success: toastSuccess } = useToast();
     // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
     // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
+    // Predvolený pohľad ale naskočí na zajtrajšok až od 21:00 (#539) — do
+    // vtedy je pri otvorení tabuľky vidno dnešok, hoci zajtrajšok je už
+    // navigovateľný.
     const maxDate = useMemo(() => dashboardMaxDate(), []);
     const actualToday = useMemo(() => toDateString(new Date()), []);
-    const [date, setDate] = useState(maxDate);
+    const [date, setDate] = useState(() => dashboardDefaultDate());
     const [data, setData] = useState<DashboardResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [work, setWork] = useState<LoadingOverview | null>(null);

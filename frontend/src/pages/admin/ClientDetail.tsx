@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle, Send } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle, Send, Gauge, ClipboardCheck } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
@@ -619,11 +619,27 @@ const ClientDetail: React.FC = () => {
                 )}
               </div>
             </div>
-            {canResetPassword && (
-              <Button variant="secondary" onClick={() => setShowResetConfirmation(true)} disabled={sendingReset} title="Odoslať reset hesla na email">
-                <KeyRound /> {sendingReset ? "Odosielam…" : "Reset hesla"}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/admin/dashboard#prevadzka-row-${facility.id}`)}
+                title="Otvoriť túto prevádzku v tabuľke gramáže"
+              >
+                <Gauge /> Tabuľka
               </Button>
-            )}
+              <Button
+                variant="secondary"
+                onClick={() => navigate(`/admin/prevadzka-overview#prevadzka-row-${facility.id}`)}
+                title="Otvoriť túto prevádzku v dodaní podkladov"
+              >
+                <ClipboardCheck /> Dodanie podkladov
+              </Button>
+              {canResetPassword && (
+                <Button variant="secondary" onClick={() => setShowResetConfirmation(true)} disabled={sendingReset} title="Odoslať reset hesla na email">
+                  <KeyRound /> {sendingReset ? "Odosielam…" : "Reset hesla"}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 

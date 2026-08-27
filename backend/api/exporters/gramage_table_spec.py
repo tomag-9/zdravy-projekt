@@ -528,12 +528,17 @@ def _client_rows(
         if any("cell-num" in cell["css"] for cell in gram_cells):
             visible.append((sub_row, gram_cells))
 
+    # "zvlast"/"zvlast_gn" riadky sú komplementárna podmnožina toho istého
+    # "standard"/"diet" riadku (súčet je celkový počet - viď MealPlanService,
+    # kde sa "zabaliť zvlášť" počty odpočítavajú z "čistého" riadku), preto sa
+    # tu rátajú spolu s ním podľa toho, či majú `diet_name`, nie podľa `type`,
+    # inak by "spolu porcií" nižšie ukazovalo menej ľudí, než reálne objednalo.
     standard_count = _sum_counts(
-        sub_row for sub_row, _ in visible if sub_row.get("type") == "standard"
+        sub_row for sub_row, _ in visible if not sub_row.get("diet_name")
     )
     diet_counts: dict[str, Decimal] = {}
     for sub_row, _ in visible:
-        if sub_row.get("type") != "diet":
+        if not sub_row.get("diet_name"):
             continue
         name = str(sub_row.get("diet_name") or "")
         diet_counts[name] = diet_counts.get(name, Decimal("0")) + _as_decimal(

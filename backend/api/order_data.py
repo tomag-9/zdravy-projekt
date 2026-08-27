@@ -26,6 +26,9 @@ class MealCategory:
     menu_counts: Mapping[str, Any]
     diets: Mapping[str, Any]
     pack_separately: Mapping[str, Any] = field(default_factory=dict)
+    # Rovnaká mechanika ako pack_separately, len s poznámkou "do GN" pre kuchyňu -
+    # dve vzájomne sa vylučujúce podmnožiny tej istej porcie (viď serializers.py).
+    pack_separately_gn: Mapping[str, Any] = field(default_factory=dict)
     prevadzka: str | None = None  # None = záznam bez úrovne prevádzky (legacy)
 
     @property
@@ -109,6 +112,7 @@ class OrderData:
             menu_counts=_mapping_or_empty(menu_counts),
             diets=_mapping_or_empty(diets),
             pack_separately=_mapping_or_empty(details.get("packSeparately")),
+            pack_separately_gn=_mapping_or_empty(details.get("packSeparatelyGn")),
             prevadzka=prevadzka,
         )
 

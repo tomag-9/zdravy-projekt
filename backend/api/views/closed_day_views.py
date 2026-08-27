@@ -1,12 +1,19 @@
 """Admin API for globally closing an order date."""
 
 import datetime
+import logging
 
 from django.db import IntegrityError, transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from api.cache_service import (
+    CLOSED_DAY_PDF_TIMEOUT,
+    clear_closed_day_pdf_cache,
+    get_closed_day_pdf_cache_key,
+    set_cached,
+)
 from api.exceptions import (
     DayAlreadyClosedError,
     DayNotClosedError,
@@ -16,8 +23,34 @@ from api.exceptions import (
 from api.models import ClosedDay, EventLog
 from api.permissions import IsAdminOrAbove, SectionAccess
 from api.services.event_log_service import log_event
+from api.services.gramage_pdf_service import render_gramage_dashboard_pdf
 
 from .. import sections
+
+logger = logging.getLogger(__name__)
+
+
+def _cache_closed_day_pdf(target_date: datetime.date) -> None:
+    """Predgeneruje a nacachuje PDF gramáže hneď pri uzavretí dňa (#528).
+
+    Objednávky uzavretého dňa sa už nedajú meniť (ClosedDayOrderModification-
+    Error), takže PDF zostáva platným snapshotom počas celej platnosti cache
+    (48h, alebo dokým sa deň neodomkne — viď `unlock()`). Zlyhanie
+    generovania nesmie zablokovať uzavretie dňa samotné — PDF sa v tom
+    prípade len domodeluje na požiadanie (`gramage-dashboard-pdf`).
+    """
+    try:
+        pdf_bytes = render_gramage_dashboard_pdf(target_date.isoformat())
+        set_cached(
+            get_closed_day_pdf_cache_key(target_date.isoformat()),
+            pdf_bytes,
+            timeout=CLOSED_DAY_PDF_TIMEOUT,
+        )
+    except Exception:
+        logger.exception(
+            "Nepodarilo sa predgenerovať PDF gramáže pre uzavretý deň %s",
+            target_date,
+        )
 
 
 def _parse_date(value) -> datetime.date:
@@ -77,6 +110,9 @@ class ClosedDayViewSet(viewsets.ViewSet):
         except IntegrityError as exc:
             raise DayAlreadyClosedError() from exc
 
+        # Mimo transakcie — WeasyPrint je pomalé a nemá dôvod držať db riadok.
+        _cache_closed_day_pdf(target_date)
+
         return Response(
             _payload(target_date, closed_day),
             status=status.HTTP_201_CREATED,
@@ -103,4 +139,6 @@ class ClosedDayViewSet(viewsets.ViewSet):
                     "changes": {"is_closed": {"from": True, "to": False}},
                 },
             )
+        # Objednávky sú opäť editovateľné — cachnuté PDF by bolo zastarané (#528).
+        clear_closed_day_pdf_cache(target_date.isoformat())
         return Response(_payload(target_date, None), status=status.HTTP_200_OK)

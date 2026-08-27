@@ -1,6 +1,8 @@
 import { useRef } from "react";
 import { CATEGORIES } from "../../config/constants";
-import type { MealData } from "../../services/OrderService";
+import type { MealData, PackTarget } from "../../services/OrderService";
+
+export type { PackTarget };
 
 export type PackSeparatelyItem = {
   category: string;
@@ -8,6 +10,8 @@ export type PackSeparatelyItem = {
   keyName: string;
   orderedCount: number;
   count: number;
+  /** Ktorý z dvoch vzájomne sa vylučujúcich spôsobov balenia táto položka je. */
+  target: PackTarget;
   menuVariant?: string;
   linkedDietKey?: string;
   linkedMenuKey?: string;
@@ -31,6 +35,7 @@ type PackSeparatelyUpdate = {
   kind: "menus" | "diets";
   key: string;
   count: number;
+  target: PackTarget;
 };
 
 export const getPackSeparatelyUpdates = (
@@ -41,7 +46,7 @@ export const getPackSeparatelyUpdates = (
   const linkedMenuKey = item.linkedMenuKey || (item.kind === "menus" ? item.keyName : undefined);
   const linkedDietKey = item.linkedDietKey || (item.kind === "diets" ? item.keyName : undefined);
   if (!linkedMenuKey || !linkedDietKey || !item.linkedRow) {
-    return [{ kind: item.kind, key: item.keyName, count }];
+    return [{ kind: item.kind, key: item.keyName, count, target: item.target }];
   }
 
   const counterpart = currentItems.find((candidate) => {
@@ -50,6 +55,7 @@ export const getPackSeparatelyUpdates = (
     const candidateDietKey = candidate.linkedDietKey
       || (candidate.kind === "diets" ? candidate.keyName : undefined);
     return candidate.category === item.category
+      && candidate.target === item.target
       && candidateMenuKey === linkedMenuKey
       && candidateDietKey === linkedDietKey
       && candidate.linkedRow !== item.linkedRow;
@@ -62,16 +68,18 @@ export const getPackSeparatelyUpdates = (
         kind: "menus",
         key: linkedMenuKey,
         count: count + (counterpart?.kind === "menus" ? counterpartCount : 0),
+        target: item.target,
       },
       {
         kind: "diets",
         key: linkedDietKey,
         count: count + (counterpart?.kind === "diets" ? counterpartCount : 0),
+        target: item.target,
       },
     ];
   }
 
-  return [{ kind: item.kind, key: item.keyName, count: counterpartCount + count }];
+  return [{ kind: item.kind, key: item.keyName, count: counterpartCount + count, target: item.target }];
 };
 
 /**
@@ -89,6 +97,7 @@ export const usePackSeparatelyUpdater = (
     kind: "menus" | "diets",
     key: string,
     count: number,
+    target: PackTarget,
   ) => void,
 ) => {
   const sectionsRef = useRef(sections);
@@ -109,27 +118,53 @@ export const usePackSeparatelyUpdater = (
         update.kind,
         update.key,
         update.count,
+        update.target,
       );
     });
   };
 };
 
+const packFieldFor = (target: PackTarget): "packSeparately" | "packSeparatelyGn" =>
+  target === "gn" ? "packSeparatelyGn" : "packSeparately";
+const otherPackTarget = (target: PackTarget): PackTarget => (target === "gn" ? "zvlast" : "gn");
+
+/**
+ * Položky pre JEDEN z dvoch vzájomne sa vylučujúcich cieľov ("zvlášť" / "do GN").
+ *
+ * Objednaný počet aj počty diét sa pred výpočtom znížia o to, čo už drží ten
+ * druhý cieľ - jedna porcia nemôže byť naraz "zvlášť" aj "zvlášť do GN", takže
+ * zvyšný priestor pre TENTO cieľ je (objednané - už použité tým druhým). Zvyšok
+ * funkcie (delené/zlúčené riadky pri diétach naviazaných na menu) je nezmenený.
+ */
 export const buildPackSeparatelyItems = (
   mealData: MealData | undefined,
   enabledCategories: string[],
   dietMenuVariantMap: Record<string, string>,
+  target: PackTarget = "zvlast",
 ): PackSeparatelyItem[] =>
   CATEGORIES.filter(category => enabledCategories.includes(category)).flatMap((category) => {
     const categoryData = mealData?.[category];
     if (!categoryData) return [];
 
-    const menuPackCounts = categoryData.packSeparately?.menus || {};
-    const dietPackCounts = categoryData.packSeparately?.diets || {};
-    const orderedDiets = Object.entries(categoryData.diets || {}).filter(([, count]) => count > 0);
+    const menuPackCounts = categoryData[packFieldFor(target)]?.menus || {};
+    const dietPackCounts = categoryData[packFieldFor(target)]?.diets || {};
+    const otherMenuPackCounts = categoryData[packFieldFor(otherPackTarget(target))]?.menus || {};
+    const otherDietPackCounts = categoryData[packFieldFor(otherPackTarget(target))]?.diets || {};
+    const effectiveMenuCounts = Object.fromEntries(
+      Object.entries(categoryData.menuCounts || {}).map(
+        ([key, count]) => [key, Math.max(0, count - (otherMenuPackCounts[key] || 0))],
+      ),
+    );
+    const effectiveDiets = Object.fromEntries(
+      Object.entries(categoryData.diets || {}).map(
+        ([key, count]) => [key, Math.max(0, count - (otherDietPackCounts[key] || 0))],
+      ),
+    );
+    const orderedDiets = Object.entries(effectiveDiets).filter(([, count]) => count > 0);
     const matchedDietKeys = new Set<string>();
     const dietRemainders: PackSeparatelyItem[] = [];
 
-    const menuItems = Object.entries(categoryData.menuCounts || {})
+    const menuItems = Object.entries(effectiveMenuCounts)
       .filter(([, orderedCount]) => orderedCount > 0)
       .flatMap(([menuKey, menuOrderedCount]) => {
         const linkedDiet = orderedDiets.find(
@@ -143,6 +178,7 @@ export const buildPackSeparatelyItems = (
             keyName: menuKey,
             orderedCount: menuOrderedCount,
             count: menuPackCounts[menuKey] || 0,
+            target,
           }];
         }
 
@@ -163,6 +199,7 @@ export const buildPackSeparatelyItems = (
           linkedRow: "merged",
           orderedCount: mergedOrderedCount,
           count: mergedCount,
+          target,
         }];
 
         if (menuRemainderCount > 0) {
@@ -178,6 +215,7 @@ export const buildPackSeparatelyItems = (
             linkedRow: "remainder",
             orderedCount: menuRemainderCount,
             count: remainderCount,
+            target,
           });
         }
 
@@ -196,6 +234,7 @@ export const buildPackSeparatelyItems = (
             orderedCount: dietRemainderCount,
             count: remainderCount,
             menuVariant: dietMenuVariantMap[dietKey],
+            target,
           });
         }
 
@@ -212,7 +251,18 @@ export const buildPackSeparatelyItems = (
         count: dietPackCounts[dietKey] || 0,
         // Keyed by current diet name; a renamed diet's hint silently disappears on older orders — acceptable, cosmetic only.
         menuVariant: dietMenuVariantMap[dietKey],
+        target,
       }));
 
     return [...menuItems, ...dietRemainders, ...unlinkedDietItems];
   });
+
+/** Položky pre OBIDVA ciele naraz - zdroj pravdy pre zoznamy, ktoré prepínajú tab. */
+export const buildAllPackSeparatelyItems = (
+  mealData: MealData | undefined,
+  enabledCategories: string[],
+  dietMenuVariantMap: Record<string, string>,
+): PackSeparatelyItem[] => [
+  ...buildPackSeparatelyItems(mealData, enabledCategories, dietMenuVariantMap, "zvlast"),
+  ...buildPackSeparatelyItems(mealData, enabledCategories, dietMenuVariantMap, "gn"),
+];

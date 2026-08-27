@@ -22,6 +22,7 @@ DIET_LIST_CACHE_KEY = "diet_list"
 DAILY_STATS_CACHE_KEY_PREFIX = "daily_stats"
 ADMIN_CELOK_LIST_CACHE_KEY = "admin_celok_list"
 GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX = "gramage_dashboard"
+CLOSED_DAY_PDF_CACHE_KEY_PREFIX = "closed_day_pdf"
 
 # Cache timeout (TTL) constants in seconds
 GLOBAL_SETTINGS_TIMEOUT = 3600  # 1 hour
@@ -34,6 +35,11 @@ ADMIN_CELOK_LIST_TIMEOUT = 3600  # 1 hour
 # data (orders, meal plan) changes too often to track per-write, so a short
 # TTL bounds the staleness instead.
 GRAMAGE_DASHBOARD_TIMEOUT = 300  # 5 minutes
+# Predgenerované PDF snapshot uzavretého dňa (#528). Objednávky uzavretého
+# dňa sa už nedajú meniť, takže na rozdiel od GRAMAGE_DASHBOARD_TIMEOUT tu
+# TTL nerieši čerstvosť dát — je to len horná hranica; skutočné zneplatnenie
+# rieši `clear_closed_day_pdf_cache()` volaná pri odomknutí dňa.
+CLOSED_DAY_PDF_TIMEOUT = 48 * 3600  # 48 hodín
 
 
 def get_global_settings_cache_key() -> str:
@@ -64,6 +70,11 @@ def get_admin_celok_list_cache_key() -> str:
 def get_gramage_dashboard_cache_key(date_str: str) -> str:
     """Return the cache key for the gramage dashboard by date (YYYY-MM-DD)."""
     return f"{GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX}:{date_str}"
+
+
+def get_closed_day_pdf_cache_key(date_str: str) -> str:
+    """Return the cache key for a closed day's pre-rendered PDF snapshot (YYYY-MM-DD)."""
+    return f"{CLOSED_DAY_PDF_CACHE_KEY_PREFIX}:{date_str}"
 
 
 def get_cached(key: str) -> Optional[Any]:
@@ -191,6 +202,16 @@ def clear_daily_stats_cache(date_str: Optional[str] = None) -> None:
         # the Django cache API does not support wildcard deletion in a backend-
         # agnostic way. Callers should explicitly clear known date keys instead.
         pass
+
+
+def clear_closed_day_pdf_cache(date_str: str) -> None:
+    """Clear the pre-rendered PDF snapshot cached for a closed day.
+
+    Called when the day is unlocked (`ClosedDayViewSet.unlock`) — the "48h
+    alebo dokým sa neodomkne" tradeoff from #528, since orders become
+    editable again and the cached PDF would otherwise outlive its validity.
+    """
+    delete_cached(get_closed_day_pdf_cache_key(date_str))
 
 
 def get_cache_stats() -> dict:

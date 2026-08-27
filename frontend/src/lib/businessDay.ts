@@ -142,6 +142,25 @@ export function lastWeekdayToday(sets: DayOffSets = {}): string {
  * potrebuje zajtrajšok vedieť otvoriť ešte pred tým, než dáta pribudnú. */
 const DASHBOARD_NEXT_DAY_UNLOCK_HOUR = 12;
 
+/** Od ktorej hodiny je zajtrajšok už natoľko "hotový" deň, že sa oplatí ho
+ * ukázať ako predvolený pri otvorení tabuľky — po večernom scrapi (den-
+ * vopred jedlá bežia okolo 20:xx), nie hneď od odomknutia o 12:00. Odomknutie
+ * (`dashboardMaxDate`) a predvolený pohľad (`dashboardDefaultDate`) sú preto
+ * zámerne dve rôzne hranice, nie jedna. */
+const DASHBOARD_NEXT_DAY_DEFAULT_HOUR = 21;
+
+function tomorrowIfUnlocked(
+  now: Date,
+  sets: DayOffSets,
+  unlockHour: number,
+): string | null {
+  if (now.getHours() < unlockHour) return null;
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (isDayOff(tomorrow, sets)) return null;
+  return toDateKey(tomorrow);
+}
+
 /**
  * Najneskorší deň, ktorý smie dashboard tabuľka (admin Prehľad, kuchyňa)
  * zobraziť. Za bežných okolností je to `lastWeekdayToday` — dnešok, alebo
@@ -154,14 +173,24 @@ const DASHBOARD_NEXT_DAY_UNLOCK_HOUR = 12;
  * `lastWeekdayToday` bez zmeny.
  */
 export function dashboardMaxDate(now: Date = new Date(), sets: DayOffSets = {}): string {
-  if (now.getHours() >= DASHBOARD_NEXT_DAY_UNLOCK_HOUR) {
-    const tomorrow = new Date(now);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    if (!isDayOff(tomorrow, sets)) {
-      return toDateKey(tomorrow);
-    }
-  }
-  return toDateKey(previousBusinessDay(now, sets));
+  return (
+    tomorrowIfUnlocked(now, sets, DASHBOARD_NEXT_DAY_UNLOCK_HOUR) ??
+    toDateKey(previousBusinessDay(now, sets))
+  );
+}
+
+/**
+ * Deň, ktorý má dashboard tabuľka predvolene ukázať pri otvorení. Zámerne
+ * inde ako `dashboardMaxDate` (#539) — zajtrajšok je od 12:00 síce
+ * navigovateľný (viď vyššie), ale ako predvolený pohľad naskočí až od
+ * `DASHBOARD_NEXT_DAY_DEFAULT_HOUR` (21:00): dovtedy má admin/kuchyňa pri
+ * otvorení tabuľky pred očami dnešok, nie deň, ktorý ešte len prebieha.
+ */
+export function dashboardDefaultDate(now: Date = new Date(), sets: DayOffSets = {}): string {
+  return (
+    tomorrowIfUnlocked(now, sets, DASHBOARD_NEXT_DAY_DEFAULT_HOUR) ??
+    toDateKey(previousBusinessDay(now, sets))
+  );
 }
 
 export function formatDay(key: string): string {
