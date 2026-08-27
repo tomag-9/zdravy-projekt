@@ -43,6 +43,12 @@
 .zpa-ovrow:hover { background: var(--bg-cream-soft); }
 .zpa-ovrow .nm { font-family: var(--font-display); font-weight: 600; font-size: 14px; color: var(--green-900); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .zpa-ovrow .sub { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Klikateľný názov prevádzky — otvorí jej detail (#527). */
+a.zpa-ovrow-link { text-decoration: none; }
+a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration: underline; text-underline-offset: 2px; }
+/* Krátke zvýraznenie riadku po scrollnutí z detailu prevádzky (#527). */
+@keyframes zpa-row-highlight { from { background: rgba(201,150,35,0.35); } to { background: transparent; } }
+.zpa-ovrow.zpa-row-highlight { animation: zpa-row-highlight 2s ease-out; }
 .zpa-ovcounts { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .zpa-ovcounts .sep { width: 1px; height: 30px; background: var(--line-soft); margin: 0 2px; }
 .zpa-mealcount { display: flex; flex-direction: column; align-items: center; min-width: 40px; }

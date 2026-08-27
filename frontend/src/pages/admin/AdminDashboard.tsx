@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
+import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { PageHead, Button, Card, Badge, Empty, Select } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
@@ -10,6 +12,7 @@ import {
   prevWeekday,
   nextWeekday,
   dashboardMaxDate,
+  dashboardDefaultDate,
   toDateString,
   isWeekday,
   formatDay as formatDate,
@@ -167,11 +170,12 @@ interface ClosedDayResponse {
 const AdminDashboard: React.FC = () => {
   const { apiFetch } = useAuth();
   const { error: toastError, success: toastSuccess } = useToast();
+  const navigate = useNavigate();
   // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
   // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
   const maxDate = useMemo(() => dashboardMaxDate(), []);
   const actualToday = useMemo(() => toDateString(new Date()), []);
-  const [date, setDate] = useState(maxDate);
+  const [date, setDate] = useState(() => dashboardDefaultDate());
   const [data, setData] = useState<GramageDashboard | null>(null);
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -331,6 +335,8 @@ const AdminDashboard: React.FC = () => {
   );
   const hasOrderCounts = Boolean(orderReport?.rows.some((row) => row.total > 0));
 
+  useScrollToHashRow(hasData);
+
   return (
     <>
       <PageHead
@@ -435,7 +441,7 @@ const AdminDashboard: React.FC = () => {
                 setVydaj("");
               }}
             />
-            <GramageTable spec={data.spec} />
+            <GramageTable spec={data.spec} onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
           </>
         )}
         {!loading && data && !hasData && hasOrderCounts && orderReport && (
