@@ -16,7 +16,12 @@ from api.models import (
     ProfileCelokAccess,
     UserProfile,
 )
-from api.signals import EDUPAGE_SCRAPE_TASK_PREFIX, _sync_edupage_scrape_schedule
+from api.signals import (
+    BRITISH_SCHOOL_SCRAPE_TASK_NAME,
+    EDUPAGE_SCRAPE_TASK_PREFIX,
+    _sync_british_school_scrape_schedule,
+    _sync_edupage_scrape_schedule,
+)
 from api.tasks import scrape_edupage_orders_task
 
 
@@ -588,3 +593,153 @@ def test_only_deadline_derived_scrape_tasks_are_scheduled():
         name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
     ):
         assert json.loads(task.kwargs)["meal_types"]
+
+
+@pytest.mark.django_db
+def test_british_school_scrape_schedule_is_noop_without_connection():
+    """Bez British School EduPage pripojenia sa vlastný scrape nezaloží — inak
+    by čakal na dáta, ktoré nikdy neprídu."""
+    settings_instance = GlobalSettings.objects.create(pk=1)
+
+    _sync_british_school_scrape_schedule(settings_instance)
+
+    assert not PeriodicTask.objects.filter(
+        name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_british_school_scrape_schedule_fires_1215_day_before():
+    """British School (#535): 12:15 Ne–Št, cieli na nasledujúci pracovný deň —
+    nezávisle od GlobalSettings deadlinov ostatných celkov."""
+    connection = EdupageConnection.objects.create(
+        name="British School",
+        mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+    )
+    settings_instance = GlobalSettings.objects.create(pk=1)
+
+    _sync_british_school_scrape_schedule(settings_instance)
+
+    task = PeriodicTask.objects.get(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME)
+    assert task.crontab.hour == "12"
+    assert task.crontab.minute == "15"
+    assert task.crontab.day_of_week == "0-4"  # Ne–Št
+    kwargs = json.loads(task.kwargs)
+    assert kwargs == {"connection_id": connection.pk, "target_next_workday": True}
+
+
+@pytest.mark.django_db
+def test_british_school_scrape_schedule_removed_when_auto_scrape_disabled():
+    EdupageConnection.objects.create(
+        name="British School",
+        mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+    )
+    settings_instance = GlobalSettings.objects.create(pk=1)
+    _sync_british_school_scrape_schedule(settings_instance)
+    assert PeriodicTask.objects.filter(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME).exists()
+
+    settings_instance.edupage_auto_scrape_enabled = False
+    settings_instance.save()
+
+    assert not PeriodicTask.objects.filter(
+        name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_deadline_derived_scrape_tasks_exclude_british_school():
+    """British School sa scrapuje len na svojom 12:15 cronte — nie aj na
+    generických deadlinoch ostatných celkov (zdvojený scrape)."""
+    EdupageConnection.objects.create(
+        name="British School",
+        mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+    )
+    settings_instance = GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(21, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    british_school_id = EdupageConnection.objects.get(name="British School").pk
+    for task in PeriodicTask.objects.filter(
+        name__startswith=EDUPAGE_SCRAPE_TASK_PREFIX
+    ).exclude(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME):
+        assert json.loads(task.kwargs)["exclude_connection_ids"] == [british_school_id]
+
+
+@pytest.mark.django_db
+def test_scrape_task_connection_id_scopes_to_one_operation(edupage_user, monkeypatch):
+    """`connection_id` obmedzí scrape na jedno EduPage pripojenie (British
+    School dedikovaný cron, #535) bez toho, aby sa dotkol ostatných."""
+    other_connection = EdupageConnection.objects.create(
+        name="Other school",
+        mealsguest_url="https://other.edupage.org/menu/mealsGuest?id=OTHER",
+    )
+    other_user = User.objects.create_user(
+        username="other@example.com", email="other@example.com"
+    )
+    other_profile = UserProfile.objects.create(
+        user=other_user, company_name="Other school"
+    )
+    other_celok = other_profile.primary_celok()
+    other_celok.zdroj_objednavok = Celok.ZdrojObjednavok.EDUPAGE
+    other_celok.save(update_fields=["zdroj_objednavok"])
+    other_profile.dostupne_prevadzky().update(edupage_connection=other_connection)
+
+    scraped_urls = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        scraped_urls.append(url)
+        return _scrape_result()
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    scrape_edupage_orders_task.run(
+        date_str="2026-06-30", connection_id=other_connection.pk
+    )
+
+    assert scraped_urls == [other_connection.mealsguest_url]
+
+
+@pytest.mark.django_db
+def test_scrape_task_exclude_connection_ids_skips_operation(edupage_user, monkeypatch):
+    connection = EdupageConnection.objects.get(name="Edupage school")
+
+    scraped_urls = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        scraped_urls.append(url)
+        return _scrape_result()
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    scrape_edupage_orders_task.run(
+        date_str="2026-06-30", exclude_connection_ids=[connection.pk]
+    )
+
+    assert scraped_urls == []
+
+
+@pytest.mark.django_db
+def test_scrape_task_target_next_workday_without_meal_types(edupage_user, monkeypatch):
+    """`target_next_workday` funguje aj bez `meal_types` (British School beh
+    nemá per-jedlo deadline, len jeden denný scrape na zajtra)."""
+    GlobalSettings.objects.create(pk=1)
+    today = datetime.date(2026, 6, 29)  # Monday
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result()
+
+    monkeypatch.setattr(timezone, "localdate", lambda: today)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(target_next_workday=True)
+
+    tomorrow = datetime.date(2026, 6, 30)
+    assert result["dates"] == [str(tomorrow)]
+    assert seen_dates == [tomorrow]

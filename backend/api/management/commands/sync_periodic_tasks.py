@@ -439,8 +439,11 @@ class Command(BaseCommand):
             )
         else:
             for task in tasks:
+                # Väčšina scrape úloh beží Po–Pi; British School (#535) má
+                # vlastný crontab Ne–Št (deň pred pracovným dňom).
+                days = "Ne–Št" if "british-school" in task.name else "Po–Pi"
                 schedule = (
-                    f"{_format_crontab_time(task.crontab)} Mon–Fri"
+                    f"{_format_crontab_time(task.crontab)} {days}"
                     f" (tz: {task.crontab.timezone})"
                     if task.crontab
                     else "no schedule"
@@ -453,11 +456,18 @@ class Command(BaseCommand):
                 self.stdout.write(f"  {status} {task.name} → {schedule}")
 
     def _sync_edupage_scrape_tasks(self, gs):
-        from api.signals import _sync_edupage_scrape_schedule
+        from api.signals import (
+            _sync_british_school_scrape_schedule,
+            _sync_edupage_scrape_schedule,
+        )
 
         self.stdout.write("\n--- Syncing Edupage Scrape Tasks ---")
         try:
             _sync_edupage_scrape_schedule(gs)
+            # Musí ísť po `_sync_edupage_scrape_schedule` — tá skladá
+            # `exclude_connection_ids` podľa toho, či British School
+            # pripojenie už existuje (#535).
+            _sync_british_school_scrape_schedule(gs)
             self.stdout.write(self.style.SUCCESS("✓ Edupage scrape tasks synced!"))
             self._verify_edupage_scrape_tasks()
         except Exception as exc:

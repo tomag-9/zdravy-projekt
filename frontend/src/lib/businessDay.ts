@@ -137,6 +137,33 @@ export function lastWeekdayToday(sets: DayOffSets = {}): string {
   return toDateKey(previousBusinessDay(new Date(), sets));
 }
 
+/** Od ktorej hodiny sa v dashboard tabuľke odomkne zajtrajší deň (#535).
+ * British School sa scrapuje o 12:15 predošlý deň, takže admin/kuchyňa
+ * potrebuje zajtrajšok vedieť otvoriť ešte pred tým, než dáta pribudnú. */
+const DASHBOARD_NEXT_DAY_UNLOCK_HOUR = 12;
+
+/**
+ * Najneskorší deň, ktorý smie dashboard tabuľka (admin Prehľad, kuchyňa)
+ * zobraziť. Za bežných okolností je to `lastWeekdayToday` — dnešok, alebo
+ * posledný pracovný deň pred víkendom/sviatkom.
+ *
+ * Od `DASHBOARD_NEXT_DAY_UNLOCK_HOUR` (12:00) sa navyše odomkne aj
+ * nasledujúci kalendárny deň, pokiaľ sám nie je voľno — presne v čase, keď sa
+ * pre British School spúšťa jej vlastný scrape (12:15 deň vopred, #535).
+ * Mimo tohto okna (napr. piatok poobede, keď je „zajtra" sobota) ostáva
+ * `lastWeekdayToday` bez zmeny.
+ */
+export function dashboardMaxDate(now: Date = new Date(), sets: DayOffSets = {}): string {
+  if (now.getHours() >= DASHBOARD_NEXT_DAY_UNLOCK_HOUR) {
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (!isDayOff(tomorrow, sets)) {
+      return toDateKey(tomorrow);
+    }
+  }
+  return toDateKey(previousBusinessDay(now, sets));
+}
+
 export function formatDay(key: string): string {
   return fromDateKey(key).toLocaleDateString('sk-SK', {
     weekday: 'long',

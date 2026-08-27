@@ -508,7 +508,11 @@ def _dispatch_chained_reports(
     return dispatched
 
 
-def _scrape_target_dates(date_str: str | None, meal_types: list[str] | None):
+def _scrape_target_dates(
+    date_str: str | None,
+    meal_types: list[str] | None,
+    target_next_workday: bool = False,
+):
     """Best-effort resolution of the dates a scrape run targets.
 
     Used on the give-up path, where the run blew up before (or while) computing
@@ -518,11 +522,17 @@ def _scrape_target_dates(date_str: str | None, meal_types: list[str] | None):
 
     from django.utils import timezone
 
-    from api.models import GlobalSettings
     from api.services import _next_workday
 
     if date_str:
         return [date_str]
+
+    today = timezone.localdate()
+    if not meal_types:
+        target: datetime.date = _next_workday(today) if target_next_workday else today
+        return [target.isoformat()]
+
+    from api.models import GlobalSettings
 
     try:
         gs = GlobalSettings.objects.get(pk=1)
@@ -530,14 +540,10 @@ def _scrape_target_dates(date_str: str | None, meal_types: list[str] | None):
         logger.exception("Cannot resolve scrape target dates without GlobalSettings")
         return []
 
-    today = timezone.localdate()
-    if not meal_types:
-        return [today.isoformat()]
-
     dates = set()
     for meal_type in meal_types:
         is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
-        target: datetime.date = _next_workday(today) if is_day_before else today
+        target = _next_workday(today) if is_day_before else today
         dates.add(target.isoformat())
     return sorted(dates)
 
@@ -547,12 +553,13 @@ def _handle_scrape_give_up(
     date_str: str | None,
     meal_types: list[str] | None,
     chained_reports: list[list[str]] | None,
+    target_next_workday: bool = False,
 ) -> None:
     """Record an exhausted scrape and still send its chained reports, flagged."""
     from api.models import EventLog
     from api.services.event_log_service import log_event
 
-    date_strs = _scrape_target_dates(date_str, meal_types)
+    date_strs = _scrape_target_dates(date_str, meal_types, target_next_workday)
 
     try:
         # CRON_FAILED, nie CRON_SKIPPED: preskočenie znamená „víkend alebo voľný
@@ -585,6 +592,9 @@ def scrape_edupage_orders_task(
     date_str: str | None = None,
     meal_types: list[str] | None = None,
     chained_reports: list[list[str]] | None = None,
+    connection_id: int | None = None,
+    exclude_connection_ids: list[int] | None = None,
+    target_next_workday: bool = False,
 ):
     """
     Scrape mealsGuest HTML for all Edupage operations and upsert DailyOrder records.
@@ -599,6 +609,15 @@ def scrape_edupage_orders_task(
     leave with counts the import had not written yet. Each report is dispatched
     for the exact date(s) this run imported, so the report can no longer describe
     a different day than the one that was just scraped.
+
+    ``connection_id`` / ``exclude_connection_ids`` scope the run to (or away
+    from) one `EdupageConnection` — used by the British School dedicated
+    schedule (#535), which scrapes on its own crontab (12:15 the day before)
+    separate from the shared GlobalSettings meal deadlines, so it must be
+    excluded from the deadline-derived runs to avoid a redundant second scrape.
+    ``target_next_workday`` mirrors a `deadline_*_is_day_before` meal (target =
+    the next workday, not today) for a run that has no `meal_types` of its own
+    to read that flag from.
     """
     try:
         import datetime
@@ -672,7 +691,8 @@ def scrape_edupage_orders_task(
 
             today = timezone.localdate()
             if meal_types is None:
-                date_to_meals = {today: None}
+                target_date = _next_workday(today) if target_next_workday else today
+                date_to_meals = {target_date: None}
             else:
                 date_to_meals = {}
                 for meal_type in meal_types:
@@ -689,7 +709,15 @@ def scrape_edupage_orders_task(
         allowed_diets = allowed_diet_names()
         scraped = errors = skipped = 0
 
-        for operation in edupage_operations():
+        operations = edupage_operations(connection_id=connection_id)
+        if exclude_connection_ids:
+            operations = [
+                operation
+                for operation in operations
+                if operation["connection_id"] not in exclude_connection_ids
+            ]
+
+        for operation in operations:
             prevadzky = list(operation["prevadzky"])
             if not prevadzky:
                 logger.warning(
@@ -881,7 +909,9 @@ def scrape_edupage_orders_task(
             # Retries are spent. The kitchen still needs numbers, so the chained
             # report goes out — but explicitly marked as possibly not final,
             # instead of quietly looking like a normal day (issue #474).
-            _handle_scrape_give_up(exc, date_str, meal_types, chained_reports)
+            _handle_scrape_give_up(
+                exc, date_str, meal_types, chained_reports, target_next_workday
+            )
             raise
 
 
