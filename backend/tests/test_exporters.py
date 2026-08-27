@@ -127,8 +127,8 @@ class TestGramageDashboardExports:
         assert sorted(sr["count"] for sr in standard_rows) == [2, 3, 3, 3]
         assert {sr["label"]: sr["count"] for sr in standard_rows} == {
             "Škôlka - Raňajky-desiata": 3,
-            "Škôlka - Hlavný chod Menu A": 3,
-            "Škôlka - Hlavný chod Menu B": 2,
+            "Škôlka - Obed Menu A": 3,
+            "Škôlka - Obed Menu B": 2,
             "Škôlka - Olovrant": 3,
         }
         assert row["standard_col_grams"] == [

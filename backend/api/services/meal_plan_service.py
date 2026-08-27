@@ -489,6 +489,10 @@ class MealPlanService:
         }
         # Single source of truth for category labels: MealCategory.choices.
         MEAL_LABELS = dict(MealCategory.choices)
+        # Polievka a hlavné jedlo sa v tejto tabuľke vždy vykazujú v jednom
+        # zlúčenom riadku (_merge_soup_into_main_course) - popis preto hovorí
+        # "Obed", nie "Hlavný chod", aby nevyzeralo, že polievka chýba.
+        MEAL_LABELS[MealCategory.MAIN_COURSE] = "Obed"
         DEFAULT_DIET_COLORS = {
             "No Milk": "#F59E0B",
             "No Gluten": "#EF4444",
@@ -942,6 +946,24 @@ class MealPlanService:
                         total_diet_count = sum(
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()
                         )
+                        # "Zabaliť zvlášť" počty sú podmnožina štandardného/diétneho
+                        # riadku (vlastný "- zvlášť" riadok nižšie), nie navyše -
+                        # treba ich odpočítať skôr, ako sa vygeneruje zvyšný
+                        # "čistý" riadok, inak sa rovnaká osoba vypíše dvakrát.
+                        pack_menu_counts = _extract_pack_counts(
+                            pack_separately.get("menus")
+                        )
+                        pack_diet_counts = _extract_pack_counts(
+                            pack_separately.get("diets")
+                        )
+                        pack_by_variant = (
+                            {
+                                _normalize_variant(v): _safe_nonneg_int(c)
+                                for v, c in pack_menu_counts.items()
+                            }
+                            if is_variant_meal
+                            else {}
+                        )
 
                         if is_variant_meal:
                             variant_counts = sorted(
@@ -986,6 +1008,10 @@ class MealPlanService:
                                 subtract = min(remaining_diet_count, adjusted_count)
                                 adjusted_count -= subtract
                                 remaining_diet_count -= subtract
+                            pack_subtract = min(
+                                pack_by_variant.get(variant, 0), adjusted_count
+                            )
+                            adjusted_count -= pack_subtract
                             adjusted_variant_counts.append(
                                 (variant, max(adjusted_count, 0))
                             )
@@ -1028,6 +1054,10 @@ class MealPlanService:
 
                         for diet_name, diet_count_raw in sorted(diets.items()):
                             diet_count = _safe_nonneg_int(diet_count_raw)
+                            pack_diet_subtract = min(
+                                pack_diet_counts.get(diet_name, 0), diet_count
+                            )
+                            diet_count -= pack_diet_subtract
                             if diet_count <= 0:
                                 continue
                             if double_snack_portion:
@@ -1063,17 +1093,35 @@ class MealPlanService:
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += billed_diet_count
 
-                        pack_menu_counts = _extract_pack_counts(
-                            pack_separately.get("menus")
-                        )
-                        for variant, pack_count in sorted(
-                            pack_menu_counts.items(),
-                            key=lambda kv: (
-                                VARIANT_ORDER.index(_normalize_variant(kv[0]))
-                                if _normalize_variant(kv[0]) in VARIANT_ORDER
-                                else 99
-                            ),
-                        ):
+                        # Rovnaké vetvenie ako pri štandardnom riadku vyššie: pre
+                        # jedlo bez vlastných menu stĺpcov (napr. polievka - ide
+                        # o ten istý klik na "zabaliť zvlášť" pri obede) sa počty
+                        # najprv spočítajú do jedného celku, inak by sa gramáž
+                        # polievky hľadala v stĺpci "Menu A/B", ktorý polievka
+                        # nemá, a vyšla by nulová.
+                        if is_variant_meal:
+                            pack_variant_counts = sorted(
+                                (
+                                    (_normalize_variant(v), _safe_nonneg_int(c))
+                                    for v, c in pack_menu_counts.items()
+                                ),
+                                key=lambda kv: (
+                                    VARIANT_ORDER.index(kv[0])
+                                    if kv[0] in VARIANT_ORDER
+                                    else 99
+                                ),
+                            )
+                        else:
+                            total_pack = sum(
+                                _safe_nonneg_int(c) for c in pack_menu_counts.values()
+                            )
+                            pack_variant_counts = (
+                                [("", total_pack)] if total_pack > 0 else []
+                            )
+
+                        for variant, pack_count in pack_variant_counts:
+                            if pack_count <= 0:
+                                continue
                             pack_grams = _col_grams(
                                 meal, variant, coeff, pack_count, portion_name
                             )
@@ -1092,10 +1140,16 @@ class MealPlanService:
                                     "col_grams": pack_grams,
                                 }
                             )
+                            # Odpočítalo sa vyššie z "čistého" riadku len keď
+                            # is_variant_meal (inak sa zvlášť polievky nespočítava
+                            # samostatne, ale nechá na hlavnom chode) - dorátať do
+                            # súhrnu presne v tom istom prípade, nech sa hlava
+                            # nestratí, ale ani nezaráta dvakrát.
+                            if is_variant_meal and count_towards_summary:
+                                client_total_count += _billed_count(
+                                    pack_count, billing_coeff
+                                )
 
-                        pack_diet_counts = _extract_pack_counts(
-                            pack_separately.get("diets")
-                        )
                         for diet_name, pack_count in sorted(pack_diet_counts.items()):
                             pack_diet_grams = _col_grams_diet(
                                 meal, diet_name, coeff, pack_count, portion_name
@@ -1117,6 +1171,20 @@ class MealPlanService:
                                     "col_grams": pack_diet_grams,
                                 }
                             )
+                            # Diétny počet sa vyššie odpočítal z "čistého"
+                            # diétneho riadku pri KAŽDOM meale (aj polievke),
+                            # preto sa tu vracia späť pri tom istom meale, kde sa
+                            # aj sčítaval (count_towards_summary) - odpočet a
+                            # spätné pripočítanie sa navzájom presne vyrušia.
+                            if count_towards_summary:
+                                if diet_name not in diet_summary_totals:
+                                    diet_summary_totals[diet_name] = (
+                                        _empty_group_totals()
+                                    )
+                                    diet_summary_counts[diet_name] = 0
+                                diet_summary_counts[diet_name] += _billed_count(
+                                    pack_count, billing_coeff
+                                )
 
             for correction in order_data.get("__gram_corrections__", []):
                 if not isinstance(correction, dict):

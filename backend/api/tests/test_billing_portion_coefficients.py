@@ -253,7 +253,7 @@ def test_dashboard_folds_predskolak_into_ms_row_like_the_real_workbook():
     sub_rows = data["rows"][0]["sub_rows"]
 
     # Predškolák nemá vlastný riadok — je zlúčený do MŠ, tak ako to píše klient.
-    assert [sr["label"] for sr in sub_rows] == ["Škôlka - Hlavný chod"]
+    assert [sr["label"] for sr in sub_rows] == ["Škôlka - Obed"]
     assert sub_rows[0]["count"] == Decimal("8.25")
     assert sub_rows[0]["col_grams"] == [["1650.00"]]
     assert data["rows"][0]["standard_total_count"] == Decimal("8.25")
@@ -293,9 +293,9 @@ def test_dashboard_keeps_predskolak_separate_without_coefficient():
 
     data = MealPlanService.gramage_dashboard(plan.date.isoformat())
     by_label = {sr["label"]: sr for sr in data["rows"][0]["sub_rows"]}
-    assert by_label["Škôlka - Hlavný chod"]["count"] == 7
-    assert by_label["Predškolák - Hlavný chod"]["count"] == 1
-    assert by_label["Predškolák - Hlavný chod"]["col_grams"] == [["250.00"]]
+    assert by_label["Škôlka - Obed"]["count"] == 7
+    assert by_label["Predškolák - Obed"]["count"] == 1
+    assert by_label["Predškolák - Obed"]["col_grams"] == [["250.00"]]
 
 
 @pytest.mark.django_db
