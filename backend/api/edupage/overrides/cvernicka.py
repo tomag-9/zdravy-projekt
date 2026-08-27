@@ -1,4 +1,4 @@
-"""Cvernička — dve zložené skratky, ktoré fuzzy vrstva orezáva na jednu diétu.
+"""Cvernička — zložené skratky, ktoré fuzzy vrstva orezáva na jednu diétu.
 
 Škola kóduje viacnásobné vylúčenia do jednej skratky (`nMnOnJnPnČnŠnZEL`).
 `resolve_diet_name`/`_resolve_diet_name_with_confidence` (generický engine)
@@ -15,9 +15,16 @@ EduPage vlastný `nazov` (nie skratka) skutočný obsah spoľahlivo vypíše:
                                                                   No Zeler (klient sám označil
                                                                   "!!!NOVÁ DIÉTA!!!" v reálnej
                                                                   tabuľke, over_edupage 27.8.2026)
+    AnHorčica         nazov="Klasik/noHorčica"                → No Horčica (samostatný riadok s
+                                                                  gramážou v Hárok1, 27.8.2026 —
+                                                                  bez tohto letter_hooku by
+                                                                  `resolve_menu_variant` skratku
+                                                                  potichu absorbovalo do Menu A,
+                                                                  lebo obsahuje "klasik")
 
 Overené priamo na živom EduPage (26.–27.8.2026) aj krížovo v
-`test/data/real/24.8.2026_tabuľka_NOVÁ4.xlsx` (Hárok1, blok Cvernička).
+`test/data/real/26.8.2026_tabuľka_NOVA_6.xlsx` a `27.8.2026_tabuľka_NOVA_61.xlsx`
+(Hárok1, blok Cvernička).
 """
 
 from __future__ import annotations
@@ -29,6 +36,7 @@ _RULES: dict[str, LetterRule] = {
     "NMNONJNPNČNŠNZEL": LetterRule(
         diet="NO MILK/NO ORECH/NO PARADAJKA/NO JAHODA/NO KAKAO/NO SKORICA/NO ZELER"
     ),
+    "ANHORČICA": LetterRule(diet="NO HORCICA"),
 }
 
 

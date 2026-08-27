@@ -41,6 +41,7 @@ OPERATION_SPECIFIC_DIETS = [
     ("NO SKORICA", "Bez škorice."),
     ("NO ARASIDY", "Bez arašidov."),
     ("NO SEZAM", "Bez sezamu."),
+    ("NO HORCICA", "Bez horčice (Cvernička)."),
     ("NO MILK/NO KAKAO/NO JAHODA", "Bez mlieka, kakaa a jahôd (Cvernička)."),
     (
         "NO MILK/NO ORECH/NO PARADAJKA/NO JAHODA/NO KAKAO/NO SKORICA/NO ZELER",
@@ -52,6 +53,36 @@ OPERATION_SPECIFIC_DIETS = [
         "Bez vajec, orechov, arašidov, sóje a sezamu — EpiPen (MŠ Felix Karlovská).",
     ),
     ("NO MILK/NO EGG", "Bez mlieka a vajec (Zdravé Brúško)."),
+    # British School (#527) — skratky s koncovým "+" nesú len prvú diétu,
+    # zvyšok (naviac reštrikcie) je v mene platiteľskej skupiny (payer), nie
+    # v menu skratke — a tá sa líši dieťa od dieťaťa. Payer_hook v
+    # `api/edupage/overrides/britishschool.py` priraďuje presné kombinácie
+    # podľa mena platiteľa, viď tam pre zdrojové EduPage payer labely.
+    ("NO HUBY", "Bez húb."),
+    ("NO KIWI", "Bez kiwi."),
+    ("NO JABLKO", "Bez jabĺk."),
+    ("NO BOBULE", "Bez bobuľového ovocia."),
+    ("NO ANANAS", "Bez ananásu."),
+    ("NO STRUKOVINY", "Bez strukovín."),
+    ("REFLUX", "Refluxová diéta (zdravotné obmedzenie, nie potravinová alergia)."),
+    ("NO MILK/REFLUX", "Bez mlieka, refluxová diéta (British School)."),
+    ("NO MILK/VEGGIE", "Bez mlieka, vegetariánska strava (British School, učiteľ)."),
+    ("NO ORECH/NO FISH", "Bez orechov a rýb (British School)."),
+    ("NO ORECH/NO KIWI", "Bez orechov a kiwi (British School)."),
+    (
+        "NO ORECH/NO JABLKO/NO JAHODA",
+        "Bez orechov, jabĺk a jahôd (British School).",
+    ),
+    ("NO ORECH/NO SEZAM", "Bez orechov a sezamu (British School)."),
+    (
+        "NONONO/NO BRAVCOVINA/NO BOBULE",
+        "Bez mlieka, lepku, vajec, bravčoviny a bobuľového ovocia (British School).",
+    ),
+    (
+        "NONONO/NO ANANAS/NO STRUKOVINY/HISTAMIN",
+        "Bez mlieka, lepku, vajec, ananásu, strukovín, nízkohistamínová "
+        "(British School).",
+    ),
 ]
 
 ALL_DIETS = DEFAULT_DIETS + OPERATION_SPECIFIC_DIETS

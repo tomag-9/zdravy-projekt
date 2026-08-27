@@ -115,6 +115,7 @@ _SKRATKA_MAP: dict[str, str] = {
     "NNNO": "NONONO",
     "NF": "NO FISH",
     "NGNF": "NO GLUTEN",
+    "NN": "NO ORECH",  # British School: "nN" = noNuts (nie NONONO — kolízia s "nnn" substringom)
     "NMNE": "NO MILK",
     "NMNO": "NO MILK",
     "NMZ": "NO MILK",
@@ -128,6 +129,10 @@ _SKRATKA_MAP: dict[str, str] = {
     "SV": "VEGGIE",
     "VEGETAR": "VEGGIE",
     "DIA": "DIA",
+    "VEGAN": "VEGAN",  # British School
+    "NP": "NO BRAVCOVINA",  # British School: "nP" = noPork
+    "NREDMEAT": "NO CERVENE MASO",  # British School: "nREDmeat"
+    "NSUG": "NO CUKOR",  # British School: "nSUG" = noSugar
 }
 
 # Keyword fragments in nazov → our Diet.name (checked after stripping spaces/slashes)
@@ -171,6 +176,7 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "orech": "NO ORECH",
     "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
+    "horcica": "NO HORCICA",  # Cvernička "AnHorčica"/"Klasik/noHorčica"
     "dia": "DIA",
     "diabet": "DIA",
     # British School (#531) hlási po anglicky — mapujeme na slovenské Diet.name.

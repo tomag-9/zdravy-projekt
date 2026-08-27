@@ -83,6 +83,9 @@ class TestResolveDietName(unittest.TestCase):
     def test_keyword_fallback_nogluten_in_nazov(self):
         self.assertEqual(self._r("?", "NoGluten jedlo"), "NO GLUTEN")
 
+    def test_keyword_fallback_horcica_in_nazov(self):
+        self.assertEqual(self._r("AnHorčica", "Klasik/noHorčica"), "NO HORCICA")
+
     def test_unknown_fallback_returns_nazov(self):
         self.assertEqual(self._r("ABC", "menu A"), "menu A")
 
@@ -217,6 +220,13 @@ class TestResolveMenuVariant(unittest.TestCase):
 
     def test_montessori_combined_ms_zs_class_is_menu_a(self):
         self.assertEqual(self._r("MŠ/ZŠ Iná", "MŠ/ZŠ Iná"), "A")
+
+    def test_klasik_with_diet_signal_is_not_menu_variant(self):
+        """Cvernička "AnHorčica"/"Klasik/noHorčica": nazov obsahuje "Klasik",
+        takže by inak spadlo do menu-A vetvy skôr, než sa vôbec skúsi diéta —
+        appka by "no horčica" reštrikciu potichu stratila (nájdené 27.8.2026
+        v reálnej tabuľke — appka to počítala ako obyčajný Klasik)."""
+        self.assertIsNone(self._r("AnHorčica", "Klasik/noHorčica"))
 
     def test_menu_a_is_menu_a(self):
         self.assertEqual(self._r("A", "Menu A"), "A")

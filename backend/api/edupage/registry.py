@@ -13,6 +13,10 @@ from __future__ import annotations
 from urllib.parse import urlparse
 
 from .base import OlovrantMode, PrevadzkaConfig
+from .overrides.britishschool import (
+    british_school_letter_hook,
+    british_school_payer_hook,
+)
 from .overrides.cvernicka import cvernicka_letter_hook
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
 from .overrides.krasnanko import krasnanko_letter_hook
@@ -152,6 +156,20 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         olovrant_mode=_C,
         poznamka="Špeciál: skratky so Z (zamestnanec) a ZD (zam. detská porcia).",
         letter_hook=krasnanko_letter_hook,
+    ),
+    PrevadzkaConfig(
+        subdomena="zdravyprojekt",
+        ucty=("British School",),
+        olovrant_mode=OlovrantMode.NEZNAMY,
+        poznamka=(
+            "Nový onboarding (#531, 26.8.2026) — olovrant_mode zatiaľ "
+            "nepotvrdený, čaká na dáta. Skratky s koncovým '+' (nM+, NNN+, "
+            "nN+, HIT+) nesú len prvú diétu, zvyšok je v mene platiteľskej "
+            "skupiny — payer_hook priraďuje presné kombinácie (#527, viď "
+            "overrides/britishschool.py pre zdrojové EduPage labely)."
+        ),
+        letter_hook=british_school_letter_hook,
+        payer_hook=british_school_payer_hook,
     ),
 )
 
