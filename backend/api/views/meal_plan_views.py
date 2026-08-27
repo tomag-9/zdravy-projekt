@@ -11,12 +11,7 @@ from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..cache_service import (
-    GRAMAGE_DASHBOARD_TIMEOUT,
-    get_cached,
-    get_gramage_dashboard_cache_key,
-    set_cached,
-)
+from ..cache_service import get_cached, get_closed_day_pdf_cache_key
 from ..models import DailyMealPlan, MealPlanItem, MealTemplate, PortionType
 from ..order_data import OrderData, safe_count
 from ..permissions import IsAdminOrAbove, IsKuchynaOrAbove
@@ -26,32 +21,17 @@ from ..serializers_menu import (
     MealTemplateSerializer,
     PortionTypeSerializer,
 )
+from ..services.gramage_pdf_service import (
+    get_cached_gramage_dashboard_data as _cached_gramage_dashboard_data,
+)
+from ..services.gramage_pdf_service import (
+    render_gramage_dashboard_pdf,
+)
 from ..services.meal_plan_service import MealPlanService
 from ..utils import parse_date_param
 from .audit_mixins import AuditedModelViewSetMixin
 
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
-def _cached_gramage_dashboard_data(date_str: str) -> dict:
-    """`MealPlanService.gramage_dashboard()` result, cached per date (5 min TTL).
-
-    The aggregation (orders × plan items × diety × portion types) is pure
-    Python work over the day's data and identical for the screen and the PDF
-    export, so both share this cache. No write-side invalidation — same
-    tradeoff as `daily-stats`: the underlying orders change too often to
-    track per-write, so a short TTL bounds the staleness instead. Callers
-    still apply their own `section`/`vydaj` filtering (build_table_spec) on
-    top of the cached, unfiltered data.
-    """
-    cache_key = get_gramage_dashboard_cache_key(date_str)
-    cached_data = get_cached(cache_key)
-    if cached_data is not None:
-        return cached_data
-
-    data = MealPlanService.gramage_dashboard(date_str)
-    set_cached(cache_key, data, timeout=GRAMAGE_DASHBOARD_TIMEOUT)
-    return data
 
 
 class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
@@ -338,23 +318,19 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
         date = parse_date_param(date_str)
-        data = _cached_gramage_dashboard_data(date.isoformat())
-        # Tá istá tabuľka ako na obrazovke: rovnaký spec, rovnaké CSS, len
-        # namiesto Reactu ju do HTML zloží gramage_table_html a WeasyPrint
-        # z toho spraví papier.
-        from weasyprint import HTML
-
-        from ..exporters.gramage_table_html import render_document
-        from ..exporters.gramage_table_spec import build_table_spec
-
         sections = request.query_params.getlist("section") or None
         vydaje = request.query_params.getlist("vydaj") or None
-        # #510 — PDF nemá „zbalený" stav, sub-riadky sú vždy vidno, takže
-        # medzisúčty za klienta by len duplikovali čísla o riadok vyššie.
-        spec = build_table_spec(
-            data, sections=sections, vydaje=vydaje, include_summary_rows=False
-        )
-        pdf_bytes = HTML(string=render_document(spec)).write_pdf()
+
+        # Uzavretý deň má PDF predgenerované a nacachované už pri uzavretí
+        # (#528, viď closed_day_views) — ale len pre neprefiltrovaný export,
+        # presne taký, aký sa vtedy predgeneroval.
+        pdf_bytes = None
+        if not sections and not vydaje:
+            pdf_bytes = get_cached(get_closed_day_pdf_cache_key(date.isoformat()))
+        if pdf_bytes is None:
+            pdf_bytes = render_gramage_dashboard_pdf(
+                date.isoformat(), sections=sections, vydaje=vydaje
+            )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"

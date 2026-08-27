@@ -161,3 +161,49 @@ def test_non_staff_cannot_unlock_day(authenticated_client, admin_user):
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert ClosedDay.objects.filter(date=TARGET_DATE).exists()
+
+
+def test_closing_day_pregenerates_and_caches_pdf(admin_client):
+    """Uzavretie dňa predgeneruje PDF snapshot, ktorý export potom servíruje
+    priamo z cache namiesto opätovného renderu (#528)."""
+    from django.core.cache import cache
+
+    from api.cache_service import get_closed_day_pdf_cache_key
+
+    close = admin_client.post(
+        reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
+    )
+    assert close.status_code == status.HTTP_201_CREATED
+
+    cache_key = get_closed_day_pdf_cache_key(TARGET_DATE.isoformat())
+    cached_pdf = cache.get(cache_key)
+    assert cached_pdf is not None
+    assert cached_pdf.startswith(b"%PDF")
+
+    pdf_response = admin_client.get(
+        "/api/admin/meal-plans/gramage-dashboard-pdf/",
+        {"date": TARGET_DATE.isoformat()},
+    )
+    assert pdf_response.status_code == status.HTTP_200_OK
+    assert pdf_response.content == cached_pdf
+
+
+def test_unlocking_day_clears_cached_pdf(admin_client):
+    from django.core.cache import cache
+
+    from api.cache_service import get_closed_day_pdf_cache_key
+
+    admin_client.post(
+        reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
+    )
+    cache_key = get_closed_day_pdf_cache_key(TARGET_DATE.isoformat())
+    assert cache.get(cache_key) is not None
+
+    unlocked = admin_client.delete(
+        reverse("closed-day-unlock"),
+        {"date": TARGET_DATE.isoformat()},
+        format="json",
+    )
+
+    assert unlocked.status_code == status.HTTP_200_OK
+    assert cache.get(cache_key) is None
