@@ -80,9 +80,13 @@ h1 small {
 /* Čiary medzi každými dvoma bunkami (#536) — bez farebného podkladu
  * (čiernobiela tlač, iné DPI ako na obrazovke) sa v tabuľke bez mriežky
  * strácala orientácia medzi bunkami. `meal-sep`, hlavička a pásy majú
- * vlastné, výraznejšie čiary — tie prebijú túto len tam, kde treba. */
+ * vlastné, výraznejšie čiary — tie prebijú túto len tam, kde treba.
+ * Zvislé čiary sú oproti vodorovným čierne a hrubšie — v tlačenej tabuľke
+ * sa medzi stĺpcami (kam sa oko pozerá pri čítaní gramáže) strácali. */
 .zpa-gram th,
-.zpa-gram td { border: 0.5pt solid rgba(23, 53, 5, 0.25); }
+.zpa-gram td { border-top: 0.5pt solid rgba(23, 53, 5, 0.25); border-bottom: 0.5pt solid rgba(23, 53, 5, 0.25); }
+.zpa-gram th,
+.zpa-gram td { border-left: 0.75pt solid rgba(0, 0, 0, 0.75); border-right: 0.75pt solid rgba(0, 0, 0, 0.75); }
 .zpa-gram thead th { border-color: rgba(255, 255, 255, 0.28); }
 .zpa-gram th:first-child,
 .zpa-gram td:first-child { width: 42mm; min-width: 0; max-width: none; }
@@ -167,7 +171,9 @@ h1 small {
 /* Sticky a tiene sú pre papier bezvýznamné a WeasyPrintu len prekážajú. */
 .zpa-gram thead th,
 .zpa-gram .corner { position: static; }
-.zpa-gram .meal-sep { box-shadow: none; border-left: 1.2pt solid rgba(23, 53, 5, 0.55); }
+/* Musí zostať výraznejšia než bežná zvislá čiara medzi bunkami vyššie (teraz
+ * tiež takmer čierna) — inak by predel medzi jedlami v tabuľke zanikol. */
+.zpa-gram .meal-sep { box-shadow: none; border-left: 1.5pt solid rgba(0, 0, 0, 0.9); }
 
 /* Na obrazovke je to rozbaľovacie tlačidlo; na papieri obyčajný riadok. */
 .zpa-gram .client-toggle {
