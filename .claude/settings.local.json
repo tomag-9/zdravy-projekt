@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ssh zp \"docker exec * pg_dump*\")"
+    ]
+  }
+}
