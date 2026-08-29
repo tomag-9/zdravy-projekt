@@ -650,7 +650,7 @@ const PrintFilter: React.FC<{
           <Select
             value={vydaj}
             onChange={(e) => onVydajChange(e.target.value)}
-            style={{ width: "auto" }}
+            className={`cluster-select${vydaj ? " is-active" : ""}`}
             aria-label="Cluster"
           >
             <option value="">Všetky clustre</option>

@@ -972,6 +972,25 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     font-size: 13px; font-weight: 600; color: var(--green-700);
     text-decoration: underline;
 }
+/* Cluster dropdown v tom istom riadku ako chipy — .zpa-select je stavaný na
+ * plnošírkové formulárové polia (11px/14px padding), tu vedľa 13px pill
+ * chipov pôsobil zbytočne veľký a bez vlastnej identity. Zarovnané na
+ * rozmer/rádius chipu, so zvýraznením zhodným s .chip.on pri aktívnom filtri. */
+.zpa-section-filter .cluster-select {
+    width: auto; min-width: 150px;
+    padding: 6px 34px 6px 14px;
+    border-radius: var(--radius-pill);
+    font-family: var(--font-display); font-weight: 600; font-size: 13px;
+    background-position: right 12px center;
+}
+.zpa-section-filter .cluster-select:hover { border-color: var(--green-500); color: var(--green-800); }
+.zpa-section-filter .cluster-select.is-active {
+    background-color: var(--green-700); border-color: var(--green-700);
+    color: var(--bg-cream); box-shadow: var(--shadow-sm);
+    /* zelená šípka z .zpa-select by na tmavom pozadí zapadla — krémová verzia */
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23FBF7E4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+.zpa-section-filter .cluster-select.is-active option { color: var(--ink-1); background: #fff; }
 
 /* ── Matica oprávnení (#484) ──────────────────────────────────────────────── */
 
