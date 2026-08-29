@@ -56,13 +56,29 @@ class Command(BaseCommand):
                 created_count += 1
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
+        # Novo vytvorená diéta má nastaviť sort_order tak, aby pristála NA KONCI
+        # zoznamu (Diet.Meta.ordering = [sort_order, name]), nie na začiatku:
+        # `sort_order` má model default 0 a bez tohto by sa zaradila na úroveň
+        # najvyššie postavených diét. Nastavuje sa len pri vytvorení — pri
+        # opakovanom behu (update_or_create beží pri každom deployi) nechceme
+        # prepísať prípadné ručné preusporiadanie cez admin.
+        highest_sort_order = (
+            Diet.objects.order_by("-sort_order")
+            .values_list("sort_order", flat=True)
+            .first()
+            or 0
+        )
+
         diet_created_count = 0
         for name, description in ALL_DIETS:
-            _, created = Diet.objects.update_or_create(
+            diet, created = Diet.objects.update_or_create(
                 name=name,
                 defaults={"description": description, "is_active": True},
             )
             if created:
+                highest_sort_order += 1
+                diet.sort_order = highest_sort_order
+                diet.save(update_fields=["sort_order"])
                 diet_created_count += 1
                 self.stdout.write(f"  Diet created: {name}")
 

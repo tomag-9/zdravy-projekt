@@ -356,7 +356,12 @@ DELIVERY_ROWS = [
         match_names=("SŠ VETERINÁRNA Pod brehmi 6",),
     ),
     DeliverySeedRow(
-        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "Waldorf Kukučínova"
+        "TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO",
+        "Waldorf Kukučínova",
+        # Reálna prevádzka v DB sa volá skrátene "Waldorf" (celok "Waldom") — bez
+        # tohto by _find_existing_prevadzka exact-matchol na "Waldorf Kukučínova"
+        # a založil TRETÍ, prázdny duplicitný celok popri "Waldom"/"Walldom".
+        match_names=("Waldorf",),
     ),
     DeliverySeedRow("TRASA EXTRA ZABALENÉ ZVLÁŠŤ - do 11:00 MAJO", "ZŠ Malokarpatská"),
     DeliverySeedRow(
