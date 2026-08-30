@@ -462,6 +462,35 @@ class TestApplyAutoOrders:
 
         assert user.email not in result["created"]
 
+    def test_paused_prevadzka_gets_no_auto_order_despite_older_history(self, user):
+        """`auto_order_paused=True` stops the copy chain even if an older non-empty
+        order still exists in history (set directly, bypassing the API layer that
+        would normally flip the flag)."""
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user, prevadzka=prevadzka, date=MONDAY, data=NON_EMPTY_DATA
+        )
+        prevadzka.auto_order_paused = True
+        prevadzka.save(update_fields=["auto_order_paused"])
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert user.email not in result["created"]
+        assert not DailyOrder.objects.filter(user=user, date=TUESDAY).exists()
+
+    def test_unpaused_prevadzka_gets_auto_order_again(self, user):
+        """Once `auto_order_paused` is cleared, copying resumes from history."""
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user, prevadzka=prevadzka, date=MONDAY, data=NON_EMPTY_DATA
+        )
+        prevadzka.auto_order_paused = False
+        prevadzka.save(update_fields=["auto_order_paused"])
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert user.email in result["created"]
+
     def test_edupage_celok_prevadzka_is_skipped_but_app_prevadzka_still_gets_auto(self):
         # Pozor: `on_user_profile_saved` drží `Celok.zdroj_objednavok` v súlade s
         # `is_edupage` profilu, takže EduPage celok tu zámerne nemá vlastný profil —

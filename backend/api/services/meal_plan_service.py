@@ -1347,6 +1347,12 @@ class MealPlanService:
                         ),
                         "diet_summary_rows": diet_summary_rows,
                         "admin_order_note": admin_order_note,
+                        # Olovrant ide s obedovým rozvozom — kuchyňa ho v
+                        # tabuľke aj PDF vidí žlto zvýraznený, nech ho naloží
+                        # spolu s obedom a nezabudne naň pri popoludňajšom kole.
+                        "snack_with_lunch": bool(
+                            getattr(prevadzka, "olovrant_s_obedom", False)
+                        ),
                         "sub_rows": sub_rows,
                     }
                 )

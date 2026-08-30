@@ -8,9 +8,10 @@ interface MenuCounterProps {
     onChange: (val: number) => void;
     disabled?: boolean;
     isOccupied?: boolean;
+    closedLabel?: string;
 }
 
-const MenuCounter = ({ type, count, onChange, disabled, isOccupied }: MenuCounterProps) => {
+const MenuCounter = ({ type, count, onChange, disabled, isOccupied, closedLabel }: MenuCounterProps) => {
     if (isOccupied) {
         return (
             <div className="zp-menurow zp-menurow--occupied">
@@ -22,8 +23,9 @@ const MenuCounter = ({ type, count, onChange, disabled, isOccupied }: MenuCounte
     }
 
     return (
-        <div className="zp-menurow">
+        <div className="zp-menurow" title={closedLabel}>
             <span className="name">Menu {type}</span>
+            {closedLabel && <span className="zp-menurow-occupied-label">{closedLabel}</span>}
             <span className="spacer"></span>
             <div className="zp-counter">
                 <button
@@ -87,6 +89,7 @@ interface CategoryRowProps {
     disabled?: boolean;
     visibleMenus?: string[];
     occupiedMenus?: Set<string>;
+    disabledMenus?: string[];
     tourId?: string;
 }
 
@@ -100,6 +103,7 @@ const CategoryRow = ({
     disabled,
     visibleMenus,
     occupiedMenus,
+    disabledMenus,
     tourId,
 }: CategoryRowProps) => {
     let menus = Object.keys(menuCounts || {});
@@ -118,6 +122,7 @@ const CategoryRow = ({
             <div className="zp-cat-head">{label}</div>
             {menus.map(menuType => {
                 const isOccupied = occupiedMenus?.has(menuType);
+                const isMenuDeadlineClosed = !disabled && !!disabledMenus?.includes(menuType);
                 // Menu A drží celkový počet vrátane diétnych porcií; klient edituje
                 // len bežné porcie, takže diéty od zobrazenej hodnoty odrátame.
                 const shownCount = menuType === 'A'
@@ -129,9 +134,10 @@ const CategoryRow = ({
                         <MenuCounter
                             type={menuType}
                             count={shownCount}
-                            onChange={(val) => !disabled && onMenuCountChange(menuType, val)}
-                            disabled={disabled}
+                            onChange={(val) => !disabled && !isMenuDeadlineClosed && onMenuCountChange(menuType, val)}
+                            disabled={disabled || isMenuDeadlineClosed}
                             isOccupied={isOccupied}
+                            closedLabel={isMenuDeadlineClosed ? "termín uplynul" : undefined}
                         />
                         {menuType === 'A' && hasDietsEnabled && !isOccupied && (
                             <DietRow

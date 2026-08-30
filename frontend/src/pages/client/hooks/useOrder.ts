@@ -268,7 +268,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         return () => { isMounted = false; };
     }, [selectedDate, apiFetch, user, activePrevadzkaId, waitForPrevadzkaChoice]); // Depend on selectedDate
 
-    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false });
+    const [globalDeadlines, setGlobalDeadlines] = useState({ breakfast: '10:00', breakfast_day_before: false, lunch: '10:00', lunch_day_before: false, olovrant: '10:00', olovrant_day_before: false, menu_bc: '07:30', menu_bc_days_before: 2 });
     const [clientContactInfo, setClientContactInfo] = useState<ClientContactInfo>({
         name: '',
         role: '',
@@ -291,6 +291,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                         lunch_day_before: !!data.deadline_lunch_is_day_before,
                         olovrant: data.deadline_olovrant || '10:00',
                         olovrant_day_before: !!data.deadline_olovrant_is_day_before,
+                        menu_bc: data.deadline_menu_bc || '07:30',
+                        menu_bc_days_before: data.deadline_menu_bc_days_before ?? 2,
                     };
                     setGlobalDeadlines(mapped);
                     setClientContactInfo({

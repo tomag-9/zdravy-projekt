@@ -375,28 +375,17 @@ class OrderService {
     }
 
     // Deadline logic
-    static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, breakfast_day_before?: boolean, lunch: string, lunch_day_before?: boolean, olovrant: string, olovrant_day_before?: boolean }): boolean {
+    // `daysBefore` generalizes the old boolean "is day before" flag (1) to an
+    // arbitrary number of calendar days before the meal date (used by the
+    // menu B/C deadline, which falls e.g. 2 days before at 7:30).
+    private static checkDeadlineDaysBefore(dateStr: string, deadlineStr: string, daysBefore: number): boolean {
         const now = this.getServerNow();
         const todayStr = this.toLocalDateString(now);
 
-        if (!deadlines) {
-            if (dateStr > todayStr) return true;
-            return false;
-        }
-
-        const defaultTime = "10:00";
-        let deadlineStr = defaultTime;
-        let isDayBefore = false;
-        if (mealKey === 'breakfast') { deadlineStr = deadlines.breakfast || defaultTime; isDayBefore = !!deadlines.breakfast_day_before; }
-        if (mealKey === 'lunch') { deadlineStr = deadlines.lunch || defaultTime; isDayBefore = !!deadlines.lunch_day_before; }
-        if (mealKey === 'olovrant') { deadlineStr = deadlines.olovrant || defaultTime; isDayBefore = !!deadlines.olovrant_day_before; }
-
-        if (isDayBefore) {
-            // Deadline is 1 calendar day before the meal date at deadlineStr time.
-            // e.g. to order for Tuesday, you must order by Monday at deadlineStr.
+        if (daysBefore > 0) {
             const mealDate = new Date(dateStr + 'T00:00:00');
             const deadlineDate = new Date(mealDate);
-            deadlineDate.setDate(deadlineDate.getDate() - 1);
+            deadlineDate.setDate(deadlineDate.getDate() - daysBefore);
             const deadlineDateStr = this.toLocalDateString(deadlineDate);
 
             if (deadlineDateStr > todayStr) return true;   // deadline day is in the future
@@ -408,17 +397,40 @@ class OrderService {
             return currentMinutes < h * 60 + m;
         }
 
-        // Original same-day deadline behaviour
+        // Same-day deadline behaviour
         if (dateStr > todayStr) return true;
         if (dateStr < todayStr) return false;
 
         const [h, m] = deadlineStr.split(':').map(Number);
         const deadlineMinutes = h * 60 + m;
-        const currentHour = now.getHours();
-        const currentMinute = now.getMinutes();
-        const currentTime = currentHour * 60 + currentMinute;
+        const currentTime = now.getHours() * 60 + now.getMinutes();
 
         return currentTime < deadlineMinutes;
+    }
+
+    static checkDeadline(dateStr: string, mealKey: string, deadlines?: { breakfast: string, breakfast_day_before?: boolean, lunch: string, lunch_day_before?: boolean, olovrant: string, olovrant_day_before?: boolean }): boolean {
+        if (!deadlines) {
+            const now = this.getServerNow();
+            const todayStr = this.toLocalDateString(now);
+            if (dateStr > todayStr) return true;
+            return false;
+        }
+
+        const defaultTime = "10:00";
+        let deadlineStr = defaultTime;
+        let isDayBefore = false;
+        if (mealKey === 'breakfast') { deadlineStr = deadlines.breakfast || defaultTime; isDayBefore = !!deadlines.breakfast_day_before; }
+        if (mealKey === 'lunch') { deadlineStr = deadlines.lunch || defaultTime; isDayBefore = !!deadlines.lunch_day_before; }
+        if (mealKey === 'olovrant') { deadlineStr = deadlines.olovrant || defaultTime; isDayBefore = !!deadlines.olovrant_day_before; }
+
+        return this.checkDeadlineDaysBefore(dateStr, deadlineStr, isDayBefore ? 1 : 0);
+    }
+
+    // Menu B/C majú vlastný, prísnejší termín (napr. 7:30 dva dni vopred),
+    // rovnaký pre všetky jedlá — pozri backend `_validate_deadlines`.
+    static checkMenuBcDeadline(dateStr: string, deadlines?: { menu_bc?: string, menu_bc_days_before?: number }): boolean {
+        if (!deadlines || !deadlines.menu_bc) return true;
+        return this.checkDeadlineDaysBefore(dateStr, deadlines.menu_bc, deadlines.menu_bc_days_before ?? 2);
     }
     static fastCopy<T>(source: T): T {
         return JSON.parse(JSON.stringify(source));

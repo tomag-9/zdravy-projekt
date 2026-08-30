@@ -125,17 +125,27 @@ def _note_cell() -> dict:
     return {"text": "", "css": "cell-note meal-sep"}
 
 
-def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[dict]:
+def _gram_cells(
+    col_grams: list,
+    groups: list[dict],
+    hues: list[str],
+    snack_with_lunch: bool = False,
+) -> list[dict]:
     """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami.
 
-    Na konci vždy pribudne prázdna bunka stĺpca „Poznámka" — je súčasťou každého
-    dátového riadku, takže ju dopĺňa jedno miesto namiesto každého volajúceho.
+    `snack_with_lunch` je `Prevadzka.olovrant_s_obedom` prevzatý z riadku
+    klienta — olovrant tejto prevádzky nejde s popoludňajším rozvozom ako
+    ostatné, takže namiesto bežného tónovania „Olovrant" dostane vlastnú
+    (žltú) farbu, nech ho kuchyňa naloží spolu s obedom.
     """
     cells = []
     for position, (group_index, group) in enumerate(groups):
         grams = []
         if group_index < len(col_grams):
             grams = col_grams[group_index] or []
+        hue = hues[position]
+        if snack_with_lunch and group.get("meal") == "afternoon_snack":
+            hue = "snacklunch"
         for component_index, component in enumerate(group.get("components") or []):
             raw = grams[component_index] if component_index < len(grams) else None
             text = format_gram(raw)
@@ -146,7 +156,7 @@ def _gram_cells(col_grams: list, groups: list[dict], hues: list[str]) -> list[di
                 cells.append(
                     {
                         "text": text,
-                        "css": f"cell-num mh-{hues[position]}-cell{separator}",
+                        "css": f"cell-num mh-{hue}-cell{separator}",
                     }
                 )
     cells.append(_note_cell())
@@ -518,12 +528,15 @@ def _client_rows(
     čísla, ktoré sú už vypísané vyššie.
     """
     key = str(row.get("row_key") or row.get("client_id") or row.get("client") or "")
+    snack_with_lunch = bool(row.get("snack_with_lunch"))
 
     # Počty sa sčítavajú z riadkov, ktoré filter naozaj nechal — inak by na
     # obedovom hárku svietil súčet vrátane raňajok a olovrantu.
     visible: list[tuple[dict, list[dict]]] = []
     for sub_row in row.get("sub_rows") or []:
-        gram_cells = _gram_cells(sub_row.get("col_grams") or [], groups, hues)
+        gram_cells = _gram_cells(
+            sub_row.get("col_grams") or [], groups, hues, snack_with_lunch
+        )
         # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať.
         if any("cell-num" in cell["css"] for cell in gram_cells):
             visible.append((sub_row, gram_cells))
@@ -641,7 +654,9 @@ def _client_rows(
                 "kind": "summary-std",
                 "css": "summ-std",
                 "cells": [_label_cell("Súčet bez diét", standard_count)]
-                + _gram_cells(row.get("standard_col_grams") or [], groups, hues),
+                + _gram_cells(
+                    row.get("standard_col_grams") or [], groups, hues, snack_with_lunch
+                ),
             }
         )
     diet_summary_rows = (
@@ -670,7 +685,9 @@ def _client_rows(
                         },
                     )
                 ]
-                + _gram_cells(diet.get("col_grams") or [], groups, hues),
+                + _gram_cells(
+                    diet.get("col_grams") or [], groups, hues, snack_with_lunch
+                ),
             }
         )
     return out

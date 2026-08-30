@@ -322,3 +322,65 @@ class TestGramageDashboardExports:
         # Vlastný sub-riadok už nemá — bol by to ten istý text dvakrát.
         assert '<td class="cell-note client-note">bez cibule</td>' in html
         assert "Poznámka k objednávke:" not in html
+
+    def test_snack_with_lunch_prevadzka_highlights_only_its_snack_cells(self):
+        """`Prevadzka.olovrant_s_obedom` sa premietne do gramážnej tabuľky ako
+        žlté zvýraznenie olovrantu (`mh-snacklunch-cell`) — len pre túto
+        prevádzku a len v jej stĺpci Olovrant."""
+        user = User.objects.create_user(
+            username="snack-with-lunch@example.com",
+            email="snack-with-lunch@example.com",
+        )
+        portion_type = PortionType.objects.create(
+            name="Škôlka", coefficient=Decimal("1.0000"), sort_order=1
+        )
+        plan = DailyMealPlan.objects.create(
+            date=datetime.date(2024, 1, 18),
+            created_by=user,
+        )
+        lunch = MealTemplate.objects.create(
+            category="main_course",
+            name="Obed",
+            weight_label="200g",
+            base_weight_grams=Decimal("200.00"),
+            menu_variant="A",
+        )
+        snack = MealTemplate.objects.create(
+            category="afternoon_snack",
+            name="Olovrant",
+            weight_label="100g",
+            base_weight_grams=Decimal("100.00"),
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan, template=lunch, category="main_course", menu_variant="A"
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan, template=snack, category="afternoon_snack"
+        )
+        plan.enrolled_counts.create(portion_type=portion_type, count=1)
+        celok = Celok.objects.create(nazov="Celok s olovrantom")
+        flagged = Prevadzka.objects.create(
+            celok=celok, nazov="Olovrant s obedom", olovrant_s_obedom=True
+        )
+        normal = Prevadzka.objects.create(celok=celok, nazov="Bežný olovrant")
+        for prevadzka in (flagged, normal):
+            DailyOrder.objects.create(
+                user=user,
+                date=plan.date,
+                prevadzka=prevadzka,
+                data={
+                    "lunch": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}},
+                    "olovrant": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}},
+                },
+            )
+
+        data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+        rows_by_prevadzka = {row["prevadzka_id"]: row for row in data["rows"]}
+        assert rows_by_prevadzka[flagged.id]["snack_with_lunch"] is True
+        assert rows_by_prevadzka[normal.id]["snack_with_lunch"] is False
+
+        html = render_table(build_table_spec(data))
+        assert "mh-snacklunch-cell" in html
+        # "mh-snack-cell" (bez "lunch") je jasne odlíšiteľný podreťazec od
+        # "mh-snacklunch-cell" — obidve farby teda naozaj koexistujú v tabuľke.
+        assert "mh-snack-cell" in html

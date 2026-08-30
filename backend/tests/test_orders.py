@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -509,3 +509,277 @@ class TestOrderDeadlines:
         order = DailyOrder.objects.get(user=user, date=today)
         assert order.data["breakfast"]["menuCounts"]["A"] == 3
         assert order.data["lunch"]["menuCounts"]["A"] == 1
+
+    def test_menu_bc_order_after_own_deadline_is_rejected(
+        self, authenticated_client, user
+    ):
+        """Menu B/C have a stricter deadline (e.g. 7:30, 2 days before) that
+        applies independently of the meal's own deadline."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)  # Friday
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"B": 1}, "diets": {}}},
+        }
+
+        # Deadline is Wed 2026-03-11 07:30; just past it.
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert DailyOrder.objects.filter(user=user, date=target_date).count() == 0
+
+    def test_menu_bc_order_before_own_deadline_is_allowed(
+        self, authenticated_client, user
+    ):
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"C": 1}, "diets": {}}},
+        }
+
+        # Still before Wed 2026-03-11 07:30.
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 29),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert (
+            DailyOrder.objects.get(user=user, date=target_date).data["lunch"][
+                "menuCounts"
+            ]["C"]
+            == 1
+        )
+
+    def test_menu_a_order_still_allowed_after_bc_deadline(
+        self, authenticated_client, user
+    ):
+        """The B/C-specific deadline must not block menu A, which only obeys
+        the regular per-meal deadline."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_menu_bc_change_on_existing_order_after_deadline_is_rejected(
+        self, authenticated_client, user
+    ):
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        DailyOrder.objects.create(
+            user=user,
+            date=target_date,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 1, "B": 1}, "diets": {}}},
+        )
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            # Menu A count unchanged; only the restricted menu B changes.
+            "data": {"lunch": {"menuCounts": {"A": 1, "B": 2}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        order = DailyOrder.objects.get(user=user, date=target_date)
+        assert order.data["lunch"]["menuCounts"]["B"] == 1
+
+    def test_admin_bypasses_menu_bc_deadline(self, admin_authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "prevadzka": prevadzka.id,
+            "data": {"lunch": {"menuCounts": {"B": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = admin_authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+class TestAutoOrderPauseOnReset:
+    """Vynulovanie/zmazanie objednávky trvalo zastaví preklápanie dopredu.
+
+    `apply_auto_orders` kopíruje poslednú NEPRÁZDNU objednávku ako šablónu —
+    tieto testy overujú, že `Prevadzka.auto_order_paused` sa nastavuje/ruší
+    presne tak, ako to zo serializera volá `_sync_auto_order_pause`.
+    """
+
+    def test_submitting_zero_order_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        assert prevadzka.auto_order_paused is False
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+
+    def test_draft_delete_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=FUTURE_ORDER_DATE,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 2}, "diets": {}}},
+        )
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "draft",
+            "data": {},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+        assert not DailyOrder.objects.filter(
+            prevadzka=prevadzka, date=FUTURE_ORDER_DATE
+        ).exists()
+
+    def test_real_order_unpauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        prevadzka.auto_order_paused = True
+        prevadzka.save(update_fields=["auto_order_paused"])
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 3}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is False
+
+    def test_patch_to_zero_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        order = DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=FUTURE_ORDER_DATE,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 2}, "diets": {}}},
+        )
+
+        url = reverse("dailyorder-detail", kwargs={"pk": order.pk})
+        response = authenticated_client.patch(
+            url,
+            {"data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}}},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+
+    def test_end_to_end_zero_order_stops_auto_copy_for_all_future_days(
+        self, authenticated_client, user
+    ):
+        """Regression: zeroing today's order must not just skip tomorrow's
+        auto-copy but permanently break the chain, so an older non-empty
+        order is never used as a template further down the line either."""
+        from api.services import apply_auto_orders
+
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        older_date = FUTURE_ORDER_DATE - timedelta(days=7)
+        reset_date = FUTURE_ORDER_DATE - timedelta(days=1)
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=older_date,
+            data={"lunch": {"menuCounts": {"A": 5}, "diets": {}}},
+        )
+
+        payload = {
+            "date": str(reset_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        result = apply_auto_orders(target_date=FUTURE_ORDER_DATE)
+
+        assert user.email not in result["created"]
+        assert not DailyOrder.objects.filter(
+            prevadzka=prevadzka, date=FUTURE_ORDER_DATE
+        ).exists()

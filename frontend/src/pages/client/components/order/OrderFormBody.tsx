@@ -37,6 +37,7 @@ interface OrderFormBodyProps {
   onMenuCountChange: (meal: MealKey, category: string, menu: string, value: number) => void;
   onOpenDiets: (meal: MealKey, category: string) => void;
   getVisibleMenusForMeal: (meal: MealKey) => string[];
+  disabledMenus?: string[];
   getAvailableDiets: (category: string) => string[];
   getOccupiedMenus?: (meal: MealKey) => Set<string>;
   mealActions?: (meal: MealKey) => ReactNode;
@@ -79,6 +80,7 @@ const OrderFormBody = ({
   onMenuCountChange,
   onOpenDiets,
   getVisibleMenusForMeal,
+  disabledMenus = [],
   getAvailableDiets,
   getOccupiedMenus = () => new Set<string>(),
   mealActions,
@@ -144,6 +146,7 @@ const OrderFormBody = ({
                   dietCount={dietCount}
                   onOpenDiets={() => onOpenFullDayDiets(category)}
                   disabled={false}
+                  disabledMenus={disabledMenus}
                   visibleMenus={fullDayVisibleMenus}
                 />
               );
@@ -183,6 +186,7 @@ const OrderFormBody = ({
                       dietCount={dietCount}
                       onOpenDiets={() => editable && onOpenDiets(key, category)}
                       disabled={!editable}
+                      disabledMenus={disabledMenus}
                       visibleMenus={getVisibleMenusForMeal(key)}
                       occupiedMenus={getOccupiedMenus(key)}
                       tourId={tourIds && mealIndex === 0 && catIndex === 0 ? "tour-category-row" : undefined}

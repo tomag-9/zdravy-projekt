@@ -90,6 +90,26 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         if ClosedDay.objects.filter(date=target_date).exists():
             raise ClosedDayOrderModificationError()
 
+    @staticmethod
+    def _sync_auto_order_pause(
+        prevadzka: Prevadzka | None, data: Dict[str, Any]
+    ) -> None:
+        """Vynulovanie/zmazanie objednávky trvalo zastaví preklápanie dopredu.
+
+        `apply_auto_orders` kopíruje poslednú NEPRÁZDNU objednávku ako šablónu
+        na ďalší deň — bez tohto by teda zámerne vynulovaný deň iba preskočila
+        a preklopila by staršiu šablónu spred neho. Nastavením
+        `auto_order_paused` sa preklápanie pre danú prevádzku úplne zastaví,
+        kým klient znova nepošle reálnu (neprázdnu) objednávku, ktorá príznak
+        vráti na False.
+        """
+        if prevadzka is None:
+            return
+        is_empty = OrderData(data).is_empty()
+        if prevadzka.auto_order_paused != is_empty:
+            prevadzka.auto_order_paused = is_empty
+            prevadzka.save(update_fields=["auto_order_paused"])
+
     def validate_data(self, data: Any) -> Dict[str, Any]:
         """Enforce meal keys, count bounds, and size limits for supported shapes."""
         if not isinstance(data, dict):
@@ -314,6 +334,48 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 changed.append(meal_key)
         return changed
 
+    # Menu B a C majú vlastný, prísnejší termín (napr. 7:30 dva dni vopred) —
+    # nezávislý od bežného per-jedlo deadlinu, platí rovnako pre všetky jedlá.
+    _RESTRICTED_MENUS = frozenset({"B", "C"})
+
+    @classmethod
+    def _meal_menu_signature(
+        cls, meal_data: Any, allowed_menus: frozenset
+    ) -> frozenset:
+        """Content fingerprint of a meal, restricted to `menuCounts` of `allowed_menus`."""
+        od = OrderData({"_": meal_data})
+        entries: list[tuple[Any, str, int]] = []
+        for cat in od.iter_categories("_"):
+            prefix = (cat.prevadzka, cat.name)
+            for menu, count in cat.menu_counts.items():
+                if menu not in allowed_menus:
+                    continue
+                c = safe_count(count)
+                if c:
+                    entries.append((prefix, menu, c))
+        return frozenset(entries)
+
+    @classmethod
+    def _changed_restricted_menus(
+        cls,
+        new_data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None = None,
+        input_status: str = "submitted",
+    ) -> bool:
+        existing_data = existing_data or {}
+        for meal_key in cls.MEAL_FIELD_CONFIG:
+            previous = existing_data.get(meal_key, {}) or {}
+            current = new_data.get(meal_key, {}) or {}
+            prev_sig = cls._meal_menu_signature(previous, cls._RESTRICTED_MENUS)
+            curr_sig = cls._meal_menu_signature(current, cls._RESTRICTED_MENUS)
+            if input_status == "draft":
+                if prev_sig or curr_sig:
+                    return True
+                continue
+            if prev_sig != curr_sig and (prev_sig or curr_sig):
+                return True
+        return False
+
     @classmethod
     def _validate_deadlines(
         cls,
@@ -323,7 +385,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         existing_data: Dict[str, Any] | None = None,
     ) -> None:
         changed_meals = cls._changed_meals(new_data, existing_data, input_status)
-        if not changed_meals:
+        changed_restricted_menus = cls._changed_restricted_menus(
+            new_data, existing_data, input_status
+        )
+        if not changed_meals and not changed_restricted_menus:
             return
 
         settings = get_global_settings()
@@ -349,6 +414,24 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     current_time=current_dt.strftime("%d.%m.%Y %H:%M"),
                     detail=(
                         f"Objednávku pre {label} už nie je možné meniť. "
+                        f"Termín: {deadline_dt.strftime('%d.%m.%Y %H:%M')}"
+                    ),
+                )
+
+        if changed_restricted_menus:
+            deadline_date = target_date - datetime.timedelta(
+                days=settings.deadline_menu_bc_days_before
+            )
+            deadline_dt = timezone.make_aware(
+                datetime.datetime.combine(deadline_date, settings.deadline_menu_bc),
+                current_tz,
+            )
+            if current_dt >= deadline_dt:
+                raise OrderDeadlinePassedError(
+                    deadline_time=deadline_dt.strftime("%d.%m.%Y %H:%M"),
+                    current_time=current_dt.strftime("%d.%m.%Y %H:%M"),
+                    detail=(
+                        "Menu B a C už nie je možné objednať ani zmeniť. "
                         f"Termín: {deadline_dt.strftime('%d.%m.%Y %H:%M')}"
                     ),
                 )
@@ -433,6 +516,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             DailyOrder.objects.filter(
                 prevadzka=prevadzka, date=validated_data["date"]
             ).delete()
+            self._sync_auto_order_pause(prevadzka, {})
             # Return an unsaved instance for the response
             return DailyOrder(
                 user=user,
@@ -503,6 +587,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     order.data = new_data
                     order.save(update_fields=["data", "updated_at"])
 
+        self._sync_auto_order_pause(prevadzka, new_data)
         return order
 
     @staticmethod
@@ -540,7 +625,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         if input_status == "draft":
+            prevadzka = instance.prevadzka
             instance.delete()
+            self._sync_auto_order_pause(prevadzka, {})
             return DailyOrder(
                 user=instance.user, date=instance.date, status="draft", data={}
             )
@@ -549,6 +636,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         # Issue #507: see the matching comment in create() above.
         instance.is_auto = False
         instance.save(update_fields=["data", "is_auto", "updated_at"])
+        self._sync_auto_order_pause(instance.prevadzka, new_data)
         return instance
 
 
@@ -577,6 +665,8 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "deadline_lunch_is_day_before",
             "deadline_olovrant",
             "deadline_olovrant_is_day_before",
+            "deadline_menu_bc",
+            "deadline_menu_bc_days_before",
             "edupage_auto_scrape_enabled",
             "daily_report_enabled",
             "report_email_recipients",

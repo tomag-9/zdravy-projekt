@@ -714,3 +714,72 @@ def test_filtering_to_a_single_vydaj_drops_the_combined_summary():
     spec = build_table_spec(_three_vydaje_payload(), vydaje=["C"])
 
     assert _portion_summary_titles(spec) == ["Sumár 1"]
+
+
+# ── Olovrant s obedom (Prevadzka.olovrant_s_obedom) ─────────────────────────
+def _snack_cell_css(spec):
+    """CSS triedy gramážovej bunky olovrantu sub-riadku "Škôlka - Olovrant"."""
+    for row in spec["rows"]:
+        if row.get("kind") != "sub-row":
+            continue
+        if row["cells"][0]["text"] != "Škôlka - Olovrant":
+            continue
+        # Posledná číselná bunka pred stĺpcom Poznámka je stĺpec afternoon_snack.
+        num_cells = [cell for cell in row["cells"] if "cell-num" in cell["css"]]
+        return num_cells[-1]["css"]
+    raise AssertionError("sub-row olovrantu sa v spec-e nenašiel")
+
+
+def test_snack_column_uses_the_normal_hue_by_default():
+    spec = build_table_spec(_with_breakfast_and_snack())
+
+    assert "mh-snack-cell" in _snack_cell_css(spec)
+    assert "mh-snacklunch-cell" not in _snack_cell_css(spec)
+
+
+def test_snack_with_lunch_flag_recolours_only_the_snack_column():
+    payload = _with_breakfast_and_snack()
+    payload["rows"][0]["snack_with_lunch"] = True
+    spec = build_table_spec(payload)
+
+    assert "mh-snacklunch-cell" in _snack_cell_css(spec)
+    # Ostatné jedlá (Polievka/Menu A/B) musia ostať v pôvodných farbách —
+    # príznak sa týka výlučne stĺpca "Olovrant".
+    for row in spec["rows"]:
+        if row.get("kind") != "sub-row":
+            continue
+        if row["cells"][0]["text"] == "Škôlka - Olovrant":
+            continue
+        for cell in row["cells"]:
+            assert "mh-snacklunch-cell" not in cell["css"]
+
+
+def test_snack_with_lunch_flag_is_per_row_not_global():
+    """Dve prevádzky v tabuľke, len jedna má olovrant_s_obedom — druhá musí
+    ostať vo svojej normálnej farbe."""
+    payload = _with_breakfast_and_snack()
+    second = {
+        **payload["rows"][0],
+        "client": "MŠ Susedná",
+        "client_id": 2,
+        "snack_with_lunch": False,
+    }
+    payload["rows"][0]["snack_with_lunch"] = True
+    payload["rows"].append(second)
+
+    spec = build_table_spec(payload)
+    snack_sub_rows = [
+        row
+        for row in spec["rows"]
+        if row.get("kind") == "sub-row"
+        and row["cells"][0]["text"] == "Škôlka - Olovrant"
+    ]
+    assert len(snack_sub_rows) == 2
+    css_by_row = [
+        [c["css"] for c in row["cells"] if "cell-num" in c["css"]][-1]
+        for row in snack_sub_rows
+    ]
+    assert "mh-snacklunch-cell" in css_by_row[0]
+    assert (
+        "mh-snack-cell" in css_by_row[1] and "mh-snacklunch-cell" not in css_by_row[1]
+    )

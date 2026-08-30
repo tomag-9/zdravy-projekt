@@ -221,6 +221,14 @@ class GlobalSettings(models.Model):
             "When enabled, olovrant deadline applies to the day before the meal date"
         ),
     )
+    deadline_menu_bc = models.TimeField(
+        default=datetime.time(7, 30),
+        help_text="Deadline for ordering/changing menu B and C, N days before the meal date",
+    )
+    deadline_menu_bc_days_before = models.PositiveSmallIntegerField(
+        default=2,
+        help_text="How many days before the meal date the menu B/C deadline falls on",
+    )
     edupage_auto_scrape_enabled = models.BooleanField(
         default=True,
         help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
@@ -521,6 +529,23 @@ class Prevadzka(models.Model):
         blank=True,
         default="",
         help_text="Interná poznámka k objednávkam prevádzky v admin prehľadoch.",
+    )
+    auto_order_paused = models.BooleanField(
+        default=False,
+        help_text=(
+            "Nastaví sa automaticky, keď klient vynuluje alebo zmaže objednávku "
+            "(prázdne 'submitted' dáta, alebo 'draft'). Kým je True, "
+            "apply_auto_orders pre túto prevádzku nič nepreklápa — obnoví sa "
+            "opäť False pri najbližšej reálnej (neprázdnej) objednávke."
+        ),
+    )
+    olovrant_s_obedom = models.BooleanField(
+        default=False,
+        help_text=(
+            "Olovrant tejto prevádzky ide s obedovým, nie popoludňajším "
+            "rozvozom — v gramážnej tabuľke (aj v PDF) sa preto zvýrazní žlto, "
+            "aby si ho kuchyňa naložila spolu s obedom."
+        ),
     )
 
     class Meta:

@@ -153,6 +153,13 @@ h1 small {
 /* Diétny riadok má vlastné podfarbenie podľa (kombinovanej) diéty (#536) —
  * pruh by ho na papieri prekryl neutrálnou sivou, tak sa mu vyhýba. */
 .zpa-gram .sub-row.zebra:not(.diet) td { background: #EDEDEA; }
+/* Olovrant „ide s obedom" (Prevadzka.olovrant_s_obedom) je zámerný príznak
+ * pre kuchyňu, nie orientačné tónovanie ako ostatné mh-*-cell vyššie — preto
+ * ho na rozdiel od nich pruh neprekrýva ani v tlači. */
+.zpa-gram .mh-snacklunch-cell,
+.zpa-gram .sub-row.zebra:not(.diet) td.mh-snacklunch-cell {
+    background: #FDE68A;
+}
 
 /* Každý výdajný bod (blok) začína na vlastnom liste — kuchyňa vydáva z dvoch
  * miest naraz a každé chce svoju tabuľku, nie polovicu spoločnej strany. */

@@ -447,6 +447,7 @@ const OrderPage = () => {
   const allVisibleDeadlinesClosed = visibleMealsList.every((m) =>
     !OrderService.checkDeadline(selectedDate, m.key, globalDeadlines),
   );
+  const menuBcEditable = OrderService.checkMenuBcDeadline(selectedDate, globalDeadlines);
 
   const orderFormBodyContent = (
     <OrderFormBody
@@ -475,6 +476,7 @@ const OrderPage = () => {
       onMenuCountChange={(meal, category, menuType, value) => updateMenuCount(meal, category, menuType, value)}
       onOpenDiets={(meal, category) => setActiveDietModal({ meal, category })}
       getVisibleMenusForMeal={getVisibleMenusForMeal}
+      disabledMenus={menuBcEditable ? [] : ["B", "C"]}
       getAvailableDiets={getAvailableDiets}
       getOccupiedMenus={getOccupiedMenus}
       mealActions={(meal) => handleCopyTrigger(meal)}
