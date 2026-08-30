@@ -158,6 +158,8 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
 
     # Preload: best (latest non-empty) template per prevádzka (1 query, no N+1)
     templates_by_prevadzka: Dict[int, DailyOrder] = {}
+    decided_prevadzka_ids: set[int] = set()
+    paused_prevadzka_ids: set[int] = set()
     for order in (
         DailyOrder.objects.filter(
             user_id__in=client_ids,
@@ -168,10 +170,19 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         .prefetch_related("prevadzka__visible_portion_types")
         .order_by("prevadzka_id", "-date")
     ):
-        if order.prevadzka_id in templates_by_prevadzka:
+        if order.prevadzka_id in decided_prevadzka_ids:
+            continue
+        if order.prevadzka.auto_order_paused:
+            # Klient si objednávku vynuloval/zmazal — preklápanie je pre túto
+            # prevádzku zastavené, kým znova nepošle reálnu objednávku (viď
+            # `DailyOrderSerializer._sync_auto_order_pause`). Staršia neprázdna
+            # objednávka spred vynulovania sa už ako šablóna nepoužije.
+            decided_prevadzka_ids.add(order.prevadzka_id)
+            paused_prevadzka_ids.add(order.prevadzka_id)
             continue
         if not _is_order_empty(order.data or {}):
             templates_by_prevadzka[order.prevadzka_id] = order
+            decided_prevadzka_ids.add(order.prevadzka_id)
 
     edupage_prevadzka_ids = _edupage_prevadzka_ids()
     # Voľno prevádzky (#490): auto-objednávka ho musí rešpektovať rovnako ako
@@ -264,9 +275,11 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
         )
 
     logger.info(
-        "apply_auto_orders: skipped %d EduPage-driven a %d zatvorených prevádzok on %s",
+        "apply_auto_orders: skipped %d EduPage-driven, %d zatvorených a %d "
+        "pozastavených (auto_order_paused) prevádzok on %s",
         skipped_edupage,
         skipped_closed,
+        len(paused_prevadzka_ids),
         target_date,
     )
     logger.info(

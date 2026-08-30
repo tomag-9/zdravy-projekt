@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -656,3 +656,130 @@ class TestOrderDeadlines:
             )
 
         assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+class TestAutoOrderPauseOnReset:
+    """Vynulovanie/zmazanie objednávky trvalo zastaví preklápanie dopredu.
+
+    `apply_auto_orders` kopíruje poslednú NEPRÁZDNU objednávku ako šablónu —
+    tieto testy overujú, že `Prevadzka.auto_order_paused` sa nastavuje/ruší
+    presne tak, ako to zo serializera volá `_sync_auto_order_pause`.
+    """
+
+    def test_submitting_zero_order_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        assert prevadzka.auto_order_paused is False
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+
+    def test_draft_delete_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=FUTURE_ORDER_DATE,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 2}, "diets": {}}},
+        )
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "draft",
+            "data": {},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+        assert not DailyOrder.objects.filter(
+            prevadzka=prevadzka, date=FUTURE_ORDER_DATE
+        ).exists()
+
+    def test_real_order_unpauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        prevadzka.auto_order_paused = True
+        prevadzka.save(update_fields=["auto_order_paused"])
+
+        payload = {
+            "date": str(FUTURE_ORDER_DATE),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 3}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is False
+
+    def test_patch_to_zero_pauses_prevadzka(self, authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        order = DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=FUTURE_ORDER_DATE,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 2}, "diets": {}}},
+        )
+
+        url = reverse("dailyorder-detail", kwargs={"pk": order.pk})
+        response = authenticated_client.patch(
+            url,
+            {"data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}}},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        prevadzka.refresh_from_db()
+        assert prevadzka.auto_order_paused is True
+
+    def test_end_to_end_zero_order_stops_auto_copy_for_all_future_days(
+        self, authenticated_client, user
+    ):
+        """Regression: zeroing today's order must not just skip tomorrow's
+        auto-copy but permanently break the chain, so an older non-empty
+        order is never used as a template further down the line either."""
+        from api.services import apply_auto_orders
+
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        older_date = FUTURE_ORDER_DATE - timedelta(days=7)
+        reset_date = FUTURE_ORDER_DATE - timedelta(days=1)
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=older_date,
+            data={"lunch": {"menuCounts": {"A": 5}, "diets": {}}},
+        )
+
+        payload = {
+            "date": str(reset_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 0}, "diets": {}}},
+        }
+        response = authenticated_client.post(
+            reverse("dailyorder-list"), payload, format="json"
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+        result = apply_auto_orders(target_date=FUTURE_ORDER_DATE)
+
+        assert user.email not in result["created"]
+        assert not DailyOrder.objects.filter(
+            prevadzka=prevadzka, date=FUTURE_ORDER_DATE
+        ).exists()

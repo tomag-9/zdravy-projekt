@@ -530,6 +530,15 @@ class Prevadzka(models.Model):
         default="",
         help_text="Interná poznámka k objednávkam prevádzky v admin prehľadoch.",
     )
+    auto_order_paused = models.BooleanField(
+        default=False,
+        help_text=(
+            "Nastaví sa automaticky, keď klient vynuluje alebo zmaže objednávku "
+            "(prázdne 'submitted' dáta, alebo 'draft'). Kým je True, "
+            "apply_auto_orders pre túto prevádzku nič nepreklápa — obnoví sa "
+            "opäť False pri najbližšej reálnej (neprázdnej) objednávke."
+        ),
+    )
 
     class Meta:
         ordering = ["celok_id", "sort_order", "nazov"]

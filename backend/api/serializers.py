@@ -90,6 +90,26 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         if ClosedDay.objects.filter(date=target_date).exists():
             raise ClosedDayOrderModificationError()
 
+    @staticmethod
+    def _sync_auto_order_pause(
+        prevadzka: Prevadzka | None, data: Dict[str, Any]
+    ) -> None:
+        """Vynulovanie/zmazanie objednávky trvalo zastaví preklápanie dopredu.
+
+        `apply_auto_orders` kopíruje poslednú NEPRÁZDNU objednávku ako šablónu
+        na ďalší deň — bez tohto by teda zámerne vynulovaný deň iba preskočila
+        a preklopila by staršiu šablónu spred neho. Nastavením
+        `auto_order_paused` sa preklápanie pre danú prevádzku úplne zastaví,
+        kým klient znova nepošle reálnu (neprázdnu) objednávku, ktorá príznak
+        vráti na False.
+        """
+        if prevadzka is None:
+            return
+        is_empty = OrderData(data).is_empty()
+        if prevadzka.auto_order_paused != is_empty:
+            prevadzka.auto_order_paused = is_empty
+            prevadzka.save(update_fields=["auto_order_paused"])
+
     def validate_data(self, data: Any) -> Dict[str, Any]:
         """Enforce meal keys, count bounds, and size limits for supported shapes."""
         if not isinstance(data, dict):
@@ -496,6 +516,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             DailyOrder.objects.filter(
                 prevadzka=prevadzka, date=validated_data["date"]
             ).delete()
+            self._sync_auto_order_pause(prevadzka, {})
             # Return an unsaved instance for the response
             return DailyOrder(
                 user=user,
@@ -566,6 +587,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     order.data = new_data
                     order.save(update_fields=["data", "updated_at"])
 
+        self._sync_auto_order_pause(prevadzka, new_data)
         return order
 
     @staticmethod
@@ -603,7 +625,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         if input_status == "draft":
+            prevadzka = instance.prevadzka
             instance.delete()
+            self._sync_auto_order_pause(prevadzka, {})
             return DailyOrder(
                 user=instance.user, date=instance.date, status="draft", data={}
             )
@@ -612,6 +636,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         # Issue #507: see the matching comment in create() above.
         instance.is_auto = False
         instance.save(update_fields=["data", "is_auto", "updated_at"])
+        self._sync_auto_order_pause(instance.prevadzka, new_data)
         return instance
 
 
