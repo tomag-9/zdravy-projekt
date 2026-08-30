@@ -509,3 +509,150 @@ class TestOrderDeadlines:
         order = DailyOrder.objects.get(user=user, date=today)
         assert order.data["breakfast"]["menuCounts"]["A"] == 3
         assert order.data["lunch"]["menuCounts"]["A"] == 1
+
+    def test_menu_bc_order_after_own_deadline_is_rejected(
+        self, authenticated_client, user
+    ):
+        """Menu B/C have a stricter deadline (e.g. 7:30, 2 days before) that
+        applies independently of the meal's own deadline."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)  # Friday
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"B": 1}, "diets": {}}},
+        }
+
+        # Deadline is Wed 2026-03-11 07:30; just past it.
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert DailyOrder.objects.filter(user=user, date=target_date).count() == 0
+
+    def test_menu_bc_order_before_own_deadline_is_allowed(
+        self, authenticated_client, user
+    ):
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"C": 1}, "diets": {}}},
+        }
+
+        # Still before Wed 2026-03-11 07:30.
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 29),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert (
+            DailyOrder.objects.get(user=user, date=target_date).data["lunch"][
+                "menuCounts"
+            ]["C"]
+            == 1
+        )
+
+    def test_menu_a_order_still_allowed_after_bc_deadline(
+        self, authenticated_client, user
+    ):
+        """The B/C-specific deadline must not block menu A, which only obeys
+        the regular per-meal deadline."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_menu_bc_change_on_existing_order_after_deadline_is_rejected(
+        self, authenticated_client, user
+    ):
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        DailyOrder.objects.create(
+            user=user,
+            date=target_date,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 1, "B": 1}, "diets": {}}},
+        )
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            # Menu A count unchanged; only the restricted menu B changes.
+            "data": {"lunch": {"menuCounts": {"A": 1, "B": 2}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        order = DailyOrder.objects.get(user=user, date=target_date)
+        assert order.data["lunch"]["menuCounts"]["B"] == 1
+
+    def test_admin_bypasses_menu_bc_deadline(self, admin_authenticated_client, user):
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "prevadzka": prevadzka.id,
+            "data": {"lunch": {"menuCounts": {"B": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = admin_authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED

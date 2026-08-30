@@ -235,6 +235,8 @@ class GlobalSettingsAdmin(admin.ModelAdmin):
         "deadline_breakfast",
         "deadline_lunch",
         "deadline_olovrant",
+        "deadline_menu_bc",
+        "deadline_menu_bc_days_before",
         "edupage_auto_scrape_enabled",
         "daily_report_enabled",
     )

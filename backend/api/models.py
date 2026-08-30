@@ -221,6 +221,14 @@ class GlobalSettings(models.Model):
             "When enabled, olovrant deadline applies to the day before the meal date"
         ),
     )
+    deadline_menu_bc = models.TimeField(
+        default=datetime.time(7, 30),
+        help_text="Deadline for ordering/changing menu B and C, N days before the meal date",
+    )
+    deadline_menu_bc_days_before = models.PositiveSmallIntegerField(
+        default=2,
+        help_text="How many days before the meal date the menu B/C deadline falls on",
+    )
     edupage_auto_scrape_enabled = models.BooleanField(
         default=True,
         help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
