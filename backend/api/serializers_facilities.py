@@ -90,6 +90,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "visible_diets",
             "visible_portion_types",
             "pack_separately_enabled",
+            "olovrant_s_obedom",
             "admin_order_note",
             "orders_count",
             "client_user_id",

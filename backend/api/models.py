@@ -539,6 +539,14 @@ class Prevadzka(models.Model):
             "opäť False pri najbližšej reálnej (neprázdnej) objednávke."
         ),
     )
+    olovrant_s_obedom = models.BooleanField(
+        default=False,
+        help_text=(
+            "Olovrant tejto prevádzky ide s obedovým, nie popoludňajším "
+            "rozvozom — v gramážnej tabuľke (aj v PDF) sa preto zvýrazní žlto, "
+            "aby si ho kuchyňa naložila spolu s obedom."
+        ),
+    )
 
     class Meta:
         ordering = ["celok_id", "sort_order", "nazov"]

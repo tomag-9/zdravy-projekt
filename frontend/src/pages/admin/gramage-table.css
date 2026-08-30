@@ -67,6 +67,11 @@
 .mh-menuV-1 { background: #5F7639; } .mh-menuV-2 { background: #74893F; }   .mh-menuV-cell { background: rgba(124,152,83,0.12); }
 .mh-snack-1 { background: #7E3A55; } .mh-snack-2 { background: #964A69; }   .mh-snack-cell { background: rgba(156,74,107,0.09); }
 
+/* Olovrant konkrétnej prevádzky ide s obedovým, nie popoludňajším rozvozom
+ * (Prevadzka.olovrant_s_obedom) — kuchyňa si ho tak na papieri zvýrazňovala
+ * žlto, tabuľka to preto robí rovnako, namiesto bežného tónovania jedla. */
+.mh-snacklunch-cell { background: #FDE68A; }
+
 .zpa-gram tbody .band td {
     background: var(--green-800); color: var(--peach-400);
     font-family: var(--font-display); font-weight: 700; font-size: 11px;

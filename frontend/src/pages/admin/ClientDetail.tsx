@@ -64,6 +64,7 @@ interface FacilityDetail {
   admin_order_note: string;
   client_user_id: number | null;
   pack_separately_enabled: boolean;
+  olovrant_s_obedom: boolean;
   orders_count: number | null;
 }
 
@@ -120,6 +121,7 @@ const ClientDetail: React.FC = () => {
   const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
   const [adminOrderNote, setAdminOrderNote] = useState("");
   const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
+  const [olovrantSObedom, setOlovrantSObedom] = useState(false);
   const [prevadzkaForm, setPrevadzkaForm] = useState<PrevadzkaForm>({
     nazov: "",
     adresa: "",
@@ -181,6 +183,7 @@ const ClientDetail: React.FC = () => {
     );
     setAdminOrderNote(data.admin_order_note || "");
     setPackSeparatelyEnabled(!!data.pack_separately_enabled);
+    setOlovrantSObedom(!!data.olovrant_s_obedom);
     setPrevadzkaForm({
       nazov: data.nazov,
       adresa: data.adresa || "",
@@ -423,6 +426,7 @@ const ClientDetail: React.FC = () => {
           : Array.from(visiblePortionTypes),
         admin_order_note: adminOrderNote,
         pack_separately_enabled: packSeparatelyEnabled,
+        olovrant_s_obedom: olovrantSObedom,
       };
 
       const res = await apiFetch(`${API}/admin/facility-prevadzky/${facility.id}/`, {
@@ -867,6 +871,20 @@ const ClientDetail: React.FC = () => {
                     on={packSeparatelyEnabled}
                     onChange={setPackSeparatelyEnabled}
                     ariaLabel="Povoliť zabaliť zvlášť"
+                  />
+                </div>
+              </Card>
+
+              <Card pad>
+                <CardHead title="Olovrant ide s obedom" desc="V gramážnej tabuľke (aj v PDF) sa olovrant tejto prevádzky zvýrazní žlto — ide s obedovým rozvozom, nie s popoludňajším spolu s ostatnými olovrantami." />
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
+                  <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
+                    Zvýrazniť olovrant žlto ako signál pre kuchyňu, že ide s obedom.
+                  </div>
+                  <Toggle
+                    on={olovrantSObedom}
+                    onChange={setOlovrantSObedom}
+                    ariaLabel="Olovrant ide s obedom"
                   />
                 </div>
               </Card>
