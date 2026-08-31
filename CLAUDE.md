@@ -29,7 +29,7 @@ Bežia idempotentne v dvoch cestách v **rovnakom poradí**: prod `seed_operatio
 dev inline reťaz v `compose/dev.yml`
 (migrate → real_initial_seed_prevadzky → seed_prevadzky_edupage → seed_zdrave_brusko →
 seed_real_delivery_layout → seed_merge_celky → seed_new_edupage_2026_08 →
-seed_british_school_2026_08 → sync_periodic_tasks).
+seed_british_school_2026_08 → seed_cms_pezinok_2026_08 → sync_periodic_tasks).
 
 ## Pravidlá
 - **Commit / PR** len na výslovné vyžiadanie. Pred commitom zelený suite.
