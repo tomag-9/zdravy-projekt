@@ -542,7 +542,7 @@ def _scrape_target_dates(
 
     dates = set()
     for meal_type in meal_types:
-        is_day_before = getattr(gs, f"deadline_{meal_type}_is_day_before", False)
+        _, is_day_before = gs.edupage_scrape_schedule_for(meal_type)
         target = _next_workday(today) if is_day_before else today
         dates.add(target.isoformat())
     return sorted(dates)
@@ -685,9 +685,7 @@ def scrape_edupage_orders_task(
             else:
                 date_to_meals = {}
                 for meal_type in meal_types:
-                    is_day_before = getattr(
-                        gs, f"deadline_{meal_type}_is_day_before", False
-                    )
+                    _, is_day_before = gs.edupage_scrape_schedule_for(meal_type)
                     target_date = _next_workday(today) if is_day_before else today
                     target_meals = date_to_meals.setdefault(target_date, [])
                     assert target_meals is not None

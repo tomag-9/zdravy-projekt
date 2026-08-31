@@ -87,8 +87,8 @@ class TestStartupSync:
 
         assert json.loads(breakfast_task.kwargs)["meal_types"] == ["breakfast"]
         assert json.loads(lunch_task.kwargs)["meal_types"] == ["lunch"]
-        assert "next workday" in breakfast_task.description
-        assert "today" in lunch_task.description
+        assert "nasledujúci pracovný deň" in breakfast_task.description
+        assert "dnešok" in lunch_task.description
 
     def test_edupage_scrape_fires_exactly_at_the_deadline(self):
         """
