@@ -427,7 +427,7 @@ class TestLibellusLetterHook(unittest.TestCase):
         return libellus_letter_hook("X", skratka, "")
 
     def test_neno_full_combo(self):
-        self.assertEqual(self._rule("NENO").diet, "NO EGG/NO ORECH")
+        self.assertEqual(self._rule("NENO").diet, "NO EGG – NO ORECH")
 
     def test_nmne_full_combo(self):
         self.assertEqual(self._rule("NMNE").diet, "NO MILK/NO EGG")
@@ -534,7 +534,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=libellus_letter_hook)
         res = self._parse("NENO", cfg)
         self.assertEqual(
-            res.order_data["lunch"]["Škôlka"]["diets"], {"NO EGG/NO ORECH": 1}
+            res.order_data["lunch"]["Škôlka"]["diets"], {"NO EGG – NO ORECH": 1}
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])

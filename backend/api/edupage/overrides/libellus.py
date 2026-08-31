@@ -8,7 +8,9 @@ EduPage vlastný `nazov` vypisuje celý obsah jednoznačne:
                                     a ZŠ Ivanka pri Dunaji — engine skratku chytí
                                     ako "no egg" a stratí mlieko
 
-Nahlásené Stanom 31.8.2026.
+Nahlásené Stanom 31.8.2026. `NO EGG – NO ORECH` založené v appke 31.8.2026
+(pk 124) — nezamieňať s existujúcim `NO MILK – NO ORECH`, pk 121, ktoré je
+iná diéta pre iné dieťa.
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from __future__ import annotations
 from ..base import LetterRule
 
 _RULES: dict[str, LetterRule] = {
-    "NENO": LetterRule(diet="NO EGG/NO ORECH"),
+    "NENO": LetterRule(diet="NO EGG – NO ORECH"),
     "NMNE": LetterRule(diet="NO MILK/NO EGG"),
 }
 
