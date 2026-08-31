@@ -75,6 +75,9 @@ from .section_permission_views import SectionPermissionViewSet
 # Settings views
 from .settings_views import GlobalSettingsViewSet, UserProfileViewSet
 
+# Upcoming events (naplánované crony)
+from .upcoming_events_views import AdminUpcomingEventsViewSet
+
 __all__ = [
     "SectionPermissionViewSet",
     "LoadingViewSet",
@@ -103,6 +106,8 @@ __all__ = [
     "AdminUserViewSet",
     # Edupage
     "AdminEdupageConnectionViewSet",
+    # Upcoming events
+    "AdminUpcomingEventsViewSet",
     # Reports
     "AdminSummaryViewSet",
     # Settings

@@ -53,7 +53,11 @@ class TestDefaultsFollowTheRole:
     def test_superadmin_reaches_everything(self):
         superadmin = _user("c@example.com", roles.SUPERADMIN)
         for section in sections.SECTIONS:
-            assert access.level_for(superadmin, section.key) == sections.EDIT
+            # NADCHADZAJUCE je zámerne read-only aj pre superadmina — je to
+            # čisto informačný prehľad cronov bez zápisovej akcie (pozri
+            # `Section.default_level`).
+            expected = section.default_level
+            assert access.level_for(superadmin, section.key) == expected
 
     def test_kuchyna_reaches_only_loading(self):
         kuchyna = _user("d@example.com", roles.KUCHYNA)

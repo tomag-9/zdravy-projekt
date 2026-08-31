@@ -31,7 +31,7 @@ const EVENT_TYPES = [
     ['deploy_version', 'Nasadená nová verzia'],
 ] as const;
 
-type ActiveTab = 'events' | 'system';
+type ActiveTab = 'events' | 'upcoming' | 'system';
 
 interface AdminLogEntry {
     id: number;
@@ -70,6 +70,23 @@ interface EventLogsResponse {
     next: string | null;
     previous: string | null;
     results: EventLogEntry[];
+}
+
+interface PushPreview {
+    title: string;
+    body: string;
+}
+
+interface UpcomingEventEntry {
+    name: string;
+    task: string;
+    description: string;
+    next_run: string | null;
+    push_preview?: PushPreview | null;
+}
+
+interface UpcomingEventsResponse {
+    results: UpcomingEventEntry[];
 }
 
 interface FieldChange {
@@ -155,10 +172,12 @@ export default function AdminLogs() {
     // Systémové logy sú prevádzková diagnostika — vidí ich len superadmin.
     // Audit („Udalosti") je pre admina, preto je obrazovka pod sekciou `udalosti`.
     const canSeeSystem = canRead(user?.sections, SECTION.logy);
+    const canSeeUpcoming = canRead(user?.sections, SECTION.nadchadzajuce);
     const [activeTab, setActiveTab] = useState<ActiveTab>('events');
     useEffect(() => {
         if (!canSeeSystem && activeTab === 'system') setActiveTab('events');
-    }, [canSeeSystem, activeTab]);
+        if (!canSeeUpcoming && activeTab === 'upcoming') setActiveTab('events');
+    }, [canSeeSystem, canSeeUpcoming, activeTab]);
 
     const [events, setEvents] = useState<EventLogEntry[]>([]);
     const [eventCount, setEventCount] = useState(0);
@@ -171,6 +190,11 @@ export default function AdminLogs() {
     const [eventLoading, setEventLoading] = useState(true);
     const [eventError, setEventError] = useState<string | null>(null);
     const [expandedEvents, setExpandedEvents] = useState<Set<number>>(() => new Set());
+
+    const [upcoming, setUpcoming] = useState<UpcomingEventEntry[]>([]);
+    const [upcomingLoading, setUpcomingLoading] = useState(true);
+    const [upcomingError, setUpcomingError] = useState<string | null>(null);
+    const [expandedUpcoming, setExpandedUpcoming] = useState<Set<string>>(() => new Set());
 
     const [entries, setEntries] = useState<AdminLogEntry[]>([]);
     const [availableLoggers, setAvailableLoggers] = useState<string[]>([]);
@@ -226,7 +250,24 @@ export default function AdminLogs() {
         }
     }, [apiFetch, limit, search, selectedLevels, selectedLogger]);
 
+    const fetchUpcoming = useCallback(async () => {
+        setUpcomingLoading(true);
+        setUpcomingError(null);
+        try {
+            const res = await apiFetch(`${API_URL}/admin/upcoming-events/`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = (await res.json()) as UpcomingEventsResponse;
+            setUpcoming(data.results);
+        } catch (e) {
+            logger.error(e);
+            setUpcomingError('Nadchádzajúce udalosti sa nepodarilo načítať');
+        } finally {
+            setUpcomingLoading(false);
+        }
+    }, [apiFetch]);
+
     useEffect(() => { void fetchEvents(); }, [fetchEvents]);
+    useEffect(() => { if (canSeeUpcoming) void fetchUpcoming(); }, [canSeeUpcoming, fetchUpcoming]);
     useEffect(() => { void fetchSystemLogs(); }, [fetchSystemLogs]);
     useEffect(() => { setEventPage(1); }, [actor, dateFrom, dateTo, eventType]);
 
@@ -238,7 +279,7 @@ export default function AdminLogs() {
     const toggleLevel = (level: string) => setSelectedLevels((current) =>
         current.includes(level) ? current.filter((item) => item !== level) : [...current, level]);
 
-    const toggleExpanded = (setter: React.Dispatch<React.SetStateAction<Set<number>>>, id: number) => {
+    const toggleExpanded = <T,>(setter: React.Dispatch<React.SetStateAction<Set<T>>>, id: T) => {
         setter((current) => {
             const next = new Set(current);
             if (next.has(id)) next.delete(id); else next.add(id);
@@ -246,7 +287,12 @@ export default function AdminLogs() {
         });
     };
 
-    const loading = activeTab === 'events' ? eventLoading : systemLoading;
+    const loading = activeTab === 'events' ? eventLoading : activeTab === 'upcoming' ? upcomingLoading : systemLoading;
+    const refresh = () => {
+        if (activeTab === 'events') return fetchEvents();
+        if (activeTab === 'upcoming') return fetchUpcoming();
+        return fetchSystemLogs();
+    };
 
     return (
         <>
@@ -257,7 +303,7 @@ export default function AdminLogs() {
                 actions={
                     <Button
                         variant="secondary"
-                        onClick={() => void (activeTab === 'events' ? fetchEvents() : fetchSystemLogs())}
+                        onClick={() => void refresh()}
                         disabled={loading}
                     >
                         <RefreshCw className={loading ? 'zpa-spin' : ''} />
@@ -272,6 +318,11 @@ export default function AdminLogs() {
                         <button type="button" onClick={() => setActiveTab('events')} className={`zpa-tab${activeTab === 'events' ? ' active' : ''}`}>
                             Udalosti (audit)
                         </button>
+                        {canSeeUpcoming && (
+                            <button type="button" onClick={() => setActiveTab('upcoming')} className={`zpa-tab${activeTab === 'upcoming' ? ' active' : ''}`}>
+                                Nadchádzajúce
+                            </button>
+                        )}
                         {canSeeSystem && (
                             <button type="button" onClick={() => setActiveTab('system')} className={`zpa-tab${activeTab === 'system' ? ' active' : ''}`}>
                                 Systémové logy
@@ -349,6 +400,52 @@ export default function AdminLogs() {
                                 <span>Strana {eventPage}</span>
                                 <Button variant="secondary" sm disabled={!eventHasNext || eventLoading} onClick={() => setEventPage((page) => page + 1)}>Ďalšia</Button>
                             </div>
+                        </Card>
+                    </>
+                ) : activeTab === 'upcoming' ? (
+                    <>
+                        {upcomingError && <div className="zpa-empty">{upcomingError}</div>}
+                        <Card style={{ overflow: 'hidden' }}>
+                            <div className="zpa-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--line-soft)' }}>
+                                <h3>Nadchádzajúce ({upcoming.length})</h3>
+                            </div>
+                            {upcomingLoading ? <div className="zpa-empty">Načítavam…</div> : upcoming.length === 0 ? (
+                                <div className="zpa-empty">Žiadne naplánované úlohy</div>
+                            ) : (
+                                <div className="zpa-table-wrap">
+                                    <table className="zpa-table">
+                                        <thead><tr><th>Najbližší beh</th><th>Úloha</th><th>Čo urobí</th><th /></tr></thead>
+                                        <tbody>
+                                            {upcoming.map((entry) => {
+                                                const isExpanded = expandedUpcoming.has(entry.name);
+                                                return (
+                                                    <Fragment key={entry.name}>
+                                                        <tr>
+                                                            <td>{entry.next_run ? <EventTime value={entry.next_run} /> : <span className="zpa-time">—</span>}</td>
+                                                            <td>{entry.name}</td>
+                                                            <td>{entry.description || entry.task}</td>
+                                                            <td className="r">
+                                                                {entry.push_preview && (
+                                                                    <Button variant="ghost" sm onClick={() => toggleExpanded(setExpandedUpcoming, entry.name)}>
+                                                                        {isExpanded ? <ChevronDown /> : <ChevronRight />} Text správy
+                                                                    </Button>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && entry.push_preview && (
+                                                            <tr>
+                                                                <td colSpan={4}>
+                                                                    <pre className="tb">{`${entry.push_preview.title}\n\n${entry.push_preview.body}`}</pre>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </Fragment>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
                         </Card>
                     </>
                 ) : (
