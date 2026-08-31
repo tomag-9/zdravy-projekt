@@ -14,7 +14,14 @@ from django.contrib.auth.models import Group, User
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from api.models import DailyOrder, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Prevadzka,
+    ProfileCelokAccess,
+    ProfilePrevadzkaAccess,
+    UserProfile,
+)
 
 PROD_CONFIRMATION = "LOAD_TEST_PROD"
 CLEANUP_CONFIRMATION = "DELETE_LOAD_TEST_USERS"
@@ -200,11 +207,71 @@ class Command(BaseCommand):
         emails = [spec.email for spec in specs]
         queryset = User.objects.filter(username__in=emails, email__in=emails)
         count = queryset.count()
+
+        # `UserProfile` creation auto-creates a dedicated Celok + Prevadzka +
+        # ProfileCelokAccess per login (api/signals.py on_user_profile_saved).
+        # Deleting the User cascades away the profile and its access rows,
+        # but Prevadzka/Celok.celok is on_delete=PROTECT — nothing cascades
+        # into them, so they'd otherwise survive cleanup as orphaned rows in
+        # /admin/celky/. Resolve which celky/prevádzky belong *only* to these
+        # throwaway profiles (never delete one still reachable by a real
+        # login) before the users are gone and the access rows disappear.
+        profiles = UserProfile.objects.filter(user__in=queryset)
+        celok_ids = set(
+            ProfileCelokAccess.objects.filter(profile__in=profiles).values_list(
+                "celok_id", flat=True
+            )
+        )
+        direct_prevadzka_ids = set(
+            ProfilePrevadzkaAccess.objects.filter(profile__in=profiles).values_list(
+                "prevadzka_id", flat=True
+            )
+        )
+        orphan_celok_ids = {
+            cid
+            for cid in celok_ids
+            if not ProfileCelokAccess.objects.filter(celok_id=cid)
+            .exclude(profile__in=profiles)
+            .exists()
+        }
+        orphan_prevadzka_ids = {
+            pid
+            for pid in direct_prevadzka_ids
+            if not ProfilePrevadzkaAccess.objects.filter(prevadzka_id=pid)
+            .exclude(profile__in=profiles)
+            .exists()
+        }
+
         deleted_orders, _ = DailyOrder.objects.filter(user__in=queryset).delete()
         queryset.delete()
+
+        # Prevadzka.celok is PROTECT, so prevádzky must go before their celok.
+        prevadzka_ids_to_delete = orphan_prevadzka_ids | set(
+            Prevadzka.objects.filter(celok_id__in=orphan_celok_ids).values_list(
+                "pk", flat=True
+            )
+        )
+        # `.delete()`'s first return value is the total row count across every
+        # cascaded model (e.g. periodic tasks tied to a prevádzka), not just
+        # this one — pull the actual Prevadzka/Celok counts from the per-model
+        # breakdown so the summary below doesn't overstate what was orphaned.
+        num_prevadzka_to_delete = len(prevadzka_ids_to_delete)
+        num_celok_to_delete = len(orphan_celok_ids)
+        _, prevadzka_deleted_by_model = Prevadzka.objects.filter(
+            pk__in=prevadzka_ids_to_delete
+        ).delete()
+        _, celok_deleted_by_model = Celok.objects.filter(
+            pk__in=orphan_celok_ids
+        ).delete()
+        deleted_prevadzky = prevadzka_deleted_by_model.get(
+            "api.Prevadzka", num_prevadzka_to_delete
+        )
+        deleted_celky = celok_deleted_by_model.get("api.Celok", num_celok_to_delete)
+
         self.stdout.write(
             self.style.WARNING(
-                f"Deleted {count} load-test users and {deleted_orders} generated "
-                "order rows."
+                f"Deleted {count} load-test users, {deleted_orders} generated "
+                f"order rows, {deleted_prevadzky} orphaned prevádzky and "
+                f"{deleted_celky} orphaned celky."
             )
         )
