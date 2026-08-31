@@ -17,9 +17,8 @@ from api.models import (
     UserProfile,
 )
 from api.signals import (
-    BRITISH_SCHOOL_SCRAPE_TASK_NAME,
     EDUPAGE_SCRAPE_TASK_PREFIX,
-    _sync_british_school_scrape_schedule,
+    _sync_dedicated_connection_scrape_schedules,
     _sync_edupage_scrape_schedule,
 )
 from api.tasks import scrape_edupage_orders_task
@@ -658,13 +657,16 @@ def test_edupage_scrape_time_override_shapes_runtime_target_date(
     assert seen_dates == [monday]
 
 
+BRITISH_SCHOOL_SCRAPE_TASK_NAME = "edupage-scrape-dedicated-british-school"
+
+
 @pytest.mark.django_db
-def test_british_school_scrape_schedule_is_noop_without_connection():
-    """Bez British School EduPage pripojenia sa vlastný scrape nezaloží — inak
-    by čakal na dáta, ktoré nikdy neprídu."""
+def test_dedicated_scrape_schedule_is_noop_without_a_dedicated_connection():
+    """Bez pripojenia s dedicated_scrape_hour/minute sa vlastný scrape
+    nezaloží — inak by čakal na dáta, ktoré nikdy neprídu."""
     settings_instance = GlobalSettings.objects.create(pk=1)
 
-    _sync_british_school_scrape_schedule(settings_instance)
+    _sync_dedicated_connection_scrape_schedules(settings_instance)
 
     assert not PeriodicTask.objects.filter(
         name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
@@ -672,16 +674,22 @@ def test_british_school_scrape_schedule_is_noop_without_connection():
 
 
 @pytest.mark.django_db
-def test_british_school_scrape_schedule_fires_1215_day_before():
-    """British School (#535): 12:15 Ne–Št, cieli na nasledujúci pracovný deň —
-    nezávisle od GlobalSettings deadlinov ostatných celkov."""
+def test_dedicated_scrape_schedule_fires_at_its_own_configured_time():
+    """British School (#535) je prvé použitie: connection s
+    dedicated_scrape_hour/minute=12:15 dostane vlastný cron Ne–Št, cieli na
+    nasledujúci pracovný deň — nezávisle od GlobalSettings deadlinov
+    ostatných celkov. Generalizované z hardcoded mena pripojenia (code
+    review 2026-08-31) — čokoľvek s tými dvomi poľami nastavenými má
+    fungovať rovnako, nielen British School."""
     connection = EdupageConnection.objects.create(
         name="British School",
         mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+        dedicated_scrape_hour=12,
+        dedicated_scrape_minute=15,
     )
     settings_instance = GlobalSettings.objects.create(pk=1)
 
-    _sync_british_school_scrape_schedule(settings_instance)
+    _sync_dedicated_connection_scrape_schedules(settings_instance)
 
     task = PeriodicTask.objects.get(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME)
     assert task.crontab.hour == "12"
@@ -692,13 +700,15 @@ def test_british_school_scrape_schedule_fires_1215_day_before():
 
 
 @pytest.mark.django_db
-def test_british_school_scrape_schedule_removed_when_auto_scrape_disabled():
+def test_dedicated_scrape_schedule_removed_when_auto_scrape_disabled():
     EdupageConnection.objects.create(
         name="British School",
         mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+        dedicated_scrape_hour=12,
+        dedicated_scrape_minute=15,
     )
     settings_instance = GlobalSettings.objects.create(pk=1)
-    _sync_british_school_scrape_schedule(settings_instance)
+    _sync_dedicated_connection_scrape_schedules(settings_instance)
     assert PeriodicTask.objects.filter(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME).exists()
 
     settings_instance.edupage_auto_scrape_enabled = False
@@ -710,12 +720,40 @@ def test_british_school_scrape_schedule_removed_when_auto_scrape_disabled():
 
 
 @pytest.mark.django_db
-def test_deadline_derived_scrape_tasks_exclude_british_school():
+def test_dedicated_scrape_schedule_removed_when_connection_opts_out():
+    """Vyprázdnenie dedicated_scrape_hour/minute (nie deaktivácia) musí
+    zmazať cron rovnako — inak by connection zostala scrapovaná na starom
+    čase aj po tom, čo sa z neho odhlásila."""
+    connection = EdupageConnection.objects.create(
+        name="British School",
+        mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+        dedicated_scrape_hour=12,
+        dedicated_scrape_minute=15,
+    )
+    settings_instance = GlobalSettings.objects.create(pk=1)
+    _sync_dedicated_connection_scrape_schedules(settings_instance)
+    assert PeriodicTask.objects.filter(name=BRITISH_SCHOOL_SCRAPE_TASK_NAME).exists()
+
+    connection.dedicated_scrape_hour = None
+    connection.dedicated_scrape_minute = None
+    connection.save(update_fields=["dedicated_scrape_hour", "dedicated_scrape_minute"])
+
+    _sync_dedicated_connection_scrape_schedules(settings_instance)
+
+    assert not PeriodicTask.objects.filter(
+        name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_deadline_derived_scrape_tasks_exclude_dedicated_connections():
     """British School sa scrapuje len na svojom 12:15 cronte — nie aj na
     generických deadlinoch ostatných celkov (zdvojený scrape)."""
     EdupageConnection.objects.create(
         name="British School",
         mealsguest_url="https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45",
+        dedicated_scrape_hour=12,
+        dedicated_scrape_minute=15,
     )
     settings_instance = GlobalSettings.objects.create(
         pk=1,

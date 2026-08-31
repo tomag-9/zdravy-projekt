@@ -1060,3 +1060,39 @@ def purge_old_event_logs_task(self, days: int | None = None):
     except DatabaseError as exc:
         logger.warning("purge_old_event_logs_task: DB chyba, skúšam znova: %s", exc)
         raise self.retry(exc=exc)
+
+
+@shared_task
+def cache_closed_day_pdf_task(date_str: str) -> None:
+    """Predgeneruje a nacachuje PDF gramáže po uzavretí dňa (#528).
+
+    Volané asynchrónne z `ClosedDayViewSet.create()` — WeasyPrint (stovky ms
+    až sekundy pri viacerých prevádzkach/diétach) predtým bežal priamo v
+    HTTP requeste admina, ktorý klikol "uzavrieť deň", a blokoval web worker
+    (code review 2026-08-31). Zlyhanie tu nesmie nič zhodiť: PDF sa pri
+    cache-miss aj tak domodeluje na požiadanie (`gramage-dashboard-pdf`),
+    takže si len zaloguje a skončí.
+    """
+    import datetime
+
+    from api.cache_service import (
+        CLOSED_DAY_PDF_TIMEOUT,
+        get_closed_day_pdf_cache_key,
+        set_cached,
+    )
+    from api.services.gramage_pdf_service import render_gramage_dashboard_pdf
+
+    try:
+        target_date = datetime.date.fromisoformat(date_str)
+        pdf_bytes = render_gramage_dashboard_pdf(date_str)
+        set_cached(
+            get_closed_day_pdf_cache_key(target_date.isoformat()),
+            pdf_bytes,
+            timeout=CLOSED_DAY_PDF_TIMEOUT,
+        )
+    except Exception:
+        logger.exception(
+            "cache_closed_day_pdf_task: nepodarilo sa predgenerovať PDF gramáže "
+            "pre uzavretý deň %s",
+            date_str,
+        )

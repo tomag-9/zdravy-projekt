@@ -1026,6 +1026,13 @@ class MealPlanService:
                         # smaller than the diet count, leaving the remainder
                         # double-counted in the next variant.
                         adjusted_variant_counts = []
+                        # Koľko sa z daného variantu naozaj odpočítalo do "zvlast"
+                        # + "zvlast_gn" spolu (po orezaní o to, čo diéty už zobrali
+                        # z toho istého adjusted_count) - "zvlast"/"zvlast_gn"
+                        # riadky nižšie z toho čerpajú, nie zo surových
+                        # pack_menu_counts, inak by sa rovnaké hlavy vypísali aj v
+                        # čistom, aj v diétnom, aj v "zvlášť" riadku naraz.
+                        pack_available_by_variant: dict[str, int] = {}
                         remaining_diet_count = (
                             total_diet_count if is_variant_meal else 0
                         )
@@ -1039,6 +1046,7 @@ class MealPlanService:
                                 pack_by_variant.get(variant, 0), adjusted_count
                             )
                             adjusted_count -= pack_subtract
+                            pack_available_by_variant[variant] = pack_subtract
                             adjusted_variant_counts.append(
                                 (variant, max(adjusted_count, 0))
                             )
@@ -1120,6 +1128,15 @@ class MealPlanService:
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += billed_diet_count
 
+                        # Rozpočet, z ktorého obidva ciele čerpajú (zvlast najprv,
+                        # zvlast_gn dostane zvyšok) - `pack_available_by_variant`
+                        # je presne to, čo sa vyššie odpočítalo z čistého riadku,
+                        # takže súčet vypísaných "zvlášť" riadkov sa už nemôže
+                        # rozísť s tým, o čo bol čistý riadok znížený.
+                        pack_remaining_by_variant: dict[str, int] = (
+                            dict(pack_available_by_variant) if is_variant_meal else {}
+                        )
+
                         # Rovnaké generovanie pre oba vzájomne sa vylučujúce ciele
                         # ("zvlast" / "zvlast_gn") - líšia sa len typom riadku a
                         # popisom ("zvlášť" vs "zvlášť do GN").
@@ -1158,6 +1175,14 @@ class MealPlanService:
                                 )
 
                             for variant, pack_count in pack_variant_counts:
+                                if is_variant_meal:
+                                    available = pack_remaining_by_variant.get(
+                                        variant, 0
+                                    )
+                                    pack_count = min(pack_count, available)
+                                    pack_remaining_by_variant[variant] = (
+                                        available - pack_count
+                                    )
                                 if pack_count <= 0:
                                     continue
                                 pack_grams = _col_grams(

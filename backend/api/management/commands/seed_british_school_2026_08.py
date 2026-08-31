@@ -30,6 +30,12 @@ from api.models import (
 BRITISH_SCHOOL_URL = "https://zdravyprojekt.edupage.org/menu/mealsGuest?id=Dr8kS45"
 BRITISH_SCHOOL_NAME = "British School"
 BRITISH_SCHOOL_ROUTE_BLOCK = "Trasa extra"
+# Vlastný scrape crontab (deň vopred, Ne–Št, cieli na nasledujúci pracovný
+# deň) namiesto zdieľaných GlobalSettings deadlinov — viď
+# `EdupageConnection.dedicated_scrape_hour/minute` a
+# `api.signals._sync_dedicated_connection_scrape_schedules`.
+BRITISH_SCHOOL_SCRAPE_HOUR = 12
+BRITISH_SCHOOL_SCRAPE_MINUTE = 15
 # Anglické EduPage diéty (Vegan/noPork/noRedMeat/noSugar), preložené do
 # slovenských Diet.name (edupage_scraper._NAZOV_KEYWORD_MAP) — nie sú
 # default-visible pre každú prevádzku (reference_data.OPERATION_SPECIFIC_DIETS),
@@ -55,8 +61,21 @@ class Command(BaseCommand):
 
         connection, connection_created = EdupageConnection.objects.get_or_create(
             mealsguest_url=BRITISH_SCHOOL_URL,
-            defaults={"name": BRITISH_SCHOOL_NAME},
+            defaults={
+                "name": BRITISH_SCHOOL_NAME,
+                "dedicated_scrape_hour": BRITISH_SCHOOL_SCRAPE_HOUR,
+                "dedicated_scrape_minute": BRITISH_SCHOOL_SCRAPE_MINUTE,
+            },
         )
+        connection_update_fields = []
+        if connection.dedicated_scrape_hour != BRITISH_SCHOOL_SCRAPE_HOUR:
+            connection.dedicated_scrape_hour = BRITISH_SCHOOL_SCRAPE_HOUR
+            connection_update_fields.append("dedicated_scrape_hour")
+        if connection.dedicated_scrape_minute != BRITISH_SCHOOL_SCRAPE_MINUTE:
+            connection.dedicated_scrape_minute = BRITISH_SCHOOL_SCRAPE_MINUTE
+            connection_update_fields.append("dedicated_scrape_minute")
+        if connection_update_fields:
+            connection.save(update_fields=connection_update_fields)
         self.stdout.write(
             "  British School: EduPage spojenie "
             f"{'vytvorené' if connection_created else 'už existuje'}"

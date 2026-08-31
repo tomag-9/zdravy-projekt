@@ -40,9 +40,9 @@ def _push_deadline_preview(task, next_run):
         return None
 
     try:
-        from ..models import GlobalSettings
+        from ..cached_settings_service import get_global_settings
 
-        gs = GlobalSettings.objects.get(pk=1)
+        gs = get_global_settings()
         is_day_before = getattr(gs, f"deadline_{meal_types[0]}_is_day_before", False)
     except Exception:
         is_day_before = False
