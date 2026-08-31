@@ -44,6 +44,36 @@ def test_seed_british_school_creates_celok_prevadzka_and_edupage_link():
 
 
 @pytest.mark.django_db
+def test_seed_british_school_sets_its_dedicated_scrape_time():
+    """Code review follow-up (2026-08-31): British School's scrape crontab
+    generalized off a hardcoded connection name onto
+    EdupageConnection.dedicated_scrape_hour/minute - the seed must still set
+    it, or the connection silently falls back to the shared deadlines."""
+    call_command("seed_british_school_2026_08")
+
+    connection = EdupageConnection.objects.get(mealsguest_url=BRITISH_SCHOOL_URL)
+    assert connection.dedicated_scrape_hour == 12
+    assert connection.dedicated_scrape_minute == 15
+
+
+@pytest.mark.django_db
+def test_seed_british_school_repairs_a_cleared_dedicated_scrape_time():
+    """Re-running the (idempotent) seed must restore the dedicated schedule
+    even if it was cleared on the existing row in the meantime."""
+    call_command("seed_british_school_2026_08")
+    connection = EdupageConnection.objects.get(mealsguest_url=BRITISH_SCHOOL_URL)
+    connection.dedicated_scrape_hour = None
+    connection.dedicated_scrape_minute = None
+    connection.save(update_fields=["dedicated_scrape_hour", "dedicated_scrape_minute"])
+
+    call_command("seed_british_school_2026_08")
+
+    connection.refresh_from_db()
+    assert connection.dedicated_scrape_hour == 12
+    assert connection.dedicated_scrape_minute == 15
+
+
+@pytest.mark.django_db
 def test_seed_british_school_enables_its_translated_diets_when_they_exist():
     _seed_british_school_diets()
 

@@ -421,6 +421,20 @@ class EdupageConnection(models.Model):
     mealsguest_url = models.URLField(max_length=500, unique=True)
     api_identifier = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    dedicated_scrape_hour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Set together with dedicated_scrape_minute to scrape this "
+            "connection on its own crontab (day before, Sun-Thu, targeting "
+            "the next workday) instead of at the shared GlobalSettings meal "
+            "deadlines every other connection uses. For a facility whose "
+            "deadline schedule genuinely doesn't apply, e.g. British School "
+            "(#535) — code review 2026-08-31 generalized this off a "
+            "hardcoded connection name."
+        ),
+    )
+    dedicated_scrape_minute = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

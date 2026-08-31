@@ -43,17 +43,16 @@ PUSH_REMINDER_OFFSET_MINUTES = 30
 WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
+DEDICATED_SCRAPE_TASK_PREFIX = f"{EDUPAGE_SCRAPE_TASK_PREFIX}dedicated-"
 
-# British School (#535): its own EduPage connection is scraped on a dedicated
-# crontab, entirely separate from the shared GlobalSettings meal deadlines
-# every other celok uses — 12:15 the day before, so its dashboard row is ready
-# well ahead of the (much later) generic deadlines. Name matches
-# `seed_british_school_2026_08.BRITISH_SCHOOL_NAME`; kept as a local literal
-# rather than importing a management command module here.
-BRITISH_SCHOOL_CONNECTION_NAME = "British School"
-BRITISH_SCHOOL_SCRAPE_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}british-school"
-BRITISH_SCHOOL_SCRAPE_HOUR = 12
-BRITISH_SCHOOL_SCRAPE_MINUTE = 15
+# A connection can opt out of the shared GlobalSettings meal deadlines and
+# scrape on its own crontab instead (day before, Sun–Thu, targeting the next
+# workday) via `EdupageConnection.dedicated_scrape_hour/minute` — British
+# School (#535) is the first user, at 12:15, so its dashboard row is ready
+# well ahead of the (much later) generic deadlines. Was hardcoded to British
+# School's connection name until code review (2026-08-31) generalized it —
+# onboarding the next such facility is now two fields on the connection, not
+# a copy-pasted sync function.
 
 # Cron musí bežať v ten deň, na ktorý je úloha nastavená — nie v ten, ktorého sa
 # týka jedlo. Úloha so `is_day_before` deadlinom obsluhuje NASLEDUJÚCI pracovný
@@ -451,16 +450,25 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
         _capture_signal_failure(exc, "push_reminder_schedule")
 
 
-def _british_school_connection_id() -> int | None:
+def _dedicated_scrape_connections():
+    """Active `EdupageConnection`s with their own scrape crontab (see
+    `DEDICATED_SCRAPE_TASK_PREFIX` above) instead of the shared deadlines."""
     from api.models import EdupageConnection
 
-    return (
+    return list(
         EdupageConnection.objects.filter(
-            name=BRITISH_SCHOOL_CONNECTION_NAME, is_active=True
+            is_active=True,
+            dedicated_scrape_hour__isnull=False,
+            dedicated_scrape_minute__isnull=False,
         )
-        .values_list("pk", flat=True)
-        .first()
     )
+
+
+def _dedicated_scrape_task_name(connection) -> str:
+    from django.utils.text import slugify
+
+    slug = slugify(connection.name) or str(connection.pk)
+    return f"{DEDICATED_SCRAPE_TASK_PREFIX}{slug}"
 
 
 def _sync_edupage_scrape_schedule(settings_instance) -> None:
@@ -505,10 +513,12 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
 
         all_meal_types = ["breakfast", "lunch", "olovrant"]
 
-        # British School has its own dedicated scrape (12:15 the day before,
-        # see `_sync_british_school_scrape_schedule`) — exclude it here so it
-        # isn't scraped a second time at the shared deadlines below.
-        british_school_connection_id = _british_school_connection_id()
+        # Connections with their own dedicated scrape crontab (see
+        # `_sync_dedicated_connection_scrape_schedules`) are excluded here so
+        # they aren't scraped a second time at the shared deadlines below.
+        dedicated_connection_ids = [
+            c.pk for c in _dedicated_scrape_connections()
+        ] or None
 
         # Group meal types by their *effective* scrape time/target-day rule —
         # the order deadline by default, or the decoupled
@@ -563,11 +573,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                         {
                             "meal_types": sorted(meal_types_group),
                             "chained_reports": chained_reports,
-                            "exclude_connection_ids": (
-                                [british_school_connection_id]
-                                if british_school_connection_id
-                                else None
-                            ),
+                            "exclude_connection_ids": dedicated_connection_ids,
                         }
                     ),
                     "enabled": True,
@@ -607,77 +613,89 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
         _capture_signal_failure(exc, "edupage_scrape_schedule")
 
 
-def _sync_british_school_scrape_schedule(settings_instance) -> None:
-    """British School (#535): scraped daily at 12:15 the day before, Sun–Thu,
-    on its own crontab — independent of the shared GlobalSettings meal
-    deadlines every other celok uses (`_sync_edupage_scrape_schedule`).
+def _sync_dedicated_connection_scrape_schedules(settings_instance) -> None:
+    """Connections opted into their own scrape crontab (day before, Sun–Thu,
+    targeting the next workday) via `EdupageConnection.dedicated_scrape_hour/
+    minute` — independent of the shared GlobalSettings meal deadlines every
+    other connection uses (`_sync_edupage_scrape_schedule`). British School
+    (#535) is the first user, at 12:15; generalized off a hardcoded
+    connection name by code review (2026-08-31) so onboarding the next one
+    is two fields on the connection, not a copy-pasted sync function.
 
-    A no-op (task deleted, if present) while the British School EduPage
-    connection doesn't exist yet or automatic scraping is switched off.
+    Orphaned tasks (connection deactivated, opted back out, or automatic
+    scraping switched off entirely) are deleted.
     """
     try:
         from django.conf import settings
         from django_celery_beat.models import CrontabSchedule, PeriodicTask
     except ImportError:
         logger.warning(
-            "django_celery_beat not installed – skipping British School scrape schedule sync."
+            "django_celery_beat not installed – skipping dedicated scrape schedule sync."
         )
         return
 
     try:
-        connection_id = _british_school_connection_id()
         auto_scrape_enabled = getattr(
             settings_instance, "edupage_auto_scrape_enabled", True
         )
-        if connection_id is None or not auto_scrape_enabled:
-            deleted_count, _ = PeriodicTask.objects.filter(
-                name=BRITISH_SCHOOL_SCRAPE_TASK_NAME
-            ).delete()
-            if deleted_count:
-                logger.info(
-                    "British School scrape task removed (connection missing or "
-                    "auto-scrape disabled)"
-                )
-            return
+        connections = _dedicated_scrape_connections() if auto_scrape_enabled else []
 
-        schedule, _ = CrontabSchedule.objects.get_or_create(
-            minute=BRITISH_SCHOOL_SCRAPE_MINUTE,
-            hour=BRITISH_SCHOOL_SCRAPE_HOUR,
-            day_of_week=DAY_OF_WEEK_DAY_BEFORE,
-            day_of_month="*",
-            month_of_year="*",
-            timezone=settings.TIME_ZONE,
+        new_task_names: set[str] = set()
+        for connection in connections:
+            task_name = _dedicated_scrape_task_name(connection)
+            new_task_names.add(task_name)
+
+            schedule, _ = CrontabSchedule.objects.get_or_create(
+                minute=connection.dedicated_scrape_minute,
+                hour=connection.dedicated_scrape_hour,
+                day_of_week=DAY_OF_WEEK_DAY_BEFORE,
+                day_of_month="*",
+                month_of_year="*",
+                timezone=settings.TIME_ZONE,
+            )
+            PeriodicTask.objects.update_or_create(
+                name=task_name,
+                defaults={
+                    "task": "api.tasks.scrape_edupage_orders_task",
+                    "crontab": schedule,
+                    "args": json.dumps([]),
+                    "kwargs": json.dumps(
+                        {
+                            "connection_id": connection.pk,
+                            "target_next_workday": True,
+                        }
+                    ),
+                    "enabled": True,
+                    "description": (
+                        f"EduPage scrape ({connection.name}): spúšťa sa denne o "
+                        f"{connection.dedicated_scrape_hour:02d}:"
+                        f"{connection.dedicated_scrape_minute:02d} deň vopred "
+                        f"(Ne–Št), načíta objednávky pre nasledujúci pracovný deň."
+                    ),
+                },
+            )
+            logger.info(
+                "Dedicated scrape task synced: %s → %02d:%02d Sun-Thu (tz: %s)",
+                task_name,
+                connection.dedicated_scrape_hour,
+                connection.dedicated_scrape_minute,
+                settings.TIME_ZONE,
+            )
+
+        deleted_count, _ = (
+            PeriodicTask.objects.filter(name__startswith=DEDICATED_SCRAPE_TASK_PREFIX)
+            .exclude(name__in=new_task_names)
+            .delete()
         )
-        PeriodicTask.objects.update_or_create(
-            name=BRITISH_SCHOOL_SCRAPE_TASK_NAME,
-            defaults={
-                "task": "api.tasks.scrape_edupage_orders_task",
-                "crontab": schedule,
-                "args": json.dumps([]),
-                "kwargs": json.dumps(
-                    {
-                        "connection_id": connection_id,
-                        "target_next_workday": True,
-                    }
-                ),
-                "enabled": True,
-                "description": (
-                    "EduPage scrape (British School): spúšťa sa denne o 12:15 "
-                    "deň vopred (Ne–Št), načíta objednávky pre nasledujúci "
-                    "pracovný deň."
-                ),
-            },
-        )
-        logger.info(
-            "British School scrape task synced: %02d:%02d Sun-Thu (tz: %s)",
-            BRITISH_SCHOOL_SCRAPE_HOUR,
-            BRITISH_SCHOOL_SCRAPE_MINUTE,
-            settings.TIME_ZONE,
-        )
+        if deleted_count:
+            logger.info(
+                "Deleted %d orphaned dedicated-scrape periodic task(s)",
+                deleted_count,
+            )
 
     except Exception as exc:
-        logger.exception("Failed to sync British School scrape periodic task: %s", exc)
-        _capture_signal_failure(exc, "british_school_scrape_schedule")
+        logger.exception("Failed to sync dedicated scrape periodic tasks: %s", exc)
+        _capture_signal_failure(exc, "dedicated_connection_scrape_schedule")
 
 
 def _sync_weekly_reminder_schedule() -> None:
@@ -737,7 +755,7 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_push_reminder_schedule(instance)
         _sync_weekly_reminder_schedule()
         _sync_edupage_scrape_schedule(instance)
-        _sync_british_school_scrape_schedule(instance)
+        _sync_dedicated_connection_scrape_schedules(instance)
 
         # Invalidate GlobalSettings cache
         from api.cache_service import clear_global_settings_cache
