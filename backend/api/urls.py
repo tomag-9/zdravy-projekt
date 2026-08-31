@@ -14,6 +14,7 @@ from .views import (
     AdminPrevadzkaDeliveryViewSet,
     AdminSendPushView,
     AdminSummaryViewSet,
+    AdminUpcomingEventsViewSet,
     AdminUserViewSet,
     ClosedDayViewSet,
     DailyMealPlanViewSet,
@@ -63,6 +64,11 @@ router.register(
 )
 router.register(r"admin/logs", AdminLogViewSet, basename="admin-log")
 router.register(r"admin/event-logs", AdminEventLogViewSet, basename="admin-event-log")
+router.register(
+    r"admin/upcoming-events",
+    AdminUpcomingEventsViewSet,
+    basename="admin-upcoming-event",
+)
 router.register(
     r"admin/delivery-blocks",
     DeliveryBlockViewSet,

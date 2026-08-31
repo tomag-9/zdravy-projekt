@@ -198,17 +198,7 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         _log_cron_skip_event("send_push_deadline_reminder_task", reason, today)
         return {"skipped": reason, "meal_types": meal_types}
 
-    meal_labels = {
-        "breakfast": "raňajky",
-        "lunch": "obed",
-        "olovrant": "olovrant",
-    }
-
-    def _build_meal_str(types: list[str]) -> str:
-        labels = [meal_labels[m] for m in types]
-        if len(labels) == 1:
-            return labels[0]
-        return ", ".join(labels[:-1]) + f" a {labels[-1]}"
+    from api.services.push_reminder_service import build_reminder_body
 
     total_sent = 0
     sent_per_date: dict[str, int] = {}
@@ -225,11 +215,7 @@ def send_push_deadline_reminder_task(self, meal_types: list[str]):
         )
 
         for target_date, date_meals in date_to_meals.items():
-            date_fmt = target_date.strftime("%d.%m.%Y")
-            meal_str = _build_meal_str(date_meals)
-            body = (
-                f"Nezabudnite objednať {meal_str} na {date_fmt}. Uzávierka je o chvíľu!"
-            )
+            body = build_reminder_body(date_meals, target_date)
             date_sent = 0
             stagger = _push_batch_stagger_seconds()
             batch_size = _push_batch_size(len(subscribed_user_ids))
@@ -305,17 +291,16 @@ def send_weekly_order_reminder_task(self):
     Fires every Sunday (scheduled via Celery Beat).
     Users who already have at least one submitted order for Mon–Fri of next week are skipped.
     """
-    import datetime
-
     from django.db.models import Q
 
     from api.models import DailyOrder, PushSubscription
+    from api.services.push_reminder_service import (
+        build_weekly_reminder_body,
+        next_week_range,
+    )
 
     today = timezone.localdate()
-    # Compute next Monday and next Friday
-    days_until_monday = (7 - today.weekday()) % 7 or 7
-    next_monday = today + datetime.timedelta(days=days_until_monday)
-    next_friday = next_monday + datetime.timedelta(days=4)
+    next_monday, next_friday = next_week_range(today)
 
     try:
         subscribed_user_ids = set(
@@ -357,10 +342,7 @@ def send_weekly_order_reminder_task(self):
             )
             return {"skipped": "all_ordered", "next_week": str(next_monday)}
 
-        week_label = (
-            next_monday.strftime("%d.%m.") + "–" + next_friday.strftime("%d.%m.%Y")
-        )
-        body = f"Nezabudnite vyplniť objednávku na budúci týždeň ({week_label})."
+        body = build_weekly_reminder_body(today)
 
         sent = 0
         stagger = _push_batch_stagger_seconds()
