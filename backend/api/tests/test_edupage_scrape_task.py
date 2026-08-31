@@ -596,6 +596,69 @@ def test_only_deadline_derived_scrape_tasks_are_scheduled():
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_time_override_decouples_crontab_from_deadline():
+    """#527/#528 follow-up: `edupage_scrape_time_breakfast` lets the scrape
+    run at a different clock time than the order deadline — e.g. deadline
+    stays 21:00 the evening before, but the scrape only runs at 01:35, once
+    orders are unambiguously closed."""
+    settings_instance = GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(21, 0),
+        deadline_breakfast_is_day_before=True,
+        deadline_lunch=datetime.time(7, 35),
+        deadline_olovrant=datetime.time(7, 35),
+        edupage_scrape_time_breakfast=datetime.time(1, 35),
+        edupage_scrape_time_breakfast_is_day_before=False,
+    )
+
+    _sync_edupage_scrape_schedule(settings_instance)
+
+    task = PeriodicTask.objects.get(name=f"{EDUPAGE_SCRAPE_TASK_PREFIX}breakfast")
+    assert task.crontab.hour == "1"
+    assert task.crontab.minute == "35"
+    # is_day_before=False for the override → same day_of_week rule as a
+    # same-day deadline (Mon–Fri), unrelated to the order deadline's own
+    # day-before flag.
+    assert task.crontab.day_of_week == "1-5"
+    assert "uzávierka: raňajky: 21:00" in task.description
+    assert "spúšťa sa o 01:35" in task.description
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_time_override_shapes_runtime_target_date(
+    edupage_user, monkeypatch
+):
+    """The override's own is_day_before must drive the runtime target date —
+    not the order deadline's — otherwise a scrape decoupled to run after
+    midnight would still import for the wrong day (#527/#528 follow-up)."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(21, 0),
+        deadline_breakfast_is_day_before=True,
+        deadline_lunch=datetime.time(7, 35),
+        deadline_olovrant=datetime.time(7, 35),
+        edupage_scrape_time_breakfast=datetime.time(1, 35),
+        edupage_scrape_time_breakfast_is_day_before=False,
+    )
+    monday = datetime.date(2026, 6, 29)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result()
+
+    monkeypatch.setattr(timezone, "localdate", lambda: monday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(meal_types=["breakfast"])
+
+    # Fires Monday 01:35, still targets Monday's breakfast — not Tuesday,
+    # which is what the deadline's own is_day_before=True would have given.
+    assert result["dates"] == [str(monday)]
+    assert seen_dates == [monday]
+
+
+@pytest.mark.django_db
 def test_british_school_scrape_schedule_is_noop_without_connection():
     """Bez British School EduPage pripojenia sa vlastný scrape nezaloží — inak
     by čakal na dáta, ktoré nikdy neprídu."""

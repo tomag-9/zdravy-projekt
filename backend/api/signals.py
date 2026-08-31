@@ -67,6 +67,19 @@ DAY_OF_WEEK_DAY_BEFORE = "0-4"  # Ne–Št — úloha obsluhuje nasledujúci pra
 # predpoklad má `_next_workday`. Keby pribudol kalendár sviatkov, musia sa
 # posunúť obe naraz (predvečer sviatku sa nespúšťa, predvečer dňa PO sviatku áno).
 
+# Slovenské názvy jedál pre `PeriodicTask.description` — tú appka priamo
+# zobrazuje adminom v „Nadchádzajúce" (#527/#528 follow-up), takže musí byť
+# čitateľná bez prekladu, nie interný `meal_type` slug.
+MEAL_LABEL_SK = {"breakfast": "raňajky", "lunch": "obed", "olovrant": "olovrant"}
+_MEAL_DISPLAY_ORDER = ["breakfast", "lunch", "olovrant"]
+
+
+def _meal_types_label_sk(meal_types) -> str:
+    """`['lunch', 'breakfast']` → `'raňajky/obed'` — vždy v ustálenom poradí,
+    nie abecedne (ani anglicky, ani slovensky by to nedávalo zmysel)."""
+    ordered = [m for m in _MEAL_DISPLAY_ORDER if m in meal_types]
+    return "/".join(MEAL_LABEL_SK[m] for m in ordered)
+
 
 def _day_of_week(is_day_before: bool) -> str:
     """Maska dní pre cron podľa toho, ktorý deň úloha obsluhuje."""
@@ -143,8 +156,9 @@ def _sync_auto_order_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({}),
                 "enabled": True,
                 "description": (
-                    "Auto-order: copy the last non-empty order for every client "
-                    "who has not placed an order before today's deadline."
+                    "Auto-objednávka: skopíruje poslednú neprázdnu objednávku "
+                    "každému klientovi, ktorý si do dnešnej uzávierky "
+                    "neobjednal sám."
                 ),
             },
         )
@@ -267,9 +281,9 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"meals": ["breakfast"]}),
                 "enabled": True,
                 "description": (
-                    f"Daily report: breakfast only, sent "
-                    f"{DAILY_REPORT_OFFSET_MINUTES} min after the breakfast "
-                    f"deadline (fires at {breakfast_time.strftime('%H:%M')})."
+                    f"Denný report: len raňajky, odosiela sa "
+                    f"{DAILY_REPORT_OFFSET_MINUTES} min po uzávierke raňajok "
+                    f"(spúšťa sa o {breakfast_time.strftime('%H:%M')})."
                 ),
             },
         )
@@ -303,9 +317,10 @@ def _sync_daily_report_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"meals": ["breakfast", "lunch", "olovrant"]}),
                 "enabled": True,
                 "description": (
-                    f"Daily report: all meals (breakfast, lunch, olovrant), "
-                    f"sent {DAILY_REPORT_OFFSET_MINUTES} min after the olovrant "
-                    f"deadline (fires at {olovrant_time.strftime('%H:%M')})."
+                    f"Denný report: všetky jedlá (raňajky, obed, olovrant), "
+                    f"odosiela sa {DAILY_REPORT_OFFSET_MINUTES} min po "
+                    f"uzávierke olovrantu (spúšťa sa o "
+                    f"{olovrant_time.strftime('%H:%M')})."
                 ),
             },
         )
@@ -402,10 +417,11 @@ def _sync_push_reminder_schedule(settings_instance) -> None:
                     "kwargs": json.dumps({}),
                     "enabled": True,
                     "description": (
-                        f"Push reminder: {PUSH_REMINDER_OFFSET_MINUTES} min before "
-                        f"{'/'.join(meal_types_sorted)} deadline "
-                        f"(deadline: {deadline.strftime('%H:%M')}, "
-                        f"fires at {reminder_time.strftime('%H:%M')})."
+                        f"Push pripomienka: {PUSH_REMINDER_OFFSET_MINUTES} min "
+                        f"pred uzávierkou "
+                        f"({_meal_types_label_sk(meal_types_sorted)}) "
+                        f"(uzávierka: {deadline.strftime('%H:%M')}, "
+                        f"spúšťa sa o {reminder_time.strftime('%H:%M')})."
                     ),
                 },
             )
@@ -449,15 +465,21 @@ def _british_school_connection_id() -> int | None:
 
 def _sync_edupage_scrape_schedule(settings_instance) -> None:
     """
-    Create or update Celery Beat PeriodicTasks that fire exactly at each distinct
-    meal deadline, Monday–Friday.
+    Create or update Celery Beat PeriodicTasks that fire exactly at each
+    meal's *effective* scrape time, Monday–Friday.
 
-    The scrape runs *at* the deadline, not before it: anything imported earlier
-    would miss the orders placed in the remaining minutes and the counts would
-    go out to the kitchen short.
+    By default that's the order deadline itself: the scrape runs *at* the
+    deadline, not before it, so anything imported earlier wouldn't miss the
+    orders placed in the remaining minutes and the counts would go out to the
+    kitchen short. Setting `edupage_scrape_time_{meal}` (#527/#528 follow-up)
+    decouples the two — e.g. a deadline the evening before with the scrape
+    only run after midnight, once orders are unambiguously closed but the
+    import happens later than the deadline itself. See
+    `GlobalSettings.edupage_scrape_schedule_for`.
 
-    Meals sharing the same deadline and target-day rule are grouped.
-    Orphaned tasks from previous configurations are deleted automatically.
+    Meals sharing the same effective scrape time and target-day rule are
+    grouped. Orphaned tasks from previous configurations are deleted
+    automatically.
     """
     import datetime
 
@@ -488,22 +510,23 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
         # isn't scraped a second time at the shared deadlines below.
         british_school_connection_id = _british_school_connection_id()
 
-        # Group meal types by deadline time and target-day rule.
+        # Group meal types by their *effective* scrape time/target-day rule —
+        # the order deadline by default, or the decoupled
+        # `edupage_scrape_time_{meal}` override when one is set (#527/#528
+        # follow-up: closing orders and importing them no longer have to
+        # happen at the same clock time).
+        deadlines: dict[str, datetime.time] = {}
         groups: dict[tuple[datetime.time, bool], list[str]] = {}
         for meal_type in all_meal_types:
-            deadline: datetime.time = getattr(
-                settings_instance, f"deadline_{meal_type}"
+            deadlines[meal_type] = getattr(settings_instance, f"deadline_{meal_type}")
+            scrape_time, scrape_is_day_before = (
+                settings_instance.edupage_scrape_schedule_for(meal_type)
             )
-            is_day_before: bool = getattr(
-                settings_instance, f"deadline_{meal_type}_is_day_before", False
-            )
-            groups.setdefault((deadline, is_day_before), []).append(meal_type)
+            groups.setdefault((scrape_time, scrape_is_day_before), []).append(meal_type)
 
         new_task_names: set[str] = set()
 
-        for (deadline, is_day_before), meal_types_group in groups.items():
-            scrape_time = deadline
-
+        for (scrape_time, is_day_before), meal_types_group in groups.items():
             meal_label = "-".join(sorted(meal_types_group))
             task_name = f"{EDUPAGE_SCRAPE_TASK_PREFIX}{meal_label}"
             new_task_names.add(task_name)
@@ -519,9 +542,15 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
 
             chained_reports = _chained_report_specs(settings_instance, meal_types_group)
             report_note = (
-                f" Chains {len(chained_reports)} daily report(s) once the import lands."
+                f" Po tomto importe automaticky odošle "
+                f"{len(chained_reports)} nadväzujúci denný report."
                 if chained_reports
                 else ""
+            )
+
+            deadline_labels = ", ".join(
+                f"{MEAL_LABEL_SK[meal]}: {deadlines[meal].strftime('%H:%M')}"
+                for meal in sorted(meal_types_group, key=_MEAL_DISPLAY_ORDER.index)
             )
 
             PeriodicTask.objects.update_or_create(
@@ -543,11 +572,13 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                     ),
                     "enabled": True,
                     "description": (
-                        f"Edupage scrape: import order counts at the "
-                        f"{'/'.join(sorted(meal_types_group))} deadline "
-                        f"(deadline: {deadline.strftime('%H:%M')}, "
-                        f"target: {'next workday' if is_day_before else 'today'}, "
-                        f"fires at {scrape_time.strftime('%H:%M')}).{report_note}"
+                        f"EduPage scrape: načíta objednávky pre "
+                        f"{_meal_types_label_sk(meal_types_group)} "
+                        f"(uzávierka: {deadline_labels}, "
+                        f"cieli na "
+                        f"{'nasledujúci pracovný deň' if is_day_before else 'dnešok'}, "
+                        f"spúšťa sa o "
+                        f"{scrape_time.strftime('%H:%M')}).{report_note}"
                     ),
                 },
             )
@@ -631,8 +662,9 @@ def _sync_british_school_scrape_schedule(settings_instance) -> None:
                 ),
                 "enabled": True,
                 "description": (
-                    "British School EduPage scrape: fires 12:15 the day before "
-                    "(Sun–Thu), importing the next workday's orders."
+                    "EduPage scrape (British School): spúšťa sa denne o 12:15 "
+                    "deň vopred (Ne–Št), načíta objednávky pre nasledujúci "
+                    "pracovný deň."
                 ),
             },
         )
@@ -676,7 +708,10 @@ def _sync_weekly_reminder_schedule() -> None:
                 "crontab": schedule,
                 "args": _json.dumps([]),
                 "enabled": True,
-                "description": "Sunday 17:00 – remind clients who have no orders for next week",
+                "description": (
+                    "Nedeľa 17:00 – pripomienka klientom, ktorí ešte nemajú "
+                    "objednávky na budúci týždeň."
+                ),
             },
         )
         logger.debug(

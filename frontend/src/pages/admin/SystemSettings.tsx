@@ -3,16 +3,37 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
 import { logger } from '../../lib/logger';
+import { SECTION, canRead } from '../../lib/sections';
 import { PageHead, Card, CardHead, Button, Field, Input, Toggle } from './ui';
 
 type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report';
 
 const TABS: { key: SettingsTab; label: string }[] = [
-    { key: 'deadlines', label: 'Uzávierky' },
+    { key: 'deadlines', label: 'Časy' },
     { key: 'edupage', label: 'EduPage' },
     { key: 'contact', label: 'Kontakt' },
     { key: 'report', label: 'Denný report' },
 ];
+
+// Priateľský slovenský názov pre needitovateľný prehľad automatických behov
+// nižšie v tabe „Časy" — rovnaký princíp ako `TASK_LABELS_SK` v AdminLogs.tsx
+// (samostatná kópia, nech tab nezávisí od inej admin stránky).
+const AUTOMATION_TASK_LABELS_SK: Record<string, string> = {
+    'api.tasks.scrape_edupage_orders_task': 'EduPage scrape',
+    'api.tasks.send_push_deadline_reminder_task': 'Push pripomienka',
+    'api.tasks.send_weekly_order_reminder_task': 'Týždenná pripomienka',
+    'api.tasks.apply_auto_orders_task': 'Auto-objednávky',
+    'api.tasks.send_daily_report_task': 'Denný report',
+    'api.tasks.purge_old_event_logs_task': 'Čistenie starých záznamov',
+    'celery.backend_cleanup': 'Interná Celery úloha',
+};
+
+interface UpcomingEventEntry {
+    name: string;
+    task: string;
+    description: string;
+    next_run: string | null;
+}
 
 interface EdupageConnection {
     id: number;
@@ -43,6 +64,15 @@ interface GlobalSettings {
     deadline_olovrant: string;
     deadline_olovrant_is_day_before: boolean;
     edupage_auto_scrape_enabled: boolean;
+    // Voliteľné rozpojenie uzávierky objednávok a času, kedy sa naozaj
+    // scrapuje EduPage (napr. uzávierka 21:00 večer predtým, scrape až
+    // 1:35 ráno v deň jedla). `null` = scrape beží presne pri uzávierke.
+    edupage_scrape_time_breakfast: string | null;
+    edupage_scrape_time_breakfast_is_day_before: boolean;
+    edupage_scrape_time_lunch: string | null;
+    edupage_scrape_time_lunch_is_day_before: boolean;
+    edupage_scrape_time_olovrant: string | null;
+    edupage_scrape_time_olovrant_is_day_before: boolean;
     daily_report_enabled: boolean;
     report_email_recipients: string[];
     client_contact_name: string;
@@ -52,8 +82,11 @@ interface GlobalSettings {
 }
 
 const SystemSettings: React.FC = () => {
-    const { apiFetch } = useAuth();
+    const { apiFetch, user } = useAuth();
     const { success, error } = useToast();
+    const canSeeAutomation = canRead(user?.sections, SECTION.nadchadzajuce);
+    const [automation, setAutomation] = useState<UpcomingEventEntry[]>([]);
+    const [automationLoading, setAutomationLoading] = useState(true);
     const [settings, setSettings] = useState<GlobalSettings>({
         deadline_breakfast: '10:00',
         deadline_breakfast_is_day_before: false,
@@ -62,6 +95,12 @@ const SystemSettings: React.FC = () => {
         deadline_olovrant: '10:00',
         deadline_olovrant_is_day_before: false,
         edupage_auto_scrape_enabled: true,
+        edupage_scrape_time_breakfast: null,
+        edupage_scrape_time_breakfast_is_day_before: false,
+        edupage_scrape_time_lunch: null,
+        edupage_scrape_time_lunch_is_day_before: false,
+        edupage_scrape_time_olovrant: null,
+        edupage_scrape_time_olovrant_is_day_before: false,
         daily_report_enabled: true,
         report_email_recipients: [],
         client_contact_name: '',
@@ -98,6 +137,25 @@ const SystemSettings: React.FC = () => {
     useEffect(() => {
         fetchConnections();
     }, [fetchConnections]);
+
+    const fetchAutomation = React.useCallback(async () => {
+        setAutomationLoading(true);
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/upcoming-events/`);
+            if (res.ok) {
+                const data = await res.json();
+                setAutomation(data.results ?? []);
+            }
+        } catch (e) {
+            logger.error(e);
+        } finally {
+            setAutomationLoading(false);
+        }
+    }, [apiFetch]);
+
+    useEffect(() => {
+        if (canSeeAutomation) void fetchAutomation();
+    }, [canSeeAutomation, fetchAutomation]);
 
     const runScrapeNow = async (connectionId?: number) => {
         setScraping(true);
@@ -306,6 +364,54 @@ const SystemSettings: React.FC = () => {
         </div>
     );
 
+    const scrapeOverrideField = (
+        label: string,
+        timeKey: 'edupage_scrape_time_breakfast' | 'edupage_scrape_time_lunch' | 'edupage_scrape_time_olovrant',
+        dayBeforeKey:
+            | 'edupage_scrape_time_breakfast_is_day_before'
+            | 'edupage_scrape_time_lunch_is_day_before'
+            | 'edupage_scrape_time_olovrant_is_day_before',
+    ) => {
+        const overridden = settings[timeKey] !== null;
+        return (
+            <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                    <input
+                        type="checkbox"
+                        checked={overridden}
+                        onChange={(e) => setSettings({
+                            ...settings,
+                            [timeKey]: e.target.checked ? '01:35' : null,
+                        })}
+                        style={{ width: 16, height: 16, accentColor: 'var(--green-600)' }}
+                    />
+                    <span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span>
+                </label>
+                {overridden && (
+                    <div style={{ marginTop: 10, marginLeft: 24, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <Field label="Čas scrapu">
+                            <Input
+                                type="time"
+                                value={settings[timeKey]?.slice(0, 5) ?? ''}
+                                onChange={(e) => setSettings({ ...settings, [timeKey]: e.target.value })}
+                                style={{ width: 'auto' }}
+                            />
+                        </Field>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                            <input
+                                type="checkbox"
+                                checked={settings[dayBeforeKey]}
+                                onChange={(e) => setSettings({ ...settings, [dayBeforeKey]: e.target.checked })}
+                                style={{ width: 16, height: 16, accentColor: 'var(--green-600)' }}
+                            />
+                            <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>Cieli na nasledujúci pracovný deň</span>
+                        </label>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     return (
         <>
             <PageHead eyebrow="Nastavenia" title="Systémové nastavenia" />
@@ -324,8 +430,9 @@ const SystemSettings: React.FC = () => {
             </div>
 
             <div className="zpa-stack" style={{ maxWidth: 860, marginTop: 20 }}>
-                {/* Deadlines */}
+                {/* Časy: uzávierky, EduPage scrape override, prehľad ostatnej automatiky */}
                 {activeTab === 'deadlines' && (
+                <>
                 <Card pad>
                     <CardHead title="Časy uzávierok objednávok" />
                     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24, marginTop: 8 }}>
@@ -339,6 +446,49 @@ const SystemSettings: React.FC = () => {
                         </div>
                     </form>
                 </Card>
+
+                <Card pad style={{ marginTop: 20 }}>
+                    <CardHead
+                        title="Čas EduPage scrapu"
+                        desc="Bez zaškrtnutia sa scrapuje presne pri uzávierke daného jedla. Zaškrtnutím nastavíš iný čas — napr. uzávierka na raňajky ostane 21:00 večer predtým, ale scrape pobeží až 1:35 v deň raňajok."
+                    />
+                    <div className="zpa-grid-3" style={{ marginTop: 12 }}>
+                        {scrapeOverrideField('Raňajky', 'edupage_scrape_time_breakfast', 'edupage_scrape_time_breakfast_is_day_before')}
+                        {scrapeOverrideField('Obed', 'edupage_scrape_time_lunch', 'edupage_scrape_time_lunch_is_day_before')}
+                        {scrapeOverrideField('Olovrant', 'edupage_scrape_time_olovrant', 'edupage_scrape_time_olovrant_is_day_before')}
+                    </div>
+                    <div style={{ paddingTop: 24, borderTop: '1px solid var(--line-soft)', marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button type="button" onClick={saveSettings}>Uložiť zmeny</Button>
+                    </div>
+                </Card>
+
+                {canSeeAutomation && (
+                    <Card pad style={{ marginTop: 20 }}>
+                        <CardHead
+                            title="Prehľad všetkých automatických behov"
+                            desc="Needitovateľné tu — niektoré časy (push pripomienky, auto-objednávky) sa odvíjajú od uzávierok vyššie, iné (týždenná pripomienka, British School, čistenie záznamov) sú pevne dané. Presný najbližší beh nájdeš v Logy → Nadchádzajúce."
+                        />
+                        {automationLoading ? (
+                            <p style={{ fontSize: 13, color: 'var(--ink-mute)', marginTop: 12 }}>Načítavam…</p>
+                        ) : automation.length === 0 ? (
+                            <p style={{ fontSize: 13, color: 'var(--ink-mute)', marginTop: 12 }}>Žiadne naplánované úlohy.</p>
+                        ) : (
+                            <ul style={{ listStyle: 'none', margin: '12px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {automation.map((entry) => (
+                                    <li key={entry.name} style={{ background: 'var(--bg-cream-soft)', borderRadius: 'var(--radius-md)', padding: '10px 14px' }}>
+                                        <div style={{ fontSize: 13, fontWeight: 600 }}>
+                                            {AUTOMATION_TASK_LABELS_SK[entry.task] ?? entry.name}
+                                        </div>
+                                        <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4 }}>
+                                            {entry.description || entry.task}
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </Card>
+                )}
+                </>
                 )}
 
                 {/* EduPage automation */}
@@ -351,8 +501,9 @@ const SystemSettings: React.FC = () => {
                                 Automatické čítanie objednávok z EduPage pred uzávierkami.
                             </p>
                             <p style={{ fontSize: 12.5, color: 'var(--ink-mute)', marginTop: 8 }}>
-                                Automaticky beží len scrape pred uzávierkou. Ranné načítanie
-                                aktuálnych počtov spusti ručne nižšie.
+                                Automaticky beží len scrape pred uzávierkou (čas nastavíš
+                                v tabe Časy). Ranné načítanie aktuálnych počtov spusti ručne
+                                nižšie.
                             </p>
                         </div>
                         <Toggle

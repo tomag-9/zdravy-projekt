@@ -31,6 +31,24 @@ const EVENT_TYPES = [
     ['deploy_version', 'Nasadená nová verzia'],
 ] as const;
 
+// Priateľský slovenský názov pre "Nadchádzajúce" — `entry.task` je stabilná
+// dotted-path identita (`api.tasks.scrape_edupage_orders_task`), zatiaľ čo
+// `entry.name` je interný cron slug (napr. `edupage-scrape-breakfast-lunch`)
+// zobrazený len ako doplnok, nie ako hlavný text.
+const TASK_LABELS_SK: Record<string, string> = {
+    'api.tasks.scrape_edupage_orders_task': 'EduPage scrape',
+    'api.tasks.send_push_deadline_reminder_task': 'Push pripomienka',
+    'api.tasks.send_weekly_order_reminder_task': 'Týždenná pripomienka',
+    'api.tasks.apply_auto_orders_task': 'Auto-objednávky',
+    'api.tasks.send_daily_report_task': 'Denný report',
+    'api.tasks.purge_old_event_logs_task': 'Čistenie starých záznamov',
+    'celery.backend_cleanup': 'Interná Celery úloha',
+};
+
+function taskLabel(entry: UpcomingEventEntry): string {
+    return TASK_LABELS_SK[entry.task] ?? entry.name;
+}
+
 type ActiveTab = 'events' | 'upcoming' | 'system';
 
 interface AdminLogEntry {
@@ -119,12 +137,17 @@ export function EventPayloadDetails({ payload }: { payload: Record<string, unkno
     return <pre className="tb">{JSON.stringify(payload, null, 2)}</pre>;
 }
 
+/** Pevné SK časové pásmo — nespoliehať sa na timezone prehliadača/OS
+ * (ten býva na serveroch/VM často UTC, čo posúva zobrazený čas o hodiny). */
+const SK_TIME_ZONE = 'Europe/Bratislava';
+
 function formatTime(value: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return new Intl.DateTimeFormat('sk-SK', {
         day: '2-digit', month: '2-digit', year: 'numeric',
         hour: '2-digit', minute: '2-digit', second: '2-digit',
+        timeZone: SK_TIME_ZONE,
     }).format(date);
 }
 
@@ -136,8 +159,8 @@ function formatTime(value: string) {
 export function EventTime({ value }: { value: string }) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return <span className="zpa-time">{value}</span>;
-    const day = new Intl.DateTimeFormat('sk-SK', { day: '2-digit', month: '2-digit' }).format(date);
-    const time = new Intl.DateTimeFormat('sk-SK', { hour: '2-digit', minute: '2-digit' }).format(date);
+    const day = new Intl.DateTimeFormat('sk-SK', { day: '2-digit', month: '2-digit', timeZone: SK_TIME_ZONE }).format(date);
+    const time = new Intl.DateTimeFormat('sk-SK', { hour: '2-digit', minute: '2-digit', timeZone: SK_TIME_ZONE }).format(date);
     return (
         <span className="zpa-time" title={formatTime(value)}>
             <span className="zpa-time__day">{day}</span>
@@ -422,7 +445,10 @@ export default function AdminLogs() {
                                                     <Fragment key={entry.name}>
                                                         <tr>
                                                             <td>{entry.next_run ? <EventTime value={entry.next_run} /> : <span className="zpa-time">—</span>}</td>
-                                                            <td>{entry.name}</td>
+                                                            <td>
+                                                                <div>{taskLabel(entry)}</div>
+                                                                <div style={{ fontSize: 11.5, color: 'var(--ink-mute)', fontFamily: 'var(--font-mono, monospace)' }}>{entry.name}</div>
+                                                            </td>
                                                             <td>{entry.description || entry.task}</td>
                                                             <td className="r">
                                                                 {entry.push_preview && (
