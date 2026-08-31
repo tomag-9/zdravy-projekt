@@ -45,6 +45,12 @@ class Section(NamedTuple):
     #: Najnižšia rola, ktorá sekciu vôbec môže vidieť. Override ju nezvýši —
     #: granulárne práva vedia prístup len obmedziť, nie povýšiť nad rolu.
     min_role: str
+    #: Strop úrovne, ktorý rola dosiahne bez override (predtým vždy EDIT).
+    #: "Nadchádzajúce" je čisto informačný prehľad bez zápisovej akcie, takže
+    #: má strop READ aj pre superadmina — override ho nemôže prekročiť, len
+    #: znížiť (pozri `access.level_for`), takže sekcia zostáva read-only, kým
+    #: v nej nepribudne zápisová akcia a strop sa zámerne nezvýši na EDIT.
+    default_level: str = EDIT
 
 
 DASHBOARD = "dashboard"
@@ -57,6 +63,7 @@ DIETY = "diety"
 VOLNE_DNI = "volne_dni"
 NOTIFIKACIE = "notifikacie"
 UDALOSTI = "udalosti"
+NADCHADZAJUCE = "nadchadzajuce"
 OBJEDNAVKY = "objednavky"
 NAKLADANIE = "nakladanie"
 NASTAVENIA = "nastavenia"
@@ -75,6 +82,9 @@ SECTIONS: tuple[Section, ...] = (
     Section(NOTIFIKACIE, "Notifikácie", roles.ADMIN),
     # Audit vlastných úkonov patrí adminovi — vidí, kto čo zmenil.
     Section(UDALOSTI, "Udalosti (audit)", roles.ADMIN),
+    # Prehľad naplánovaných cronov — čisto na čítanie, admin aj superadmin
+    # dostávajú default READ (pozri `Section.default_level`).
+    Section(NADCHADZAJUCE, "Nadchádzajúce", roles.ADMIN, default_level=READ),
     Section(OBJEDNAVKY, "Objednávky", roles.ADMIN),
     # Nakladanie je jediná sekcia, ktorú vidí aj kuchyňa.
     Section(NAKLADANIE, "Nakladanie", roles.KUCHYNA),
@@ -99,7 +109,7 @@ def default_level(user, section_key: str) -> str:
     section = _BY_KEY.get(section_key)
     if section is None:
         return NONE
-    return EDIT if roles.at_least(user, section.min_role) else NONE
+    return section.default_level if roles.at_least(user, section.min_role) else NONE
 
 
 def sections_for_role(user) -> tuple[Section, ...]:

@@ -14,6 +14,27 @@ const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'report', label: 'Denný report' },
 ];
 
+interface EdupageConnection {
+    id: number;
+    name: string;
+    mealsguest_url: string;
+    api_identifier: string;
+    is_active: boolean;
+}
+
+interface ScrapeResult {
+    connection_id: number;
+    name: string;
+    status: string;
+    reason?: string;
+    error?: string;
+    warnings?: string[];
+    unmapped_letters?: string[];
+    config_notes?: string[];
+    attention?: string[];
+    orders?: { prevadzka: string; status: string; order_id: number }[];
+}
+
 interface GlobalSettings {
     deadline_breakfast: string;
     deadline_breakfast_is_day_before: boolean;
@@ -57,21 +78,46 @@ const SystemSettings: React.FC = () => {
         return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     });
     const [scraping, setScraping] = useState(false);
+    const [connections, setConnections] = useState<EdupageConnection[]>([]);
+    const [scrapeResults, setScrapeResults] = useState<ScrapeResult[]>([]);
+    const [expandedResults, setExpandedResults] = useState<Set<number>>(() => new Set());
 
-    const runScrapeNow = async () => {
-        setScraping(true);
+    const britishSchool = connections.find((c) => c.name === 'British School');
+
+    const fetchConnections = React.useCallback(async () => {
         try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-connections/`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (Array.isArray(data)) setConnections(data);
+        } catch (e) {
+            logger.error(e);
+        }
+    }, [apiFetch]);
+
+    useEffect(() => {
+        fetchConnections();
+    }, [fetchConnections]);
+
+    const runScrapeNow = async (connectionId?: number) => {
+        setScraping(true);
+        setScrapeResults([]);
+        setExpandedResults(new Set());
+        try {
+            const body: { date: string; connection_id?: number } = { date: scrapeDate };
+            if (connectionId) body.connection_id = connectionId;
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-connections/scrape/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: scrapeDate }),
+                body: JSON.stringify(body),
             });
-            const body = await res.json().catch(() => ({}));
+            const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-                error(body?.error || 'Načítanie z EduPage zlyhalo.');
+                error(data?.error || 'Načítanie z EduPage zlyhalo.');
                 return;
             }
-            const results: { status?: string; orders?: unknown[] }[] = body?.results ?? [];
+            const results: ScrapeResult[] = data?.results ?? [];
+            setScrapeResults(results);
             const updated = results.filter((r) => r.status === 'updated').length;
             const orders = results.reduce((sum, r) => sum + (r.orders?.length ?? 0), 0);
             if (updated === 0) {
@@ -85,6 +131,14 @@ const SystemSettings: React.FC = () => {
         } finally {
             setScraping(false);
         }
+    };
+
+    const toggleResultExpanded = (connectionId: number) => {
+        setExpandedResults((current) => {
+            const next = new Set(current);
+            if (next.has(connectionId)) next.delete(connectionId); else next.add(connectionId);
+            return next;
+        });
     };
 
     const fetchSettings = React.useCallback(async () => {
@@ -327,10 +381,63 @@ const SystemSettings: React.FC = () => {
                                     style={{ width: 'auto' }}
                                 />
                             </Field>
-                            <Button type="button" onClick={runScrapeNow} disabled={scraping}>
+                            <Button type="button" onClick={() => runScrapeNow()} disabled={scraping}>
                                 {scraping ? 'Načítavam…' : 'Načítať z EduPage'}
                             </Button>
+                            {britishSchool && (
+                                <Button
+                                    type="button"
+                                    variant="secondary"
+                                    onClick={() => runScrapeNow(britishSchool.id)}
+                                    disabled={scraping}
+                                >
+                                    {scraping ? 'Načítavam…' : 'Scrapovať len British School'}
+                                </Button>
+                            )}
                         </div>
+
+                        {scrapeResults.length > 0 && (
+                            <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {scrapeResults.map((r) => {
+                                    const isExpanded = expandedResults.has(r.connection_id);
+                                    const hasDetail = Boolean(
+                                        r.reason || r.error
+                                        || r.warnings?.length || r.unmapped_letters?.length
+                                        || r.config_notes?.length || r.attention?.length,
+                                    );
+                                    const orderCount = r.orders?.length ?? 0;
+                                    return (
+                                        <div key={r.connection_id} style={{ background: 'var(--bg-cream-soft)', borderRadius: 'var(--radius-md)', padding: '10px 14px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                                                <span style={{ fontSize: 13.5, fontWeight: 600 }}>{r.name}</span>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                    <span style={{ fontSize: 12.5, color: 'var(--ink-3)' }}>
+                                                        {r.status === 'updated' ? `${orderCount} prevádzok` : r.status}
+                                                    </span>
+                                                    {hasDetail && (
+                                                        <Button variant="ghost" sm onClick={() => toggleResultExpanded(r.connection_id)}>
+                                                            Detail
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {isExpanded && hasDetail && (
+                                                <pre className="tb" style={{ marginTop: 8 }}>
+                                                    {[
+                                                        r.reason && `Dôvod: ${r.reason}`,
+                                                        r.error && `Chyba: ${r.error}`,
+                                                        r.warnings?.length ? `Warnings: ${r.warnings.join(', ')}` : null,
+                                                        r.unmapped_letters?.length ? `Neznáme diéty: ${r.unmapped_letters.join(', ')}` : null,
+                                                        r.config_notes?.length ? `Config poznámky: ${r.config_notes.join(', ')}` : null,
+                                                        r.attention?.length ? `Pozor: ${r.attention.join(', ')}` : null,
+                                                    ].filter(Boolean).join('\n')}
+                                                </pre>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
 
                     <div style={{ paddingTop: 24, display: 'flex', justifyContent: 'flex-end' }}>

@@ -23,6 +23,7 @@ export const SECTION = {
     nakladanie: 'nakladanie',
     nastavenia: 'nastavenia',
     udalosti: 'udalosti',
+    nadchadzajuce: 'nadchadzajuce',
     logy: 'logy',
     pristupy: 'pristupy',
 } as const;
