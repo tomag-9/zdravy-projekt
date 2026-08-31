@@ -18,8 +18,12 @@ from .overrides.britishschool import (
     british_school_payer_hook,
 )
 from .overrides.cvernicka import cvernicka_letter_hook
+from .overrides.fantasticka import fantasticka_letter_hook
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
+from .overrides.ivanka import ivanka_letter_hook
 from .overrides.krasnanko import krasnanko_letter_hook
+from .overrides.libellus import libellus_letter_hook
+from .overrides.montessori import montessori_letter_hook
 from .overrides.skolickams import skolickams_payer_hook
 from .overrides.zdravebrusko import zdravebrusko_letter_hook
 
@@ -38,8 +42,11 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         olovrant_mode=OlovrantMode.ODVODIT_Z_OBEDU,
         poznamka=(
             "nastavenia prázdne — žiadny samostatný olovrant jid. Real tabuľka "
-            "potvrdzuje olovrant = obed 4/4 dní (27.–30.7.2026)."
+            "potvrdzuje olovrant = obed 4/4 dní (27.–30.7.2026). "
+            "'Iná..NmNgNe' fuzzy-matchovalo len na NO MILK/NO GLUTEN (#527, "
+            "vajcia sa strácali) — letter_hook opravuje na plnú kombináciu."
         ),
+        letter_hook=montessori_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="jollyhomeschool",
@@ -51,13 +58,24 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="zsivanka",
         ucty=("Ivanka pri Dunaji",),
         olovrant_mode=OlovrantMode.NEZNAMY,
-        poznamka="Čaká na nenulové dáta. Pozor: menu A=NM, nie klasik!",
+        poznamka=(
+            "Čaká na nenulové dáta. Pozor: menu A=NM, nie klasik! "
+            "NGNF/NMNE/'MŠ NMNG bez ARAS' fuzzy-matchovali len na jedno "
+            "obmedzenie z viacerých (#527) — letter_hook opravuje na plné "
+            "kombinácie."
+        ),
+        letter_hook=ivanka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="szsfan",
         ucty=("SZŠ Fantastická",),
         olovrant_mode=_C,
-        poznamka="ZŠ Fantastická — samostatná prevádzka od fantastickaskolka (MŠ).",
+        poznamka=(
+            "ZŠ Fantastická — samostatná prevádzka od fantastickaskolka (MŠ). "
+            "HITNMNGnSnKnFC fuzzy-matchovalo len na NO MILK/NO GLUTEN (#527) — "
+            "letter_hook opravuje na plnú 6-násobnú kombináciu."
+        ),
+        letter_hook=fantasticka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="edulienka",
@@ -114,7 +132,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="mslibellus",
         ucty=("Libellus",),
         olovrant_mode=_C,
-        poznamka="ks-koeficient pečiva (jasle 1 / ZŠ 1,5 / dosp 2) — gramáž report.",
+        poznamka=(
+            "ks-koeficient pečiva (jasle 1 / ZŠ 1,5 / dosp 2) — gramáž report. "
+            "NENO/NMNE fuzzy-matchovali len na jedno obmedzenie z dvoch (#527) "
+            "— letter_hook opravuje na plné kombinácie."
+        ),
+        letter_hook=libellus_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="rozmanita",
