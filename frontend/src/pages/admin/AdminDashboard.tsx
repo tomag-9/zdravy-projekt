@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { PageHead, Button, Card, Badge, Empty, Select } from "./ui";
+import { PageHead, Button, Card, Badge, Empty } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
 import {
   prevWeekday,
@@ -188,8 +188,9 @@ const AdminDashboard: React.FC = () => {
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
   const [sections, setSections] = useState<string[]>([]);
-  // Prázdny výber = všetky výdajné body; inak práve ten jeden vybratý.
-  const [vydaj, setVydaj] = useState<string>("");
+  // Prázdny výber = všetky výdajné body; inak môže byť vybratých aj viac
+  // (napr. Cluster A + B naraz).
+  const [selectedVydaje, setSelectedVydaje] = useState<string[]>([]);
 
   // Ktoré sekcie (raňajky / polievka / menu / olovrant) a ktoré výdajné body sa
   // zobrazujú. Prázdny výber = kompletná tabuľka. Rovnaký filter dostane
@@ -198,9 +199,9 @@ const AdminDashboard: React.FC = () => {
     () =>
       [
         ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
-        ...(vydaj ? [`&vydaj=${encodeURIComponent(vydaj)}`] : []),
+        ...selectedVydaje.map((key) => `&vydaj=${encodeURIComponent(key)}`),
       ].join(""),
-    [sections, vydaj],
+    [sections, selectedVydaje],
   );
 
   const fetchData = useCallback(async () => {
@@ -425,7 +426,7 @@ const AdminDashboard: React.FC = () => {
             <PrintFilter
               sections={data.spec.sections}
               vydaje={data.spec.vydaje ?? []}
-              vydaj={vydaj}
+              selectedVydaje={selectedVydaje}
               onToggleSection={(key) =>
                 setSections((current) =>
                   toggleSelection(
@@ -435,10 +436,10 @@ const AdminDashboard: React.FC = () => {
                   ),
                 )
               }
-              onVydajChange={setVydaj}
+              onVydajeChange={setSelectedVydaje}
               onReset={() => {
                 setSections([]);
-                setVydaj("");
+                setSelectedVydaje([]);
               }}
             />
             <GramageTable spec={data.spec} onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
@@ -628,15 +629,101 @@ const FilterRow: React.FC<{
   </div>
 );
 
+/**
+ * Vlastný multi-select dropdown pre clustre — natívny <select> nešiel poriadne
+ * ofarbiť (zoznam možností kreslí prehliadač po svojom, na tmavom pozadí to
+ * vyzeralo cudzo a niektoré prehliadače popri vlastnej šípke kreslili aj
+ * svoju). Navyše natívny <select> dovolí vybrať len jednu položku naraz —
+ * tu ide o zoznam checkboxov, takže sa dá zobraziť aj kombinácia (Cluster A + B).
+ */
+const ClusterFilter: React.FC<{
+  vydaje: SpecVydaj[];
+  selected: string[];
+  onChange: (keys: string[]) => void;
+}> = ({ vydaje, selected, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const isAll = selected.length === 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const label = isAll
+    ? "Všetky clustre"
+    : vydaje
+        .filter((item) => selected.includes(item.key))
+        .map((item) => item.name)
+        .join(" + ") || "Všetky clustre";
+
+  const toggle = (key: string) => {
+    const next = selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key];
+    onChange(next.length === vydaje.length ? [] : next);
+  };
+
+  return (
+    <div className="cluster-filter" ref={rootRef}>
+      <button
+        type="button"
+        className={`cluster-filter-trigger${!isAll ? " is-active" : ""}`}
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {label}
+        <ChevronDown size={16} className="chevron" />
+      </button>
+      {open && (
+        <div className="cluster-filter-menu" role="listbox" aria-multiselectable="true">
+          <button
+            type="button"
+            role="option"
+            aria-selected={isAll}
+            className={`cluster-filter-option${isAll ? " on" : ""}`}
+            onClick={() => {
+              onChange([]);
+              setOpen(false);
+            }}
+          >
+            <Check size={14} />
+            <span>Všetky clustre</span>
+          </button>
+          {vydaje.map((item) => {
+            const on = selected.includes(item.key);
+            return (
+              <button
+                key={item.key}
+                type="button"
+                role="option"
+                aria-selected={on}
+                className={`cluster-filter-option${on ? " on" : ""}`}
+                onClick={() => toggle(item.key)}
+              >
+                <Check size={14} />
+                <span>{item.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const PrintFilter: React.FC<{
   sections: SpecSection[];
   vydaje: SpecVydaj[];
-  vydaj: string;
+  selectedVydaje: string[];
   onToggleSection: (key: string) => void;
-  onVydajChange: (key: string) => void;
+  onVydajeChange: (keys: string[]) => void;
   onReset: () => void;
-}> = ({ sections, vydaje, vydaj, onToggleSection, onVydajChange, onReset }) => {
-  const allSelected = sections.every((section) => section.selected) && !vydaj;
+}> = ({ sections, vydaje, selectedVydaje, onToggleSection, onVydajeChange, onReset }) => {
+  const allSelected = sections.every((section) => section.selected) && selectedVydaje.length === 0;
   return (
     <div className="zpa-section-filter">
       <FilterRow
@@ -647,17 +734,7 @@ const PrintFilter: React.FC<{
       {vydaje.length > 1 && (
         <div className="row">
           <span className="lbl">Cluster</span>
-          <Select
-            value={vydaj}
-            onChange={(e) => onVydajChange(e.target.value)}
-            className={`cluster-select${vydaj ? " is-active" : ""}`}
-            aria-label="Cluster"
-          >
-            <option value="">Všetky clustre</option>
-            {vydaje.map((item) => (
-              <option key={item.key} value={item.key}>{item.name}</option>
-            ))}
-          </Select>
+          <ClusterFilter vydaje={vydaje} selected={selectedVydaje} onChange={onVydajeChange} />
         </div>
       )}
       <div className="row">

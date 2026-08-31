@@ -476,9 +476,8 @@ describe("Filter sekcií", () => {
     });
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
-    fireEvent.change(await screen.findByLabelText("Cluster"), {
-      target: { value: "B" },
-    });
+    fireEvent.click(await screen.findByRole("button", { name: "Všetky clustre" }));
+    fireEvent.click(screen.getByRole("option", { name: "Cluster B" }));
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(

@@ -972,25 +972,46 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     font-size: 13px; font-weight: 600; color: var(--green-700);
     text-decoration: underline;
 }
-/* Cluster dropdown v tom istom riadku ako chipy — .zpa-select je stavaný na
- * plnošírkové formulárové polia (11px/14px padding), tu vedľa 13px pill
- * chipov pôsobil zbytočne veľký a bez vlastnej identity. Zarovnané na
- * rozmer/rádius chipu, so zvýraznením zhodným s .chip.on pri aktívnom filtri. */
-.zpa-section-filter .cluster-select {
+/* Cluster dropdown v tom istom riadku ako chipy — vlastný multi-select namiesto
+ * natívneho <select>, ktorého rozbaľovací zoznam si kreslí prehliadač po
+ * svojom (biele pozadie, cudzí font) a niekedy popri vlastnej šípke pridá aj
+ * svoju natívnu. Zarovnané na rozmer/rádius chipu, so zvýraznením zhodným
+ * s .chip.on pri aktívnom filtri; viacnásobný výber (napr. Cluster A + B) je
+ * teraz bežný zoznam checkboxov, nie obmedzenie natívneho <select>. */
+.cluster-filter { position: relative; }
+.cluster-filter-trigger {
+    display: inline-flex; align-items: center; gap: 6px;
     width: auto; min-width: 150px;
-    padding: 6px 34px 6px 14px;
+    padding: 6px 12px 6px 14px;
     border-radius: var(--radius-pill);
+    border: 1px solid var(--line); background: #fff; color: var(--ink-3);
     font-family: var(--font-display); font-weight: 600; font-size: 13px;
-    background-position: right 12px center;
+    cursor: pointer; transition: all 160ms;
 }
-.zpa-section-filter .cluster-select:hover { border-color: var(--green-500); color: var(--green-800); }
-.zpa-section-filter .cluster-select.is-active {
+.cluster-filter-trigger .chevron { color: var(--green-700); flex: 0 0 auto; margin-left: auto; }
+.cluster-filter-trigger:hover { border-color: var(--green-500); color: var(--green-800); }
+.cluster-filter-trigger.is-active {
     background-color: var(--green-700); border-color: var(--green-700);
     color: var(--bg-cream); box-shadow: var(--shadow-sm);
-    /* zelená šípka z .zpa-select by na tmavom pozadí zapadla — krémová verzia */
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23FBF7E4' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
-.zpa-section-filter .cluster-select.is-active option { color: var(--ink-1); background: #fff; }
+.cluster-filter-trigger.is-active .chevron { color: var(--bg-cream); }
+.cluster-filter-menu {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 20;
+    display: flex; flex-direction: column; gap: 2px;
+    min-width: 190px; padding: 6px;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+}
+.cluster-filter-option {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border: 0; border-radius: var(--radius-sm);
+    background: transparent; color: var(--ink-1); text-align: left;
+    font-family: var(--font-sans); font-size: 13px; cursor: pointer;
+}
+.cluster-filter-option svg { flex: 0 0 auto; visibility: hidden; color: var(--green-700); }
+.cluster-filter-option:hover { background: var(--bg-cream-soft); }
+.cluster-filter-option.on { font-weight: 600; color: var(--green-900); }
+.cluster-filter-option.on svg { visibility: visible; }
 
 /* ── Matica oprávnení (#484) ──────────────────────────────────────────────── */
 
