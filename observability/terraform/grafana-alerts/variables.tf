@@ -63,9 +63,15 @@ variable "backend_recent_restart_seconds" {
 }
 
 variable "login_failure_count_threshold" {
-  description = "Warning threshold for failed login attempts over 10 minutes."
+  description = "Warning threshold for failed login attempts over 10 minutes. Raised from 30 alongside adding a 5m `for` debounce, since this counts all failures (mostly ordinary mistyped passwords) — re-tune against observed baseline traffic."
   type        = number
-  default     = 30
+  default     = 60
+}
+
+variable "login_throttled_count_threshold" {
+  description = "Warning threshold for login attempts rejected by the global LoginRateThrottle over 10 minutes — a stronger signal than raw failure count, since it means overall login traffic (not just one user's typos) hit the cap."
+  type        = number
+  default     = 10
 }
 
 variable "login_failure_rate_percent" {

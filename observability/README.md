@@ -12,8 +12,8 @@ Alloy stack itself is run.
 | Metrics  | Django `/metrics/` + Alloy cAdvisor exporter → `prometheus.remote_write` | Grafana Cloud Prometheus/Mimir |
 | Logs     | Docker container stdout → Alloy `loki.source.docker`             | Grafana Cloud Loki     |
 
-Custom business metric: `auth_login_attempts_total{result="success"|"failure"}`
-(`backend/api/metrics.py`, incremented in `EmailTokenObtainPairView.post`).
+Custom business metric: `auth_login_attempts_total{result="success"|"failure",reason="success"|"invalid_credentials"|"throttled"|"validation_error"}`
+(`backend/api/metrics.py`, incremented in `EmailTokenObtainPairView.post`/`handle_exception`).
 
 ## Django metrics under Gunicorn
 
