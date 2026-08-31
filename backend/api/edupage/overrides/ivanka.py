@@ -14,7 +14,9 @@ EduPage vlastný `nazov` vypisuje celý obsah jednoznačne:
                                                                    "NO MILK/NO GLUTEN" a
                                                                    arašidy vôbec nevidí
 
-Nahlásené Stanom 31.8.2026.
+Nahlásené Stanom 31.8.2026. Diéty pre NGNF a "MŠ NMNG bez ARAS" založené v
+appke s pomlčkovým oddeľovačom (staršia konvencia, pk 119/120) — NMNE
+recykluje `NO MILK/NO EGG` (pk 99, lomítkový tvar), ktoré už existovalo.
 """
 
 from __future__ import annotations
@@ -22,9 +24,9 @@ from __future__ import annotations
 from ..base import LetterRule
 
 _RULES: dict[str, LetterRule] = {
-    "NGNF": LetterRule(diet="NO GLUTEN/NO FISH"),
+    "NGNF": LetterRule(diet="NO GLUTEN – NO FISH"),
     "NMNE": LetterRule(diet="NO MILK/NO EGG"),
-    "MŠ NMNG BEZ ARAS": LetterRule(diet="NO MILK/NO GLUTEN/NO ARASIDY"),
+    "MŠ NMNG BEZ ARAS": LetterRule(diet="NO MILK – NO GLUTEN – NO ARASIDY"),
 }
 
 

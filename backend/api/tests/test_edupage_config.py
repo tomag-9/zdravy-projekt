@@ -389,7 +389,7 @@ class TestFantastickaLetterHook(unittest.TestCase):
     def test_six_way_combo(self):
         self.assertEqual(
             self._rule("HITNMNGnSnKnFC").diet,
-            "HISTAMIN/NO MILK/NO GLUTEN/NO SOJA/NO KUKURICA/NO CUKOR",
+            "NO MILK – NO GLUTEN – HISTAMIN – NO SOJA – NO CUKOR – NO KUKURICA",
         )
 
     def test_unknown_skratka_falls_through_to_engine(self):
@@ -405,14 +405,14 @@ class TestIvankaLetterHook(unittest.TestCase):
         return ivanka_letter_hook("X", skratka, "")
 
     def test_ngnf_full_combo(self):
-        self.assertEqual(self._rule("NGNF").diet, "NO GLUTEN/NO FISH")
+        self.assertEqual(self._rule("NGNF").diet, "NO GLUTEN – NO FISH")
 
     def test_nmne_full_combo(self):
         self.assertEqual(self._rule("NMNE").diet, "NO MILK/NO EGG")
 
     def test_ms_nmng_bez_aras_full_combo(self):
         self.assertEqual(
-            self._rule("MŠ NMNG bez ARAS").diet, "NO MILK/NO GLUTEN/NO ARASIDY"
+            self._rule("MŠ NMNG bez ARAS").diet, "NO MILK – NO GLUTEN – NO ARASIDY"
         )
 
     def test_unknown_skratka_falls_through_to_engine(self):
@@ -445,7 +445,7 @@ class TestMontessoriLetterHook(unittest.TestCase):
         return montessori_letter_hook("X", skratka, "")
 
     def test_full_combo(self):
-        self.assertEqual(self._rule("Iná..NmNgNe").diet, "NO MILK/NO GLUTEN/NO EGG")
+        self.assertEqual(self._rule("Iná..NmNgNe").diet, "NO MILK – NO GLUTEN – NO EGG")
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("Iná NmNg"))
@@ -515,7 +515,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("HITNMNGnSnKnFC", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"],
-            {"HISTAMIN/NO MILK/NO GLUTEN/NO SOJA/NO KUKURICA/NO CUKOR": 1},
+            {"NO MILK – NO GLUTEN – HISTAMIN – NO SOJA – NO CUKOR – NO KUKURICA": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
@@ -525,7 +525,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("MŠ NMNG bez ARAS", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"],
-            {"NO MILK/NO GLUTEN/NO ARASIDY": 1},
+            {"NO MILK – NO GLUTEN – NO ARASIDY": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
@@ -544,7 +544,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("Iná..NmNgNe", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"],
-            {"NO MILK/NO GLUTEN/NO EGG": 1},
+            {"NO MILK – NO GLUTEN – NO EGG": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
