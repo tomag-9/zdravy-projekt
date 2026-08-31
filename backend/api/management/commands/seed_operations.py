@@ -47,3 +47,6 @@ class Command(BaseCommand):
             management.call_command(
                 "seed_british_school_2026_08", verbosity=options.get("verbosity", 1)
             )
+            management.call_command(
+                "seed_cms_pezinok_2026_08", verbosity=options.get("verbosity", 1)
+            )
