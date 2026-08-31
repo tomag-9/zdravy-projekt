@@ -36,23 +36,35 @@ class TestCronSkipReason:
 
 
 @pytest.mark.django_db
-def test_apply_auto_orders_task_skips_on_weekend_and_logs(monkeypatch):
-    monkeypatch.setattr(timezone, "localdate", lambda: SATURDAY)
+def test_apply_auto_orders_task_runs_on_sunday_because_monday_is_a_normal_workday(
+    monkeypatch,
+):
+    """Regression for a real prod incident (2026-08-31): `auto-order-daily`
+    fires Sun-Thu at 21:00 precisely so its Sunday leg can prepare Monday.
+    The old code checked "today" (Sunday, always a weekend) instead of the
+    resolved next-workday target, so it silently skipped every Sunday and
+    Monday never got its auto-orders."""
+    monkeypatch.setattr(timezone, "localdate", lambda: SUNDAY)
+    called = {}
 
-    def fail(*args, **kwargs):
-        raise AssertionError("apply_auto_orders should not run on a skipped day")
+    def fake_apply(target_date):
+        # `target_date=None` here is correct/expected: the task still lets
+        # `apply_auto_orders()` resolve "next workday" itself — this test's
+        # guarantee is only that it gets called at all, i.e. isn't skipped.
+        called["was_called"] = True
+        called["target_date"] = target_date
+        return {"date": str(MONDAY), "created": [], "skipped": 0}
 
-    monkeypatch.setattr("api.services.apply_auto_orders", fail)
+    monkeypatch.setattr("api.services.apply_auto_orders", fake_apply)
 
     result = apply_auto_orders_task.run()
 
-    assert result == {"skipped": True, "reason": "weekend"}
+    assert called.get("was_called") is True
+    assert called["target_date"] is None
+    assert result["date"] == MONDAY.isoformat()
     assert (
-        EventLog.objects.filter(event_type=EventLog.EventType.CRON_SKIPPED).count() == 1
+        EventLog.objects.filter(event_type=EventLog.EventType.CRON_SKIPPED).count() == 0
     )
-    log = EventLog.objects.get(event_type=EventLog.EventType.CRON_SKIPPED)
-    assert log.payload["reason"] == "weekend"
-    assert log.payload["date"] == SATURDAY.isoformat()
 
 
 @pytest.mark.django_db
@@ -75,23 +87,57 @@ def test_apply_auto_orders_task_runs_on_explicit_date_even_on_weekend(monkeypatc
 
 
 @pytest.mark.django_db
-def test_apply_auto_orders_task_skips_on_configured_holiday(monkeypatch):
-    Holiday.objects.create(date=MONDAY, reason="Firemné voľno")
+def test_apply_auto_orders_task_skips_past_a_holiday_on_the_resolved_target(
+    monkeypatch,
+):
+    """`_next_workday` (used to resolve the automatic target) already skips
+    weekends AND configured Holidays on its own, so a Holiday sitting on
+    what would otherwise be "tomorrow" is never itself a reachable skip
+    reason for this task — the run simply lands on the day *after* the
+    holiday instead. This locks that composition down."""
+    tuesday = MONDAY + datetime.timedelta(days=1)
+    Holiday.objects.create(date=tuesday, reason="Firemné voľno")
     monkeypatch.setattr(timezone, "localdate", lambda: MONDAY)
+    called = {}
 
-    def fail(*args, **kwargs):
-        raise AssertionError("apply_auto_orders should not run on a configured day off")
+    def fake_apply(target_date):
+        # `target_date=None`: the task lets `apply_auto_orders()` resolve
+        # the target itself — this test only locks down that the pre-check
+        # (evaluated on the *same* `_next_workday` result) doesn't skip it.
+        called["was_called"] = True
+        return {"date": "irrelevant", "created": [], "skipped": 0}
 
-    monkeypatch.setattr("api.services.apply_auto_orders", fail)
+    monkeypatch.setattr("api.services.apply_auto_orders", fake_apply)
 
-    result = apply_auto_orders_task.run()
+    apply_auto_orders_task.run()
 
-    assert result == {"skipped": True, "reason": "configured_day_off"}
+    assert called.get("was_called") is True
+    assert (
+        EventLog.objects.filter(event_type=EventLog.EventType.CRON_SKIPPED).count() == 0
+    )
 
 
 @pytest.mark.django_db
 def test_send_daily_report_task_skips_on_weekend_without_sending(monkeypatch):
     monkeypatch.setattr(timezone, "localdate", lambda: SUNDAY)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("send_order_report should not run on a skipped day")
+
+    monkeypatch.setattr("django.core.management.call_command", fail)
+
+    result = send_daily_report_task.run()
+
+    assert result == {"skipped": True, "reason": "weekend"}
+
+
+@pytest.mark.django_db
+def test_send_daily_report_task_skips_when_yesterday_was_weekend_even_though_today_is_not(
+    monkeypatch,
+):
+    """The report is about *yesterday*, not today — checking "today" would
+    have let a Monday run try to report on Sunday (a day nobody ordered)."""
+    monkeypatch.setattr(timezone, "localdate", lambda: MONDAY)
 
     def fail(*args, **kwargs):
         raise AssertionError("send_order_report should not run on a skipped day")
