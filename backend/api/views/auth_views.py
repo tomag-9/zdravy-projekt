@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.core.management import call_command
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
+from rest_framework.exceptions import Throttled
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
@@ -166,12 +167,8 @@ class EmailTokenObtainPairView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        try:
-            serializer.is_valid(raise_exception=True)
-        except Exception:
-            login_attempts_total.labels(result="failure").inc()
-            raise
-        login_attempts_total.labels(result="success").inc()
+        serializer.is_valid(raise_exception=True)
+        login_attempts_total.labels(result="success", reason="success").inc()
 
         refresh_str: str = serializer.validated_data["refresh"]
         access_str: str = serializer.validated_data["access"]
@@ -184,6 +181,20 @@ class EmailTokenObtainPairView(TokenObtainPairView):
         response = Response({"access": access_str}, status=status.HTTP_200_OK)
         _set_refresh_cookie(response, refresh_str, max_age=max_age)
         return response
+
+    def handle_exception(self, exc):
+        # Throttling (LoginRateThrottle) is raised in dispatch()'s initial()
+        # step, before post() runs, so it must be counted here rather than in
+        # post()'s body. Runs exactly once per request either way — dispatch()
+        # calls handle_exception() for both a throttle-time exception and one
+        # re-raised out of post() — so counting only here avoids double-counting.
+        reason = (
+            "throttled"
+            if isinstance(exc, Throttled)
+            else getattr(exc, "error_code", "validation_error")
+        )
+        login_attempts_total.labels(result="failure", reason=reason).inc()
+        return super().handle_exception(exc)
 
 
 @extend_schema(tags=["auth"])

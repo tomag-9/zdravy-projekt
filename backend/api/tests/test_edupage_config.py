@@ -17,8 +17,12 @@ from api.edupage.overrides.britishschool import (
     british_school_payer_hook,
 )
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
+from api.edupage.overrides.fantasticka import fantasticka_letter_hook
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
+from api.edupage.overrides.ivanka import ivanka_letter_hook
 from api.edupage.overrides.krasnanko import krasnanko_letter_hook
+from api.edupage.overrides.libellus import libellus_letter_hook
+from api.edupage.overrides.montessori import montessori_letter_hook
 from api.edupage.overrides.skolickams import skolickams_payer_hook
 from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
 from api.edupage_scraper import (
@@ -116,6 +120,22 @@ class TestConfigPreUrl(unittest.TestCase):
         ms = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
         zs = config_pre_url("https://szsfan.edupage.org/menu?id=x")
         self.assertNotEqual(ms.ucty, zs.ucty)
+
+    def test_szsfan_has_letter_hook(self):
+        cfg = config_pre_url("https://szsfan.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_zsivanka_has_letter_hook(self):
+        cfg = config_pre_url("https://zsivanka.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_mslibellus_has_letter_hook(self):
+        cfg = config_pre_url("https://mslibellus.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_montessorisk_has_letter_hook(self):
+        cfg = config_pre_url("https://montessorisk.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
 
 
 class TestApplyConfigOlovrant(unittest.TestCase):
@@ -358,6 +378,79 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
         self.assertIsNone(self._rule("dsbNM"))
 
 
+class TestFantastickaLetterHook(unittest.TestCase):
+    """#527: 'HITNMNGnSnKnFC' sa fuzzy-matchovalo len na NO MILK/NO GLUTEN —
+    EduPage nazov="HITnomilk/noGlu/noSoja/noKuk/noRafcukor" potvrdzuje plnú
+    6-násobnú kombináciu (nahlásené Stanom 31.8.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return fantasticka_letter_hook("X", skratka, "")
+
+    def test_six_way_combo(self):
+        self.assertEqual(
+            self._rule("HITNMNGnSnKnFC").diet,
+            "NO MILK – NO GLUTEN – HISTAMIN – NO SOJA – NO CUKOR – NO KUKURICA",
+        )
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("NM"))
+
+
+class TestIvankaLetterHook(unittest.TestCase):
+    """#527: NGNF/NMNE/'MŠ NMNG bez ARAS' fuzzy-matchovali len na jedno
+    obmedzenie z viacerých — EduPage nazov potvrdzuje plné kombinácie
+    (nahlásené Stanom 31.8.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return ivanka_letter_hook("X", skratka, "")
+
+    def test_ngnf_full_combo(self):
+        self.assertEqual(self._rule("NGNF").diet, "NO GLUTEN – NO FISH")
+
+    def test_nmne_full_combo(self):
+        self.assertEqual(self._rule("NMNE").diet, "NO MILK/NO EGG")
+
+    def test_ms_nmng_bez_aras_full_combo(self):
+        self.assertEqual(
+            self._rule("MŠ NMNG bez ARAS").diet, "NO MILK – NO GLUTEN – NO ARASIDY"
+        )
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("NG"))
+
+
+class TestLibellusLetterHook(unittest.TestCase):
+    """#527: NENO/NMNE fuzzy-matchovali len na jedno obmedzenie z dvoch —
+    EduPage nazov potvrdzuje plné kombinácie (nahlásené Stanom 31.8.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return libellus_letter_hook("X", skratka, "")
+
+    def test_neno_full_combo(self):
+        self.assertEqual(self._rule("NENO").diet, "NO EGG – NO ORECH")
+
+    def test_nmne_full_combo(self):
+        self.assertEqual(self._rule("NMNE").diet, "NO MILK/NO EGG")
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("NE"))
+
+
+class TestMontessoriLetterHook(unittest.TestCase):
+    """#527: 'Iná..NmNgNe' sa fuzzy-matchovalo len na NO MILK/NO GLUTEN —
+    EduPage nazov="Iná NmNgNe..." potvrdzuje plnú kombináciu (nahlásené
+    Stanom 31.8.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return montessori_letter_hook("X", skratka, "")
+
+    def test_full_combo(self):
+        self.assertEqual(self._rule("Iná..NmNgNe").diet, "NO MILK – NO GLUTEN – NO EGG")
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("Iná NmNg"))
+
+
 class TestFixedLetterHooksInParse(unittest.TestCase):
     """Integračný test: letter_hook beží pred fuzzy engine, takže tieto
     skratky teraz idú priamo na plný názov a NEobjavia sa v `uncertain_letters`
@@ -413,6 +506,45 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("dsbNMNE", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"], {"NO MILK/NO EGG": 1}
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_fantasticka_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=fantasticka_letter_hook)
+        res = self._parse("HITNMNGnSnKnFC", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"],
+            {"NO MILK – NO GLUTEN – HISTAMIN – NO SOJA – NO CUKOR – NO KUKURICA": 1},
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_ivanka_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=ivanka_letter_hook)
+        res = self._parse("MŠ NMNG bez ARAS", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"],
+            {"NO MILK – NO GLUTEN – NO ARASIDY": 1},
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_libellus_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=libellus_letter_hook)
+        res = self._parse("NENO", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"], {"NO EGG – NO ORECH": 1}
+        )
+        self.assertEqual(res.uncertain_letters, [])
+        self.assertEqual(res.unmapped_letters, [])
+
+    def test_montessori_skratka_resolves_and_is_not_uncertain(self):
+        cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=montessori_letter_hook)
+        res = self._parse("Iná..NmNgNe", cfg)
+        self.assertEqual(
+            res.order_data["lunch"]["Škôlka"]["diets"],
+            {"NO MILK – NO GLUTEN – NO EGG": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])

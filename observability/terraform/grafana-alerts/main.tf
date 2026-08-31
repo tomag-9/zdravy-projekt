@@ -100,10 +100,24 @@ locals {
       name            = "Possible brute-force login"
       expr            = "sum(increase(auth_login_attempts_total{environment=\"${var.environment}\",result=\"failure\"}[10m]))"
       math_expression = "$B > ${var.login_failure_count_threshold}"
-      for             = "0s"
+      # Require the count to stay above threshold for a further 5m instead of
+      # firing on the first evaluation past it — a single short-lived spike
+      # (e.g. one school's parents mistyping passwords around a deadline)
+      # should not page anyone.
+      for         = "5m"
+      severity    = "warning"
+      summary     = "Failed login attempts are elevated"
+      description = "There were more than ${var.login_failure_count_threshold} failed login attempts in 10 minutes in ${var.environment}, sustained for 5+ minutes. Check the reason label on auth_login_attempts_total: mostly invalid_credentials is likely people mistyping passwords; a rise in throttled means the global login rate cap is being hit."
+    }
+
+    login_throttled_spike = {
+      name            = "Login throttle cap being hit"
+      expr            = "sum(increase(auth_login_attempts_total{environment=\"${var.environment}\",result=\"failure\",reason=\"throttled\"}[10m]))"
+      math_expression = "$B > ${var.login_throttled_count_threshold}"
+      for             = "5m"
       severity        = "warning"
-      summary         = "Failed login attempts are elevated"
-      description     = "There were more than ${var.login_failure_count_threshold} failed login attempts in 10 minutes in ${var.environment}."
+      summary         = "The global login rate cap is being hit"
+      description     = "Login requests are being rejected by LoginRateThrottle in ${var.environment}. Unlike ordinary invalid_credentials failures (usually people mistyping passwords), this means overall login traffic is hitting the global cap — could be a legitimate usage spike or a scripted attack; check request volume and source spread."
     }
 
     login_failure_rate_spike = {

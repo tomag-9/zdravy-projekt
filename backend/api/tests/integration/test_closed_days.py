@@ -163,12 +163,29 @@ def test_non_staff_cannot_unlock_day(authenticated_client, admin_user):
     assert ClosedDay.objects.filter(date=TARGET_DATE).exists()
 
 
-def test_closing_day_pregenerates_and_caches_pdf(admin_client):
+def _run_pdf_task_inline(monkeypatch):
+    """`cache_closed_day_pdf_task` beží mimo requestu (code review 2026-08-31,
+    WeasyPrint predtým blokoval web worker admina) - v teste bez skutočného
+    Celery workera nahraď `.delay()` priamym synchrónnym behom, nech testy
+    naďalej overujú end-to-end správanie (PDF sa reálne dostane do cache),
+    nielen že sa úloha zaradila do fronty."""
+    from api.tasks import cache_closed_day_pdf_task
+
+    monkeypatch.setattr(
+        cache_closed_day_pdf_task,
+        "delay",
+        lambda date_str: cache_closed_day_pdf_task.run(date_str),
+    )
+
+
+def test_closing_day_pregenerates_and_caches_pdf(admin_client, monkeypatch):
     """Uzavretie dňa predgeneruje PDF snapshot, ktorý export potom servíruje
     priamo z cache namiesto opätovného renderu (#528)."""
     from django.core.cache import cache
 
     from api.cache_service import get_closed_day_pdf_cache_key
+
+    _run_pdf_task_inline(monkeypatch)
 
     close = admin_client.post(
         reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
@@ -188,10 +205,30 @@ def test_closing_day_pregenerates_and_caches_pdf(admin_client):
     assert pdf_response.content == cached_pdf
 
 
-def test_unlocking_day_clears_cached_pdf(admin_client):
+def test_closing_day_dispatches_pdf_task_asynchronously(admin_client, monkeypatch):
+    """Uzavretie dňa už nesmie čakať na WeasyPrint v requeste admina (code
+    review 2026-08-31) - overuje sa dispatch na Celery, nie sync render."""
+    from unittest.mock import MagicMock
+
+    from api.tasks import cache_closed_day_pdf_task
+
+    mock_delay = MagicMock()
+    monkeypatch.setattr(cache_closed_day_pdf_task, "delay", mock_delay)
+
+    close = admin_client.post(
+        reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
+    )
+
+    assert close.status_code == status.HTTP_201_CREATED
+    mock_delay.assert_called_once_with(TARGET_DATE.isoformat())
+
+
+def test_unlocking_day_clears_cached_pdf(admin_client, monkeypatch):
     from django.core.cache import cache
 
     from api.cache_service import get_closed_day_pdf_cache_key
+
+    _run_pdf_task_inline(monkeypatch)
 
     admin_client.post(
         reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"

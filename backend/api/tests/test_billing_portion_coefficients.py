@@ -346,6 +346,63 @@ def test_dashboard_emits_zvlast_row_without_inflating_standard_total():
 
 
 @pytest.mark.django_db
+def test_dashboard_zvlast_menu_row_is_capped_by_what_diets_already_took():
+    """Code review follow-up (2026-08-31): `packSeparately.menus` je validovaný
+    len proti surovému `menuCounts`, nie proti tomu, čo z toho už zobrali
+    diéty — takže klient vie odoslať packSeparately.menus.A=5 aj keď z tých
+    5 majú 2 diétu a na "čistý" zvyšok ostávajú len 3. Predtým sa "zvlášť"
+    riadok vypísal so surovým počtom 5, hoci štandardný riadok bol znížený
+    len o 3 (na 0) - tí istí 2 ľudia s diétou sa tak vykázali aj v diétnom,
+    aj v "zvlášť" riadku (5+2=7 hláv za 5 objednávok)."""
+    call_command("init_reference_data")
+
+    template = MealTemplate.objects.create(
+        name="Obed 200g",
+        category="main_course",
+        components=[{"label": "Hlavné jedlo", "grams": "200", "unit": "g"}],
+        base_weight_grams="200",
+    )
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 16))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=template, category="main_course", menu_variant="A"
+    )
+
+    celok = Celok.objects.create(nazov="Pack cez diétu")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Pack cez diétu")
+    user = User.objects.create_user(username="packdiet@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=plan.date,
+        data={
+            "lunch": {
+                "Škôlka": {
+                    "menuCounts": {"A": 5},
+                    "diets": {"NO MILK": 2},
+                    # Klient poslal "zvlášť" pre celých 5, hoci 2 z nich už sú
+                    # diéta - server smie vykázať najviac 3 "čistých" zvlášť.
+                    "packSeparately": {"menus": {"A": 5}},
+                }
+            }
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+
+    # 5 objednaných spolu - nič viac, nič menej, bez ohľadu na to, ako sa
+    # tých 5 rozdelí medzi štandardný/diétny/"zvlášť" riadok.
+    # standard_total_count = "nediétni" (štandard + zvlášť) = 5 - 2 = 3.
+    assert row["standard_total_count"] == 3
+    assert row["total_count"] == 5
+
+    by_type = {sr["type"]: sr for sr in row["sub_rows"]}
+    assert "standard" not in by_type
+    assert by_type["diet"]["count"] == 2
+    assert by_type["zvlast"]["count"] == 3
+
+
+@pytest.mark.django_db
 def test_dashboard_zvlast_and_zvlast_gn_are_mutually_exclusive_subsets():
     """Tá istá porcia sa dá rozdeliť medzi "zvlášť" a "zvlášť do GN" -
     súčet oboch je podmnožina, nikdy nemá nafúknuť celkový počet."""

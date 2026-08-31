@@ -313,26 +313,52 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         return frozenset(entries)
 
     @classmethod
-    def _changed_meals(
+    def _walk_meal_changes(
         cls,
         new_data: Dict[str, Any],
-        existing_data: Dict[str, Any] | None = None,
-        input_status: str = "submitted",
+        existing_data: Dict[str, Any] | None,
+        input_status: str,
+        *,
+        draft_predicate,
+        submitted_predicate,
     ) -> list[str]:
+        """Shared "for each configured meal, compare previous vs current under
+        the draft-or-submitted rule" scaffold behind `_changed_meals` and
+        `_changed_restricted_menus` - only the actual comparison (what counts
+        as a "change" for that meal) differs between the two, so it's passed
+        in rather than re-walking `MEAL_FIELD_CONFIG` twice."""
         existing_data = existing_data or {}
         changed: list[str] = []
         for meal_key in cls.MEAL_FIELD_CONFIG:
             previous = existing_data.get(meal_key, {}) or {}
             current = new_data.get(meal_key, {}) or {}
             if input_status == "draft":
-                if cls._meal_has_content(previous) or cls._meal_has_content(current):
+                if draft_predicate(previous, current):
                     changed.append(meal_key)
                 continue
-            if cls._meal_signature(previous) != cls._meal_signature(current) and (
-                cls._meal_has_content(previous) or cls._meal_has_content(current)
-            ):
+            if submitted_predicate(previous, current):
                 changed.append(meal_key)
         return changed
+
+    @classmethod
+    def _changed_meals(
+        cls,
+        new_data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None = None,
+        input_status: str = "submitted",
+    ) -> list[str]:
+        return cls._walk_meal_changes(
+            new_data,
+            existing_data,
+            input_status,
+            draft_predicate=lambda prev, curr: (
+                cls._meal_has_content(prev) or cls._meal_has_content(curr)
+            ),
+            submitted_predicate=lambda prev, curr: (
+                cls._meal_signature(prev) != cls._meal_signature(curr)
+                and (cls._meal_has_content(prev) or cls._meal_has_content(curr))
+            ),
+        )
 
     # Menu B a C majú vlastný, prísnejší termín (napr. 7:30 dva dni vopred) —
     # nezávislý od bežného per-jedlo deadlinu, platí rovnako pre všetky jedlá.
@@ -362,19 +388,19 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         existing_data: Dict[str, Any] | None = None,
         input_status: str = "submitted",
     ) -> bool:
-        existing_data = existing_data or {}
-        for meal_key in cls.MEAL_FIELD_CONFIG:
-            previous = existing_data.get(meal_key, {}) or {}
-            current = new_data.get(meal_key, {}) or {}
-            prev_sig = cls._meal_menu_signature(previous, cls._RESTRICTED_MENUS)
-            curr_sig = cls._meal_menu_signature(current, cls._RESTRICTED_MENUS)
-            if input_status == "draft":
-                if prev_sig or curr_sig:
-                    return True
-                continue
-            if prev_sig != curr_sig and (prev_sig or curr_sig):
-                return True
-        return False
+        def sig(meal_data: Any) -> frozenset:
+            return cls._meal_menu_signature(meal_data, cls._RESTRICTED_MENUS)
+
+        changed = cls._walk_meal_changes(
+            new_data,
+            existing_data,
+            input_status,
+            draft_predicate=lambda prev, curr: bool(sig(prev)) or bool(sig(curr)),
+            submitted_predicate=lambda prev, curr: (
+                sig(prev) != sig(curr) and (sig(prev) or sig(curr))
+            ),
+        )
+        return bool(changed)
 
     @classmethod
     def _validate_deadlines(
@@ -668,6 +694,12 @@ class GlobalSettingsSerializer(serializers.ModelSerializer):
             "deadline_menu_bc",
             "deadline_menu_bc_days_before",
             "edupage_auto_scrape_enabled",
+            "edupage_scrape_time_breakfast",
+            "edupage_scrape_time_breakfast_is_day_before",
+            "edupage_scrape_time_lunch",
+            "edupage_scrape_time_lunch_is_day_before",
+            "edupage_scrape_time_olovrant",
+            "edupage_scrape_time_olovrant_is_day_before",
             "daily_report_enabled",
             "report_email_recipients",
             "client_contact_name",

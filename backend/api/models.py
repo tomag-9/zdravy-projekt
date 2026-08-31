@@ -233,6 +233,54 @@ class GlobalSettings(models.Model):
         default=True,
         help_text="When disabled, automatic EduPage scraping periodic tasks are removed.",
     )
+    edupage_scrape_time_breakfast = models.TimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override: scrape breakfast EduPage orders at this time instead of "
+            "at deadline_breakfast. Leave empty to keep scraping at the deadline."
+        ),
+    )
+    edupage_scrape_time_lunch = models.TimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override: scrape lunch EduPage orders at this time instead of "
+            "at deadline_lunch. Leave empty to keep scraping at the deadline."
+        ),
+    )
+    edupage_scrape_time_olovrant = models.TimeField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Override: scrape olovrant EduPage orders at this time instead of "
+            "at deadline_olovrant. Leave empty to keep scraping at the deadline."
+        ),
+    )
+    edupage_scrape_time_breakfast_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "Only used when edupage_scrape_time_breakfast is set: whether that "
+            "override time targets the next workday (like a day-before deadline) "
+            "or today. Independent of deadline_breakfast_is_day_before, because "
+            "an override commonly runs after midnight — already on the meal's "
+            "own day — even though the deadline itself falls the evening before."
+        ),
+    )
+    edupage_scrape_time_lunch_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "Only used when edupage_scrape_time_lunch is set. See "
+            "edupage_scrape_time_breakfast_is_day_before."
+        ),
+    )
+    edupage_scrape_time_olovrant_is_day_before = models.BooleanField(
+        default=False,
+        help_text=(
+            "Only used when edupage_scrape_time_olovrant is set. See "
+            "edupage_scrape_time_breakfast_is_day_before."
+        ),
+    )
     daily_report_enabled = models.BooleanField(
         default=True,
         help_text=(
@@ -253,6 +301,26 @@ class GlobalSettings(models.Model):
     class Meta:
         verbose_name = "System Settings"
         verbose_name_plural = "System Settings"
+
+    def edupage_scrape_schedule_for(self, meal_type: str) -> tuple[datetime.time, bool]:
+        """Effective (time, is_day_before) the EduPage scrape fires at for `meal_type`.
+
+        Defaults to the order deadline (`deadline_{meal_type}`,
+        `deadline_{meal_type}_is_day_before`) — the scrape then runs at the exact
+        moment orders close, so nothing placed right up to the deadline is missed.
+        Setting `edupage_scrape_time_{meal_type}` decouples the scrape from the
+        deadline (e.g. deadline stays the evening before, but the scrape runs
+        after midnight); its own `edupage_scrape_time_{meal_type}_is_day_before`
+        then governs the target-day rule instead of the deadline's.
+        """
+        override_time = getattr(self, f"edupage_scrape_time_{meal_type}", None)
+        if override_time is not None:
+            return override_time, getattr(
+                self, f"edupage_scrape_time_{meal_type}_is_day_before", False
+            )
+        return getattr(self, f"deadline_{meal_type}"), getattr(
+            self, f"deadline_{meal_type}_is_day_before", False
+        )
 
     def save(self, *args: Any, **kwargs: Any) -> None:
         if not self.pk and GlobalSettings.objects.exists():
@@ -353,6 +421,20 @@ class EdupageConnection(models.Model):
     mealsguest_url = models.URLField(max_length=500, unique=True)
     api_identifier = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=True)
+    dedicated_scrape_hour = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Set together with dedicated_scrape_minute to scrape this "
+            "connection on its own crontab (day before, Sun-Thu, targeting "
+            "the next workday) instead of at the shared GlobalSettings meal "
+            "deadlines every other connection uses. For a facility whose "
+            "deadline schedule genuinely doesn't apply, e.g. British School "
+            "(#535) — code review 2026-08-31 generalized this off a "
+            "hardcoded connection name."
+        ),
+    )
+    dedicated_scrape_minute = models.PositiveSmallIntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

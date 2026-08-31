@@ -30,12 +30,13 @@ describe('EventPayloadDetails', () => {
 
 describe('EventTime', () => {
     it('rozdelí dátum a čas na dva riadky bez sekúnd', () => {
-        // Očakávané hodnoty sa počítajú rovnakým Intl-om ako komponent, aby test
-        // neprepadol len preto, že CI beží v inej zóne než vývojársky stroj.
+        // Očakávané hodnoty sa počítajú rovnakým Intl-om (vrátane pevnej SK
+        // zóny) ako komponent, aby test neprepadol len preto, že CI beží
+        // v inej zóne než vývojársky stroj.
         const value = '2026-08-14T07:30:03+02:00';
         const date = new Date(value);
-        const day = new Intl.DateTimeFormat('sk-SK', { day: '2-digit', month: '2-digit' }).format(date);
-        const hm = new Intl.DateTimeFormat('sk-SK', { hour: '2-digit', minute: '2-digit' }).format(date);
+        const day = new Intl.DateTimeFormat('sk-SK', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Bratislava' }).format(date);
+        const hm = new Intl.DateTimeFormat('sk-SK', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Bratislava' }).format(date);
 
         const { container } = render(<EventTime value={value} />);
 
