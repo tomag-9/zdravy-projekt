@@ -78,11 +78,20 @@ def _log_cron_failure(task_name: str, exc: BaseException, payload: dict) -> None
     )
 
 
-def _cron_skip_check(task_name: str) -> str | None:
-    """If today is a weekend or a configured Holiday, log the skip (see
-    `_log_cron_skip_event`) and return the reason so the caller can bail
-    out before any side effects. Returns None when the run should proceed
-    normally.
+def _cron_skip_check(task_name: str, check_date=None) -> str | None:
+    """If `check_date` is a weekend or a configured Holiday, log the skip
+    (see `_log_cron_skip_event`) and return the reason so the caller can
+    bail out before any side effects. Returns None when the run should
+    proceed normally.
+
+    `check_date` must be the date the run actually prepares data FOR, not
+    necessarily the date the cron fires on — a Sun-Thu evening schedule
+    preparing tomorrow's (Mon-Fri) deadline must not skip just because
+    today, the day it fires, happens to be a weekend (caught in prod on
+    2026-08-31: the Sunday-evening leg of `apply_auto_orders_task` /
+    `scrape_edupage_orders_task` silently skipped every week because this
+    checked `timezone.localdate()` unconditionally instead of the resolved
+    target date). Defaults to today for callers with no day-before target.
 
     Only call this for the Celery-Beat-scheduled path of a task (i.e. when
     no explicit target date was passed in) — a manually-triggered run for
@@ -91,11 +100,11 @@ def _cron_skip_check(task_name: str) -> str | None:
     """
     from api.scheduling import cron_skip_reason
 
-    today = timezone.localdate()
-    reason = cron_skip_reason(today)
+    day = check_date or timezone.localdate()
+    reason = cron_skip_reason(day)
     if reason is None:
         return None
-    _log_cron_skip_event(task_name, reason, today)
+    _log_cron_skip_event(task_name, reason, day)
     return reason
 
 
@@ -421,8 +430,17 @@ def apply_auto_orders_task(self, date_str: str | None = None):
         target_date = None
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
-        elif (reason := _cron_skip_check("apply_auto_orders_task")) is not None:
-            return {"skipped": True, "reason": reason}
+        else:
+            from api.services import _next_workday
+
+            # Check the day this run actually prepares (the next workday),
+            # not "today" — the Sun-Thu schedule fires on Sunday precisely
+            # to prepare Monday, and Sunday itself is always a weekend.
+            next_workday = _next_workday(timezone.localdate())
+            if (
+                reason := _cron_skip_check("apply_auto_orders_task", next_workday)
+            ) is not None:
+                return {"skipped": True, "reason": reason}
 
         result = apply_auto_orders(target_date)
         log_event(
@@ -678,17 +696,6 @@ def scrape_edupage_orders_task(
                     "disabled": True,
                 }
 
-            if (reason := _cron_skip_check("scrape_edupage_orders_task")) is not None:
-                return {
-                    "scraped": 0,
-                    "errors": 0,
-                    "skipped": 0,
-                    "dates": [],
-                    "meal_types": meal_types,
-                    "skipped_run": True,
-                    "reason": reason,
-                }
-
             today = timezone.localdate()
             if meal_types is None:
                 target_date = _next_workday(today) if target_next_workday else today
@@ -703,6 +710,28 @@ def scrape_edupage_orders_task(
                     target_meals = date_to_meals.setdefault(target_date, [])
                     assert target_meals is not None
                     target_meals.append(meal_type)
+
+            # Skip only the dates this run actually resolved to that are
+            # themselves a day off — not "today" (the day the cron fires).
+            # A Sun-Thu schedule with `target_next_workday`/`*_is_day_before`
+            # fires on Sunday precisely to prepare Monday, and Sunday itself
+            # is always a weekend, so checking "today" would always bail.
+            skip_reason = None
+            for skip_date in list(date_to_meals):
+                skip_reason = _cron_skip_check("scrape_edupage_orders_task", skip_date)
+                if skip_reason is not None:
+                    del date_to_meals[skip_date]
+
+            if not date_to_meals:
+                return {
+                    "scraped": 0,
+                    "errors": 0,
+                    "skipped": 0,
+                    "dates": [],
+                    "meal_types": meal_types,
+                    "skipped_run": True,
+                    "reason": skip_reason,
+                }
 
         scraper = EdupageScraper()
         # Whitelist diét sa číta raz za beh — je rovnaký pre všetky prevádzky.
@@ -961,9 +990,14 @@ def send_daily_report_task(
                 )
                 return {"skipped": True, "reason": "daily_report_disabled"}
 
-            if (reason := _cron_skip_check("send_daily_report_task")) is not None:
-                return {"skipped": True, "reason": reason}
             target_date = timezone.localdate() - datetime.timedelta(days=1)
+            # Check the day the report is actually ABOUT (yesterday), not
+            # today — the two only ever differ by weekday name, but "today"
+            # is the wrong date on principle (see `_cron_skip_check`).
+            if (
+                reason := _cron_skip_check("send_daily_report_task", target_date)
+            ) is not None:
+                return {"skipped": True, "reason": reason}
 
         # Build meal argument
         meals_arg = ",".join(meals) if meals else "breakfast,lunch,olovrant"

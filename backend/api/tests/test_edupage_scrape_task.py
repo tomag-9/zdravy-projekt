@@ -743,3 +743,56 @@ def test_scrape_task_target_next_workday_without_meal_types(edupage_user, monkey
     tomorrow = datetime.date(2026, 6, 30)
     assert result["dates"] == [str(tomorrow)]
     assert seen_dates == [tomorrow]
+
+
+@pytest.mark.django_db
+def test_scrape_task_runs_on_sunday_when_target_next_workday_is_monday(
+    edupage_user, monkeypatch
+):
+    """Regression for a real prod incident (2026-08-31): the British School
+    schedule fires Sun-Thu at 12:15 specifically so its Sunday leg can
+    prepare Monday. The old `_cron_skip_check` looked at "today" (always a
+    weekend on that leg) instead of the resolved `target_next_workday`
+    date, so it silently skipped every single Sunday and Monday's data was
+    never scraped."""
+    GlobalSettings.objects.create(pk=1)
+    sunday = datetime.date(2026, 6, 28)
+    monday = datetime.date(2026, 6, 29)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result()
+
+    monkeypatch.setattr(timezone, "localdate", lambda: sunday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(target_next_workday=True)
+
+    assert result.get("skipped_run") is not True
+    assert result["dates"] == [str(monday)]
+    assert seen_dates == [monday]
+
+
+@pytest.mark.django_db
+def test_scrape_task_runs_on_sunday_for_a_day_before_meal(edupage_user, monkeypatch):
+    """Same regression as above, but for the shared `edupage-scrape-breakfast`
+    schedule (Sun-Thu 21:00, `deadline_breakfast_is_day_before=True`) rather
+    than the British School `target_next_workday` path."""
+    GlobalSettings.objects.create(pk=1, deadline_breakfast_is_day_before=True)
+    sunday = datetime.date(2026, 6, 28)
+    monday = datetime.date(2026, 6, 29)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result()
+
+    monkeypatch.setattr(timezone, "localdate", lambda: sunday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(meal_types=["breakfast"])
+
+    assert result.get("skipped_run") is not True
+    assert result["dates"] == [str(monday)]
+    assert seen_dates == [monday]
