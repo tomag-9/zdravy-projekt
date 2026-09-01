@@ -10,6 +10,10 @@ presne tento riadok vypísaný celý:
 
 T.j. dieťa s alergiou na úrovni EpiPenu — appka ho predtým viedla len ako
 "bez vajec", čo je nebezpečne neúplné.
+
+`NMNO`/"NoMilk no orech" (letter E) fuzzy-matchovalo len na NO MILK, orech sa
+strácal — nahlásené 1.9.2026, existujúca diéta pk 121 pokrýva presne túto
+kombináciu.
 """
 
 from __future__ import annotations
@@ -18,6 +22,7 @@ from ..base import LetterRule
 
 _RULES: dict[str, LetterRule] = {
     "NE BEZ O,A,S,S": LetterRule(diet="NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM"),
+    "NMNO": LetterRule(diet="NO MILK – NO ORECH"),
 }
 
 

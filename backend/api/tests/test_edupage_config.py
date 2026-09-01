@@ -385,6 +385,11 @@ class TestFelixKarloveskaLetterHook(unittest.TestCase):
             "NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM",
         )
 
+    def test_nmno_confirmed_certain(self):
+        """'NMNO'/'NoMilk no orech' fuzzy-matchovalo len na NO MILK, orech sa
+        strácal — potvrdené na existujúcu diétu pk 121 (user 1.9.2026)."""
+        self.assertEqual(self._rule("NMNO").diet, "NO MILK – NO ORECH")
+
     def test_plain_ne_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NE"))
 
@@ -568,6 +573,12 @@ class TestFilipanerihoLetterHook(unittest.TestCase):
     def test_no_orech(self):
         self.assertEqual(self._rule("No orech").diet, "NO ORECH")
 
+    def test_ng_hrib_confirmed_certain(self):
+        """'NG hríb'/'NoGlutenNoHríb' bolo uncertain fuzzy match (len NO
+        GLUTEN), hríb sa strácal — potvrdené na existujúcu diétu pk 58
+        (user 1.9.2026)."""
+        self.assertEqual(self._rule("NG hríb").diet, "NO GLUTEN, HRÍBY")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
 
@@ -580,6 +591,11 @@ class TestRozmanitaLetterHook(unittest.TestCase):
         """Bol uncertain fuzzy match (len NO MILK) — potvrdené na NO MILK –
         NO ORECH (user 1.9.2026)."""
         self.assertEqual(self._rule("NoMO").diet, "NO MILK – NO ORECH")
+
+    def test_nnno_confirmed_certain(self):
+        """'NNNO'/'NoNoNo bezO' fuzzy-matchovalo len na NONONO, orech sa
+        strácal — potvrdené na existujúcu diétu pk 67 (user 1.9.2026)."""
+        self.assertEqual(self._rule("NNNO").diet, "NONONO, NO ORECH")
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
