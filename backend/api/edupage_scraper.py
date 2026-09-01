@@ -444,9 +444,27 @@ class EdupageScraper:
         genuinely different service windows would resolve to the same
         meal_key and their headcounts would be summed together, silently
         doubling that meal's reported count. When more than one window in the
-        same day resolves to the same meal, keep the earliest (chronologically)
-        and shift later collisions to the next later meal slot that isn't
-        already taken that day, so each real window keeps its own bucket.
+        same day resolves to the same naive meal, the window with the most
+        menu variety (`druhov_jedal`) wins that meal — it is almost always
+        the real lunch, not a small desiata/snack window landing in the same
+        hour bucket by coincidence — and the rest are pushed to the nearest
+        still-open slot on their own side (earlier windows toward breakfast,
+        later ones toward olovrant), so each real window keeps its own
+        bucket. Multiple jids legitimately sharing one bucket (e.g. a
+        desiata window merged into "breakfast", which already covers
+        raňajky+desiata as one reported meal) is fine — `_parse` sums counts
+        across jids under the same meal_key regardless.
+
+        Windows are normally keyed by jid directly (`{jid: {...}}`), but
+        British School's `nastavenia` reports them as a plain list with no
+        jid at all — list position IS the jid used elsewhere in `prehlad`
+        (confirmed via the payer-type overlap between each window and its
+        matching `prehlad` jid). Without this, the whole day was silently
+        skipped (`isinstance(day_data, dict)` failed on a list), leaving
+        `jid_map` empty — and every jid then fell through `_parse`'s
+        single-jid-school fallback to "lunch", merging breakfast, desiata,
+        the real lunch and olovrant into one inflated "lunch" count (#British
+        School, 1.9.2026 — 885 heads under lunch, 0 under breakfast/olovrant).
 
         A `vydaj_normal` row is only valid while `target_date` falls within
         its own `plati_od`/`plati_do` range — a school that changed its
@@ -473,39 +491,61 @@ class EdupageScraper:
             except (json.JSONDecodeError, KeyError):
                 continue
             for day_data in hodnota.values():
+                if isinstance(day_data, list):
+                    day_data = {
+                        str(index): entry for index, entry in enumerate(day_data)
+                    }
                 if not isinstance(day_data, dict):
                     continue
 
                 unseen = [
-                    (jid, times.get("vydaj_od", "12:00"))
+                    (jid, times)
                     for jid, times in day_data.items()
-                    if jid not in jid_map
+                    if jid not in jid_map and isinstance(times, dict)
                 ]
                 if not unseen:
                     continue
                 # Chronological within the day - parsed as (hour, minute) so
                 # unpadded times (e.g. "9:30") still sort before "14:00"
                 # instead of a lexicographic string compare misordering them.
-                unseen.sort(key=lambda pair: EdupageScraper._parse_hm(pair[1]))
+                unseen.sort(
+                    key=lambda pair: EdupageScraper._parse_hm(pair[1]["vydaj_od"])
+                )
 
-                used_meals: set[str] = set()
-                for jid, vydaj_od in unseen:
-                    hour = EdupageScraper._parse_hm(vydaj_od)[0]
+                order = [jid for jid, _ in unseen]
+                by_bucket: dict[str, list[str]] = {}
+                variety: dict[str, int] = {}
+                for jid, times in unseen:
+                    hour = EdupageScraper._parse_hm(times.get("vydaj_od", "12:00"))[0]
                     meal = _DEFAULT_MEAL
                     for threshold, label in _MEAL_BY_HOUR:
                         if hour < threshold:
                             meal = label
                             break
+                    by_bucket.setdefault(meal, []).append(jid)
+                    try:
+                        variety[jid] = int(times.get("druhov_jedal") or 1)
+                    except (TypeError, ValueError):
+                        variety[jid] = 1
 
-                    if meal in used_meals:
-                        start = meal_sequence.index(meal)
-                        for candidate in meal_sequence[start + 1 :]:
-                            if candidate not in used_meals:
-                                meal = candidate
-                                break
-
-                    used_meals.add(meal)
-                    jid_map[jid] = meal
+                for meal, jids in by_bucket.items():
+                    if len(jids) == 1:
+                        jid_map[jids[0]] = meal
+                        continue
+                    winner = max(jids, key=lambda jid: variety[jid])
+                    jid_map[winner] = meal
+                    winner_index = order.index(winner)
+                    start = meal_sequence.index(meal)
+                    for jid in jids:
+                        if jid == winner:
+                            continue
+                        if order.index(jid) < winner_index:
+                            candidates = (
+                                meal_sequence[start - 1 :: -1] if start > 0 else []
+                            )
+                        else:
+                            candidates = meal_sequence[start + 1 :]
+                        jid_map[jid] = candidates[0] if candidates else meal
         return jid_map
 
     @staticmethod

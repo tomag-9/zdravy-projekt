@@ -351,6 +351,73 @@ class TestBuildJidMap(unittest.TestCase):
         result = EdupageScraper._build_jid_map([old_row, new_row], self.TARGET_DATE)
         self.assertEqual(result["2"], "lunch")
 
+    def test_bigger_window_wins_the_naive_collision(self):
+        """Obed (11:00, 7 druhov jedál) a olovrant (14:30, tiež 'hodina 14' →
+        naivne tiež obed) kolidujú v tom istom naivnom košíku — vyhráva ten s
+        väčšou pestrosťou jedál (skutočný obed), olovrant sa posunie ďalej."""
+        row = {
+            "setting": "vydaj_normal",
+            "hodnota": json.dumps(
+                {
+                    "1": {
+                        "1": {"vydaj_od": "09:30", "druhov_jedal": 7},
+                        "2": {"vydaj_od": "11:00", "druhov_jedal": 7},
+                        "3": {"vydaj_od": "14:30", "druhov_jedal": 7},
+                    }
+                }
+            ),
+        }
+        result = EdupageScraper._build_jid_map([row], self.TARGET_DATE)
+        self.assertEqual(result, {"1": "breakfast", "2": "lunch", "3": "olovrant"})
+
+    def test_small_early_window_loses_to_the_real_lunch_and_falls_to_breakfast(self):
+        """Desiata (10:05, 1 druh jedla) padne do rovnakého naivneho košíka
+        ako skutočný obed (11:25, 21 druhov jedál) — obed vyhrá, desiata sa
+        (keďže bola pred ním) preradí naspäť do raňajok, nie dopredu k
+        olovrantu (#British School, 1.9.2026)."""
+        row = {
+            "setting": "vydaj_normal",
+            "hodnota": json.dumps(
+                {
+                    "1": {
+                        "0": {"vydaj_od": "08:30", "druhov_jedal": 1},
+                        "1": {"vydaj_od": "10:05", "druhov_jedal": 1},
+                        "2": {"vydaj_od": "11:25", "druhov_jedal": 21},
+                        "3": {"vydaj_od": "14:30", "druhov_jedal": 1},
+                    }
+                }
+            ),
+        }
+        result = EdupageScraper._build_jid_map([row], self.TARGET_DATE)
+        self.assertEqual(
+            result,
+            {"0": "breakfast", "1": "breakfast", "2": "lunch", "3": "olovrant"},
+        )
+
+    def test_windows_as_a_plain_list_are_keyed_by_position(self):
+        """British School nahlasuje okná ako list bez vlastného jid — pozícia
+        v zozname JE jid použité v `prehlad`. Bez podpory tohto tvaru celý
+        deň potichu preskočil a `jid_map` vyšla prázdna (#British School,
+        1.9.2026 — 885 hláv skončilo pod jedným 'obedom')."""
+        row = {
+            "setting": "vydaj_normal",
+            "hodnota": json.dumps(
+                {
+                    "1": [
+                        {"vydaj_od": "08:30", "druhov_jedal": 1},
+                        {"vydaj_od": "10:05", "druhov_jedal": 1},
+                        {"vydaj_od": "11:25", "druhov_jedal": 21},
+                        {"vydaj_od": "14:30", "druhov_jedal": 1},
+                    ]
+                }
+            ),
+        }
+        result = EdupageScraper._build_jid_map([row], self.TARGET_DATE)
+        self.assertEqual(
+            result,
+            {"0": "breakfast", "1": "breakfast", "2": "lunch", "3": "olovrant"},
+        )
+
 
 class TestBuildPayerMap(unittest.TestCase):
     TARGET_DATE = date(2026, 6, 17)
