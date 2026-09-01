@@ -519,6 +519,15 @@ class TestMontessoriLetterHook(unittest.TestCase):
     def test_full_combo(self):
         self.assertEqual(self._rule("Iná..NmNgNe").diet, "NO MILK – NO GLUTEN – NO EGG")
 
+    def test_full_combo_bounding_dots_variant(self):
+        """Škola posiela aj tvar '.Iná NmNgNe.' (bodky na okrajoch, medzera
+        namiesto vnútornej bodky) — nahlásené 1.9.2026, kľúč založený len na
+        'Iná..NmNgNe' ho nechytil a E sa tíško zlúčilo s D pod NO MILK/NO
+        GLUTEN bez vajec."""
+        self.assertEqual(
+            self._rule(".Iná NmNgNe.").diet, "NO MILK – NO GLUTEN – NO EGG"
+        )
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("Iná NmNg"))
 

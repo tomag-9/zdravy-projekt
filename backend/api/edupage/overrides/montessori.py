@@ -27,20 +27,32 @@ B/F/G/J nefigurovali v žiadnom nahlásenom probléme — nechané bez zásahu.
 
 from __future__ import annotations
 
+import re
+
 from ..base import LetterRule
 
 DOSPELA = "Dospelý (SŠ)"
 
 _RULES: dict[str, LetterRule] = {
-    "INÁ..NMNGNE": LetterRule(diet="NO MILK – NO GLUTEN – NO EGG"),
+    "INÁ NMNGNE": LetterRule(diet="NO MILK – NO GLUTEN – NO EGG"),
     "ZŠ": LetterRule(menu="A"),
-    "ZŠ ZAM.": LetterRule(portion=DOSPELA, menu="A"),
-    "FK ZAM.": LetterRule(portion=DOSPELA, menu="A"),
+    "ZŠ ZAM": LetterRule(portion=DOSPELA, menu="A"),
+    "FK ZAM": LetterRule(portion=DOSPELA, menu="A"),
 }
 
 
 def _kluc(skratka: str) -> str:
-    return skratka.strip().upper()
+    """Normalizuj skratku pre lookup v `_RULES`.
+
+    Škola posiela "Iná..NmNgNe" aj ".Iná NmNgNe." (bodky/medzery na okrajoch aj
+    uprostred nekonzistentne) — bodky nahrádzame medzerou a whitespace zrátame,
+    aby oba tvary padli na rovnaký kľúč (nahlásené 1.9.2026: skratka ".Iná
+    NmNgNe." na kľúč "INÁ..NMNGNE" nesadla a E sa tíško zlúčilo s D pod
+    NO MILK/NO GLUTEN bez vajec).
+    """
+    cleaned = skratka.replace(".", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned.upper()
 
 
 def montessori_letter_hook(letter: str, skratka: str, nazov: str) -> LetterRule | None:
