@@ -25,7 +25,10 @@ from api.edupage.overrides.krasnanko import krasnanko_letter_hook
 from api.edupage.overrides.libellus import libellus_letter_hook
 from api.edupage.overrides.montessori import montessori_letter_hook
 from api.edupage.overrides.rozmanita import rozmanita_letter_hook
-from api.edupage.overrides.skolickams import skolickams_payer_hook
+from api.edupage.overrides.skolickams import (
+    skolickams_letter_hook,
+    skolickams_payer_hook,
+)
 from api.edupage.overrides.strecnianska import strecnianska_letter_hook
 from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
 from api.edupage_scraper import (
@@ -861,6 +864,29 @@ class TestSkolickamsPayerHook(unittest.TestCase):
         rule = skolickams_payer_hook("SPECI - Lúka")
         self.assertEqual(rule.match_name, "Lúka")
         self.assertIsNotNone(rule.diet)
+
+
+class TestSkolickamsLetterHook(unittest.TestCase):
+    """Reálny guest dump (1.9.2026): `ŠPECI` chodí aj ako menu písmeno (skratka
+    `ŠPECI`, nazov "noGLUT ORECH STRUK PARAD PAPRIKA POH SOJA QUINOA"), nie len
+    ako payer label — bez tohto hooku by engine fuzzy-matchol len na NO ORECH."""
+
+    def test_speci_letter_gets_full_diet(self):
+        rule = skolickams_letter_hook(
+            "D", "ŠPECI", "noGLUT ORECH STRUK PARAD PAPRIKA POH SOJA QUINOA"
+        )
+        self.assertEqual(
+            rule.diet,
+            "NO GLUTEN – NO ORECH – NO STRUKOVINY – NO PARADAJKA – NO PAPRIKA – "
+            "NO POHANKA – NO SOJA – NO QUINOA",
+        )
+
+    def test_speci_letter_ascii_s_tolerated(self):
+        rule = skolickams_letter_hook("D", "SPECI", "cokolvek")
+        self.assertIsNotNone(rule.diet)
+
+    def test_other_letters_fall_through(self):
+        self.assertIsNone(skolickams_letter_hook("A", "B", "Bruško klasik"))
 
 
 class TestPayerHookInParse(unittest.TestCase):

@@ -26,7 +26,7 @@ from .overrides.krasnanko import krasnanko_letter_hook
 from .overrides.libellus import libellus_letter_hook
 from .overrides.montessori import montessori_letter_hook
 from .overrides.rozmanita import rozmanita_letter_hook
-from .overrides.skolickams import skolickams_payer_hook
+from .overrides.skolickams import skolickams_letter_hook, skolickams_payer_hook
 from .overrides.strecnianska import strecnianska_letter_hook
 from .overrides.zdravebrusko import zdravebrusko_letter_hook
 
@@ -178,9 +178,11 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         poznamka=(
             "Prefix B/BM = dodávateľ (Bruško/BruškoMilk), NIE výdajňa — strip pred "
             "matchom, BM→NO MILK, počty sčítavame. Lúka/Les detská porcia (default). "
-            "Potvrdené Stanom 7/13/2026."
+            "Potvrdené Stanom 7/13/2026. Skratka `ŠPECI` (menu písmeno) = plná "
+            "špeciálna diéta — letter_hook, payer diéta je len fallback (#527/#528)."
         ),
         payer_hook=skolickams_payer_hook,
+        letter_hook=skolickams_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="msdobrehopastiera",
