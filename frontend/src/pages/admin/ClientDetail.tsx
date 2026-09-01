@@ -682,10 +682,10 @@ const ClientDetail: React.FC = () => {
                   <tbody>
                     {recentOrders.map((order) => {
                       const summaries: string[] = [];
-                      const lunchCount = mealCount(order.data.lunch);
-                      if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
                       const breakfastCount = mealCount(order.data.breakfast);
                       if (breakfastCount > 0) summaries.push(`${breakfastCount}x Raňajky`);
+                      const lunchCount = mealCount(order.data.lunch);
+                      if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
                       const olovrantCount = mealCount(order.data.olovrant);
                       if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
                       const summaryText = summaries.length > 0 ? summaries.join(", ") : "-";
@@ -720,8 +720,8 @@ const ClientDetail: React.FC = () => {
                               <td colSpan={4} style={{ borderTop: "1px solid var(--line-soft)" }}>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 24, fontSize: 14 }}>
                                   {[
-                                    { title: "Obed", data: order.data.lunch },
                                     { title: "Raňajky", data: order.data.breakfast },
+                                    { title: "Obed", data: order.data.lunch },
                                     { title: "Olovrant", data: order.data.olovrant },
                                   ].map(({ title, data }) => (
                                     <div key={title}>
