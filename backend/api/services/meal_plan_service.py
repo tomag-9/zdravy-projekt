@@ -1288,6 +1288,9 @@ class MealPlanService:
                 admin_order_note = str(
                     getattr(prevadzka, "admin_order_note", "") or ""
                 ).strip()
+                special_diet_note = str(
+                    order_data.get("special_diet_note") or ""
+                ).strip()
                 delivery_route = (
                     getattr(prevadzka, "delivery_route", None)
                     if prevadzka is not None
@@ -1372,6 +1375,7 @@ class MealPlanService:
                         ),
                         "diet_summary_rows": diet_summary_rows,
                         "admin_order_note": admin_order_note,
+                        "special_diet_note": special_diet_note,
                         # Olovrant ide s obedovým rozvozom — kuchyňa ho v
                         # tabuľke aj PDF vidí žlto zvýraznený, nech ho naloží
                         # spolu s obedom a nezabudne naň pri popoludňajšom kole.

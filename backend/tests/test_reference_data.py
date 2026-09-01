@@ -81,7 +81,10 @@ def test_init_reference_data_enables_default_diets_for_empty_prevadzky():
 
 
 @pytest.mark.django_db
-def test_init_reference_data_enables_all_menus_and_meals_for_everyone():
+def test_init_reference_data_does_not_reset_admin_narrowed_menus_and_meals():
+    """Regression test: init_reference_data runs on every deploy and must not
+    silently reset an admin's narrowed visible_menus/visible_meals back to
+    "everything enabled"."""
     celok = Celok.objects.create(nazov="Legacy chody")
     prevadzka = Prevadzka.objects.create(celok=celok, nazov="Legacy chody")
     prevadzka.visible_menus = ["A"]
@@ -89,6 +92,18 @@ def test_init_reference_data_enables_all_menus_and_meals_for_everyone():
     prevadzka.save(update_fields=["visible_menus", "visible_meals"])
 
     call_command("init_reference_data")
+    call_command("init_reference_data")
+
+    prevadzka.refresh_from_db()
+    assert prevadzka.visible_menus == ["A"]
+    assert prevadzka.visible_meals == ["lunch"]
+
+
+@pytest.mark.django_db
+def test_init_reference_data_sets_default_menus_and_meals_for_new_prevadzka():
+    celok = Celok.objects.create(nazov="Nová prevádzka")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Nová prevádzka")
+
     call_command("init_reference_data")
 
     prevadzka.refresh_from_db()

@@ -226,7 +226,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     };
 
     const getAvailableDiets = (category: string): string[] =>
-        OrderService.getAvailableDiets(category, enabledDietNames);
+        OrderService.getAvailableDietsWithSpecial(category, enabledDietNames);
 
     const toggleMeal = (key: MealKey) => {
         setActiveMeals((prev) => ({ ...prev, [key]: !prev[key] }));

@@ -1,4 +1,4 @@
-import { CATEGORIES, DIETS, GROUP_CONFIG } from '../config/constants';
+import { CATEGORIES, DIETS, GROUP_CONFIG, SPECIAL_DIET_NAME } from '../config/constants';
 
 export interface DietCounts {
     [key: string]: number;
@@ -102,6 +102,20 @@ class OrderService {
             return enabledDiets.filter(d => d !== 'Vegetariánske');
         }
         return enabledDiets;
+    }
+
+    /**
+     * Ako getAvailableDiets, ale vždy doplní „Špeciálna" diétu — tá nie je
+     * reálny Diet záznam v DB, takže sa nikdy neobjaví v enabledDiets/
+     * visible_diets, a musí sa dopĺňať na strane klienta na každom mieste,
+     * kde sa diéty ponúkajú na výber (klientský formulár aj admin editor).
+     */
+    static getAvailableDietsWithSpecial(categoryName: string, enabledDiets: string[]): string[] {
+        const diets = OrderService.getAvailableDiets(categoryName, enabledDiets);
+        if (!diets.includes(SPECIAL_DIET_NAME)) {
+            return [...diets, SPECIAL_DIET_NAME];
+        }
+        return diets;
     }
 
     /** Súčet všetkých diétnych porcií v kategórii. */

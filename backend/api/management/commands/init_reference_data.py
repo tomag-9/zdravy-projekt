@@ -16,8 +16,6 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand
 
 from api.default_visibility import (
-    ensure_all_visible_meals_for_prevadzky,
-    ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets_for_empty_prevadzky,
     ensure_default_visible_portion_types_for_empty_prevadzky,
 )
@@ -86,31 +84,23 @@ class Command(BaseCommand):
             Diet.objects.filter(name__in=DEFAULT_DIET_NAMES, is_active=True)
         )
         prevadzky_updated_count = 0
-        prevadzky_menus_updated_count = 0
-        prevadzky_meals_updated_count = 0
         prevadzky_portion_types_updated_count = (
             ensure_default_visible_portion_types_for_empty_prevadzky()
         )
         if default_diets:
             prevadzky_updated_count = ensure_default_visible_diets_for_empty_prevadzky()
-            prevadzky_menus_updated_count = ensure_all_visible_menus_for_prevadzky()
-            prevadzky_meals_updated_count = ensure_all_visible_meals_for_prevadzky()
 
         if (
             created_count
             or diet_created_count
             or prevadzky_updated_count
-            or prevadzky_menus_updated_count
-            or prevadzky_meals_updated_count
             or prevadzky_portion_types_updated_count
         ):
             self.stdout.write(
                 self.style.SUCCESS(
                     "init_reference_data: created "
                     f"{created_count} portion types and {diet_created_count} diets; "
-                    f"default diets enabled for {prevadzky_updated_count} prevadzky; "
-                    f"all menus enabled for {prevadzky_menus_updated_count} prevadzky; "
-                    f"all meals enabled for {prevadzky_meals_updated_count} prevadzky."
+                    f"default diets enabled for {prevadzky_updated_count} prevadzky."
                     f" all portion types enabled for "
                     f"{prevadzky_portion_types_updated_count} prevadzky."
                 )

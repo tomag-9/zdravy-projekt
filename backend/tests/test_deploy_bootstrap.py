@@ -257,7 +257,12 @@ def test_real_edupage_seed_fills_blank_billing_name(settings):
 
 
 @pytest.mark.django_db
-def test_real_edupage_seed_updates_lunch_only_visible_meals(settings):
+def test_real_edupage_seed_does_not_reset_admin_narrowed_visible_menus(settings):
+    """Regression test: an admin's narrowed visible_menus/visible_meals must
+    survive a re-run of real_initial_seed_prevadzky (which runs on every dev
+    startup and is part of the same idempotent chain as init_reference_data
+    in prod). Previously this silently reset any admin customization back to
+    "everything enabled" on each run."""
     settings.DEBUG = False
     school = SCHOOLS[0]
     user = User.objects.create_user(
@@ -273,8 +278,8 @@ def test_real_edupage_seed_updates_lunch_only_visible_meals(settings):
     management.call_command("real_initial_seed_prevadzky", "--allow-prod")
 
     prevadzka.refresh_from_db()
-    assert prevadzka.visible_menus == DEFAULT_VISIBLE_MENUS
-    assert prevadzka.visible_meals == EDUPAGE_VISIBLE_MEALS
+    assert prevadzka.visible_menus == ["A"]
+    assert prevadzka.visible_meals == ["lunch"]
 
 
 @pytest.mark.django_db

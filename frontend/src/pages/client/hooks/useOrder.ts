@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import OrderService, { CategoryData, DailyOrder, MealData, PackTarget } from '../services/OrderService';
 import { useAuth } from '../../../context/auth';
-import { CATEGORIES, SPECIAL_DIET_NAME } from '../config/constants';
+import { CATEGORIES } from '../config/constants';
 import { logger } from '../../../lib/logger';
 import { fetchAllPages } from '../../../lib/pagination';
 import { fromDateKey, toDateKey } from '../../../lib/businessDay';
@@ -798,13 +798,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         ? visibleDietDetails.map(d => d.name)
         : [];
 
-    const getAvailableDiets = (categoryName: string) => {
-        const diets = OrderService.getAvailableDiets(categoryName, adminVisibleDiets);
-        if (!diets.includes(SPECIAL_DIET_NAME)) {
-            return [...diets, SPECIAL_DIET_NAME];
-        }
-        return diets;
-    };
+    const getAvailableDiets = (categoryName: string) =>
+        OrderService.getAvailableDietsWithSpecial(categoryName, adminVisibleDiets);
 
 
 
