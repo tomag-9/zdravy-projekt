@@ -123,14 +123,22 @@ def _row(row: dict) -> str:
 
     if kind == "client":
         cell = cells[0]
-        # #513 — druhá bunka je stĺpec Poznámka (prevádzková poznámka, alebo
-        # prázdna ako na každom inom riadku).
+        # Druhá bunka je stĺpec Poznámka — vždy prázdna, na rukou písané
+        # poznámky kuchyne. Poznámka prevádzky (#513) ide rovno za názov,
+        # nie do tohto úzkeho stĺpca, kde dlhší text zalamoval riadok.
         note_cell = cells[1] if len(cells) > 1 else None
         note_html = _cell(note_cell) if note_cell is not None else ""
+        note = cell.get("note")
+        note_span = (
+            f'<span class="client-note-inline">{escape(str(note))}</span>'
+            if note
+            else ""
+        )
         return (
             f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
             f'<span class="client-toggle"><span>{escape(str(cell.get("text") or ""))}'
             f'<span class="meta">{escape(str(cell.get("meta") or ""))}</span></span>'
+            f"{note_span}"
             f'<span class="meta">{escape(str(cell.get("meta_right") or ""))}</span>'
             f"</span></td>{note_html}</tr>"
         )

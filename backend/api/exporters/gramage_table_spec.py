@@ -564,9 +564,13 @@ def _client_rows(
         meta += f", diéty {format_count(diet_total)}"
 
     # #513 — poznámka prevádzky (nastavenie „Poznámka k objednávke") je vidno
-    # hneď na zbalenom riadku klienta, v stĺpci Poznámka. Predtým žila len
-    # v `collapsible` sub-riadku, takže kým sa klient nerozbalil, admin o nej
-    # nevedel; ten sub-riadok už nie je, aby text nebol v tabuľke dvakrát.
+    # hneď na zbalenom riadku klienta. Predtým žila len v `collapsible`
+    # sub-riadku, takže kým sa klient nerozbalil, admin o nej nevedel; ten
+    # sub-riadok už nie je, aby text nebol v tabuľke dvakrát. Pôvodne šla do
+    # samostatného úzkeho stĺpca Poznámka — dlhší text tam ale zalamoval
+    # a naťahoval riadok na viacero riadkov (klient hlásenie), preto ide
+    # rovno za názov prevádzky; stĺpec Poznámka ostáva prázdny na rukou
+    # písané poznámky kuchyne.
     admin_order_note = str(row.get("admin_order_note") or "").strip()
     # Poznámka k „Špeciálnej" diéte — kuchyňa inak nemá odkiaľ vedieť, čo pre
     # dieťa nabrať (samotný názov diéty „Špeciálna" nič nehovorí). Ide do tej
@@ -590,17 +594,14 @@ def _client_rows(
             "cells": [
                 {
                     "text": row.get("client") or "",
+                    "note": combined_note or None,
                     "meta": meta,
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
                     "colspan": total_columns - 1,
                 },
-                (
-                    {"text": combined_note, "css": "cell-note client-note"}
-                    if combined_note
-                    else _note_cell()
-                ),
+                _note_cell(),
             ],
         }
     ]

@@ -19,6 +19,7 @@ export interface SpecCell {
   sub?: string;
   meta?: string;
   meta_right?: string;
+  note?: string | null;
   label?: string;
   swatch?: { color: string; base_colors: string[] };
 }
@@ -165,6 +166,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
                   )}
                   <span className="meta">{cell.meta}</span>
                 </span>
+                {cell.note && <span className="client-note-inline">{cell.note}</span>}
                 <span className="meta">{cell.meta_right}</span>
               </button>
               {action}

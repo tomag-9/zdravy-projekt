@@ -232,13 +232,16 @@ def test_client_row_carries_the_screen_metadata():
     assert client["cells"][0]["meta_right"] == "spolu porcií 10"
 
 
-def test_client_row_shows_the_prevadzka_note_in_the_note_column():
+def test_client_row_shows_the_prevadzka_note_right_after_the_name():
     """Issue #513: poznámka prevádzky musí byť vidno hneď na zbalenom riadku
-    klienta (v stĺpci Poznámka), nielen v collapsible note-admin sub-riadku."""
+    klienta, nielen v collapsible note-admin sub-riadku. Ide priamo za názov
+    (nie do stĺpca Poznámka) — dlhší text tam predtým zalamoval riadok."""
     spec = build_table_spec(_payload())
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
-    assert client["cells"][1]["text"] == "bez cibule"
+    assert client["cells"][0]["note"] == "bez cibule"
+    # Stĺpec Poznámka ostáva prázdny — je na ručné poznámky kuchyne.
+    assert client["cells"][1]["text"] == ""
     assert "cell-note" in client["cells"][1]["css"]
     total_columns = spec["total_columns"]
     assert client["cells"][0]["colspan"] == total_columns - 1
@@ -250,6 +253,7 @@ def test_client_row_note_column_is_empty_without_a_prevadzka_note():
     spec = build_table_spec(payload)
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
+    assert client["cells"][0]["note"] is None
     assert client["cells"][1]["text"] == ""
 
 

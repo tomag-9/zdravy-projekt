@@ -198,19 +198,17 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
-/* Stĺpec „Poznámka" — bez poznámky prevádzky doň kuchyňa píše rukou do
- * vytlačenej tabuľky (#513: predtým bol na obrazovke vždy prázdny). */
+/* Stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky, ostáva
+ * vždy prázdny (poznámka prevádzky ide od teraz rovno za názov, viď nižšie
+ * — dlhší text v tomto úzkom stĺpci predtým zalamoval celý riadok). */
 .zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
-/* Poznámka prevádzky na klientskom riadku — `.client-row td` inak nastaví
- * padding:0 a žltú výplň pre toggle bunku, tu treba vlastný priestor a
- * čitateľný text na tmavšom podklade (#513). */
-.zpa-gram .client-row .client-note {
-    padding: 10px 12px;
+/* Poznámka prevádzky (#513) hneď za názvom na klientskom riadku, v tej istej
+ * širokej bunke ako meno — nezalamuje riadok tak, ako v úzkom stĺpci Poznámka. */
+.zpa-gram .client-toggle .client-note-inline {
     font-size: 12px;
     font-weight: 500;
     color: var(--green-900);
-    white-space: normal;
-    vertical-align: middle;
+    opacity: 0.85;
 }
 .zpa-gram thead .grp-note,
 .zpa-gram thead .comp-note { background: var(--green-900); }
