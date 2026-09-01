@@ -191,7 +191,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
       );
     }
 
-    if (row.kind === "note-admin" || row.kind === "note-delivery") {
+    if (row.kind === "note-admin" || row.kind === "note-delivery" || row.kind === "total-ms-porcie") {
       const cell = row.cells[0];
       return (
         <tr key={index} className={row.css}>

@@ -264,6 +264,10 @@ def build_table_spec(
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
+    # Sleduje presne tie client_row dicty, ktoré sa naozaj vykreslili (rešpektuje
+    # filter podľa výdajného bodu/nepriradených), aby sa z nich dal na konci
+    # spočítať fakturačný súčet „MŠ porcie" (#4 — billing_portion_coefficients).
+    all_client_rows: list[dict] = []
 
     all_vydaje = data.get("vydaje") or []
     keep_vydaje = _filter_vydaje(all_vydaje, vydaje)
@@ -296,6 +300,7 @@ def build_table_spec(
                     continue
                 rows.append(_route_row(route, total_columns))
                 for client_row in route_rows:
+                    all_client_rows.append(client_row)
                     rows.extend(
                         _client_rows(
                             client_row,
@@ -349,6 +354,7 @@ def build_table_spec(
                 )
             )
             for client_row in unassigned:
+                all_client_rows.append(client_row)
                 rows.extend(
                     _client_rows(
                         client_row,
@@ -361,6 +367,7 @@ def build_table_spec(
                 )
     else:
         for client_row in data.get("rows") or []:
+            all_client_rows.append(client_row)
             rows.extend(
                 _client_rows(
                     client_row, data, groups, hues, total_columns, include_summary_rows
@@ -389,6 +396,27 @@ def build_table_spec(
         total_columns,
     )
     footer.append(_totals_row(footer_totals, keep, groups, hues))
+    # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
+    # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
+    # `_billed_count`), takže `total_count` na klientovi je fakturačný
+    # ekvivalent porcií. Tu sa len sčíta naprieč zobrazenými prevádzkami —
+    # bez vlastného koeficientu (default 1.0) sa nič neprepočítava.
+    ms_porcie_total = sum(
+        (_as_decimal(r.get("total_count")) for r in all_client_rows), Decimal("0")
+    )
+    footer.append(
+        {
+            "kind": "total-ms-porcie",
+            "css": "total-ms-porcie",
+            "cells": [
+                {
+                    "label": "Spolu prepočítané na MŠ porcie",
+                    "text": format_count(ms_porcie_total),
+                    "colspan": total_columns,
+                }
+            ],
+        }
+    )
 
     return {
         "date": data.get("date"),

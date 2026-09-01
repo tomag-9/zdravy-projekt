@@ -333,17 +333,20 @@ def test_footer_is_the_portion_summary_plus_the_grand_total():
         "portion-row",
         "portion-row",
         "total",
+        "total-ms-porcie",
     ]
-    assert spec["footer"][-1]["cells"][0]["text"] == "CELKOM (g / ml)"
+    assert spec["footer"][-2]["cells"][0]["text"] == "CELKOM (g / ml)"
 
 
 def test_totals_row_uses_a_dash_for_empty_columns():
     """Obrazovka tu dnes píše „0", čo si protirečí s telom tabuľky — spec to zjednocuje."""
     spec = build_table_spec(_payload())
 
-    # Posledná bunka je prázdna „Poznámka"; gramáž je tá pred ňou.
-    assert spec["footer"][-1]["cells"][-1]["css"] == "cell-note meal-sep"
-    assert spec["footer"][-1]["cells"][-2]["text"] == "—"
+    # Posledná pätková bunka je súčet MŠ porcií, gramáž je riadok pred ňou;
+    # posledná bunka gramáže je prázdna „Poznámka".
+    totals_row = spec["footer"][-2]
+    assert totals_row["cells"][-1]["css"] == "cell-note meal-sep"
+    assert totals_row["cells"][-2]["text"] == "—"
 
 
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
@@ -624,9 +627,9 @@ def test_filtered_vydaj_totals_ignore_the_other_vydaj():
     full = build_table_spec(payload)
     single = build_table_spec(payload, vydaje=["A"])
 
-    assert full["footer"][-1]["cells"][1]["text"] == "9999"
+    assert full["footer"][-2]["cells"][1]["text"] == "9999"
     # 8 porcií bez diét × 200 g polievky v jedinom výdaji.
-    assert single["footer"][-1]["cells"][1]["text"] == "1600"
+    assert single["footer"][-2]["cells"][1]["text"] == "1600"
 
 
 def test_unassigned_prevadzky_stay_out_of_a_filtered_print():

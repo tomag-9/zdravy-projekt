@@ -260,6 +260,54 @@ def test_dashboard_folds_predskolak_into_ms_row_like_the_real_workbook():
 
 
 @pytest.mark.django_db
+def test_table_spec_footer_shows_billed_ms_porcie_total():
+    """#4 — pätka gramážnej tabuľky má súčet prepočítaný cez
+    `billing_portion_coefficients`, nielen holý počet hláv."""
+    call_command("init_reference_data")
+
+    template = MealTemplate.objects.create(
+        name="Obed 200g",
+        category="main_course",
+        components=[{"label": "Hlavné jedlo", "grams": "200", "unit": "g"}],
+        base_weight_grams="200",
+    )
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 13))
+    MealPlanItem.objects.create(
+        meal_plan=plan, template=template, category="main_course", menu_variant=""
+    )
+
+    celok = Celok.objects.create(nazov="MŠ Edulienka")
+    prevadzka = Prevadzka.objects.create(
+        celok=celok,
+        nazov="MŠ Edulienka",
+        billing_portion_coefficients={"Predškolák": "1.25"},
+    )
+    user = User.objects.create_user(username="edulienka2@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=plan.date,
+        data={
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 7}, "diets": {}},
+                "Predškolák": {"menuCounts": {"A": 1}, "diets": {}},
+            }
+        },
+    )
+
+    from api.exporters.gramage_table_spec import build_table_spec
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    spec = build_table_spec(data)
+
+    ms_porcie_row = spec["footer"][-1]
+    assert ms_porcie_row["kind"] == "total-ms-porcie"
+    assert ms_porcie_row["cells"][0]["label"] == "Spolu prepočítané na MŠ porcie"
+    # 7 MŠ + 1 predškolák × 1,25 = 8,25 — rovnaké číslo ako v Súčte bez diét.
+    assert ms_porcie_row["cells"][0]["text"] == "8,25"
+
+
+@pytest.mark.django_db
 def test_dashboard_keeps_predskolak_separate_without_coefficient():
     """Prevádzka bez koeficientu sa nesmie zmeniť — predškolák ostáva vlastný
     riadok s celým počtom a 250 g."""
