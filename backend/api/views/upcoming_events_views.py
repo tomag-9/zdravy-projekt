@@ -84,7 +84,16 @@ def _next_run(periodic_task):
         return None
     now = timezone.now()
     try:
-        return now + schedule.remaining_estimate(now)
+        # crontab.remaining_estimate() počíta hodinu/deň voči poľam crontabu,
+        # ktoré sú v jeho vlastnej (lokálnej) tz — ale `maybe_make_aware`
+        # vo vnútri je no-op pre už-aware datetime, takže aware `now` (UTC,
+        # vďaka USE_TZ=True) sa porovnáva bez konverzie a výsledok je posunutý
+        # o UTC↔lokálny offset. Rovnaký krok robí aj TzAwareCrontab.is_due()
+        # (django_celery_beat), ktorý naozaj spúšťa Celery Beat — tu ho treba
+        # zopakovať ručne, lebo remaining_estimate() sám o sebe to nerobí.
+        schedule_tz = getattr(schedule, "tz", None)
+        reference = now.astimezone(schedule_tz) if schedule_tz else now
+        return now + schedule.remaining_estimate(reference)
     except Exception:
         logger.warning(
             "upcoming-events: remaining_estimate zlyhal pre %s", periodic_task.name
