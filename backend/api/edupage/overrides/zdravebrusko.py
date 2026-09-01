@@ -13,9 +13,9 @@ MŠ Malokarpatké nám. 6 "mšMal.", ZŠ Malokarpatská "zšla" — rozdelené c
 "uncertain" fuzzy matchov na isté pravidlá:
 - `dsbNNN SJ` = mlieko+lepok+vajcia+sója → "NONONO – NO SOJA" (pk 125)
 - `dsbNGNM` = mlieko+lepok → "NO MILK – NO GLUTEN" (pk 84)
-- `zšlaNMnEnOnJ` = mlieko+vajcia+orechy+jablko → nová kombinácia, `flag`
-  necháva na kontrolu (posledné písmeno "J" nebolo 100% isté, potvrdené ako
-  jablko, nie jahoda — user 1.9.2026, radšej jeden pohľad navyše).
+- `zšlaNMnEnOnJ` = mlieko+vajcia+orechy+jablko → nová kombinácia (posledné
+  písmeno "J" bolo pôvodne neisté, `flag="!"` žiadal manuálnu kontrolu; user
+  1.9.2026 potvrdil jablko, nie jahodu — flag odstránený, diéta je istá).
 """
 
 from __future__ import annotations
@@ -32,9 +32,7 @@ _RULES: dict[str, LetterRule] = {
     "MŠMAL. NM": LetterRule(diet="NO MILK"),
     "MŠMAL. NG": LetterRule(diet="NO GLUTEN"),
     "ZŠLANG": LetterRule(diet="NO GLUTEN"),
-    "ZŠLANMNENONJ": LetterRule(
-        diet="NO MILK – NO EGG – NO ORECH – NO JABLKO", flag="!"
-    ),
+    "ZŠLANMNENONJ": LetterRule(diet="NO MILK – NO EGG – NO ORECH – NO JABLKO"),
 }
 
 

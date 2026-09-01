@@ -431,12 +431,12 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
     def test_zs_malokarpatska_gluten_confirmed(self):
         self.assertEqual(self._rule("zšlaNG").diet, "NO GLUTEN")
 
-    def test_zs_malokarpatska_quad_combo_flagged_for_review(self):
-        """Posledné písmeno skratky (jahoda/jablko) nebolo 100% isté — user
-        potvrdil jablko, ale necháva to flagnuté na kontrolu (1.9.2026)."""
+    def test_zs_malokarpatska_quad_combo_confirmed(self):
+        """Posledné písmeno skratky (jahoda/jablko) bolo pôvodne neisté — user
+        potvrdil jablko, nie jahodu (1.9.2026), flag na kontrolu už netreba."""
         rule = self._rule("zšlaNMnEnOnJ")
         self.assertEqual(rule.diet, "NO MILK – NO EGG – NO ORECH – NO JABLKO")
-        self.assertEqual(rule.flag, "!")
+        self.assertIsNone(rule.flag)
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("something else entirely"))
