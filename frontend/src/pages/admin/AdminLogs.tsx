@@ -25,10 +25,11 @@ import {
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const LEVELS = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
+// Objednávkové zmeny (vytvorenie/úprava/zmazanie) majú vlastnú kartu
+// "Objednávky" s vlastným filtrom podľa dňa a prevádzky — v "Udalosti (audit)"
+// by len duplikovali riadky bez toho detailu, preto tu nie sú ani vo filtri,
+// ani vo výsledkoch (viď `fetchEvents` nižšie).
 const EVENT_TYPES = [
-    ['order_admin_create', 'Objednávka vytvorená'],
-    ['order_admin_update', 'Objednávka upravená'],
-    ['order_admin_delete', 'Objednávka vymazaná'],
     ['auto_order_run', 'Spustenie auto-objednávok'],
     ['cron_run', 'Cron úloha dobehla'],
     ['cron_skipped', 'Cron úloha preskočená (víkend/voľný deň)'],
@@ -50,6 +51,9 @@ const TASK_LABELS_SK: Record<string, string> = {
     'api.tasks.send_daily_report_task': 'Denný report',
     'api.tasks.purge_old_event_logs_task': 'Čistenie starých záznamov',
     'celery.backend_cleanup': 'Interná Celery úloha',
+    // Syntetický riadok bez vlastného cronu — appka uzávierku vynucuje
+    // priebežne, nie na spustenie úlohy (viď `_deadline_lock_entries`).
+    'order-lock': 'Uzávierka objednávok',
 };
 
 function taskLabel(entry: UpcomingEventEntry): string {
@@ -267,7 +271,13 @@ export default function AdminLogs() {
         setEventError(null);
         try {
             const params = new URLSearchParams({ ordering: '-created_at', page: String(eventPage) });
-            if (eventType) params.set('event_type', eventType);
+            if (eventType) {
+                params.set('event_type', eventType);
+            } else {
+                // Bez konkrétneho filtra by "všetky typy" zahŕňalo aj objednávkové
+                // zmeny — tie majú vlastnú kartu "Objednávky".
+                params.set('exclude_event_type', ORDER_EVENT_TYPES.join(','));
+            }
             if (actor.trim()) params.set('actor', actor.trim());
             if (dateFrom) params.set('date_from', dateFrom);
             if (dateTo) params.set('date_to', dateTo);
