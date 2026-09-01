@@ -260,6 +260,26 @@ class TestKrasnankoLetterHook(unittest.TestCase):
     def test_dia(self):
         self.assertEqual(self._rule("DIA").diet, "DIA")
 
+    def test_dnm_is_dospely_no_milk(self):
+        """'D' = Dospelý (zamestnanec, dospelá porcia) — vysvetlené Stanom
+        Šulcom 1.9.2026, predtým uncertain fuzzy match."""
+        rule = self._rule("DNM")
+        self.assertEqual(rule.portion, "Dospelý (SŠ)")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_pdnm_is_predskolak_no_milk(self):
+        """'PD' = Predškolák."""
+        rule = self._rule("PDNM")
+        self.assertEqual(rule.portion, "Predškolák")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_z_half_nm_is_child_portion_not_adult(self):
+        """'Z1/2' = Dospelý 1/2 (zamestnanec, ale porcia MŠ) — na rozdiel od
+        KZ/NMZ toto NIE JE dospelá porcia, hoci obsahuje 'Z'."""
+        rule = self._rule("Z1/2NM")
+        self.assertEqual(rule.portion, "Škôlka")
+        self.assertEqual(rule.diet, "NO MILK")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("QQQ"))
 
