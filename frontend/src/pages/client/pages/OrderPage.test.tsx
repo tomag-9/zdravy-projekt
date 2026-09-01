@@ -87,6 +87,7 @@ vi.mock("../services/OrderService", async (importOriginal) => {
       ...bound,
       checkDeadline: vi.fn(),
       getAvailableDiets: vi.fn().mockReturnValue(["Bezlepková", "Diabetická"]),
+      getAvailableDietsWithSpecial: vi.fn().mockReturnValue(["Bezlepková", "Diabetická"]),
     },
   };
 });
@@ -569,6 +570,7 @@ describe("OrderPage Logic & Triggers", () => {
     // Názov diéty musí byť z konštanty DIETS — inak ho `enforceStructure`
     // pri načítaní objednávky zahodí a počet diét vyjde 0.
     (OrderService.getAvailableDiets as Mock).mockReturnValue(["Bez lepku"]);
+    (OrderService.getAvailableDietsWithSpecial as Mock).mockReturnValue(["Bez lepku"]);
 
     renderPage();
 
@@ -605,6 +607,7 @@ describe("OrderPage Logic & Triggers", () => {
       JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
     );
     (OrderService.getAvailableDiets as Mock).mockReturnValue(["Bez lepku"]);
+    (OrderService.getAvailableDietsWithSpecial as Mock).mockReturnValue(["Bez lepku"]);
 
     renderPage();
 

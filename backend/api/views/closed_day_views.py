@@ -8,7 +8,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from api.cache_service import clear_closed_day_pdf_cache
+from api.cache_service import clear_closed_day_pdf_cache, clear_gramage_dashboard_cache
 from api.exceptions import (
     DayAlreadyClosedError,
     DayNotClosedError,
@@ -82,6 +82,11 @@ class ClosedDayViewSet(viewsets.ViewSet):
         except IntegrityError as exc:
             raise DayAlreadyClosedError() from exc
 
+        # Dáta uzavretého dňa sa už nesmú meniť, ale posledných 5 minút TTL
+        # by mohlo do PDF snapshotu nižšie premietnuť dáta spred uzavretia —
+        # zahoď cache, nech si ju cache_closed_day_pdf_task znova postaví na čerstvo.
+        clear_gramage_dashboard_cache(target_date.isoformat())
+
         # Asynchrónne — WeasyPrint je pomalé a nemá dôvod blokovať admina,
         # ktorý práve klikol "uzavrieť deň" (code review 2026-08-31).
         cache_closed_day_pdf_task.delay(target_date.isoformat())
@@ -112,6 +117,8 @@ class ClosedDayViewSet(viewsets.ViewSet):
                     "changes": {"is_closed": {"from": True, "to": False}},
                 },
             )
-        # Objednávky sú opäť editovateľné — cachnuté PDF by bolo zastarané (#528).
+        # Objednávky sú opäť editovateľné — cachnuté PDF by bolo zastarané (#528)
+        # a gramage dashboard by mohol ešte 5 minút ukazovať uzavretý stav.
         clear_closed_day_pdf_cache(target_date.isoformat())
+        clear_gramage_dashboard_cache(target_date.isoformat())
         return Response(_payload(target_date, None), status=status.HTTP_200_OK)
