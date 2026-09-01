@@ -855,6 +855,7 @@ def scrape_edupage_orders_task(
                             operation["name"],
                             nazov,
                             target_date,
+                            requested_meals,
                             result.warnings,
                             result.unmapped_letters,
                         )

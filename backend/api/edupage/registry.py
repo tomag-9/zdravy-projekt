@@ -20,11 +20,14 @@ from .overrides.britishschool import (
 from .overrides.cvernicka import cvernicka_letter_hook
 from .overrides.fantasticka import fantasticka_letter_hook
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
+from .overrides.filipaneriho import filipaneriho_letter_hook
 from .overrides.ivanka import ivanka_letter_hook
 from .overrides.krasnanko import krasnanko_letter_hook
 from .overrides.libellus import libellus_letter_hook
 from .overrides.montessori import montessori_letter_hook
+from .overrides.rozmanita import rozmanita_letter_hook
 from .overrides.skolickams import skolickams_payer_hook
+from .overrides.strecnianska import strecnianska_letter_hook
 from .overrides.zdravebrusko import zdravebrusko_letter_hook
 
 _C = OlovrantMode.EDUPAGE
@@ -95,6 +98,19 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         letter_hook=zdravebrusko_letter_hook,
     ),
     PrevadzkaConfig(
+        subdomena="emsmelanchtona",
+        ucty=("EMŠ Strečnianska 15",),
+        olovrant_mode=_C,
+        poznamka=(
+            "Nová konfiguračná úloha len kvôli letter_hooku — predtým žiadny "
+            "riadok, žiadny config drift zaznamenaný, tak `_C` (EDUPAGE) "
+            "zachováva doterajšie správanie 1:1. 'nGnS' bol uncertain fuzzy "
+            "match (len NO GLUTEN) — letter_hook potvrdzuje na NO GLUTEN – "
+            "NO SOJA (user 1.9.2026)."
+        ),
+        letter_hook=strecnianska_letter_hook,
+    ),
+    PrevadzkaConfig(
         subdomena="dobrodruzstvo",
         ucty=("Dobrodružstvo",),
         olovrant_mode=_C,
@@ -104,7 +120,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="msfilipaneriho",
         ucty=("Filipa Neriho",),
         olovrant_mode=_C,
-        poznamka="Olovrant EduPage < XLSX — kandidát na reconcile (krok 5).",
+        poznamka=(
+            "Olovrant EduPage < XLSX — kandidát na reconcile (krok 5). "
+            "'No med,mak,orechy'/'No zemiak'/'No orech' boli uncertain fuzzy "
+            "matche — letter_hook potvrdzuje na isté diéty (user 1.9.2026)."
+        ),
+        letter_hook=filipaneriho_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="skolkacvernicka",
@@ -143,7 +164,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="rozmanita",
         ucty=("Rozmanitá Škôlka", "Rozmanitá Škola"),
         olovrant_mode=_C,
-        poznamka="Split MŠ/ZŠ. NONONO chýba pri olovrante — reconcile (krok 5).",
+        poznamka=(
+            "Split MŠ/ZŠ. NONONO chýba pri olovrante — reconcile (krok 5). "
+            "'NoMO' bol uncertain fuzzy match (len NO MILK) — letter_hook "
+            "potvrdzuje na NO MILK – NO ORECH (user 1.9.2026)."
+        ),
+        letter_hook=rozmanita_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="skolickams",
