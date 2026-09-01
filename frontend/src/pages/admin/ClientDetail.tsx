@@ -1209,6 +1209,7 @@ const ClientDetail: React.FC = () => {
           clientId={user?.id ?? null}
           prevadzkaId={facility.id}
           visibleMenus={orderEditorMenus}
+          menuDayRestrictions={menuDayRestrictions}
           visibleMeals={orderEditorMeals}
           visibleDiets={orderEditorDiets}
           portionTypeNames={portionTypeNames}

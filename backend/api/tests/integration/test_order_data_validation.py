@@ -427,3 +427,164 @@ class TestOrderDataValidation:
         }
         response = self._post(authenticated_client, big_data)
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+class TestPortionTypeRestriction:
+    """DailyOrderSerializer._enforce_portion_types (#Rusovce — jasle napriek
+    tomu, že prevádzka má povolené len Škôlku a Dospelých, 1.9.2026)."""
+
+    def _post(self, client, data):
+        url = reverse("dailyorder-list")
+        return client.post(url, {"date": str(DATE), "data": data}, format="json")
+
+    def test_rejects_a_size_the_prevadzka_does_not_allow(
+        self, authenticated_client, user
+    ):
+        from api.models import PortionType
+
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        allowed, _ = PortionType.objects.get_or_create(
+            name="Škôlka", defaults={"coefficient": 1}
+        )
+        prevadzka.visible_portion_types.set([allowed])
+
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"Jasle": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_accepts_an_allowed_size(self, authenticated_client, user):
+        from api.models import PortionType
+
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        allowed, _ = PortionType.objects.get_or_create(
+            name="Škôlka", defaults={"coefficient": 1}
+        )
+        prevadzka.visible_portion_types.set([allowed])
+
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"Škôlka": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_empty_visible_portion_types_means_unrestricted(
+        self, authenticated_client, user
+    ):
+        """Prázdne M2M = ešte nezakonfigurované, nie zámerne nič nepovolené."""
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.visible_portion_types.clear()
+
+        response = self._post(
+            authenticated_client,
+            {"lunch": {"Jasle": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_a_zero_count_in_a_disallowed_size_is_not_rejected(
+        self, authenticated_client, user
+    ):
+        """Nulová kostra kategórie (napr. z auto-objednávky) nie je 'objednávka'."""
+        from api.models import PortionType
+
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        allowed, _ = PortionType.objects.get_or_create(
+            name="Škôlka", defaults={"coefficient": 1}
+        )
+        prevadzka.visible_portion_types.set([allowed])
+
+        response = self._post(
+            authenticated_client,
+            {
+                "lunch": {
+                    "Škôlka": {"menuCounts": {"A": 1}, "diets": {}},
+                    "Jasle": {"menuCounts": {"A": 0}, "diets": {}},
+                }
+            },
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.django_db
+class TestMenuDayRestriction:
+    """DailyOrderSerializer._enforce_menu_day_restrictions ('menu B len v
+    piatok') — AdminOrderEditorModal aj priamy zápis obchádzali klientský
+    filter (`filterMenusByDay`), ktorý toto obmedzenie skrýval len vizuálne."""
+
+    TUESDAY = DATE  # 2099-03-03
+    FRIDAY = DATE + datetime.timedelta(days=3)  # 2099-03-06
+
+    def _post(self, client, order_date, data):
+        url = reverse("dailyorder-list")
+        return client.post(url, {"date": str(order_date), "data": data}, format="json")
+
+    def test_rejects_the_restricted_menu_on_a_disallowed_day(
+        self, authenticated_client, user
+    ):
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.menu_day_restrictions = {"B": [5]}  # 5 = piatok
+        prevadzka.save(update_fields=["menu_day_restrictions"])
+
+        response = self._post(
+            authenticated_client,
+            self.TUESDAY,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"B": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_accepts_the_restricted_menu_on_its_allowed_day(
+        self, authenticated_client, user
+    ):
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.menu_day_restrictions = {"B": [5]}
+        prevadzka.save(update_fields=["menu_day_restrictions"])
+
+        response = self._post(
+            authenticated_client,
+            self.FRIDAY,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"B": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_a_menu_without_a_restriction_is_unaffected(
+        self, authenticated_client, user
+    ):
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.menu_day_restrictions = {"B": [5]}
+        prevadzka.save(update_fields=["menu_day_restrictions"])
+
+        response = self._post(
+            authenticated_client,
+            self.TUESDAY,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"A": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_no_restrictions_configured_means_every_day_is_allowed(
+        self, authenticated_client, user
+    ):
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        assert prevadzka.menu_day_restrictions == {}
+
+        response = self._post(
+            authenticated_client,
+            self.TUESDAY,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"B": 1}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_a_zero_count_on_the_restricted_menu_is_not_rejected(
+        self, authenticated_client, user
+    ):
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        prevadzka.menu_day_restrictions = {"B": [5]}
+        prevadzka.save(update_fields=["menu_day_restrictions"])
+
+        response = self._post(
+            authenticated_client,
+            self.TUESDAY,
+            {"lunch": {"Dospelý (SŠ)": {"menuCounts": {"A": 1, "B": 0}, "diets": {}}}},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
