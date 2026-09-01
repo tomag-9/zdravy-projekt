@@ -13,13 +13,20 @@ type Div = React.HTMLAttributes<HTMLDivElement>;
 export const PageHead: React.FC<{
     eyebrow?: React.ReactNode;
     title: React.ReactNode;
+    /** Voliteľný obsah hneď vpravo od nadpisu, na tom istom riadku (napr.
+     * kompaktný dátumový prepínač na Gramáži jedál) — nie je to `desc`, ktorý
+     * ide na riadok pod nadpis. */
+    titleExtra?: React.ReactNode;
     desc?: React.ReactNode;
     actions?: React.ReactNode;
-}> = ({ eyebrow, title, desc, actions }) => (
+}> = ({ eyebrow, title, titleExtra, desc, actions }) => (
     <div className="zpa-pagehead">
         <div>
             {eyebrow && <div className="eyebrow">{eyebrow}</div>}
-            <h1>{title}</h1>
+            <div className="zpa-pagehead-title-row">
+                <h1>{title}</h1>
+                {titleExtra}
+            </div>
             {desc && <p>{desc}</p>}
         </div>
         {actions && <div className="actions">{actions}</div>}

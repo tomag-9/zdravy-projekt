@@ -293,3 +293,28 @@ class TestAdminOrderQueryset:
         ids = self._order_ids(response.data)
         assert order_a.pk in ids
         assert len(ids) == 1
+
+    def test_prevadzka_history_is_ordered_newest_date_first(self, admin_client):
+        """Admin detail prevádzky listuje históriu po stránkach (#history-page):
+        bez explicitného poradia by DRF vrátil riadky v poradí DB (id), nie
+        podľa dátumu, a stránkovanie by roztrhalo najnovšie objednávky naprosto
+        náhodne naprieč stranami."""
+        from api.models import Celok, Prevadzka
+
+        celok = Celok.objects.create(nazov="História celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="História prevádzka")
+        older = DailyOrder.objects.create(
+            prevadzka=prevadzka, date=datetime.date(2026, 1, 5), data={}
+        )
+        newest = DailyOrder.objects.create(
+            prevadzka=prevadzka, date=datetime.date(2026, 3, 1), data={}
+        )
+        middle = DailyOrder.objects.create(
+            prevadzka=prevadzka, date=datetime.date(2026, 2, 10), data={}
+        )
+
+        url = reverse("dailyorder-list") + f"?prevadzka={prevadzka.pk}"
+        response = admin_client.get(url)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert self._order_ids(response.data) == [newest.pk, middle.pk, older.pk]

@@ -2,8 +2,10 @@
 Django signals for the api app.
 
 GlobalSettings post_save → keeps the Celery Beat PeriodicTasks for:
-- auto-orders: fires at max(deadline_breakfast, deadline_lunch,
-  deadline_olovrant)
+- auto-orders: one task per group of meals sharing a (deadline, is_day_before)
+  — same grouping as push reminders/edupage scrape below, e.g. breakfast (eve
+  before) and lunch+olovrant (same day) fire as two separate runs, each only
+  filling in its own meals (#548)
 - daily reports: chained after the Edupage scrape that feeds them (issue #474).
   Only when the auto-scrape is switched off do they get their own crontabs,
   10 min after the breakfast deadline (breakfast only) and 10 min after the
@@ -23,7 +25,7 @@ from django.dispatch import receiver
 
 logger = logging.getLogger(__name__)
 
-PERIODIC_TASK_NAME_AUTO_ORDER = "auto-order-daily"
+AUTO_ORDER_TASK_PREFIX = "auto-order-"
 PERIODIC_TASK_NAME_EVENT_LOG_PURGE = "event-log-purge-daily"
 PERIODIC_TASK_NAME_REPORT_BREAKFAST = "daily-report-breakfast"
 PERIODIC_TASK_NAME_REPORT_ALL = "daily-report-all-meals"
@@ -106,20 +108,42 @@ def _push_reminder_task_name(meal_types: list[str]) -> str:
     return PUSH_REMINDER_TASK_PREFIX + "-".join(sorted(meal_types))
 
 
+def _auto_order_task_name(meal_types: list[str]) -> str:
+    """Return the deterministic PeriodicTask name for a group of meal types."""
+    return AUTO_ORDER_TASK_PREFIX + "-".join(sorted(meal_types))
+
+
+def _group_meals_by_deadline(settings_instance) -> dict[tuple, list[str]]:
+    """Zoskup raňajky/obed/olovrant podľa zdieľaného (deadline, is_day_before).
+
+    Jedlá v rovnakej skupine majú tú istú uzávierku, takže patria do toho
+    istého cronu — push pripomienka, edupage scrape aj auto-objednávka
+    (#548) sa všetky zoraďujú rovnako, nech sa nerozídu.
+    """
+    groups: dict[tuple, list[str]] = {}
+    for meal_type in ("breakfast", "lunch", "olovrant"):
+        deadline: datetime.time = getattr(settings_instance, f"deadline_{meal_type}")
+        is_day_before: bool = getattr(
+            settings_instance, f"deadline_{meal_type}_is_day_before", False
+        )
+        groups.setdefault((deadline, is_day_before), []).append(meal_type)
+    return groups
+
+
 def _sync_auto_order_schedule(settings_instance) -> None:
     """
-    Create or update the Celery Beat PeriodicTask so that auto-orders fire
-    at max(deadline_breakfast, deadline_lunch, deadline_olovrant), on the eve
-    of every workday (Sun–Thu).
+    Create or update one Celery Beat PeriodicTask per group of meals sharing
+    a (deadline, is_day_before) — same grouping as push reminders/edupage
+    scrape (#548).
 
-    Using the *latest* deadline ensures all manual-order windows have closed
-    before we fill in the gaps automatically.
-
-    `apply_auto_orders` dopĺňa vždy `_next_workday(dnes)`, takže je to „deň
-    vopred" úloha bez ohľadu na nastavenie deadlinov — a musí bežať v predvečer
-    obsluhovaného dňa. S maskou Po–Pi sa pondelok dopĺňal už v piatok večer a
-    klient, ktorý si cez víkend objednal sám, dostal auto-objednávku spred dvoch
-    dní; v nedeľu naopak nebežalo nič.
+    Predtým bežal jediný beh na `max()` zo všetkých troch deadlinov, vždy
+    v predvečer (Ne–Št) — čo je nesprávne, keď raňajky majú deadline deň
+    vopred a obed/olovrant až v deň podávania: `max()` porovnáva holé časy
+    bez ohľadu na to, ktorému dňu patria, takže si vždy vybral neskorší čas
+    (typicky večerný, pre raňajky) a večerný beh by tak dopĺňal obed/olovrant
+    ešte pred ich reálnou (rannou) uzávierkou. Každá skupina má teraz vlastný
+    beh, ktorý dopĺňa len svoje jedlá (`apply_auto_orders(meal_types=...)`),
+    v predvečer alebo v deň podávania podľa vlastného `is_day_before`.
     """
     try:
         from django.conf import settings
@@ -131,43 +155,62 @@ def _sync_auto_order_schedule(settings_instance) -> None:
         return
 
     try:
-        trigger_time = max(
-            settings_instance.deadline_breakfast,
-            settings_instance.deadline_lunch,
-            settings_instance.deadline_olovrant,
-        )
+        new_task_names: set[str] = set()
 
-        schedule, _ = CrontabSchedule.objects.get_or_create(
-            minute=trigger_time.minute,
-            hour=trigger_time.hour,
-            day_of_week=_day_of_week(is_day_before=True),
-            day_of_month="*",
-            month_of_year="*",
-            timezone=settings.TIME_ZONE,
-        )
+        for (deadline, is_day_before), meal_types in _group_meals_by_deadline(
+            settings_instance
+        ).items():
+            meal_types_sorted = sorted(meal_types)
+            task_name = _auto_order_task_name(meal_types_sorted)
+            new_task_names.add(task_name)
 
-        PeriodicTask.objects.update_or_create(
-            name=PERIODIC_TASK_NAME_AUTO_ORDER,
-            defaults={
-                "task": "api.tasks.apply_auto_orders_task",
-                "crontab": schedule,
-                "args": json.dumps([]),
-                "kwargs": json.dumps({}),
-                "enabled": True,
-                "description": (
-                    "Auto-objednávka: skopíruje poslednú neprázdnu objednávku "
-                    "každému klientovi, ktorý si do dnešnej uzávierky "
-                    "neobjednal sám."
-                ),
-            },
-        )
+            schedule, _ = CrontabSchedule.objects.get_or_create(
+                minute=deadline.minute,
+                hour=deadline.hour,
+                day_of_week=_day_of_week(is_day_before),
+                day_of_month="*",
+                month_of_year="*",
+                timezone=settings.TIME_ZONE,
+            )
 
-        logger.info(
-            "Auto-order periodic task synced → %02d:%02d Sun–Thu (tz: %s)",
-            trigger_time.hour,
-            trigger_time.minute,
-            settings.TIME_ZONE,
+            PeriodicTask.objects.update_or_create(
+                name=task_name,
+                defaults={
+                    "task": "api.tasks.apply_auto_orders_task",
+                    "crontab": schedule,
+                    "args": json.dumps([None, meal_types_sorted]),
+                    "kwargs": json.dumps({"same_day": not is_day_before}),
+                    "enabled": True,
+                    "description": (
+                        f"Auto-objednávka ({_meal_types_label_sk(meal_types_sorted)}): "
+                        "skopíruje poslednú neprázdnu objednávku každému "
+                        "klientovi, ktorý si do uzávierky neobjednal sám "
+                        f"(uzávierka: {deadline.strftime('%H:%M')})."
+                    ),
+                },
+            )
+
+            logger.info(
+                "Auto-order periodic task synced: %s → %02d:%02d %s (tz: %s)",
+                task_name,
+                deadline.hour,
+                deadline.minute,
+                "Ne–Št" if is_day_before else "Po–Pi",
+                settings.TIME_ZONE,
+            )
+
+        # Skupiny sa mohli od minulého uloženia zlúčiť/rozdeliť — osirelé
+        # behy z predošlého rozdelenia zmaž, nech nezostane duplicitný beh
+        # na starý (už neplatný) čas.
+        deleted_count, _ = (
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX)
+            .exclude(name__in=new_task_names)
+            .delete()
         )
+        if deleted_count:
+            logger.info(
+                "Deleted %d orphaned auto-order periodic task(s)", deleted_count
+            )
     except Exception as exc:
         logger.exception("Failed to sync auto-order periodic task: %s", exc)
         _capture_signal_failure(exc, "auto_order_schedule")

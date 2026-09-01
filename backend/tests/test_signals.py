@@ -2,24 +2,26 @@
 Tests for api/signals.py
 
 Verifies that saving GlobalSettings creates/updates the Celery Beat
-PeriodicTask for auto-orders.
+PeriodicTasks for auto-orders — one per group of meals sharing a deadline
+(#548), the same grouping push reminders use.
 """
 
 import datetime
+import json
 
 import pytest
 from django_celery_beat.models import PeriodicTask
 
 from api.models import GlobalSettings
-from api.signals import PERIODIC_TASK_NAME_AUTO_ORDER
+from api.signals import AUTO_ORDER_TASK_PREFIX, _auto_order_task_name
 
 
 @pytest.mark.django_db
 class TestAutoOrderScheduleSync:
-    def test_creates_periodic_task_on_first_save(self):
-        """Saving GlobalSettings for the first time creates the PeriodicTask."""
+    def test_creates_one_periodic_task_per_deadline_group(self):
+        """Three distinct deadlines → three separate auto-order tasks."""
         assert not PeriodicTask.objects.filter(
-            name=PERIODIC_TASK_NAME_AUTO_ORDER
+            name__startswith=AUTO_ORDER_TASK_PREFIX
         ).exists()
 
         GlobalSettings.objects.create(
@@ -28,58 +30,138 @@ class TestAutoOrderScheduleSync:
             deadline_olovrant=datetime.time(9, 0),
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
-        assert task.task == "api.tasks.apply_auto_orders_task"
-        assert task.enabled is True
-        # Trigger time = max(08:00, 10:00, 09:00) = 10:00
-        assert task.crontab.hour == "10"
-        assert task.crontab.minute == "0"
-        assert task.crontab.day_of_week == "0-4"
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX)
+        )
+        assert len(tasks) == 3
+        for task in tasks:
+            assert task.task == "api.tasks.apply_auto_orders_task"
+            assert task.enabled is True
+
+    def test_shared_deadline_creates_one_grouped_task(self):
+        """Lunch and olovrant sharing a deadline → one combined task."""
+        GlobalSettings.objects.create(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 35),
+            deadline_olovrant=datetime.time(7, 35),
+        )
+
+        assert (
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX).count()
+            == 2
+        )
+        grouped = PeriodicTask.objects.get(
+            name=_auto_order_task_name(["lunch", "olovrant"])
+        )
+        assert sorted(json.loads(grouped.args)[1]) == ["lunch", "olovrant"]
+
+    def test_task_fires_exactly_at_its_own_group_deadline(self):
+        """Each group's crontab is the deadline itself, not a max() across all
+        three (that used to always pick the latest raw clock time regardless
+        of which day it actually belonged to)."""
+        GlobalSettings.objects.create(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 35),
+            deadline_olovrant=datetime.time(7, 35),
+        )
+
+        breakfast = PeriodicTask.objects.get(name=_auto_order_task_name(["breakfast"]))
+        lunch_olovrant = PeriodicTask.objects.get(
+            name=_auto_order_task_name(["lunch", "olovrant"])
+        )
+        assert (breakfast.crontab.hour, breakfast.crontab.minute) == ("21", "0")
+        assert (lunch_olovrant.crontab.hour, lunch_olovrant.crontab.minute) == (
+            "7",
+            "35",
+        )
 
     def test_updates_periodic_task_when_deadline_changes(self):
-        """Updating GlobalSettings reschedules the task to the new latest deadline."""
+        """Updating GlobalSettings reschedules the affected group's task."""
         settings = GlobalSettings.objects.create(
             deadline_breakfast=datetime.time(8, 0),
             deadline_lunch=datetime.time(10, 0),
             deadline_olovrant=datetime.time(9, 0),
         )
 
-        # Change lunch deadline to 11:30 – new latest deadline
         settings.deadline_lunch = datetime.time(11, 30)
         settings.save()
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
+        task = PeriodicTask.objects.get(name=_auto_order_task_name(["lunch"]))
         assert task.crontab.hour == "11"
         assert task.crontab.minute == "30"
 
-    def test_trigger_time_is_max_of_all_three_deadlines(self):
-        """Olovrant being the latest picks olovrant time."""
-        GlobalSettings.objects.create(
-            deadline_breakfast=datetime.time(7, 30),
-            deadline_lunch=datetime.time(9, 0),
-            deadline_olovrant=datetime.time(12, 45),
+    def test_orphaned_tasks_deleted_when_groups_merge(self):
+        """When two previously separate deadlines merge, the old tasks are
+        deleted so no stale run survives on the old (now wrong) time."""
+        settings = GlobalSettings.objects.create(
+            deadline_breakfast=datetime.time(8, 0),
+            deadline_lunch=datetime.time(10, 0),
+            deadline_olovrant=datetime.time(9, 0),
+        )
+        assert (
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX).count()
+            == 3
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
-        assert task.crontab.hour == "12"
-        assert task.crontab.minute == "45"
+        settings.deadline_lunch = datetime.time(9, 0)
+        settings.save()
 
-    def test_task_runs_on_the_eve_of_every_workday(self):
-        """Auto-orders dopĺňajú `_next_workday`, takže bežia v predvečer: Ne–Št.
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX)
+        )
+        assert len(tasks) == 2
+        assert not PeriodicTask.objects.filter(
+            name=_auto_order_task_name(["lunch"])
+        ).exists()
+        assert PeriodicTask.objects.filter(
+            name=_auto_order_task_name(["lunch", "olovrant"])
+        ).exists()
 
-        S maskou Po–Pi sa pondelok dopĺňal už v piatok večer — dva dni pred
-        deadlinom, a v nedeľu, keď si klient ešte môže objednať sám, nebežalo nič.
+    def test_day_before_group_runs_on_the_eve_same_day_group_runs_on_the_day(self):
+        """Raňajky (deň vopred): Ne–Št. Obed/olovrant (v deň podávania): Po–Pi.
+
+        S jedinou spoločnou maskou Ne–Št (pôvodné správanie pre všetky tri)
+        by obed/olovrant beh v sobotu vôbec nenabehol napriek tomu, že v deň
+        podávania (pracovný deň) mal.
         """
         GlobalSettings.objects.create(
-            deadline_breakfast=datetime.time(10, 0),
-            deadline_lunch=datetime.time(10, 0),
-            deadline_olovrant=datetime.time(10, 0),
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 35),
+            deadline_lunch_is_day_before=False,
+            deadline_olovrant=datetime.time(7, 35),
+            deadline_olovrant_is_day_before=False,
         )
 
-        task = PeriodicTask.objects.get(name=PERIODIC_TASK_NAME_AUTO_ORDER)
-        assert task.crontab.day_of_week == "0-4"
-        # Sobota nikdy — po nej nenasleduje pracovný deň, ktorý by sa dopĺňal.
-        assert "6" not in task.crontab.day_of_week
+        breakfast = PeriodicTask.objects.get(name=_auto_order_task_name(["breakfast"]))
+        lunch_olovrant = PeriodicTask.objects.get(
+            name=_auto_order_task_name(["lunch", "olovrant"])
+        )
+        assert breakfast.crontab.day_of_week == "0-4"  # Ne–Št
+        assert lunch_olovrant.crontab.day_of_week == "1-5"  # Po–Pi
+
+    def test_same_day_kwarg_reflects_is_day_before(self):
+        """`same_day` v kwargs úlohy hovorí `apply_auto_orders_task`, či má
+        dopĺňať dnešok (uzávierka v deň podávania) alebo zajtrajšok (uzávierka
+        deň vopred) — bez toho by obed/olovrant beh ráno dopĺňal zajtrajšok
+        namiesto dňa, ktorého uzávierka práve pominula."""
+        GlobalSettings.objects.create(
+            deadline_breakfast=datetime.time(21, 0),
+            deadline_breakfast_is_day_before=True,
+            deadline_lunch=datetime.time(7, 35),
+            deadline_lunch_is_day_before=False,
+            deadline_olovrant=datetime.time(7, 35),
+            deadline_olovrant_is_day_before=False,
+        )
+
+        breakfast = PeriodicTask.objects.get(name=_auto_order_task_name(["breakfast"]))
+        lunch_olovrant = PeriodicTask.objects.get(
+            name=_auto_order_task_name(["lunch", "olovrant"])
+        )
+        assert json.loads(breakfast.kwargs) == {"same_day": False}
+        assert json.loads(lunch_olovrant.kwargs) == {"same_day": True}
 
 
 @pytest.mark.django_db

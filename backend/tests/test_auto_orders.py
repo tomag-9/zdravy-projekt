@@ -366,6 +366,121 @@ class TestApplyAutoOrders:
 
 
 # ---------------------------------------------------------------------------
+# Unit: apply_auto_orders(meal_types=...) — scoped runs (#548)
+#
+# Raňajky a obed/olovrant môžu mať rôznu uzávierku (deň vopred vs. v deň
+# podávania), takže bežia v dvoch samostatných crontaboch, každý naplní len
+# svoje jedlá bez toho, aby prepísal to, čo už v riadku je (manuálne, alebo
+# z toho druhého behu).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+class TestApplyAutoOrdersScopedToMealTypes:
+    def test_creates_a_new_row_with_only_the_scoped_meal_filled(self, client_user):
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
+
+        result = apply_auto_orders(target_date=TUESDAY, meal_types=["breakfast"])
+
+        assert client_user.email in result["created"]
+        auto = DailyOrder.objects.get(user=client_user, date=TUESDAY)
+        assert auto.is_auto is True
+        assert auto.data.get("breakfast") == NON_EMPTY_DATA["breakfast"]
+        # Obed/olovrant nie sú v scope tohto behu — ostávajú prázdne, čaká sa
+        # na druhý beh, nie na tento.
+        assert auto.data.get("lunch") == {}
+        assert auto.data.get("olovrant") == {}
+
+    def test_second_scoped_run_fills_in_the_remaining_meals(self, client_user):
+        """Dva behy postupne (raňajky večer, obed/olovrant ráno) dajú
+        dokopy rovnaký výsledok ako pôvodný jeden all-at-once beh."""
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
+
+        apply_auto_orders(target_date=TUESDAY, meal_types=["breakfast"])
+        result = apply_auto_orders(
+            target_date=TUESDAY, meal_types=["lunch", "olovrant"]
+        )
+
+        assert client_user.email in result["created"]
+        auto = DailyOrder.objects.get(user=client_user, date=TUESDAY)
+        assert auto.data.get("breakfast") == NON_EMPTY_DATA["breakfast"]
+        assert auto.data.get("lunch") == NON_EMPTY_DATA["lunch"]
+
+    def test_does_not_touch_a_meal_the_client_already_set_manually(self, client_user):
+        """Klient si medzi oboma behmi manuálne dopísal obed — druhý (scoped)
+        beh preň nemá čo doplniť, a nesmie ho prepísať šablónou."""
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
+        manual_lunch = {"Dospelý": {"menuCounts": {"C": 9}, "diets": {}}}
+        DailyOrder.objects.create(
+            user=client_user,
+            date=TUESDAY,
+            status="submitted",
+            is_auto=False,
+            data={"breakfast": {}, "lunch": manual_lunch, "olovrant": {}},
+        )
+
+        apply_auto_orders(target_date=TUESDAY, meal_types=["breakfast", "lunch"])
+
+        order = DailyOrder.objects.get(user=client_user, date=TUESDAY)
+        # Raňajky doplnené zo šablóny, manuálne zadaný obed ostal nedotknutý.
+        assert order.data.get("breakfast") == NON_EMPTY_DATA["breakfast"]
+        assert order.data.get("lunch") == manual_lunch
+        # Riadok bol manuálny (is_auto=False) — doplnenie chýbajúceho jedla
+        # ho neprehlási spätne za plne automatický.
+        assert order.is_auto is False
+
+    def test_already_filled_scope_is_skipped_not_duplicated(self, client_user):
+        """Beh spustený druhýkrát (napr. retry) nenájde nič nové na doplnenie."""
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
+        apply_auto_orders(target_date=TUESDAY, meal_types=["breakfast"])
+
+        result = apply_auto_orders(target_date=TUESDAY, meal_types=["breakfast"])
+
+        assert client_user.email not in result["created"]
+        assert DailyOrder.objects.filter(user=client_user, date=TUESDAY).count() == 1
+
+    def test_respects_visible_meals_within_the_scope(self, client_user):
+        """Prevádzka, ktorá obed nezobrazuje, ho ani scoped behom nedostane."""
+        prevadzka = client_user.profile.dostupne_prevadzky().first()
+        prevadzka.visible_meals = ["breakfast"]
+        prevadzka.save()
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=NON_EMPTY_DATA
+        )
+
+        result = apply_auto_orders(
+            target_date=TUESDAY, meal_types=["breakfast", "lunch"]
+        )
+
+        assert client_user.email in result["created"]
+        auto = DailyOrder.objects.get(user=client_user, date=TUESDAY)
+        assert auto.data.get("breakfast") == NON_EMPTY_DATA["breakfast"]
+        assert auto.data.get("lunch") == {}
+
+    def test_nothing_to_fill_for_the_scope_is_skipped(self, client_user):
+        """Šablóna nemá nič pre jedlá v scope tohto behu → nič sa nevytvorí."""
+        breakfast_only = {"breakfast": NON_EMPTY_DATA["breakfast"]}
+        DailyOrder.objects.create(
+            user=client_user, date=MONDAY, status="submitted", data=breakfast_only
+        )
+
+        result = apply_auto_orders(
+            target_date=TUESDAY, meal_types=["lunch", "olovrant"]
+        )
+
+        assert client_user.email not in result["created"]
+        assert not DailyOrder.objects.filter(user=client_user, date=TUESDAY).exists()
+
+
+# ---------------------------------------------------------------------------
 # API: GET /api/orders/planned/
 # ---------------------------------------------------------------------------
 

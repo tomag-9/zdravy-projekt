@@ -59,6 +59,14 @@ def test_predskolak_with_ms_portion_code_is_left_alone():
     assert EdupageScraper.resolve_payer_portion_name("Predškoláci", "0") == "Škôlka"
 
 
+@pytest.mark.parametrize("nazov", ["Učiteľ Klasik", "Učiteľ VEGE"])
+def test_teacher_portion_code_resolves_to_adult_not_default(nazov):
+    """British School má pre učiteľov vlastný `porcia=5` — bez mapovania by
+    neznámy kód spadol na DEFAULT_PORTION_NAME ("Škôlka") a učitelia by
+    dostávali MŠ porcie (systémová kontrola 1.9.2026)."""
+    assert EdupageScraper.resolve_payer_portion_name(nazov, "5") == "Dospelý (SŠ)"
+
+
 def test_predskolak_portion_type_matches_first_grade_gramage():
     """Predškolák je oddelený kvôli fakturácii, nie kvôli gramáži — 250 g oboch."""
     by_name = {pt["name"]: pt["coefficient"] for pt in PORTION_TYPES}

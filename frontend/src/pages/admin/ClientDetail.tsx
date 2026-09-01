@@ -6,7 +6,6 @@ import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
-import { fetchAllPages } from '../../lib/pagination';
 import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
 import { LoginPasswordStatusBadge } from "./facility/LoginPasswordStatus";
@@ -159,6 +158,10 @@ const ClientDetail: React.FC = () => {
   const [recentOrders, setRecentOrders] = useState<DailyOrder[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
+  // História objednávok sa načítava po stránkach — pri prevádzke s dlhou
+  // históriou `fetchAllPages` (všetko naraz) trvalo neúnosne dlho.
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersHasNext, setOrdersHasNext] = useState(false);
 
   // Order actions
   const [deleteOrderTarget, setDeleteOrderTarget] = useState<DailyOrder | null>(null);
@@ -309,18 +312,26 @@ const ClientDetail: React.FC = () => {
     if (!facilityId) return;
     setOrdersLoading(true);
     try {
-      const list = await fetchAllPages<DailyOrder>(
-        apiFetch,
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}`,
+      const res = await apiFetch(
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}&page=${ordersPage}`,
       );
-      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      setRecentOrders(list);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Backend vracia DRF stránkovanie ({results, next}); ošetri aj holé pole,
+      // keby stránkovanie niekedy vypadlo.
+      if (Array.isArray(data)) {
+        setRecentOrders(data);
+        setOrdersHasNext(false);
+      } else {
+        setRecentOrders(data.results ?? []);
+        setOrdersHasNext(Boolean(data.next));
+      }
     } catch (e) {
       logger.error(e);
     } finally {
       setOrdersLoading(false);
     }
-  }, [apiFetch, facilityId]);
+  }, [apiFetch, facilityId, ordersPage]);
 
   const handleSendPasswordReset = async () => {
     if (!user) return;
@@ -366,8 +377,8 @@ const ClientDetail: React.FC = () => {
       );
       if (res.ok || res.status === 204) {
         success("Objednávka bola odstránená.");
-        setRecentOrders((prev) => prev.filter((o) => o.id !== deleteOrderTarget.id));
         setDeleteOrderTarget(null);
+        fetchOrders();
       } else {
         toastError("Nepodarilo sa odstrániť objednávku.");
       }
@@ -823,6 +834,27 @@ const ClientDetail: React.FC = () => {
                 </table>
               </div>
             )}
+            {!ordersLoading && (recentOrders.length > 0 || ordersPage > 1) && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderTop: "1px solid var(--line-soft)" }}>
+                <Button
+                  variant="secondary"
+                  sm
+                  disabled={ordersPage === 1}
+                  onClick={() => { setExpandedOrderId(null); setOrdersPage((page) => page - 1); }}
+                >
+                  Predchádzajúca
+                </Button>
+                <span>Strana {ordersPage}</span>
+                <Button
+                  variant="secondary"
+                  sm
+                  disabled={!ordersHasNext}
+                  onClick={() => { setExpandedOrderId(null); setOrdersPage((page) => page + 1); }}
+                >
+                  Ďalšia
+                </Button>
+              </div>
+            )}
           </Card>
         )}
 
@@ -1209,6 +1241,7 @@ const ClientDetail: React.FC = () => {
           clientId={user?.id ?? null}
           prevadzkaId={facility.id}
           visibleMenus={orderEditorMenus}
+          menuDayRestrictions={menuDayRestrictions}
           visibleMeals={orderEditorMeals}
           visibleDiets={orderEditorDiets}
           portionTypeNames={portionTypeNames}

@@ -9,13 +9,19 @@ Zmazanie celku je **kaskádové** (issue #462): zmažú sa aj jeho prevádzky a 
 objednávky (`Prevadzka.celok`/`DailyOrder.prevadzka` sú `PROTECT`, takže bez
 explicitného manuálneho zmazania v správnom poradí by DELETE skončil na
 `ProtectedError`). Prístupy (`ProfileCelokAccess`/`ProfilePrevadzkaAccess`) sa
-zmažú automaticky (`CASCADE`) — samotné loginy (`User`/`UserProfile`) ostávajú,
-len prídu o prístup. Frontend pred zavolaním DELETE zobrazí potvrdzovací dialóg
+zmažú automaticky (`CASCADE`). Klientský login (`User`/`UserProfile`), ktorému
+zmazanie zobralo posledný zvyšný prístup, sa zmaže tiež (issue #520) — inak
+ostáva v DB ako login bez akejkoľvek prevádzky/celku, neviditeľný pre obe admin
+obrazovky (FacilityManager vypisuje len loginy so zachovaným accessom,
+AdminUserList len interné role), teda nezmazateľný cez UI. Interné role
+(admin/superadmin/kuchyňa) sa takto nikdy nemažú — nie sú viazané 1:1 na
+facility access. Frontend pred zavolaním DELETE zobrazí potvrdzovací dialóg
 s rozsahom dopadu (počet prevádzok/objednávok/loginov).
 """
 
 from __future__ import annotations
 
+from django.contrib.auth.models import User
 from django.db import transaction
 from django.db.models import Count, Prefetch, Q, QuerySet
 from rest_framework import viewsets
@@ -36,6 +42,7 @@ from ..models import (
     Prevadzka,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
+    UserProfile,
 )
 from ..permissions import IsAdminOrAbove, SectionAccess
 from ..serializers_facilities import AdminCelokSerializer, AdminPrevadzkaSerializer
@@ -56,6 +63,32 @@ def _log_settings_change(request, instance, changes, action: str) -> None:
             "changes": changes,
         },
     )
+
+
+def _delete_orphaned_client_logins(profile_ids: list[int]) -> list[str]:
+    """Zmaže klientské loginy z *profile_ids*, ktorým už neostal žiadny prístup.
+
+    Volá sa po zmazaní Celku/Prevádzky, keď FK `CASCADE` už odstránil ich
+    `ProfileCelokAccess`/`ProfilePrevadzkaAccess` záznamy. Login sa zmaže len
+    ak je `role=klient` a nemá *žiadny* zvyšný prístup (mohol mať prístup aj
+    k inému celku/prevádzke, ten sa nesmie stratiť). Interné role sa nikdy
+    nemažú automaticky.
+
+    Vracia zoznam e-mailov zmazaných loginov (pre audit log).
+    """
+    if not profile_ids:
+        return []
+    orphaned = list(
+        UserProfile.objects.filter(id__in=profile_ids, role=UserProfile.Role.KLIENT)
+        .filter(celok_accesses__isnull=True, prevadzka_accesses__isnull=True)
+        .select_related("user")
+        .distinct()
+    )
+    if not orphaned:
+        return []
+    emails = [profile.user.email for profile in orphaned]
+    User.objects.filter(id__in=[profile.user_id for profile in orphaned]).delete()
+    return emails
 
 
 class AdminCelokViewSet(viewsets.ModelViewSet):
@@ -81,25 +114,32 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
         _log_settings_change(self.request, instance, changes, "upravil")
 
     def perform_destroy(self, instance):
-        """Kaskádovo zmaže celok aj jeho prevádzky a ich objednávky.
+        """Kaskádovo zmaže celok aj jeho prevádzky, objednávky a osirelé loginy.
 
         `Prevadzka.celok` a `DailyOrder.prevadzka` sú `on_delete=PROTECT`, takže
         `instance.delete()` by inak zlyhal na `ProtectedError`, ak má celok čo len
         jednu prevádzku. Poradie mazania: objednávky → prevádzky (uvoľní PROTECT
         z Celok) → celok. Prístupy (`ProfileCelokAccess`/`ProfilePrevadzkaAccess`)
-        sú `CASCADE`, zmažú sa samy; loginy (`User`) ostávajú, len prídu o prístup.
+        sú `CASCADE`, zmažú sa samy; profile_id-čka postihnutých loginov si preto
+        vytiahneme *pred* cascade delete, aby sme po ňom vedeli zmazať tie, ktorým
+        neostal žiadny iný prístup (issue #520) — inak by ostali v DB ako login
+        bez prevádzky, neviditeľný a nezmazateľný cez žiadnu admin obrazovku.
         """
         with transaction.atomic():
             prevadzka_ids = list(instance.prevadzky.values_list("id", flat=True))
             orders_count = DailyOrder.objects.filter(
                 prevadzka_id__in=prevadzka_ids
             ).count()
-            logins_count = (
-                ProfileCelokAccess.objects.filter(celok=instance).count()
-                + ProfilePrevadzkaAccess.objects.filter(
+            affected_profile_ids = list(
+                ProfileCelokAccess.objects.filter(celok=instance).values_list(
+                    "profile_id", flat=True
+                )
+            ) + list(
+                ProfilePrevadzkaAccess.objects.filter(
                     prevadzka_id__in=prevadzka_ids
-                ).count()
+                ).values_list("profile_id", flat=True)
             )
+            logins_count = len(affected_profile_ids)
             prevadzky_count = len(prevadzka_ids)
             label = str(instance)
             instance_pk = instance.pk
@@ -108,13 +148,23 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
             Prevadzka.objects.filter(id__in=prevadzka_ids).delete()
             instance.delete()
 
+            deleted_logins = _delete_orphaned_client_logins(affected_profile_ids)
+
             log_event(
                 EventLog.EventType.SETTINGS_CHANGE,
                 actor=self.request.user,
                 summary=(
                     f"Admin vymazal celok „{label}“ vrátane {prevadzky_count} "
                     f"prevádzok, {orders_count} objednávok a {logins_count} "
-                    "prístupov (loginy ostávajú, len prišli o prístup)."
+                    "prístupov"
+                    + (
+                        f"; {len(deleted_logins)} osirelý(ch) login(ov) bez "
+                        f"zvyšného prístupu bolo zmazaných: "
+                        + ", ".join(deleted_logins)
+                        + "."
+                        if deleted_logins
+                        else " (ostatné loginy prišli len o prístup)."
+                    )
                 ),
                 payload={
                     "model": "api.celok",
@@ -123,6 +173,7 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
                         "prevadzky_count": prevadzky_count,
                         "orders_count": orders_count,
                         "logins_count": logins_count,
+                        "deleted_orphaned_logins": deleted_logins,
                     },
                 },
             )
@@ -224,6 +275,48 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
         changes = build_model_diff(serializer.instance, audited_data)
         instance = serializer.save()
         _log_settings_change(self.request, instance, changes, "upravil")
+
+    def perform_destroy(self, instance):
+        """Zmaže prevádzku a klientské loginy, ktorým to zobralo posledný prístup.
+
+        Len `ProfilePrevadzkaAccess` viazaný priamo na túto prevádzku sa berie
+        do úvahy — prístup na úrovni celku ostáva nedotknutý (patrí ostatným
+        prevádzkam toho istého celku). Rovnaký princíp ako pri mazaní celku
+        (issue #520), viď `_delete_orphaned_client_logins`.
+        """
+        with transaction.atomic():
+            affected_profile_ids = list(
+                ProfilePrevadzkaAccess.objects.filter(prevadzka=instance).values_list(
+                    "profile_id", flat=True
+                )
+            )
+            label = str(instance)
+            instance_pk = instance.pk
+
+            instance.delete()
+
+            deleted_logins = _delete_orphaned_client_logins(affected_profile_ids)
+
+            log_event(
+                EventLog.EventType.SETTINGS_CHANGE,
+                actor=self.request.user,
+                summary=(
+                    f"Admin vymazal prevádzku „{label}“"
+                    + (
+                        f"; {len(deleted_logins)} osirelý(ch) login(ov) bez "
+                        f"zvyšného prístupu bolo zmazaných: "
+                        + ", ".join(deleted_logins)
+                        + "."
+                        if deleted_logins
+                        else "."
+                    )
+                ),
+                payload={
+                    "model": "api.prevadzka",
+                    "object_id": instance_pk,
+                    "deleted_orphaned_logins": deleted_logins,
+                },
+            )
 
     def get_queryset(self) -> QuerySet:
         return (

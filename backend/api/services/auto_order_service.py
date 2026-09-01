@@ -110,10 +110,36 @@ def _edupage_prevadzka_ids() -> set[int]:
     return prevadzka_ids
 
 
-def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any]:
+def _scoped_is_empty(data: Dict[str, Any], meal_types: List[str]) -> bool:
+    """`OrderData.is_empty()`, ale len pre vybranú podmnožinu jedál."""
+    return OrderData(
+        {meal: (data or {}).get(meal, {}) for meal in meal_types}
+    ).is_empty()
+
+
+def apply_auto_orders(
+    target_date: datetime.date | None = None,
+    meal_types: List[str] | None = None,
+) -> Dict[str, Any]:
     """
     For every active non-staff client that has no order on target_date,
     find their last non-empty order and create an auto order.
+
+    `meal_types` obmedzí beh len na tieto jedlá (#548) — raňajky a obed/olovrant
+    majú inú uzávierku (typicky večer vopred vs. ráno v deň podávania), takže
+    bežia v dvoch samostatných crontaboch namiesto jedného, ktorý by musel
+    čakať na tú neskoršiu z oboch a auto-vyplnenie tej skoršej by prišlo
+    zbytočne neskoro.
+
+    `meal_types=None` (predvolené, používa ho aj ručné spustenie z admina) je
+    pôvodné správanie: naplní VŠETKY viditeľné jedlá naraz a prevádzku, ktorá
+    už má pre daný deň akýkoľvek riadok, preskočí bez zásahu doňho.
+
+    S `meal_types` sa namiesto toho existujúci riadok (ak je) DOPĹŇA — naplnia
+    sa len tie jedlá z `meal_types`, ktoré sú v ňom ešte prázdne; ostatné
+    (manuálne zadané, alebo naplnené druhým behom) ostávajú nedotknuté. Vďaka
+    tomu môže klient medzi oboma behmi pokojne upraviť čokoľvek zo svojej
+    objednávky bez toho, aby to ten druhý beh prepísal.
 
     Returns a summary dict: {"created": [...], "skipped": int}
     """
@@ -150,11 +176,14 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
 
     # Auto-objednávky sa vedú per prevádzka, nie per login: celok s tromi
     # prevádzkami musí dostať tri objednávky, nie jednu.
-    existing_order_prevadzka_ids = set(
-        DailyOrder.objects.filter(
+    # V scoped behu (meal_types) treba dáta existujúceho riadku prečítať aj
+    # dopísať doň, preto celý objekt, nie len id.
+    existing_orders_by_prevadzka: Dict[int, DailyOrder] = {
+        order.prevadzka_id: order
+        for order in DailyOrder.objects.filter(
             user_id__in=client_ids, date=target_date, prevadzka__isnull=False
-        ).values_list("prevadzka_id", flat=True)
-    )
+        )
+    }
 
     # Preload: best (latest non-empty) template per prevádzka (1 query, no N+1)
     templates_by_prevadzka: Dict[int, DailyOrder] = {}
@@ -211,8 +240,12 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             skipped_closed += 1
             continue
 
-        # Already has an order for this date (manual or previous auto)?
-        if prevadzka_id in existing_order_prevadzka_ids:
+        existing_order = existing_orders_by_prevadzka.get(prevadzka_id)
+
+        # Nescoped beh (ručné spustenie z admina): existujúci riadok — manuálny
+        # aj z predošlého auto-behu — sa nedotýka, nech nezdvojí ani neprepíše
+        # dáta pre jedlá, ktoré scoped beh mohol už naplniť.
+        if meal_types is None and existing_order is not None:
             skipped += 1
             continue
 
@@ -229,6 +262,76 @@ def apply_auto_orders(target_date: datetime.date | None = None) -> Dict[str, Any
             for portion_type in template.prevadzka.visible_portion_types.all()
             if portion_type.is_active
         ]
+
+        if meal_types is not None:
+            # Scoped beh: naplň len tie jedlá z `meal_types`, ktoré sú
+            # v existujúcom riadku (ak je) ešte prázdne — ostatné (manuálne,
+            # alebo naplnené druhým behom) nechaj tak.
+            scope = [
+                meal
+                for meal in meal_types
+                if not visible_meals or meal in visible_meals
+            ]
+            # Nový riadok dostane všetky tri kľúče jedál rovno od začiatku
+            # (rovnaký tvar ako `_build_auto_data`) — inak by chýbajúce kľúče
+            # namiesto prázdneho `{}` prekvapili kód, ktorý ich číta priamo.
+            current_data = (
+                dict(existing_order.data or {})
+                if existing_order
+                else {meal: {} for meal in MEAL_KEYS}
+            )
+            missing = [meal for meal in scope if _scoped_is_empty(current_data, [meal])]
+            if not missing:
+                skipped += 1
+                continue
+
+            template_fill = _build_auto_data(template, missing, visible_portion_types)
+            filled_any = False
+            for meal in missing:
+                value = template_fill.get(meal, {})
+                if not _scoped_is_empty({meal: value}, [meal]):
+                    current_data[meal] = value
+                    filled_any = True
+            if not filled_any:
+                skipped += 1
+                continue
+
+            if existing_order is None:
+                try:
+                    with transaction.atomic():
+                        _, auto_created = DailyOrder.objects.get_or_create(
+                            prevadzka_id=prevadzka_id,
+                            date=target_date,
+                            defaults={
+                                "user": client,
+                                "is_auto": True,
+                                "data": current_data,
+                            },
+                        )
+                except IntegrityError:
+                    # Concurrent task already created the row; treat as skipped.
+                    skipped += 1
+                    continue
+                if not auto_created:
+                    # A manual/other order appeared between preload and now.
+                    skipped += 1
+                    continue
+            else:
+                # `is_auto` sa tu zámerne nemení: manuálny riadok (False)
+                # ostáva manuálny aj s dopísaným auto-jedlom, plne auto (True)
+                # ostáva plne auto.
+                existing_order.data = current_data
+                existing_order.save(update_fields=["data"])
+
+            created.append(client.email)
+            logger.info(
+                "Auto-order filled meals=%s for user=%s date=%s (template from %s)",
+                missing,
+                client.email,
+                target_date,
+                template.date,
+            )
+            continue
 
         auto_data = _build_auto_data(
             template,

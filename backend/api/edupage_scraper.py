@@ -45,6 +45,7 @@ ALLOWED_DIET_NAMES = {
     "NO BRAVCOVINA",
     "NO CERVENE MASO",
     "NO CUKOR",
+    "NO CITRUS",
 }
 
 
@@ -73,6 +74,11 @@ PORTION_CODE_MAP = {
     "2": "ZŠ 2.stupeň",
     "3": "Dospelý (SŠ)",
     "4": "Dospelý (SŠ)",
+    # British School má pre učiteľov vlastný porcia kód (payer skupiny "Učiteľ
+    # Klasik"/"Učiteľ VEGE") — bez tohto by neznámy kód spadol na
+    # DEFAULT_PORTION_NAME ("Škôlka") a učitelia by dostávali MŠ porcie
+    # namiesto dospelých (systémová kontrola 1.9.2026).
+    "5": "Dospelý (SŠ)",
 }
 
 PREDSKOLAK_PORTION_NAME = "Predškolák"
@@ -177,6 +183,10 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
     "horcica": "NO HORCICA",  # Cvernička "AnHorčica"/"Klasik/noHorčica"
+    # MŠ Rozmanitá "Klasik bez citrus" — bez tohto fragmentu nemá "citrus" v
+    # nazve žiadny diétny signál, takže by spadlo do resolve_menu_variant()
+    # ako obyčajný Klasik (#Rozmanitá, 1.9.2026).
+    "citrus": "NO CITRUS",
     "dia": "DIA",
     "diabet": "DIA",
     # British School (#531) hlási po anglicky — mapujeme na slovenské Diet.name.
@@ -653,9 +663,10 @@ class EdupageScraper:
         if _has_diet_signal(combined_key):
             return None
 
-        if key in _CLASSIC_MENU_NAMES or "klasik" in key or "classic" in key:
-            return "A"
-
+        # Písmeno na konci názvu (napr. "Klasik B") má prednosť pred paušálnym
+        # "klasik"/"classic" → A nižšie — inak škola s dvoma klasickými
+        # variantmi ("Klasik A", "Klasik B") dostane obe spočítané pod A a
+        # variant B sa v appke nikdy neobjaví (#Naša Škola Poznania, dom B).
         for value in (nazov_clean, sk):
             match = _MENU_NAME_RE.match(value)
             if match:
@@ -664,6 +675,9 @@ class EdupageScraper:
         match = _PREFIXED_MENU_NAME_RE.search(nazov_clean)
         if match:
             return match.group(1).upper()
+
+        if key in _CLASSIC_MENU_NAMES or "klasik" in key or "classic" in key:
+            return "A"
 
         return None
 

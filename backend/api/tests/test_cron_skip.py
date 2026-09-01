@@ -47,7 +47,7 @@ def test_apply_auto_orders_task_runs_on_sunday_because_monday_is_a_normal_workda
     monkeypatch.setattr(timezone, "localdate", lambda: SUNDAY)
     called = {}
 
-    def fake_apply(target_date):
+    def fake_apply(target_date, **kwargs):
         # `target_date=None` here is correct/expected: the task still lets
         # `apply_auto_orders()` resolve "next workday" itself — this test's
         # guarantee is only that it gets called at all, i.e. isn't skipped.
@@ -74,7 +74,7 @@ def test_apply_auto_orders_task_runs_on_explicit_date_even_on_weekend(monkeypatc
     monkeypatch.setattr(timezone, "localdate", lambda: SATURDAY)
     called = {}
 
-    def fake_apply(target_date):
+    def fake_apply(target_date, **kwargs):
         called["target_date"] = target_date
         return {"date": str(target_date), "created": [], "skipped": 0}
 
@@ -96,7 +96,11 @@ def test_apply_auto_orders_task_clears_gramage_dashboard_cache(monkeypatch):
 
     monkeypatch.setattr(
         "api.services.apply_auto_orders",
-        lambda target_date: {"date": str(target_date), "created": [], "skipped": 0},
+        lambda target_date, **kwargs: {
+            "date": str(target_date),
+            "created": [],
+            "skipped": 0,
+        },
     )
 
     cache_key = get_gramage_dashboard_cache_key(SATURDAY.isoformat())
@@ -121,7 +125,7 @@ def test_apply_auto_orders_task_skips_past_a_holiday_on_the_resolved_target(
     monkeypatch.setattr(timezone, "localdate", lambda: MONDAY)
     called = {}
 
-    def fake_apply(target_date):
+    def fake_apply(target_date, **kwargs):
         # `target_date=None`: the task lets `apply_auto_orders()` resolve
         # the target itself — this test only locks down that the pre-check
         # (evaluated on the *same* `_next_workday` result) doesn't skip it.

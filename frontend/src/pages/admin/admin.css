@@ -336,12 +336,17 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
      * zalomiť a na úzkej obrazovke by vytiekli von. */
     overflow-wrap: anywhere;
 }
+/* `titleExtra` (napr. dátumový prepínač na Gramáži jedál) sedí vpravo od
+ * nadpisu, na tom istom riadku. */
+.zpa-pagehead-title-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .zpa-pagehead p {
     margin: 6px 0 0;
     color: var(--ink-3);
     font-size: 14px;
 }
 .zpa-pagehead .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+.zpa-datenav-card { flex: 0 0 auto; }
 
 /* ========================================================== *
  * Buttons
@@ -668,6 +673,10 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
 .zpa-navchip:hover:not(:disabled) { background: var(--peach-300); }
 .zpa-navchip:disabled { opacity: 0.4; cursor: not-allowed; }
 .zpa-navchip svg { width: 15px; height: 15px; }
+/* Kompaktná verzia vedľa nadpisu (Gramáž jedál) — bez rozťahovania na celú
+ * šírku a bez textu na šípkach, nech sa zmestí do jedného riadku s title. */
+.zpa-datenav--compact { justify-content: flex-start; padding: 10px 14px; }
+.zpa-datenav--compact .zpa-navchip { padding: 8px 10px; }
 
 /* ========================================================== *
  * Calendar
@@ -1013,6 +1022,8 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     background: var(--green-700); border-color: var(--green-700);
     color: var(--bg-cream);
 }
+/* Cluster nálepka zdieľa riadok s filtrom jedál — malý odstup od posledného chipu. */
+.zpa-cluster-lbl { margin-left: 16px; }
 .zpa-section-filter .reset {
     border: 0; background: transparent; cursor: pointer; padding: 6px 4px;
     font-size: 13px; font-weight: 600; color: var(--green-700);

@@ -396,11 +396,28 @@ def send_weekly_order_reminder_task(self):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
-def apply_auto_orders_task(self, date_str: str | None = None):
+def apply_auto_orders_task(
+    self,
+    date_str: str | None = None,
+    meal_types: list[str] | None = None,
+    same_day: bool = False,
+):
     """
     Celery task: apply auto-orders for all eligible clients.
     Called by Celery Beat after the daily deadline.
     Can also be triggered manually via the admin API endpoint.
+
+    `meal_types` obmedzí beh na tieto jedlá (#548) — raňajky a obed/olovrant
+    majú inú uzávierku, preto ich Celery Beat spúšťa v dvoch samostatných
+    crontaboch (viď `api.signals._sync_auto_order_schedule`), každý s vlastnou
+    podmnožinou. `None` (napr. ručné spustenie z admina) naplní všetky jedlá
+    naraz — viď `apply_auto_orders`.
+
+    `same_day` hovorí, KTORÝ deň sa dnešný beh vzťahuje — pri deadline "deň
+    vopred" (raňajky, beží večer) je to zajtrajší pracovný deň (`False`,
+    pôvodné správanie); pri deadline "v deň podávania" (obed/olovrant, beží
+    ráno) je to dnešok, ktorého uzávierka práve pominula (`True`). Ignoruje sa,
+    keď je zadaný explicitný `date_str`.
     """
     try:
         import datetime
@@ -410,9 +427,21 @@ def apply_auto_orders_task(self, date_str: str | None = None):
         from api.services import apply_auto_orders
         from api.services.event_log_service import log_event
 
+        task_label = (
+            f"apply_auto_orders_task[{','.join(sorted(meal_types))}]"
+            if meal_types
+            else "apply_auto_orders_task"
+        )
+
         target_date = None
         if date_str:
             target_date = datetime.date.fromisoformat(date_str)
+        elif same_day:
+            # Deadline "v deň podávania" (napr. obed/olovrant o 7:35) práve
+            # pominul — dopĺňaj dnešok, nie zajtrajšok.
+            target_date = timezone.localdate()
+            if (reason := _cron_skip_check(task_label, target_date)) is not None:
+                return {"skipped": True, "reason": reason}
         else:
             from api.services import _next_workday
 
@@ -420,26 +449,25 @@ def apply_auto_orders_task(self, date_str: str | None = None):
             # not "today" — the Sun-Thu schedule fires on Sunday precisely
             # to prepare Monday, and Sunday itself is always a weekend.
             next_workday = _next_workday(timezone.localdate())
-            if (
-                reason := _cron_skip_check("apply_auto_orders_task", next_workday)
-            ) is not None:
+            if (reason := _cron_skip_check(task_label, next_workday)) is not None:
                 return {"skipped": True, "reason": reason}
 
-        result = apply_auto_orders(target_date)
+        result = apply_auto_orders(target_date, meal_types=meal_types)
         # Deadline práve pridal auto-objednávky — gramage dashboard by ich
         # ešte 5 minút neukazoval, keby cache ostala z pred deadline.
         clear_gramage_dashboard_cache(result["date"])
         log_event(
             EventLog.EventType.AUTO_ORDER_RUN,
             actor_label="cron",
-            summary=f"Cron spustil auto-objednávky na {result['date']}.",
+            summary=f"Cron spustil auto-objednávky na {result['date']} ({task_label}).",
             payload={
                 "created_count": len(result["created"]),
                 "skipped_count": result["skipped"],
                 "date": result["date"],
+                "meal_types": meal_types,
             },
         )
-        logger.info("apply_auto_orders_task result: %s", result)
+        logger.info("%s result: %s", task_label, result)
         return result
     except Exception as exc:
         logger.exception("apply_auto_orders_task failed, retrying...")
