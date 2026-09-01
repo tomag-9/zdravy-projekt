@@ -653,9 +653,10 @@ class EdupageScraper:
         if _has_diet_signal(combined_key):
             return None
 
-        if key in _CLASSIC_MENU_NAMES or "klasik" in key or "classic" in key:
-            return "A"
-
+        # Písmeno na konci názvu (napr. "Klasik B") má prednosť pred paušálnym
+        # "klasik"/"classic" → A nižšie — inak škola s dvoma klasickými
+        # variantmi ("Klasik A", "Klasik B") dostane obe spočítané pod A a
+        # variant B sa v appke nikdy neobjaví (#Naša Škola Poznania, dom B).
         for value in (nazov_clean, sk):
             match = _MENU_NAME_RE.match(value)
             if match:
@@ -664,6 +665,9 @@ class EdupageScraper:
         match = _PREFIXED_MENU_NAME_RE.search(nazov_clean)
         if match:
             return match.group(1).upper()
+
+        if key in _CLASSIC_MENU_NAMES or "klasik" in key or "classic" in key:
+            return "A"
 
         return None
 
