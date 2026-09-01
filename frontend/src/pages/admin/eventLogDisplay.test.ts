@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { EVENT_TONES, actorDisplay, eventTone, targetDisplay } from './eventLogDisplay';
+import {
+    EVENT_TONES,
+    actorDisplay,
+    eventTone,
+    isOrderEvent,
+    orderActionLabel,
+    summarizeOrderMeals,
+    targetDisplay,
+} from './eventLogDisplay';
 
 describe('eventTone', () => {
     it('dáva všetkým cron behom jednu farbu, nech robia čokoľvek', () => {
@@ -79,5 +87,62 @@ describe('targetDisplay', () => {
 
     it('cieľ bez mena aj e-mailu ostane aspoň ako ID', () => {
         expect(targetDisplay({ target_user: 42 })).toBe('#42');
+    });
+});
+
+describe('isOrderEvent', () => {
+    it('rozpozná create/update/delete objednávky', () => {
+        expect(isOrderEvent('order_admin_create')).toBe(true);
+        expect(isOrderEvent('order_admin_update')).toBe(true);
+        expect(isOrderEvent('order_admin_delete')).toBe(true);
+    });
+
+    it('nezamieňa si to s inými typmi udalostí', () => {
+        expect(isOrderEvent('settings_change')).toBe(false);
+        expect(isOrderEvent('cron_run')).toBe(false);
+    });
+});
+
+describe('orderActionLabel', () => {
+    it('má slovenský label pre každý typ objednávkovej udalosti', () => {
+        expect(orderActionLabel('order_admin_create')).toBe('Vytvorená');
+        expect(orderActionLabel('order_admin_update')).toBe('Upravená');
+        expect(orderActionLabel('order_admin_delete')).toBe('Vymazaná');
+    });
+});
+
+describe('summarizeOrderMeals', () => {
+    it('spočíta objednané kusy pre zmenené jedlá po vytvorení', () => {
+        const payload = {
+            changed_meals: ['breakfast'],
+            meals: { breakfast: { Dospelý: { menuCounts: { A: 2 }, diets: {} } } },
+            changes: { 'breakfast.Dospelý.menuCounts.A': { from: null, to: 2 } },
+        };
+        expect(summarizeOrderMeals(payload)).toBe('raňajky ×2');
+    });
+
+    it('pri zmazaní vezme počet z "from", lebo "meals" po zmene je prázdne', () => {
+        const payload = {
+            changed_meals: ['breakfast'],
+            meals: { breakfast: {} },
+            changes: { 'breakfast.Dospelý.menuCounts.A': { from: 3, to: null } },
+        };
+        expect(summarizeOrderMeals(payload)).toBe('raňajky ×3');
+    });
+
+    it('spojí viac zmenených jedál bodkou', () => {
+        const payload = {
+            changed_meals: ['breakfast', 'lunch'],
+            meals: {
+                breakfast: { Dospelý: { menuCounts: { A: 1 }, diets: {} } },
+                lunch: { Dospelý: { menuCounts: { B: 4 }, diets: {} } },
+            },
+            changes: {},
+        };
+        expect(summarizeOrderMeals(payload)).toBe('raňajky ×1 · obed ×4');
+    });
+
+    it('bez zmenených jedál vráti pomlčku', () => {
+        expect(summarizeOrderMeals({ changed_meals: [] })).toBe('—');
     });
 });

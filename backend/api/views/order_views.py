@@ -138,107 +138,104 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                         }
                     )
                 order = serializer.save(user=target_user)
-            if order.pk is None:
-                return
-            changed_meals = [
-                meal
-                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
-                if (order.data or {}).get(meal)
-            ]
-            log_event(
-                EventLog.EventType.ORDER_ADMIN_CREATE,
-                actor=self.request.user,
-                target_user=target_user,
-                summary=(
-                    f"Admin vytvoril objednávku pre {target_user.email} "
-                    f"na {order.date}."
-                ),
-                payload={
-                    "order_id": order.pk,
-                    "date": str(order.date),
-                    "changed_meals": changed_meals,
-                    "changes": build_nested_dict_diff({}, order.data or {}),
-                    "meals": {
-                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
-                    },
-                },
-            )
-            return
-        # The serializer.save() will call create() which enables update_or_create logic
-        serializer.save(user=self.request.user)
+        else:
+            # `create()` je upsert (viď `DailyOrderSerializer.create`) — bežné
+            # klientske podanie objednávky ide výhradne cez POST sem, teda aj
+            # úpravy aj mazanie (status="draft") toho istého (prevadzka, date)
+            # riadku. `_audit_event` na vrátenej inštancii hovorí, čo z toho
+            # sa reálne stalo.
+            target_user = self.request.user
+            order = serializer.save(user=self.request.user)
+        self._log_order_audit(
+            order=order, actor=self.request.user, target_user=target_user
+        )
 
     def perform_update(self, serializer: DailyOrderSerializer) -> None:
         previous_data = deepcopy(serializer.instance.data or {})
-        order_id = serializer.instance.pk
-        order_date = serializer.instance.date
         target_user = serializer.instance.user
-        target_label = (
-            target_user.email if target_user else str(serializer.instance.prevadzka)
-        )
         order = serializer.save()
-        if (
-            is_admin_or_above(self.request.user)
-            and target_user is not None
-            and target_user.pk != self.request.user.pk
-        ):
-            changed_meals = [
-                meal
-                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
-                if previous_data.get(meal, {}) != (order.data or {}).get(meal, {})
-            ]
-            log_event(
-                EventLog.EventType.ORDER_ADMIN_UPDATE,
-                actor=self.request.user,
-                target_user=target_user,
-                summary=(
-                    f"Admin upravil objednávku pre {target_label} na {order_date}."
-                ),
-                payload={
-                    "order_id": order_id,
-                    "date": str(order_date),
-                    "changed_meals": changed_meals,
-                    "changes": build_nested_dict_diff(previous_data, order.data or {}),
-                    "meals": {
-                        meal: (order.data or {}).get(meal, {}) for meal in changed_meals
-                    },
-                },
-            )
+        order._audit_event = "update"
+        order._audit_previous_data = previous_data
+        self._log_order_audit(
+            order=order, actor=self.request.user, target_user=target_user
+        )
 
     def perform_destroy(self, instance: DailyOrder) -> None:
         if ClosedDay.objects.filter(date=instance.date).exists():
             raise ClosedDayOrderModificationError()
-        should_log = is_admin_or_above(self.request.user) and (
-            instance.user_id != self.request.user.pk
-        )
         order_id = instance.pk
         order_date = instance.date
+        order_prevadzka = instance.prevadzka
         target_user = instance.user
         previous_data = deepcopy(instance.data or {})
-        target_label = target_user.email if target_user else str(instance.prevadzka)
         instance.delete()
-        if should_log:
-            changed_meals = [
-                meal
-                for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
-                if previous_data.get(meal)
-            ]
-            log_event(
-                EventLog.EventType.ORDER_ADMIN_DELETE,
-                actor=self.request.user,
-                target_user=target_user,
-                summary=(
-                    f"Admin vymazal objednávku pre {target_label} na {order_date}."
-                ),
-                payload={
-                    "order_id": order_id,
-                    "date": str(order_date),
-                    "changed_meals": changed_meals,
-                    "changes": build_nested_dict_diff(previous_data, {}),
-                    "meals": {
-                        meal: previous_data.get(meal, {}) for meal in changed_meals
-                    },
-                },
-            )
+        placeholder = DailyOrder(
+            id=order_id, prevadzka=order_prevadzka, date=order_date, data={}
+        )
+        placeholder._audit_event = "delete"
+        placeholder._audit_previous_data = previous_data
+        self._log_order_audit(
+            order=placeholder, actor=self.request.user, target_user=target_user
+        )
+
+    _ORDER_AUDIT_EVENT_TYPES = {
+        "create": EventLog.EventType.ORDER_ADMIN_CREATE,
+        "update": EventLog.EventType.ORDER_ADMIN_UPDATE,
+        "delete": EventLog.EventType.ORDER_ADMIN_DELETE,
+    }
+    _ORDER_AUDIT_VERBS = {
+        "create": "zadal(a)",
+        "update": "upravil(a)",
+        "delete": "vymazal(a)",
+    }
+
+    def _log_order_audit(
+        self, *, order: DailyOrder, actor: User, target_user: Optional[User]
+    ) -> None:
+        """Zapíše create/update/delete objednávky do EventLogu.
+
+        `_audit_event`/`_audit_previous_data` nastavuje
+        `DailyOrderSerializer.create()`/`update()`, lebo len tam vieme, či POST
+        na (prevadzka, date) v skutočnosti prepísal existujúci riadok, alebo
+        (pri `status="draft"`) rovno zmazal — view samotný to z výsledku
+        nevie odlíšiť. Chýbajúci tag (`None`) znamená "nič sa reálne nestalo"
+        (napr. draft na už prázdnu objednávku) — vtedy sa neloguje nič.
+        """
+        audit_event = getattr(order, "_audit_event", None)
+        if audit_event is None:
+            return
+        previous_data = getattr(order, "_audit_previous_data", {}) or {}
+        new_data = {} if audit_event == "delete" else (order.data or {})
+        if previous_data == new_data:
+            return  # žiadna reálna zmena dát — nič nezapisovať
+        changed_meals = [
+            meal
+            for meal in DailyOrderSerializer.MEAL_FIELD_CONFIG
+            if previous_data.get(meal, {}) != new_data.get(meal, {})
+        ]
+        target_label = target_user.email if target_user else str(order.prevadzka)
+        is_on_behalf = target_user is not None and target_user.pk != actor.pk
+        who = (
+            f"Admin {actor.email} {self._ORDER_AUDIT_VERBS[audit_event]} objednávku pre {target_label}"
+            if is_on_behalf
+            else f"{actor.email} {self._ORDER_AUDIT_VERBS[audit_event]} objednávku"
+        )
+        log_event(
+            self._ORDER_AUDIT_EVENT_TYPES[audit_event],
+            actor=actor,
+            target_user=target_user,
+            prevadzka=order.prevadzka,
+            summary=f"{who} (prevádzka: {order.prevadzka}) na {order.date}.",
+            payload={
+                "order_id": order.pk,
+                "date": str(order.date),
+                "prevadzka_id": order.prevadzka_id,
+                "prevadzka_nazov": str(order.prevadzka) if order.prevadzka else None,
+                "changed_meals": changed_meals,
+                "changes": build_nested_dict_diff(previous_data, new_data),
+                "meals": {meal: new_data.get(meal, {}) for meal in changed_meals},
+            },
+        )
 
     @action(detail=False, methods=["get"], url_path="by-date/(?P<date>[^/.]+)")
     def by_date(self, request: Request, date: Optional[str] = None) -> Response:

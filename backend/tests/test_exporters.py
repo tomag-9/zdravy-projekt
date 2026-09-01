@@ -318,10 +318,59 @@ class TestGramageDashboardExports:
         html = render_table(build_table_spec(data))
 
         assert "<strong>Rozvoz:</strong> zadný vchod" in html
-        # Poznámka prevádzky žije v stĺpci Poznámka na klientskom riadku.
-        # Vlastný sub-riadok už nemá — bol by to ten istý text dvakrát.
-        assert '<td class="cell-note client-note">bez cibule</td>' in html
+        # Poznámka prevádzky žije hneď za názvom na klientskom riadku, nie
+        # v samostatnom (vždy prázdnom) stĺpci Poznámka — dlhší text by tam
+        # zalamoval riadok. Vlastný sub-riadok už nemá — bol by to ten istý
+        # text dvakrát.
+        assert '<span class="client-note-inline">bez cibule</span>' in html
+        assert '<td class="cell-note meal-sep"></td>' in html
         assert "Poznámka k objednávke:" not in html
+
+    def test_diet_with_a_description_shows_it_next_to_the_diet_in_html(self):
+        """#2 — poznámka nastavená v Správe diét (`Diet.description`) sa má
+        prejaviť rovno v gramážnej tabuľke/PDF, nielen v Správe diét samotnej."""
+        from api.models import Diet
+
+        user = User.objects.create_user(
+            username="diet-note-export@example.com",
+            email="diet-note-export@example.com",
+        )
+        portion_type = PortionType.objects.create(
+            name="Škôlka", coefficient=Decimal("1.0000"), sort_order=1
+        )
+        Diet.objects.create(name="No Milk", description="kontrolovať s rodičom")
+        plan = DailyMealPlan.objects.create(
+            date=datetime.date(2024, 1, 18), created_by=user
+        )
+        lunch = MealTemplate.objects.create(
+            category="main_course",
+            name="Obed",
+            weight_label="200g",
+            base_weight_grams=Decimal("200.00"),
+            menu_variant="A",
+        )
+        MealPlanItem.objects.create(
+            meal_plan=plan, template=lunch, category="main_course", menu_variant="A"
+        )
+        plan.enrolled_counts.create(portion_type=portion_type, count=1)
+        celok = Celok.objects.create(nazov="Celok s diétou")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka s diétou")
+        DailyOrder.objects.create(
+            user=user,
+            date=plan.date,
+            prevadzka=prevadzka,
+            data={
+                "lunch": {
+                    "Škôlka": {"menuCounts": {"A": 3}, "diets": {"No Milk": 1}},
+                }
+            },
+        )
+
+        data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+        assert data["diet_descriptions"] == {"No Milk": "kontrolovať s rodičom"}
+        html = render_table(build_table_spec(data))
+
+        assert '<span class="diet-note-inline"> — kontrolovať s rodičom</span>' in html
 
     def test_snack_with_lunch_prevadzka_highlights_only_its_snack_cells(self):
         """`Prevadzka.olovrant_s_obedom` sa premietne do gramážnej tabuľky ako

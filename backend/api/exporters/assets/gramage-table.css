@@ -170,6 +170,10 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .sub-row.diet .lbl { font-style: italic; font-size: 12px; padding-left: 24px; }
 .zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .zpa-gram .lbl-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #2 — poznámka ku konkrétnej diéte (Diet.description zo Správy diét).
+ * Zdieľa riadok s názvom diéty — pri dlhšom texte sa oreže elipsou (viď
+ * pravidlo vyššie), aby nenaťahovala výšku riadku. */
+.zpa-gram .diet-note-inline { font-weight: 500; font-style: normal; opacity: 0.8; }
 .zpa-gram .count-badge {
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
     min-width: 24px; height: 19px; padding: 0 6px; border-radius: var(--radius-pill);
@@ -180,10 +184,21 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .cell-num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; color: var(--green-900); }
 .zpa-gram .cell-empty { text-align: right; color: var(--line); }
 .zpa-gram .summ-std td { background: rgba(114,136,75,0.10); color: var(--green-800); border-top: 1px solid rgba(114,136,75,0.2); font-weight: 600; }
+/* "Súčet bez diét" je viditeľný aj zbalený (nie je collapsible) — olovrant s
+ * obedom (#mh-snacklunch-cell vyššie) tam preto musí prebiť tónovanie
+ * summ-std riadku, inak žltá zmizne presne tam, kde ju kuchyňa vidí najprv. */
+.zpa-gram .summ-std td.mh-snacklunch-cell { background: #FDE68A; }
 .zpa-gram .summ-diet td { color: inherit; border-top: 1px solid var(--line-soft); font-weight: 700; }
 .zpa-gram tfoot .band td { background: var(--green-800); color: var(--peach-400); font-family: var(--font-display); font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: var(--tracking-caps); padding: 9px 16px; }
 .zpa-gram tfoot .total td { background: var(--green-900); color: #fff; font-family: var(--font-display); font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
 .zpa-gram tfoot .total .corner { background: var(--green-900); text-align: left; }
+/* #4 — fakturačný súčet cez billing_portion_coefficients (napr. dospelý 2x,
+ * predškolák 1,25x); bez vlastných koeficientov sedí s bežným súčtom hláv. */
+.zpa-gram tfoot .total-ms-porcie td {
+    background: rgba(26,77,46,0.10); color: var(--green-900);
+    font-family: var(--font-display); font-weight: 700; font-size: 13px;
+    padding: 9px 16px; border-top: 1px solid rgba(26,77,46,0.2);
+}
 
 /* Poznámky pod klientom — predtým inline štýly v JSX, teraz triedy zo spec-u,
  * aby ich rovnako zafarbilo aj PDF. */
@@ -194,19 +209,17 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
-/* Stĺpec „Poznámka" — bez poznámky prevádzky doň kuchyňa píše rukou do
- * vytlačenej tabuľky (#513: predtým bol na obrazovke vždy prázdny). */
+/* Stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky, ostáva
+ * vždy prázdny (poznámka prevádzky ide od teraz rovno za názov, viď nižšie
+ * — dlhší text v tomto úzkom stĺpci predtým zalamoval celý riadok). */
 .zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
-/* Poznámka prevádzky na klientskom riadku — `.client-row td` inak nastaví
- * padding:0 a žltú výplň pre toggle bunku, tu treba vlastný priestor a
- * čitateľný text na tmavšom podklade (#513). */
-.zpa-gram .client-row .client-note {
-    padding: 10px 12px;
+/* Poznámka prevádzky (#513) hneď za názvom na klientskom riadku, v tej istej
+ * širokej bunke ako meno — nezalamuje riadok tak, ako v úzkom stĺpci Poznámka. */
+.zpa-gram .client-toggle .client-note-inline {
     font-size: 12px;
     font-weight: 500;
     color: var(--green-900);
-    white-space: normal;
-    vertical-align: middle;
+    opacity: 0.85;
 }
 .zpa-gram thead .grp-note,
 .zpa-gram thead .comp-note { background: var(--green-900); }

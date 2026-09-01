@@ -1034,28 +1034,44 @@ def send_daily_report_task(
 #: tabuľka rastie donekonečna.
 EVENT_LOG_RETENTION_DAYS = 7
 
+#: Objednávkové eventy (`order_admin_*`) žijú dlhšie než ostatný audit — slúžia
+#: na spätné dohľadávanie sporov s prevádzkou ("kto/kedy/koľko objednal"),
+#: 7 dní by na to bolo príliš krátko.
+ORDER_EVENT_LOG_RETENTION_DAYS = 90
+
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def purge_old_event_logs_task(self, days: int | None = None):
-    """Zmaže záznamy udalostí staršie než `days` (default 7).
+    """Zmaže záznamy udalostí staršie než `days` (default 7; objednávky 90).
 
     Beží denne. Maže po dávkach, aby jedna transakcia nedržala zámok nad celou
-    tabuľkou, keď sa raz nakopí väčší objem.
+    tabuľkou, keď sa raz nakopí väčší objem. Explicitný `days` (napr. testy)
+    prepíše retenciu jednotne pre všetky typy eventov vrátane objednávok.
     """
     import datetime
 
+    from django.db.models import Q
+
     from api.models import EventLog
 
+    order_event_types = [
+        EventLog.EventType.ORDER_ADMIN_CREATE,
+        EventLog.EventType.ORDER_ADMIN_UPDATE,
+        EventLog.EventType.ORDER_ADMIN_DELETE,
+    ]
     retention = EVENT_LOG_RETENTION_DAYS if days is None else int(days)
+    order_retention = ORDER_EVENT_LOG_RETENTION_DAYS if days is None else int(days)
     cutoff = timezone.now() - datetime.timedelta(days=retention)
+    order_cutoff = timezone.now() - datetime.timedelta(days=order_retention)
 
     try:
         deleted_total = 0
         while True:
             batch_ids = list(
-                EventLog.objects.filter(created_at__lt=cutoff).values_list(
-                    "pk", flat=True
-                )[:1000]
+                EventLog.objects.filter(
+                    Q(created_at__lt=cutoff) & ~Q(event_type__in=order_event_types)
+                    | Q(created_at__lt=order_cutoff, event_type__in=order_event_types)
+                ).values_list("pk", flat=True)[:1000]
             )
             if not batch_ids:
                 break
@@ -1063,11 +1079,17 @@ def purge_old_event_logs_task(self, days: int | None = None):
             deleted_total += deleted
 
         logger.info(
-            "purge_old_event_logs_task: zmazaných %s udalostí starších než %s dní",
+            "purge_old_event_logs_task: zmazaných %s udalostí (retencia %s dní, "
+            "objednávky %s dní)",
             deleted_total,
             retention,
+            order_retention,
         )
-        return {"deleted": deleted_total, "retention_days": retention}
+        return {
+            "deleted": deleted_total,
+            "retention_days": retention,
+            "order_retention_days": order_retention,
+        }
     except DatabaseError as exc:
         logger.warning("purge_old_event_logs_task: DB chyba, skúšam znova: %s", exc)
         raise self.retry(exc=exc)

@@ -232,13 +232,16 @@ def test_client_row_carries_the_screen_metadata():
     assert client["cells"][0]["meta_right"] == "spolu porcií 10"
 
 
-def test_client_row_shows_the_prevadzka_note_in_the_note_column():
+def test_client_row_shows_the_prevadzka_note_right_after_the_name():
     """Issue #513: poznámka prevádzky musí byť vidno hneď na zbalenom riadku
-    klienta (v stĺpci Poznámka), nielen v collapsible note-admin sub-riadku."""
+    klienta, nielen v collapsible note-admin sub-riadku. Ide priamo za názov
+    (nie do stĺpca Poznámka) — dlhší text tam predtým zalamoval riadok."""
     spec = build_table_spec(_payload())
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
-    assert client["cells"][1]["text"] == "bez cibule"
+    assert client["cells"][0]["note"] == "bez cibule"
+    # Stĺpec Poznámka ostáva prázdny — je na ručné poznámky kuchyne.
+    assert client["cells"][1]["text"] == ""
     assert "cell-note" in client["cells"][1]["css"]
     total_columns = spec["total_columns"]
     assert client["cells"][0]["colspan"] == total_columns - 1
@@ -250,7 +253,32 @@ def test_client_row_note_column_is_empty_without_a_prevadzka_note():
     spec = build_table_spec(payload)
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
+    assert client["cells"][0]["note"] is None
     assert client["cells"][1]["text"] == ""
+
+
+def test_diet_sub_row_and_summary_show_the_diet_description():
+    """#2 — poznámka ku konkrétnej diéte (Diet.description) je vidno hneď pri
+    diéte, v sub-riadku aj v jej rozbalenom súčte, nielen v Správe diét."""
+    payload = _payload(diet_descriptions={"No Milk": "kontrolovať s rodičom"})
+    spec = build_table_spec(payload)
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0]["note"] == "kontrolovať s rodičom"
+
+    diet_summary_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_summary_row["cells"][0]["note"] == "kontrolovať s rodičom"
+
+
+def test_diet_note_is_absent_when_no_description_is_set():
+    spec = build_table_spec(_payload())
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0].get("note") is None
 
 
 def test_empty_routes_are_skipped():
@@ -329,17 +357,20 @@ def test_footer_is_the_portion_summary_plus_the_grand_total():
         "portion-row",
         "portion-row",
         "total",
+        "total-ms-porcie",
     ]
-    assert spec["footer"][-1]["cells"][0]["text"] == "CELKOM (g / ml)"
+    assert spec["footer"][-2]["cells"][0]["text"] == "CELKOM (g / ml)"
 
 
 def test_totals_row_uses_a_dash_for_empty_columns():
     """Obrazovka tu dnes píše „0", čo si protirečí s telom tabuľky — spec to zjednocuje."""
     spec = build_table_spec(_payload())
 
-    # Posledná bunka je prázdna „Poznámka"; gramáž je tá pred ňou.
-    assert spec["footer"][-1]["cells"][-1]["css"] == "cell-note meal-sep"
-    assert spec["footer"][-1]["cells"][-2]["text"] == "—"
+    # Posledná pätková bunka je súčet MŠ porcií, gramáž je riadok pred ňou;
+    # posledná bunka gramáže je prázdna „Poznámka".
+    totals_row = spec["footer"][-2]
+    assert totals_row["cells"][-1]["css"] == "cell-note meal-sep"
+    assert totals_row["cells"][-2]["text"] == "—"
 
 
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
@@ -620,9 +651,9 @@ def test_filtered_vydaj_totals_ignore_the_other_vydaj():
     full = build_table_spec(payload)
     single = build_table_spec(payload, vydaje=["A"])
 
-    assert full["footer"][-1]["cells"][1]["text"] == "9999"
+    assert full["footer"][-2]["cells"][1]["text"] == "9999"
     # 8 porcií bez diét × 200 g polievky v jedinom výdaji.
-    assert single["footer"][-1]["cells"][1]["text"] == "1600"
+    assert single["footer"][-2]["cells"][1]["text"] == "1600"
 
 
 def test_unassigned_prevadzky_stay_out_of_a_filtered_print():

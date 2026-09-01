@@ -1,8 +1,11 @@
 """Nadchádzajúce — prehľad naplánovaných cronov (#527/#528 follow-up)."""
 
 import json
+import zoneinfo
+from datetime import timedelta
 
 import pytest
+from django.utils.dateparse import parse_datetime
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from rest_framework import status
 
@@ -59,6 +62,39 @@ def test_lists_next_run_and_description(admin_client):
         and r["next_run"] is not None
         for r in results
     )
+
+
+@pytest.mark.django_db
+def test_next_run_matches_configured_local_time_not_shifted_by_utc_offset(
+    admin_client,
+):
+    """Regresný test: `next_run` sa počítal z UTC-aware `now()` bez konverzie
+    do lokálnej (Europe/Bratislava) tz crontabu, takže vychádzal posunutý o
+    UTC↔lokálny offset (~2h v lete). Crontab s pevnou hodinou/minútou musí
+    najbližšie pobehnúť presne v tú nakonfigurovanú lokálnu hodinu/minútu —
+    bez ohľadu na to, kedy test beží."""
+    PeriodicTask.objects.create(
+        name="edupage-scrape-breakfast",
+        task="api.tasks.scrape_edupage_orders_task",
+        crontab=_crontab(hour="1", minute="35", day_of_week="*"),
+        args=json.dumps([]),
+        kwargs=json.dumps({}),
+        enabled=True,
+        description="Edupage scrape at breakfast deadline.",
+    )
+
+    response = admin_client.get("/api/admin/upcoming-events/")
+
+    entry = next(
+        r for r in response.json()["results"] if r["name"] == "edupage-scrape-breakfast"
+    )
+    next_run = parse_datetime(entry["next_run"])
+    local = next_run.astimezone(zoneinfo.ZoneInfo("Europe/Bratislava"))
+    # `crontab.remaining_estimate()` cieli pár mikrosekúnd PRED nastupujúcu
+    # minútu (aby beat stihol spustiť presne na hranici) — preto zaokrúhlené
+    # nahor, nie priame porovnanie .hour/.minute.
+    rounded = (local + timedelta(seconds=1)).replace(microsecond=0)
+    assert (rounded.hour, rounded.minute) == (1, 35)
 
 
 @pytest.mark.django_db

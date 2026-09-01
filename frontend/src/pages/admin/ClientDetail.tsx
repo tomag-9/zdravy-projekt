@@ -58,6 +58,7 @@ interface FacilityDetail {
   is_active: boolean;
   celok_zdroj_objednavok: string;
   visible_menus: string[];
+  menu_day_restrictions?: Record<string, number[]> | null;
   visible_meals: string[];
   visible_diets: number[];
   visible_portion_types?: number[] | null;
@@ -91,6 +92,14 @@ interface DailyOrder {
 
 const ALL_MENUS = ["A", "B", "C", "D", "V"];
 const ALL_MEALS = ["breakfast", "lunch", "olovrant"];
+// ISO deň v týždni: 1=pondelok..5=piatok (objednávky idú len na pracovné dni).
+const WEEKDAYS: { day: number; label: string }[] = [
+  { day: 1, label: "Po" },
+  { day: 2, label: "Ut" },
+  { day: 3, label: "St" },
+  { day: 4, label: "Št" },
+  { day: 5, label: "Pi" },
+];
 const API = import.meta.env.VITE_API_URL || "/api";
 const MEAL_LABELS: Record<string, string> = {
   breakfast: "Raňajky",
@@ -116,6 +125,7 @@ const ClientDetail: React.FC = () => {
 
   // Settings State
   const [menus, setMenus] = useState<Set<string>>(new Set());
+  const [menuDayRestrictions, setMenuDayRestrictions] = useState<Record<string, number[]>>({});
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
   const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
@@ -174,6 +184,7 @@ const ClientDetail: React.FC = () => {
 
   const applyFacilitySettings = useCallback((data: FacilityDetail) => {
     setMenus(new Set(data.visible_menus?.length ? data.visible_menus : ALL_MENUS));
+    setMenuDayRestrictions(data.menu_day_restrictions || {});
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
     setVisiblePortionTypes(
@@ -416,9 +427,18 @@ const ClientDetail: React.FC = () => {
     if (!facility) return;
     setSaving(true);
     try {
+      // Obmedzenie dní necháva len pre menu, ktoré ešte je vôbec zapnuté v
+      // Viditeľnom menu, a len keď má naozaj vybraný aspoň jeden deň (prázdny
+      // výber = "každý deň", netreba ho ukladať).
+      const cleanedMenuDayRestrictions = Object.fromEntries(
+        Object.entries(menuDayRestrictions).filter(
+          ([menu, days]) => menus.has(menu) && days.length > 0,
+        ),
+      );
       const payload = {
         ...prevadzkaForm,
         visible_menus: Array.from(menus),
+        menu_day_restrictions: cleanedMenuDayRestrictions,
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
         visible_portion_types: visiblePortionTypes == null
@@ -682,10 +702,10 @@ const ClientDetail: React.FC = () => {
                   <tbody>
                     {recentOrders.map((order) => {
                       const summaries: string[] = [];
-                      const lunchCount = mealCount(order.data.lunch);
-                      if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
                       const breakfastCount = mealCount(order.data.breakfast);
                       if (breakfastCount > 0) summaries.push(`${breakfastCount}x Raňajky`);
+                      const lunchCount = mealCount(order.data.lunch);
+                      if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
                       const olovrantCount = mealCount(order.data.olovrant);
                       if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
                       const summaryText = summaries.length > 0 ? summaries.join(", ") : "-";
@@ -720,8 +740,8 @@ const ClientDetail: React.FC = () => {
                               <td colSpan={4} style={{ borderTop: "1px solid var(--line-soft)" }}>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 24, fontSize: 14 }}>
                                   {[
-                                    { title: "Obed", data: order.data.lunch },
                                     { title: "Raňajky", data: order.data.breakfast },
+                                    { title: "Obed", data: order.data.lunch },
                                     { title: "Olovrant", data: order.data.olovrant },
                                   ].map(({ title, data }) => (
                                     <div key={title}>
@@ -742,10 +762,26 @@ const ClientDetail: React.FC = () => {
                                           const dietEntries = Object.entries(diets)
                                             .filter(([, count]) => Number(count) > 0)
                                             .sort(([a], [b]) => a.localeCompare(b, "sk"));
+                                          // Rovnako súhrn nepovedal, koľko bolo z ktorého menu písmena
+                                          // (napr. Menu B pre dospelých) — rozpíš aj tie, keď je z čoho
+                                          // vyberať (jedno jediné písmeno by len duplikovalo súhrn).
+                                          const menuEntries = Object.entries(menuCounts)
+                                            .filter(([, count]) => Number(count) > 0)
+                                            .sort(([a], [b]) => {
+                                              return ALL_MENUS.includes(a) && ALL_MENUS.includes(b)
+                                                ? ALL_MENUS.indexOf(a) - ALL_MENUS.indexOf(b)
+                                                : a.localeCompare(b, "sk");
+                                            });
                                           if (Number(totalPortions) > 0) {
                                             items.push(
                                               <div key={catName} style={{ display: "flex", flexDirection: "column", marginBottom: 4, borderBottom: "1px solid var(--line-soft)", paddingBottom: 4 }}>
                                                 <span style={{ fontWeight: 600, color: "var(--ink-1)" }}>{String(totalPortions)}x {catName}</span>
+                                                {menuEntries.length > 1 && menuEntries.map(([menu, count]) => (
+                                                  <span key={`menu-${menu}`} style={{ fontSize: 12, color: "var(--ink-mute)", paddingLeft: 8, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                                    <span aria-hidden="true">•</span>
+                                                    <span>{String(count)}x Menu {menu}</span>
+                                                  </span>
+                                                ))}
                                                 {dietEntries.map(([dietName, count]) => {
                                                   const diet = dietByName.get(dietName);
                                                   return (
@@ -808,11 +844,46 @@ const ClientDetail: React.FC = () => {
               <Card pad>
                 <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre obed. Raňajky a olovrant majú vždy len menu A." />
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 8 }}>
-                  {ALL_MENUS.map((menu) => (
-                    <Checkbox key={menu} on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus)}>
-                      Menu {menu}
-                    </Checkbox>
-                  ))}
+                  {ALL_MENUS.map((menu) => {
+                    const selectedDays = new Set(menuDayRestrictions[menu] || []);
+                    return (
+                      <div key={menu} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                        <Checkbox on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus)}>
+                          Menu {menu}
+                        </Checkbox>
+                        {menus.has(menu) && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            {WEEKDAYS.map(({ day, label }) => {
+                              const on = selectedDays.has(day);
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  className={`zpa-daypill${on ? " on" : ""}`}
+                                  aria-label={`Menu ${menu} - ${label}`}
+                                  title={`Menu ${menu} bude dostupné v tento deň${selectedDays.size === 0 ? " (teraz: každý deň)" : ""}`}
+                                  onClick={() => {
+                                    const next = new Set(selectedDays);
+                                    if (next.has(day)) next.delete(day);
+                                    else next.add(day);
+                                    setMenuDayRestrictions((prev) => ({
+                                      ...prev,
+                                      [menu]: Array.from(next).sort(),
+                                    }));
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                            <span style={{ fontSize: 11, color: "var(--ink-3)" }}>
+                              {selectedDays.size === 0 ? "každý deň" : "len vybrané dni"}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </Card>
 

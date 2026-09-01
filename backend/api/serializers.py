@@ -79,6 +79,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     # Poznámka k špeciálnej diéte sedí v `data` vedľa jedál (tak ju posiela klient
     # aj admin editor a tak ju číta admin UI), takže musí prejsť allowlistom —
     # nie je to jedlo, preto sa validuje zvlášť a preskakuje traverzáciu kategórií.
+    # Musí sedieť s `SPECIAL_DIET_NAME` vo frontende (`config/constants.ts`) —
+    # obe strany porovnávajú rovnaký reťazec z `diets` mapy, diéty žijú v DB,
+    # nie ako zdieľaný enum.
+    _SPECIAL_DIET_NAME = "Špeciálna"
     _SPECIAL_DIET_NOTE_KEY = "special_diet_note"
     _ALLOWED_DATA_KEYS = _ALLOWED_MEAL_KEYS | {_SPECIAL_DIET_NOTE_KEY}
     _MAX_NOTE_CHARS = 1000
@@ -124,6 +128,18 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         if self._SPECIAL_DIET_NOTE_KEY in data:
             self._validate_special_diet_note(data[self._SPECIAL_DIET_NOTE_KEY])
+
+        # Frontend (OrderPage aj AdminOrderEditorModal) blokuje odoslanie bez
+        # poznámky, keď je objednaná diéta "Špeciálna" — jej názov kuchyni nič
+        # nehovorí, kuchyňa potrebuje vedieť čo dieťaťu naložiť (viď gramážová
+        # tabuľka). Vynucujeme to aj tu, nech to nejde obísť priamym API volaním.
+        if self._order_has_special_diet(data):
+            note = str(data.get(self._SPECIAL_DIET_NOTE_KEY) or "").strip()
+            if not note:
+                raise serializers.ValidationError(
+                    f"Pri diéte '{self._SPECIAL_DIET_NAME}' je potrebné vyplniť "
+                    f"'{self._SPECIAL_DIET_NOTE_KEY}'."
+                )
 
         raw_size = len(
             json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -180,6 +196,39 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     # s poznámkou "do GN" pre kuchyňu). Súčet oboch pre daný kľúč nesmie
     # prekročiť objednaný počet.
     _PACK_FIELDS = ("packSeparately", "packSeparatelyGn")
+
+    @classmethod
+    def _order_has_special_diet(cls, data: Dict[str, Any]) -> bool:
+        """Walk the same meal/category/sub-category shape as the main loop,
+        looking for a positive count under diets['Špeciálna'] anywhere."""
+        for meal_key, meal in data.items():
+            if meal_key == cls._SPECIAL_DIET_NOTE_KEY or not isinstance(meal, dict):
+                continue
+            if cls._is_leaf_payload(meal):
+                if cls._leaf_has_special_diet(meal):
+                    return True
+                continue
+            for cat_data in meal.values():
+                if not isinstance(cat_data, dict):
+                    continue
+                if cls._is_leaf_payload(cat_data):
+                    if cls._leaf_has_special_diet(cat_data):
+                        return True
+                    continue
+                for sub_data in cat_data.values():
+                    if isinstance(sub_data, dict) and cls._leaf_has_special_diet(
+                        sub_data
+                    ):
+                        return True
+        return False
+
+    @classmethod
+    def _leaf_has_special_diet(cls, leaf: Dict[str, Any]) -> bool:
+        diets = leaf.get("diets")
+        if not isinstance(diets, dict):
+            return False
+        value = diets.get(cls._SPECIAL_DIET_NAME)
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
     @staticmethod
     def _is_leaf_payload(value: Any) -> bool:
@@ -494,6 +543,45 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             if is_prevadzka_closed(date, prevadzka):
                 raise PrevadzkaClosureOrderNotAllowedError()
 
+    @staticmethod
+    def _enforce_portion_types(prevadzka: Prevadzka, data: Dict[str, Any]) -> None:
+        """Odmietni porcie v kategórii, ktorú prevádzka nemá povolenú.
+
+        `visible_portion_types` je M2M s rovnakou sémantikou ako inde v appke:
+        prázdna = neobmedzené (ešte nezakonfigurované), neprázdna = admin
+        vedome zúžil veľkosti. Bez tejto kontroly sa dá zapísať zakázaná
+        veľkosť napr. cez staré dáta v `data`, ktoré tam ostali z čias pred
+        obmedzením (frontend ich pri ďalšom uložení znova pošle celé) —
+        UI kontroluje len čo *renderuje*, nie čo v stave nosí ďalej.
+        """
+        allowed_names = {
+            portion_type.name for portion_type in prevadzka.visible_portion_types.all()
+        }
+        if not allowed_names:
+            return
+        for meal_key, meal in data.items():
+            if meal_key == DailyOrderSerializer._SPECIAL_DIET_NOTE_KEY:
+                continue
+            if not isinstance(meal, dict) or DailyOrderSerializer._is_leaf_payload(
+                meal
+            ):
+                continue
+            for cat_name, cat_data in meal.items():
+                if cat_name in allowed_names or not isinstance(cat_data, dict):
+                    continue
+                menu_counts = cat_data.get("menuCounts")
+                if isinstance(menu_counts, dict) and any(
+                    (count or 0) > 0 for count in menu_counts.values()
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "data": (
+                                f"Prevádzka '{prevadzka.nazov}' nemá veľkosť "
+                                f"'{cat_name}' povolenú."
+                            )
+                        }
+                    )
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -525,6 +613,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         self._enforce_prevadzka_closure(
             user, input_status, validated_data["date"], prevadzka
         )
+        if input_status != "draft":
+            self._enforce_portion_types(prevadzka, validated_data.get("data", {}))
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -544,13 +634,20 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             ).delete()
             self._sync_auto_order_pause(prevadzka, {})
             # Return an unsaved instance for the response
-            return DailyOrder(
+            result = DailyOrder(
                 user=user,
                 prevadzka=prevadzka,
                 date=validated_data["date"],
                 status="draft",
                 data={},
             )
+            # Audit trail (viď `perform_create` v `order_views.py`): draft je
+            # jediná cesta, ktorou klient objednávku maže — POST na `/orders/`,
+            # nikdy DELETE. Bez tohto tagu by sa toto zmazanie v EventLogu
+            # stratilo, lebo view nemá odkiaľ vziať pôvodné dáta.
+            result._audit_event = "delete" if existing_order else None
+            result._audit_previous_data = existing_order.data if existing_order else {}
+            return result
 
         new_data = validated_data.get("data", {})
         existing_order = (
@@ -614,6 +711,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     order.save(update_fields=["data", "updated_at"])
 
         self._sync_auto_order_pause(prevadzka, new_data)
+        # Audit trail: `create()` je upsert (viď docstring), takže "create"
+        # requesty tu bežne aj prepisujú existujúci riadok. `perform_create`
+        # v `order_views.py` z tohto odvodí, či ide o skutočné vytvorenie
+        # alebo o úpravu, a čo bolo predtým.
+        order._audit_event = "update" if existing_order else "create"
+        order._audit_previous_data = existing_order.data if existing_order else {}
         return order
 
     @staticmethod
@@ -649,6 +752,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             self._validate_deadlines(
                 instance.date, new_data, input_status, instance.data
             )
+
+        if input_status != "draft" and instance.prevadzka_id:
+            self._enforce_portion_types(instance.prevadzka, new_data)
 
         if input_status == "draft":
             prevadzka = instance.prevadzka
@@ -782,6 +888,7 @@ class PrevadzkaSerializer(serializers.ModelSerializer):
             "adresa",
             "celok",
             "visible_menus",
+            "menu_day_restrictions",
             "visible_meals",
             "visible_diets",
             "visible_portion_types",

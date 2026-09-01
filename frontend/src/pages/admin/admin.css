@@ -967,6 +967,18 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     background: var(--green-700); border-color: var(--green-700);
     color: var(--bg-cream); box-shadow: var(--shadow-sm);
 }
+/* Deň v týždni, kedy je dané menu dostupné (napr. menu B len v piatok). */
+.zpa-daypill {
+    padding: 3px 8px; border-radius: var(--radius-pill); cursor: pointer;
+    border: 1px solid var(--line); background: #fff; color: var(--ink-3);
+    font-family: var(--font-display); font-weight: 600; font-size: 11px;
+    transition: all 160ms;
+}
+.zpa-daypill:hover { border-color: var(--green-500); color: var(--green-800); }
+.zpa-daypill.on {
+    background: var(--green-700); border-color: var(--green-700);
+    color: var(--bg-cream);
+}
 .zpa-section-filter .reset {
     border: 0; background: transparent; cursor: pointer; padding: 6px 4px;
     font-size: 13px; font-weight: 600; color: var(--green-700);

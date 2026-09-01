@@ -1,6 +1,9 @@
-"""MŠ Rozmanitá — skratka bola uncertain (fuzzy match len na NO MILK),
-potvrdené s userom 1.9.2026: "NoMO" = NO MILK – NO ORECH (existujúca
-diéta, pk 121).
+"""MŠ Rozmanitá — skratky boli uncertain/fuzzy-matchovali neúplne, potvrdené
+s userom 1.9.2026:
+
+    "NoMO"  → NO MILK – NO ORECH (existujúca diéta, pk 121)
+    "NNNO"/"NoNoNo bezO" → NONONO, NO ORECH (existujúca diéta, pk 67) —
+        fuzzy match padal len na NONONO, orech sa strácal
 """
 
 from __future__ import annotations
@@ -9,6 +12,7 @@ from ..base import LetterRule
 
 _RULES: dict[str, LetterRule] = {
     "NOMO": LetterRule(diet="NO MILK – NO ORECH"),
+    "NNNO": LetterRule(diet="NONONO, NO ORECH"),
 }
 
 

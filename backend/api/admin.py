@@ -120,15 +120,17 @@ class EventLogAdmin(admin.ModelAdmin):
         "event_type",
         "actor_label",
         "target_user",
+        "prevadzka",
         "summary",
     )
-    list_filter = ("event_type", "created_at")
+    list_filter = ("event_type", "created_at", "prevadzka")
     search_fields = ("summary", "actor_label")
     readonly_fields = (
         "event_type",
         "actor",
         "actor_label",
         "target_user",
+        "prevadzka",
         "summary",
         "payload",
         "created_at",

@@ -63,3 +63,70 @@ export function targetDisplay(entry: TargetFields): string {
     if (entry.target_user_email) return entry.target_user_email;
     return entry.target_user ? `#${entry.target_user}` : '—';
 }
+
+/** Typ objednávkovej udalosti podľa `EventLog.EventType` — slúži karte "Objednávky". */
+export const ORDER_EVENT_TYPES = [
+    'order_admin_create',
+    'order_admin_update',
+    'order_admin_delete',
+] as const;
+
+export function isOrderEvent(eventType: string): boolean {
+    return (ORDER_EVENT_TYPES as readonly string[]).includes(eventType);
+}
+
+const ORDER_ACTION_LABELS: Record<string, string> = {
+    order_admin_create: 'Vytvorená',
+    order_admin_update: 'Upravená',
+    order_admin_delete: 'Vymazaná',
+};
+
+export function orderActionLabel(eventType: string): string {
+    return ORDER_ACTION_LABELS[eventType] ?? eventType;
+}
+
+const MEAL_LABELS_SK: Record<string, string> = {
+    breakfast: 'raňajky',
+    lunch: 'obed',
+    olovrant: 'olovrant',
+};
+
+/** Súčet všetkých číselných hodnôt v podstrome — bez ohľadu na to, či ide o
+ * `menuCounts`, `diets` alebo inú vrstvu, ráta sa každý list objednaných kusov. */
+function sumCounts(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (value && typeof value === 'object') {
+        return Object.values(value as Record<string, unknown>).reduce(
+            (total: number, item) => total + sumCounts(item),
+            0,
+        );
+    }
+    return 0;
+}
+
+/** "Koľko čoho" jedným pohľadom: `raňajky ×3 · obed ×5` pre zmenené jedlá.
+ *
+ * Číta `payload.meals` (stav PO zmene — pri mazaní je teda prázdny, preto sa
+ * tam berie `payload.changes` cez `changed_meals`, aby aj zmazaná objednávka
+ * ukázala, koľko sa mazalo, nie "—").
+ */
+export function summarizeOrderMeals(payload: Record<string, unknown>): string {
+    const changedMeals = Array.isArray(payload.changed_meals)
+        ? (payload.changed_meals as string[])
+        : [];
+    if (changedMeals.length === 0) return '—';
+    const meals = (payload.meals as Record<string, unknown>) || {};
+    const changes = (payload.changes as Record<string, { from?: unknown; to?: unknown }>) || {};
+    const parts = changedMeals.map((meal) => {
+        const label = MEAL_LABELS_SK[meal] ?? meal;
+        let count = sumCounts(meals[meal]);
+        if (count === 0) {
+            // Zmazanie: `meals` je po zmene prázdne, spočítaj z `changes.*.from`.
+            count = Object.entries(changes)
+                .filter(([path]) => path === meal || path.startsWith(`${meal}.`))
+                .reduce((total, [, change]) => total + sumCounts(change?.from), 0);
+        }
+        return count > 0 ? `${label} ×${count}` : label;
+    });
+    return parts.join(' · ');
+}

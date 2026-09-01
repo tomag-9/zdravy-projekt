@@ -128,6 +128,7 @@ def log_event(
     summary: str = "",
     payload: dict | None = None,
     actor_label: str | None = None,
+    prevadzka=None,
 ) -> EventLog:
     """Persist one audit event with an actor email snapshot when available."""
     if actor_label is None:
@@ -137,6 +138,7 @@ def log_event(
         actor=actor,
         actor_label=actor_label,
         target_user=target_user,
+        prevadzka=prevadzka,
         summary=summary,
         payload=_json_value(payload or {}),
     )

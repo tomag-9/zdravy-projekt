@@ -124,9 +124,15 @@ def test_admin_order_create_and_update_are_audited(admin_client, admin_user, use
 
 
 @pytest.mark.django_db
-def test_admin_prevadzka_order_create_is_audited_but_self_update_is_not(
+def test_admin_prevadzka_self_order_create_and_update_are_both_audited(
     admin_client, admin_user
 ):
+    """Aj self-service (admin objednáva za vlastnú prevádzku) je auditované.
+
+    Predtým sa taká úprava vôbec nelogovala (gate na `target_user != actor`)
+    — audit teraz pokrýva všetky objednávky, nielen zásahy admina do cudzej,
+    aby sa dalo dohľadať "čo sa kedy udialo" bez ohľadu na to, kto objednáva.
+    """
     celok = Celok.objects.create(nazov="Admin audit celok")
     prevadzka = Prevadzka.objects.create(celok=celok, nazov="Admin audit prevádzka")
     date = datetime.date(2099, 8, 4)
@@ -148,6 +154,8 @@ def test_admin_prevadzka_order_create_is_audited_but_self_update_is_not(
     )
     assert created_event.actor == admin_user
     assert created_event.target_user == admin_user
+    assert created_event.prevadzka == prevadzka
+    assert created_event.payload["prevadzka_id"] == prevadzka.pk
     assert created_event.payload["changes"]["lunch.Dospelý.menuCounts.A"] == {
         "from": None,
         "to": 1,
@@ -162,9 +170,14 @@ def test_admin_prevadzka_order_create_is_audited_but_self_update_is_not(
     )
 
     assert update_response.status_code == status.HTTP_200_OK
-    assert not EventLog.objects.filter(
+    updated_event = EventLog.objects.get(
         event_type=EventLog.EventType.ORDER_ADMIN_UPDATE
-    ).exists()
+    )
+    assert updated_event.prevadzka == prevadzka
+    assert updated_event.payload["changes"]["lunch.Dospelý.menuCounts.A"] == {
+        "from": 1,
+        "to": 3,
+    }
 
 
 @pytest.mark.django_db
@@ -194,6 +207,119 @@ def test_admin_order_delete_is_audited(admin_client, admin_user, user):
         "from": 2,
         "to": None,
     }
+    assert event.prevadzka == prevadzka
+
+
+@pytest.mark.django_db
+def test_self_service_order_create_update_and_draft_clear_are_audited(
+    authenticated_client, user
+):
+    """Bežná klientska objednávka (bez admina) je od teraz tiež auditovaná.
+
+    Predtým sa self-service vôbec nelogoval — audit pokrýval len zásah admina
+    do cudzej objednávky. `status="draft"` je jediná cesta, ktorou klient
+    objednávku maže (frontend vždy posiela POST na `/orders/`, nikdy DELETE),
+    takže aj tá musí vyjsť ako `ORDER_ADMIN_DELETE`.
+    """
+    date = datetime.date(2099, 8, 6)
+    initial_data = {
+        "breakfast": {"Dospelý": {"menuCounts": {"A": 1}, "diets": {}}},
+        "lunch": {},
+        "olovrant": {},
+    }
+
+    create_response = authenticated_client.post(
+        reverse("dailyorder-list"),
+        {"date": str(date), "data": initial_data},
+        format="json",
+    )
+    assert create_response.status_code == status.HTTP_201_CREATED
+    created_event = EventLog.objects.get(
+        event_type=EventLog.EventType.ORDER_ADMIN_CREATE
+    )
+    assert created_event.actor == user
+    assert created_event.target_user == user
+    assert created_event.prevadzka is not None
+    order_prevadzka = created_event.prevadzka
+
+    updated_data = deepcopy(initial_data)
+    updated_data["breakfast"]["Dospelý"]["menuCounts"]["A"] = 2
+    update_response = authenticated_client.post(
+        reverse("dailyorder-list"),
+        {"date": str(date), "data": updated_data},
+        format="json",
+    )
+    assert update_response.status_code == status.HTTP_201_CREATED
+    updated_event = EventLog.objects.get(
+        event_type=EventLog.EventType.ORDER_ADMIN_UPDATE
+    )
+    assert updated_event.prevadzka == order_prevadzka
+    assert updated_event.payload["changes"]["breakfast.Dospelý.menuCounts.A"] == {
+        "from": 1,
+        "to": 2,
+    }
+
+    clear_response = authenticated_client.post(
+        reverse("dailyorder-list"),
+        {"date": str(date), "status": "draft", "data": {}},
+        format="json",
+    )
+    assert clear_response.status_code == status.HTTP_201_CREATED
+    deleted_event = EventLog.objects.get(
+        event_type=EventLog.EventType.ORDER_ADMIN_DELETE
+    )
+    assert deleted_event.prevadzka == order_prevadzka
+    assert deleted_event.payload["changes"]["breakfast.Dospelý.menuCounts.A"] == {
+        "from": 2,
+        "to": None,
+    }
+    assert not DailyOrder.objects.filter(prevadzka=order_prevadzka, date=date).exists()
+
+
+@pytest.mark.django_db
+def test_event_log_endpoint_filters_by_prevadzka(admin_client, admin_user, user):
+    celok = Celok.objects.create(nazov="Filter celok")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Filter prevádzka")
+    other_prevadzka = Prevadzka.objects.create(celok=celok, nazov="Iná prevádzka")
+    log_event(
+        EventLog.EventType.ORDER_ADMIN_CREATE,
+        actor=admin_user,
+        target_user=user,
+        prevadzka=prevadzka,
+        summary="Objednávka pre filtrovanú prevádzku",
+    )
+    log_event(
+        EventLog.EventType.ORDER_ADMIN_CREATE,
+        actor=admin_user,
+        target_user=user,
+        prevadzka=other_prevadzka,
+        summary="Objednávka pre inú prevádzku",
+    )
+
+    response = admin_client.get("/api/admin/event-logs/", {"prevadzka": prevadzka.pk})
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["prevadzka"] == prevadzka.pk
+    assert body["results"][0]["prevadzka_nazov"] == prevadzka.nazov
+
+
+@pytest.mark.django_db
+def test_event_log_endpoint_accepts_comma_separated_event_types(
+    admin_client, admin_user, user
+):
+    log_event(EventLog.EventType.ORDER_ADMIN_CREATE, actor=admin_user, target_user=user)
+    log_event(EventLog.EventType.ORDER_ADMIN_DELETE, actor=admin_user, target_user=user)
+    log_event(EventLog.EventType.SETTINGS_CHANGE, actor=admin_user)
+
+    response = admin_client.get(
+        "/api/admin/event-logs/",
+        {"event_type": "order_admin_create,order_admin_delete"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["count"] == 2
 
 
 @pytest.mark.django_db

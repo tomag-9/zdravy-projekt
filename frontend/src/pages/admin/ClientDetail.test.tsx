@@ -271,6 +271,28 @@ describe("ClientDetail facility & login management", () => {
     });
   });
 
+  it("restricts a menu to a chosen weekday and saves it, without touching other menus", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(screen.getByRole("button", { name: "Menu B - Pi" }));
+    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.menu_day_restrictions).toEqual({ B: [5] });
+      // Ostatné menu (A, C, V) sú stále bez obmedzenia — každý deň.
+      expect(body.visible_menus).toEqual(["A", "B", "C", "V"]);
+    });
+  });
+
   it("deletes the facility and navigates back to facilities", async () => {
     mockApiFetch.mockImplementation(buildFetchMock());
     const user = userEvent.setup();
@@ -374,5 +396,54 @@ describe("ClientDetail order history diets", () => {
     await screen.findByText(/2x Vegetariánske/);
 
     expect(screen.getAllByTestId("diet-color-swatch").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("rozpíše počty aj podľa menu písmena, keď je z čoho vyberať", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByText("2026-08-12"));
+
+    expect(await screen.findByText(/3x Menu A/)).toBeInTheDocument();
+    expect(screen.getByText(/2x Menu V/)).toBeInTheDocument();
+  });
+});
+
+describe("ClientDetail order history menu bez rozpisu", () => {
+  const singleMenuOrder = {
+    id: 92,
+    date: "2026-08-13",
+    status: "submitted",
+    data: {
+      lunch: {
+        Dospelý: {
+          menuCounts: { B: 4 },
+          diets: {},
+        },
+      },
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response([]));
+      if (url.includes("/orders/")) return Promise.resolve(response([singleMenuOrder]));
+      if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("nezobrazí rozpis, keď je objednané len jedno menu písmeno", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByText("2026-08-13"));
+
+    expect(await screen.findByText(/4x Dospelý/)).toBeInTheDocument();
+    expect(screen.queryByText(/Menu B/)).not.toBeInTheDocument();
   });
 });

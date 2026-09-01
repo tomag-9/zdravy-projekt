@@ -56,9 +56,24 @@ const FALLBACK_CATEGORIES = CATEGORIES;
 const getBaseCategories = (portionTypeNames: string[]) =>
     portionTypeNames.length > 0 ? portionTypeNames : FALLBACK_CATEGORIES;
 
+const _categoryHasCounts = (categoryData: unknown): boolean => {
+    if (!categoryData || typeof categoryData !== 'object') return false;
+    const menuCounts = (categoryData as { menuCounts?: Record<string, number> }).menuCounts;
+    if (!menuCounts) return false;
+    return Object.values(menuCounts).some((count) => (count || 0) > 0);
+};
+
+// Vracia len kategórie, ktoré majú v uloženej objednávke reálne nenulové počty —
+// prázdna kostra (kľúč prítomný, počty 0) sa nepočíta. Denný auto-vytvorený
+// záznam má kostru pre VŠETKY veľkosti bez ohľadu na visible_portion_types
+// prevádzky, takže brať do editora každý existujúci kľúč by vrátilo do UI aj
+// veľkosti, ktoré má prevádzka zámerne vypnuté (#Rusovce — objednanie Jasle
+// napriek tomu, že prevádzka má povolené len Škôlku a Dospelých).
 const extractCategoriesFromMeal = (meal: unknown): string[] => {
     if (!meal || typeof meal !== 'object' || Array.isArray(meal)) return [];
-    return Object.keys(meal as Record<string, unknown>);
+    return Object.entries(meal as Record<string, unknown>)
+        .filter(([, categoryData]) => _categoryHasCounts(categoryData))
+        .map(([key]) => key);
 };
 
 const buildCategories = (portionTypeNames: string[], existingOrder?: ExistingOrder | null) => {

@@ -264,6 +264,10 @@ def build_table_spec(
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
+    # Sleduje presne tie client_row dicty, ktoré sa naozaj vykreslili (rešpektuje
+    # filter podľa výdajného bodu/nepriradených), aby sa z nich dal na konci
+    # spočítať fakturačný súčet „MŠ porcie" (#4 — billing_portion_coefficients).
+    all_client_rows: list[dict] = []
 
     all_vydaje = data.get("vydaje") or []
     keep_vydaje = _filter_vydaje(all_vydaje, vydaje)
@@ -296,6 +300,7 @@ def build_table_spec(
                     continue
                 rows.append(_route_row(route, total_columns))
                 for client_row in route_rows:
+                    all_client_rows.append(client_row)
                     rows.extend(
                         _client_rows(
                             client_row,
@@ -349,6 +354,7 @@ def build_table_spec(
                 )
             )
             for client_row in unassigned:
+                all_client_rows.append(client_row)
                 rows.extend(
                     _client_rows(
                         client_row,
@@ -361,6 +367,7 @@ def build_table_spec(
                 )
     else:
         for client_row in data.get("rows") or []:
+            all_client_rows.append(client_row)
             rows.extend(
                 _client_rows(
                     client_row, data, groups, hues, total_columns, include_summary_rows
@@ -389,6 +396,27 @@ def build_table_spec(
         total_columns,
     )
     footer.append(_totals_row(footer_totals, keep, groups, hues))
+    # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
+    # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
+    # `_billed_count`), takže `total_count` na klientovi je fakturačný
+    # ekvivalent porcií. Tu sa len sčíta naprieč zobrazenými prevádzkami —
+    # bez vlastného koeficientu (default 1.0) sa nič neprepočítava.
+    ms_porcie_total = sum(
+        (_as_decimal(r.get("total_count")) for r in all_client_rows), Decimal("0")
+    )
+    footer.append(
+        {
+            "kind": "total-ms-porcie",
+            "css": "total-ms-porcie",
+            "cells": [
+                {
+                    "label": "Spolu prepočítané na MŠ porcie",
+                    "text": format_count(ms_porcie_total),
+                    "colspan": total_columns,
+                }
+            ],
+        }
+    )
 
     return {
         "date": data.get("date"),
@@ -564,9 +592,13 @@ def _client_rows(
         meta += f", diéty {format_count(diet_total)}"
 
     # #513 — poznámka prevádzky (nastavenie „Poznámka k objednávke") je vidno
-    # hneď na zbalenom riadku klienta, v stĺpci Poznámka. Predtým žila len
-    # v `collapsible` sub-riadku, takže kým sa klient nerozbalil, admin o nej
-    # nevedel; ten sub-riadok už nie je, aby text nebol v tabuľke dvakrát.
+    # hneď na zbalenom riadku klienta. Predtým žila len v `collapsible`
+    # sub-riadku, takže kým sa klient nerozbalil, admin o nej nevedel; ten
+    # sub-riadok už nie je, aby text nebol v tabuľke dvakrát. Pôvodne šla do
+    # samostatného úzkeho stĺpca Poznámka — dlhší text tam ale zalamoval
+    # a naťahoval riadok na viacero riadkov (klient hlásenie), preto ide
+    # rovno za názov prevádzky; stĺpec Poznámka ostáva prázdny na rukou
+    # písané poznámky kuchyne.
     admin_order_note = str(row.get("admin_order_note") or "").strip()
     # Poznámka k „Špeciálnej" diéte — kuchyňa inak nemá odkiaľ vedieť, čo pre
     # dieťa nabrať (samotný názov diéty „Špeciálna" nič nehovorí). Ide do tej
@@ -590,17 +622,14 @@ def _client_rows(
             "cells": [
                 {
                     "text": row.get("client") or "",
+                    "note": combined_note or None,
                     "meta": meta,
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
                     "colspan": total_columns - 1,
                 },
-                (
-                    {"text": combined_note, "css": "cell-note client-note"}
-                    if combined_note
-                    else _note_cell()
-                ),
+                _note_cell(),
             ],
         }
     ]
@@ -623,6 +652,11 @@ def _client_rows(
                 "color": f"#{diet_color(data, sub_row)}",
                 "base_colors": sub_row.get("diet_base_colors") or [],
             }
+            # #2 — poznámka ku konkrétnej diéte (Diet.description), nastavená
+            # v Správe diét. Kuchyňa ju predtým videla len tam, teraz aj tu.
+            cell["note"] = (data.get("diet_descriptions") or {}).get(
+                sub_row.get("diet_name")
+            )
         out.append(
             {
                 "kind": "sub-row",
@@ -693,6 +727,7 @@ def _client_rows(
                             "color": f"#{hex_color}",
                             "base_colors": diet.get("base_colors") or [],
                         },
+                        note=(data.get("diet_descriptions") or {}).get(name),
                     )
                 ]
                 + _gram_cells(

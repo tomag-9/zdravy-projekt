@@ -17,6 +17,15 @@ EduPage vlastný `nazov` vypisuje celý obsah jednoznačne:
 Nahlásené Stanom 31.8.2026. Diéty pre NGNF a "MŠ NMNG bez ARAS" založené v
 appke s pomlčkovým oddeľovačom (staršia konvencia, pk 119/120) — NMNE
 recykluje `NO MILK/NO EGG` (pk 99, lomítkový tvar), ktoré už existovalo.
+
+`NMNGnORECH` je nejednoznačná skratka — škola ju v `nazovMenu` použila na dvoch
+rôznych písmenách s odlišným `nazov` (letter A: nazov="NoMilk/NoGluten", bez
+orecha; letter N: nazov="NoMilk/NoGluten/NoOrech"). Keďže engine aj náš
+letter_hook bežne rozhoduje len podľa skratky, hardcoded pravidlo by A aj N
+priradilo rovnako — preto sa tu rozhoduje aj podľa `nazov` (user 1.9.2026):
+len keď nazov obsahuje "orech", ide o plnú trojkombináciu (pk 132); inak sa
+necháva na engine, ktorý bez orecha aj tak správne fuzzy-matchne
+NO MILK/NO GLUTEN.
 """
 
 from __future__ import annotations
@@ -33,10 +42,14 @@ _RULES: dict[str, LetterRule] = {
 }
 
 
-def _kluc(skratka: str) -> str:
-    return skratka.strip().upper()
+def _kluc(text: str) -> str:
+    return text.strip().upper()
 
 
 def ivanka_letter_hook(letter: str, skratka: str, nazov: str) -> LetterRule | None:
     """Vráť pravidlo pre menu písmeno, alebo None → nech rozhodne engine."""
+    if _kluc(skratka) == "NMNGNORECH":
+        if "ORECH" in _kluc(nazov):
+            return LetterRule(diet="NO MILK – NO GLUTEN – NO ORECH")
+        return None
     return _RULES.get(_kluc(skratka))

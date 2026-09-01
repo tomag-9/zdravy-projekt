@@ -230,6 +230,7 @@ class PrevadzkaSettingsSerializer(serializers.ModelSerializer):
         model = Prevadzka
         fields = [
             "visible_menus",
+            "menu_day_restrictions",
             "visible_meals",
             "visible_diets",
             "visible_portion_types",
@@ -411,6 +412,7 @@ class AdminPrevadzkaSettingsSerializer(serializers.ModelSerializer):
         model = Prevadzka
         fields = [
             "visible_menus",
+            "menu_day_restrictions",
             "visible_meals",
             "visible_diets",
             "admin_order_note",

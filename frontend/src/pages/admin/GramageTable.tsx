@@ -19,6 +19,7 @@ export interface SpecCell {
   sub?: string;
   meta?: string;
   meta_right?: string;
+  note?: string | null;
   label?: string;
   swatch?: { color: string; base_colors: string[] };
 }
@@ -77,6 +78,7 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
                 </span>
               )}
               {cell.text}
+              {cell.note && <span className="diet-note-inline"> — {cell.note}</span>}
             </span>
             <span className="count-badge">{cell.count}</span>
           </span>
@@ -165,6 +167,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
                   )}
                   <span className="meta">{cell.meta}</span>
                 </span>
+                {cell.note && <span className="client-note-inline">{cell.note}</span>}
                 <span className="meta">{cell.meta_right}</span>
               </button>
               {action}
@@ -189,7 +192,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
       );
     }
 
-    if (row.kind === "note-admin" || row.kind === "note-delivery") {
+    if (row.kind === "note-admin" || row.kind === "note-delivery" || row.kind === "total-ms-porcie") {
       const cell = row.cells[0];
       return (
         <tr key={index} className={row.css}>

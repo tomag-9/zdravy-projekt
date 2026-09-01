@@ -385,6 +385,11 @@ class TestFelixKarloveskaLetterHook(unittest.TestCase):
             "NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM",
         )
 
+    def test_nmno_confirmed_certain(self):
+        """'NMNO'/'NoMilk no orech' fuzzy-matchovalo len na NO MILK, orech sa
+        strácal — potvrdené na existujúcu diétu pk 121 (user 1.9.2026)."""
+        self.assertEqual(self._rule("NMNO").diet, "NO MILK – NO ORECH")
+
     def test_plain_ne_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NE"))
 
@@ -426,12 +431,12 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
     def test_zs_malokarpatska_gluten_confirmed(self):
         self.assertEqual(self._rule("zšlaNG").diet, "NO GLUTEN")
 
-    def test_zs_malokarpatska_quad_combo_flagged_for_review(self):
-        """Posledné písmeno skratky (jahoda/jablko) nebolo 100% isté — user
-        potvrdil jablko, ale necháva to flagnuté na kontrolu (1.9.2026)."""
+    def test_zs_malokarpatska_quad_combo_confirmed(self):
+        """Posledné písmeno skratky (jahoda/jablko) bolo pôvodne neisté — user
+        potvrdil jablko, nie jahodu (1.9.2026), flag na kontrolu už netreba."""
         rule = self._rule("zšlaNMnEnOnJ")
         self.assertEqual(rule.diet, "NO MILK – NO EGG – NO ORECH – NO JABLKO")
-        self.assertEqual(rule.flag, "!")
+        self.assertIsNone(rule.flag)
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("something else entirely"))
@@ -460,8 +465,8 @@ class TestIvankaLetterHook(unittest.TestCase):
     obmedzenie z viacerých — EduPage nazov potvrdzuje plné kombinácie
     (nahlásené Stanom 31.8.2026)."""
 
-    def _rule(self, skratka) -> LetterRule:
-        return ivanka_letter_hook("X", skratka, "")
+    def _rule(self, skratka, nazov="") -> LetterRule:
+        return ivanka_letter_hook("X", skratka, nazov)
 
     def test_ngnf_full_combo(self):
         self.assertEqual(self._rule("NGNF").diet, "NO GLUTEN – NO FISH")
@@ -481,6 +486,20 @@ class TestIvankaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NG"))
+
+    def test_nmngnorech_with_orech_in_nazov_is_full_combo(self):
+        """Letter N: skratka 'NMNGnORECH', nazov 'NoMilk/NoGluten/NoOrech' —
+        potvrdené na existujúcu diétu pk 132 (user 1.9.2026)."""
+        self.assertEqual(
+            self._rule("NMNGnORECH", "NoMilk/NoGluten/NoOrech").diet,
+            "NO MILK – NO GLUTEN – NO ORECH",
+        )
+
+    def test_nmngnorech_without_orech_in_nazov_falls_through(self):
+        """Rovnaká skratka sa na tejto škole recykluje aj pre letter A, kde
+        nazov orech vôbec nespomína ('NoMilk/NoGluten') — nesmie dostať plnú
+        trojkombináciu, necháva sa na engine (fuzzy NO MILK/NO GLUTEN)."""
+        self.assertIsNone(self._rule("NMNGnORECH", "NoMilk/NoGluten"))
 
 
 class TestLibellusLetterHook(unittest.TestCase):
@@ -518,6 +537,15 @@ class TestMontessoriLetterHook(unittest.TestCase):
 
     def test_full_combo(self):
         self.assertEqual(self._rule("Iná..NmNgNe").diet, "NO MILK – NO GLUTEN – NO EGG")
+
+    def test_full_combo_bounding_dots_variant(self):
+        """Škola posiela aj tvar '.Iná NmNgNe.' (bodky na okrajoch, medzera
+        namiesto vnútornej bodky) — nahlásené 1.9.2026, kľúč založený len na
+        'Iná..NmNgNe' ho nechytil a E sa tíško zlúčilo s D pod NO MILK/NO
+        GLUTEN bez vajec."""
+        self.assertEqual(
+            self._rule(".Iná NmNgNe.").diet, "NO MILK – NO GLUTEN – NO EGG"
+        )
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("Iná NmNg"))
@@ -559,6 +587,17 @@ class TestFilipanerihoLetterHook(unittest.TestCase):
     def test_no_orech(self):
         self.assertEqual(self._rule("No orech").diet, "NO ORECH")
 
+    def test_ng_hrib_confirmed_certain(self):
+        """'NG hríb'/'NoGlutenNoHríb' bolo uncertain fuzzy match (len NO
+        GLUTEN), hríb sa strácal — potvrdené na existujúcu diétu pk 58
+        (user 1.9.2026)."""
+        self.assertEqual(self._rule("NG hríb").diet, "NO GLUTEN, HRÍBY")
+
+    def test_nnno_confirmed_certain(self):
+        """'NNNO'/'NoNoNo orech' — rovnaký vzor ako Rozmanitá, orech sa
+        strácal (0 detí v čase nálezu, doplnené preventívne, user 1.9.2026)."""
+        self.assertEqual(self._rule("NNNO").diet, "NONONO, NO ORECH")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
 
@@ -571,6 +610,11 @@ class TestRozmanitaLetterHook(unittest.TestCase):
         """Bol uncertain fuzzy match (len NO MILK) — potvrdené na NO MILK –
         NO ORECH (user 1.9.2026)."""
         self.assertEqual(self._rule("NoMO").diet, "NO MILK – NO ORECH")
+
+    def test_nnno_confirmed_certain(self):
+        """'NNNO'/'NoNoNo bezO' fuzzy-matchovalo len na NONONO, orech sa
+        strácal — potvrdené na existujúcu diétu pk 67 (user 1.9.2026)."""
+        self.assertEqual(self._rule("NNNO").diet, "NONONO, NO ORECH")
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))

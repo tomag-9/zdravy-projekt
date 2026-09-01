@@ -475,7 +475,14 @@ class MealPlanService:
         """
         import re as _re
 
-        from ..models import DailyMealPlan, DailyOrder, DeliveryRoute, Diet, PortionType
+        from ..models import (
+            DailyMealPlan,
+            DailyOrder,
+            DeliveryRoute,
+            Diet,
+            PortionType,
+            Prevadzka,
+        )
 
         MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
         VARIANT_ORDER = ["A", "B", "C", "D", "V"]
@@ -518,6 +525,14 @@ class MealPlanService:
             ]
             for diet in active_diets
             if diet.base_diets.exists()
+        }
+        # #2 — poznámka ku konkrétnej diéte (napr. "NoGluten – kontrolovať s
+        # rodičom"), nastavená v Správe diét (`Diet.description`). Predtým sa
+        # ukazovala len tam, kuchyňa ju v gramážnej tabuľke/PDF nevidela.
+        diet_description_map = {
+            diet.name: diet.description.strip()
+            for diet in active_diets
+            if (diet.description or "").strip()
         }
 
         def _normalize_variant(value: object) -> str:
@@ -979,13 +994,21 @@ class MealPlanService:
                         # "čistý" riadok, inak sa rovnaká osoba vypíše dvakrát.
                         pack_by_variant: dict[str, int] = {}
                         pack_diet_totals: dict[str, int] = {}
-                        if is_variant_meal:
-                            for pack_menu_counts in pack_menu_counts_by_target.values():
-                                for v, c in pack_menu_counts.items():
-                                    nv = _normalize_variant(v)
-                                    pack_by_variant[nv] = pack_by_variant.get(
-                                        nv, 0
-                                    ) + _safe_nonneg_int(c)
+                        # Bez `is_variant_meal` vetvy tu: jedlo bez vlastných menu
+                        # stĺpcov (polievka, olovrant bez variantu) má v
+                        # `variant_counts` nižšie jediný kľúč "" - keby sa sem
+                        # "zabaliť zvlášť" počty (naviazané na reálny variant,
+                        # napr. "A") nesčítali pod ten istý kľúč "", odpočet z
+                        # "čistého" riadku by ich nenašiel a ten istý človek by sa
+                        # vykázal dvakrát: raz v "čistom" (neodpočítanom) riadku,
+                        # raz v riadku "zvlášť" (issue: Motýlik a Včielka, 3x
+                        # polievka, ktorá nebola objednaná).
+                        for pack_menu_counts in pack_menu_counts_by_target.values():
+                            for v, c in pack_menu_counts.items():
+                                nv = _normalize_variant(v) if is_variant_meal else ""
+                                pack_by_variant[nv] = pack_by_variant.get(
+                                    nv, 0
+                                ) + _safe_nonneg_int(c)
                         for pack_diet_counts in pack_diet_counts_by_target.values():
                             for diet_name, c in pack_diet_counts.items():
                                 pack_diet_totals[diet_name] = pack_diet_totals.get(
@@ -1206,12 +1229,11 @@ class MealPlanService:
                                     }
                                 )
                                 # Odpočítalo sa vyššie z "čistého" riadku (súčet
-                                # oboch cieľov) len keď is_variant_meal (inak sa
-                                # zvlášť polievky nespočítava samostatne, ale
-                                # nechá na hlavnom chode) - dorátať do súhrnu
-                                # presne v tom istom prípade, nech sa hlava
-                                # nestratí, ale ani nezaráta dvakrát.
-                                if is_variant_meal and count_towards_summary:
+                                # oboch cieľov) pre KAŽDÉ jedlo, aj bez variantu
+                                # (polievka) - dorátať do súhrnu treba rovnako
+                                # vždy, nech sa hlava nestratí, ale ani nezaráta
+                                # dvakrát.
+                                if count_towards_summary:
                                     client_total_count += _billed_count(
                                         pack_count, billing_coeff
                                     )
@@ -1376,6 +1398,7 @@ class MealPlanService:
                         "diet_summary_rows": diet_summary_rows,
                         "admin_order_note": admin_order_note,
                         "special_diet_note": special_diet_note,
+                        "no_order": False,
                         # Olovrant ide s obedovým rozvozom — kuchyňa ho v
                         # tabuľke aj PDF vidí žlto zvýraznený, nech ho naloží
                         # spolu s obedom a nezabudne naň pri popoludňajšom kole.
@@ -1385,6 +1408,68 @@ class MealPlanService:
                         "sub_rows": sub_rows,
                     }
                 )
+
+        # Prevádzka bez objednávky (žiadny DailyOrder, alebo DailyOrder so
+        # samými nulami — `sub_rows` vyššie ho preto do `rows` nedostane) sa
+        # predtým z tabuľky vytratila úplne — aj hlavička. Pre spätnú kontrolu
+        # (bola škôlka naozaj zatvorená, alebo len nikto neobjednal?) ju admin
+        # potrebuje vidieť, len bez objednávkových riadkov.
+        prevadzky_with_rows = {
+            r["prevadzka_id"] for r in rows if r["prevadzka_id"] is not None
+        }
+        missing_prevadzky = (
+            Prevadzka.objects.filter(is_active=True)
+            .exclude(id__in=prevadzky_with_rows)
+            .select_related("celok", "delivery_route__block")
+        )
+        for prevadzka in missing_prevadzky:
+            delivery_route = prevadzka.delivery_route
+            delivery_block = delivery_route.block if delivery_route else None
+            display_client = (
+                str(prevadzka.report_alias or "").strip() or prevadzka.nazov
+            )
+            rows.append(
+                {
+                    "client": display_client,
+                    "client_id": None,
+                    "row_key": f"prevadzka-{prevadzka.id}",
+                    "prevadzka_id": prevadzka.id,
+                    "delivery_block_id": delivery_block.id if delivery_block else None,
+                    "delivery_block_name": (
+                        delivery_block.name if delivery_block else ""
+                    ),
+                    "delivery_block_sort_order": (
+                        delivery_block.sort_order if delivery_block else 9999
+                    ),
+                    "delivery_route_id": (
+                        delivery_route.id if delivery_route else None
+                    ),
+                    "delivery_route_name": (
+                        delivery_route.name if delivery_route else ""
+                    ),
+                    "delivery_route_sort_order": (
+                        delivery_route.sort_order if delivery_route else 9999
+                    ),
+                    "delivery_sort_order": prevadzka.delivery_sort_order,
+                    "vydaj": (delivery_route.vydaj if delivery_route else str(Vydaj.A)),
+                    "delivery_note": str(prevadzka.delivery_note or "").strip(),
+                    "total_count": 0,
+                    "standard_total_count": 0,
+                    "standard_col_grams": _serialize_group_totals(
+                        _empty_group_totals()
+                    ),
+                    "diet_summary_rows": [],
+                    "admin_order_note": str(prevadzka.admin_order_note or "").strip(),
+                    "special_diet_note": "",
+                    "snack_with_lunch": bool(prevadzka.olovrant_s_obedom),
+                    "sub_rows": [],
+                    # Odlišuje hlavičku bez objednávky od riadku so samými
+                    # nulami — frontend/PDF ju môže vykresliť viditeľne inak
+                    # (napr. sivo/kurzívou), nech je jasné, že tu chýba dáta,
+                    # nie že objednali nulu.
+                    "no_order": True,
+                }
+            )
 
         rows.sort(
             key=lambda r: (
@@ -1568,4 +1653,5 @@ class MealPlanService:
             "count_summary": count_summary,
             "diet_colors": diet_color_map,
             "diet_base_colors": diet_base_color_map,
+            "diet_descriptions": diet_description_map,
         }

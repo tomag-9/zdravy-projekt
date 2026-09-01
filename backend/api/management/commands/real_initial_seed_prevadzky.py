@@ -109,7 +109,10 @@ SCHOOLS = [
     {
         "subdomain": "krasnanko",
         "company_name": "MŠ Krásnanko",
-        "mealsguest_url": "https://krasnanko.edupage.org/menu/mealsGuest?id=tg9Z1u7",
+        # Pôvodný guest link (id=tg9Z1u7) vypršal — vracal "Nedostatočné oprávnenie"
+        # namiesto menu dát (zistené manuálnou kontrolou proti prod EduPage
+        # 1.9.2026). Nový link overený prod appkou.
+        "mealsguest_url": "https://krasnanko.edupage.org/menu/mealsGuest?id=BJpGBgw",
     },
 ]
 
