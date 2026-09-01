@@ -45,6 +45,7 @@ ALLOWED_DIET_NAMES = {
     "NO BRAVCOVINA",
     "NO CERVENE MASO",
     "NO CUKOR",
+    "NO CITRUS",
 }
 
 
@@ -177,6 +178,10 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
     "horcica": "NO HORCICA",  # Cvernička "AnHorčica"/"Klasik/noHorčica"
+    # MŠ Rozmanitá "Klasik bez citrus" — bez tohto fragmentu nemá "citrus" v
+    # nazve žiadny diétny signál, takže by spadlo do resolve_menu_variant()
+    # ako obyčajný Klasik (#Rozmanitá, 1.9.2026).
+    "citrus": "NO CITRUS",
     "dia": "DIA",
     "diabet": "DIA",
     # British School (#531) hlási po anglicky — mapujeme na slovenské Diet.name.

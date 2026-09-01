@@ -86,6 +86,9 @@ class TestResolveDietName(unittest.TestCase):
     def test_keyword_fallback_horcica_in_nazov(self):
         self.assertEqual(self._r("AnHorčica", "Klasik/noHorčica"), "NO HORCICA")
 
+    def test_keyword_fallback_citrus_in_nazov(self):
+        self.assertEqual(self._r("KLC", "Klasik bez citrus"), "NO CITRUS")
+
     def test_unknown_fallback_returns_nazov(self):
         self.assertEqual(self._r("ABC", "menu A"), "menu A")
 
@@ -241,6 +244,12 @@ class TestResolveMenuVariant(unittest.TestCase):
         appka by "no horčica" reštrikciu potichu stratila (nájdené 27.8.2026
         v reálnej tabuľke — appka to počítala ako obyčajný Klasik)."""
         self.assertIsNone(self._r("AnHorčica", "Klasik/noHorčica"))
+
+    def test_klasik_bez_citrus_is_not_menu_variant(self):
+        """MŠ Rozmanitá "KLC"/"Klasik bez citrus": rovnaký vzor ako "noHorčica"
+        vyššie — bez rozpoznania "citrus" ako diétneho signálu by sa dieťa
+        s citrusovým obmedzením počítalo ako obyčajný Klasik (1.9.2026)."""
+        self.assertIsNone(self._r("KLC", "Klasik bez citrus"))
 
     def test_menu_a_is_menu_a(self):
         self.assertEqual(self._r("A", "Menu A"), "A")
