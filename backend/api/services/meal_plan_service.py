@@ -475,7 +475,14 @@ class MealPlanService:
         """
         import re as _re
 
-        from ..models import DailyMealPlan, DailyOrder, DeliveryRoute, Diet, PortionType
+        from ..models import (
+            DailyMealPlan,
+            DailyOrder,
+            DeliveryRoute,
+            Diet,
+            PortionType,
+            Prevadzka,
+        )
 
         MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
         VARIANT_ORDER = ["A", "B", "C", "D", "V"]
@@ -1384,6 +1391,7 @@ class MealPlanService:
                         "diet_summary_rows": diet_summary_rows,
                         "admin_order_note": admin_order_note,
                         "special_diet_note": special_diet_note,
+                        "no_order": False,
                         # Olovrant ide s obedovým rozvozom — kuchyňa ho v
                         # tabuľke aj PDF vidí žlto zvýraznený, nech ho naloží
                         # spolu s obedom a nezabudne naň pri popoludňajšom kole.
@@ -1393,6 +1401,68 @@ class MealPlanService:
                         "sub_rows": sub_rows,
                     }
                 )
+
+        # Prevádzka bez objednávky (žiadny DailyOrder, alebo DailyOrder so
+        # samými nulami — `sub_rows` vyššie ho preto do `rows` nedostane) sa
+        # predtým z tabuľky vytratila úplne — aj hlavička. Pre spätnú kontrolu
+        # (bola škôlka naozaj zatvorená, alebo len nikto neobjednal?) ju admin
+        # potrebuje vidieť, len bez objednávkových riadkov.
+        prevadzky_with_rows = {
+            r["prevadzka_id"] for r in rows if r["prevadzka_id"] is not None
+        }
+        missing_prevadzky = (
+            Prevadzka.objects.filter(is_active=True)
+            .exclude(id__in=prevadzky_with_rows)
+            .select_related("celok", "delivery_route__block")
+        )
+        for prevadzka in missing_prevadzky:
+            delivery_route = prevadzka.delivery_route
+            delivery_block = delivery_route.block if delivery_route else None
+            display_client = (
+                str(prevadzka.report_alias or "").strip() or prevadzka.nazov
+            )
+            rows.append(
+                {
+                    "client": display_client,
+                    "client_id": None,
+                    "row_key": f"prevadzka-{prevadzka.id}",
+                    "prevadzka_id": prevadzka.id,
+                    "delivery_block_id": delivery_block.id if delivery_block else None,
+                    "delivery_block_name": (
+                        delivery_block.name if delivery_block else ""
+                    ),
+                    "delivery_block_sort_order": (
+                        delivery_block.sort_order if delivery_block else 9999
+                    ),
+                    "delivery_route_id": (
+                        delivery_route.id if delivery_route else None
+                    ),
+                    "delivery_route_name": (
+                        delivery_route.name if delivery_route else ""
+                    ),
+                    "delivery_route_sort_order": (
+                        delivery_route.sort_order if delivery_route else 9999
+                    ),
+                    "delivery_sort_order": prevadzka.delivery_sort_order,
+                    "vydaj": (delivery_route.vydaj if delivery_route else str(Vydaj.A)),
+                    "delivery_note": str(prevadzka.delivery_note or "").strip(),
+                    "total_count": 0,
+                    "standard_total_count": 0,
+                    "standard_col_grams": _serialize_group_totals(
+                        _empty_group_totals()
+                    ),
+                    "diet_summary_rows": [],
+                    "admin_order_note": str(prevadzka.admin_order_note or "").strip(),
+                    "special_diet_note": "",
+                    "snack_with_lunch": bool(prevadzka.olovrant_s_obedom),
+                    "sub_rows": [],
+                    # Odlišuje hlavičku bez objednávky od riadku so samými
+                    # nulami — frontend/PDF ju môže vykresliť viditeľne inak
+                    # (napr. sivo/kurzívou), nech je jasné, že tu chýba dáta,
+                    # nie že objednali nulu.
+                    "no_order": True,
+                }
+            )
 
         rows.sort(
             key=lambda r: (

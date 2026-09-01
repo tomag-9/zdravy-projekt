@@ -543,6 +543,45 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             if is_prevadzka_closed(date, prevadzka):
                 raise PrevadzkaClosureOrderNotAllowedError()
 
+    @staticmethod
+    def _enforce_portion_types(prevadzka: Prevadzka, data: Dict[str, Any]) -> None:
+        """Odmietni porcie v kategórii, ktorú prevádzka nemá povolenú.
+
+        `visible_portion_types` je M2M s rovnakou sémantikou ako inde v appke:
+        prázdna = neobmedzené (ešte nezakonfigurované), neprázdna = admin
+        vedome zúžil veľkosti. Bez tejto kontroly sa dá zapísať zakázaná
+        veľkosť napr. cez staré dáta v `data`, ktoré tam ostali z čias pred
+        obmedzením (frontend ich pri ďalšom uložení znova pošle celé) —
+        UI kontroluje len čo *renderuje*, nie čo v stave nosí ďalej.
+        """
+        allowed_names = {
+            portion_type.name for portion_type in prevadzka.visible_portion_types.all()
+        }
+        if not allowed_names:
+            return
+        for meal_key, meal in data.items():
+            if meal_key == DailyOrderSerializer._SPECIAL_DIET_NOTE_KEY:
+                continue
+            if not isinstance(meal, dict) or DailyOrderSerializer._is_leaf_payload(
+                meal
+            ):
+                continue
+            for cat_name, cat_data in meal.items():
+                if cat_name in allowed_names or not isinstance(cat_data, dict):
+                    continue
+                menu_counts = cat_data.get("menuCounts")
+                if isinstance(menu_counts, dict) and any(
+                    (count or 0) > 0 for count in menu_counts.values()
+                ):
+                    raise serializers.ValidationError(
+                        {
+                            "data": (
+                                f"Prevádzka '{prevadzka.nazov}' nemá veľkosť "
+                                f"'{cat_name}' povolenú."
+                            )
+                        }
+                    )
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -574,6 +613,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         self._enforce_prevadzka_closure(
             user, input_status, validated_data["date"], prevadzka
         )
+        if input_status != "draft":
+            self._enforce_portion_types(prevadzka, validated_data.get("data", {}))
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -698,6 +739,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             self._validate_deadlines(
                 instance.date, new_data, input_status, instance.data
             )
+
+        if input_status != "draft" and instance.prevadzka_id:
+            self._enforce_portion_types(instance.prevadzka, new_data)
 
         if input_status == "draft":
             prevadzka = instance.prevadzka
