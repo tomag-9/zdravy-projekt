@@ -97,7 +97,10 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
                 )
             queryset = queryset.filter(prevadzka_id=prevadzka_id_int)
 
-        return queryset
+        # História objednávok v admin detaile prevádzky sa listuje po
+        # stránkach (najnovšie prvé) — bez explicitného poradia by DRV
+        # pagination vrátila riadky v poradí DB (id), nie podľa dátumu.
+        return queryset.order_by("-date")
 
     def get_throttles(self):
         if self.action == "create":

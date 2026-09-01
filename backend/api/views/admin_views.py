@@ -357,6 +357,9 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
             "prevadzka",
         )
         event_type = self.request.query_params.get("event_type", "").strip()
+        exclude_event_type = self.request.query_params.get(
+            "exclude_event_type", ""
+        ).strip()
         prevadzka = self.request.query_params.get("prevadzka", "").strip()
         actor = self.request.query_params.get("actor", "").strip()
         date_from = self.request.query_params.get("date_from", "").strip()
@@ -372,6 +375,12 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
                 if len(types) > 1
                 else queryset.filter(event_type=types[0])
             )
+        if exclude_event_type:
+            # Karta "Udalosti (audit)" nechce duplikovať objednávkové zmeny —
+            # tie majú vlastnú kartu "Objednávky" s vlastným filtrom podľa dňa
+            # a prevádzky, tu by len robili šum bez ich detailu.
+            excluded = [item for item in exclude_event_type.split(",") if item]
+            queryset = queryset.exclude(event_type__in=excluded)
         if prevadzka:
             try:
                 prevadzka_id = int(prevadzka)

@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from django.contrib.auth.models import User
 
 from api.models import (
     Celok,
@@ -62,10 +63,21 @@ def test_delete_celok_with_prevadzky_cascades(admin_client, admin_user):
         date=date.today(),
         data={},
     )
-    profile = UserProfile.objects.create(user=admin_user)
+    other_celok = Celok.objects.create(nazov="Iný celok, kam prístup ostáva")
+    other_prevadzka_2 = Prevadzka.objects.create(
+        celok=other_celok, nazov="Prevádzka iného celku"
+    )
+    login_user = User.objects.create_user(
+        username="klient@example.com", email="klient@example.com"
+    )
+    profile = UserProfile.objects.create(user=login_user)
     celok_access = ProfileCelokAccess.objects.create(profile=profile, celok=celok)
     prevadzka_access = ProfilePrevadzkaAccess.objects.create(
         profile=profile, prevadzka=other_prevadzka
+    )
+    # Prístup na iný, nemazaný celok — tento login nesmie byť dotknutý.
+    surviving_access = ProfilePrevadzkaAccess.objects.create(
+        profile=profile, prevadzka=other_prevadzka_2
     )
 
     response = admin_client.delete(f"/api/admin/celky/{celok.pk}/")
@@ -78,7 +90,88 @@ def test_delete_celok_with_prevadzky_cascades(admin_client, admin_user):
     assert not DailyOrder.objects.filter(pk=order.pk).exists()
     assert not ProfileCelokAccess.objects.filter(pk=celok_access.pk).exists()
     assert not ProfilePrevadzkaAccess.objects.filter(pk=prevadzka_access.pk).exists()
-    # Login itself survives — it just lost access, per issue #462.
+    # Login má ešte prístup na iný celok — nezmazalo sa (issue #520).
+    assert UserProfile.objects.filter(pk=profile.pk).exists()
+    assert ProfilePrevadzkaAccess.objects.filter(pk=surviving_access.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_celok_deletes_orphaned_client_login(admin_client):
+    """Issue #520: a klient login left with zero remaining access after the
+    cascade is deleted too — otherwise it's an invisible, undeletable-via-UI
+    orphan (neither FacilityManager nor AdminUserList lists it)."""
+    celok = Celok.objects.create(nazov="Celok na zmazanie 2")
+    Prevadzka.objects.create(celok=celok, nazov="Jediná prevádzka")
+    login_user = User.objects.create_user(
+        username="osirely@example.com", email="osirely@example.com"
+    )
+    # `_skip_default_facility` avoids the `on_user_profile_saved` signal handing
+    # this profile its own auto-created celok/prevádzka — we want it to end up
+    # with *zero* access once the one explicit grant below is cascaded away.
+    profile = UserProfile(user=login_user, role=UserProfile.Role.KLIENT)
+    profile._skip_default_facility = True
+    profile.save()
+    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+    response = admin_client.delete(f"/api/admin/celky/{celok.pk}/")
+
+    assert response.status_code == 204
+    assert not UserProfile.objects.filter(pk=profile.pk).exists()
+    assert not User.objects.filter(pk=login_user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_celok_never_deletes_internal_role_login(admin_client):
+    """Internal roles (admin/superadmin/kuchyňa) aren't tied 1:1 to facility
+    access, so an "orphaned" one is never auto-deleted, unlike a klient."""
+    celok = Celok.objects.create(nazov="Celok na zmazanie 3")
+    Prevadzka.objects.create(celok=celok, nazov="Jediná prevádzka")
+    login_user = User.objects.create_user(
+        username="kuchyna@example.com", email="kuchyna@example.com"
+    )
+    profile = UserProfile.objects.create(user=login_user, role=UserProfile.Role.KUCHYNA)
+    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+    response = admin_client.delete(f"/api/admin/celky/{celok.pk}/")
+
+    assert response.status_code == 204
+    assert UserProfile.objects.filter(pk=profile.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_prevadzka_deletes_orphaned_client_login(admin_client):
+    """Issue #520: same cleanup as celok delete, but for a single prevádzka —
+    a celok-level access (to a sibling prevádzka) must survive untouched."""
+    celok = Celok.objects.create(nazov="Celok s dvomi prevádzkami")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka na zmazanie")
+    Prevadzka.objects.create(celok=celok, nazov="Sesterská prevádzka")
+    login_user = User.objects.create_user(
+        username="len-tato@example.com", email="len-tato@example.com"
+    )
+    profile = UserProfile(user=login_user, role=UserProfile.Role.KLIENT)
+    profile._skip_default_facility = True
+    profile.save()
+    ProfilePrevadzkaAccess.objects.create(profile=profile, prevadzka=prevadzka)
+
+    response = admin_client.delete(f"/api/admin/facility-prevadzky/{prevadzka.pk}/")
+
+    assert response.status_code == 204
+    assert not UserProfile.objects.filter(pk=profile.pk).exists()
+
+
+@pytest.mark.django_db
+def test_delete_prevadzka_keeps_login_with_celok_level_access(admin_client):
+    celok = Celok.objects.create(nazov="Celok s celok-level prístupom")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka na zmazanie")
+    login_user = User.objects.create_user(
+        username="celok-level@example.com", email="celok-level@example.com"
+    )
+    profile = UserProfile.objects.create(user=login_user, role=UserProfile.Role.KLIENT)
+    ProfileCelokAccess.objects.create(profile=profile, celok=celok)
+
+    response = admin_client.delete(f"/api/admin/facility-prevadzky/{prevadzka.pk}/")
+
+    assert response.status_code == 204
     assert UserProfile.objects.filter(pk=profile.pk).exists()
 
 

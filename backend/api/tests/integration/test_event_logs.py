@@ -323,6 +323,25 @@ def test_event_log_endpoint_accepts_comma_separated_event_types(
 
 
 @pytest.mark.django_db
+def test_event_log_endpoint_can_exclude_event_types(admin_client, admin_user, user):
+    """Karta "Udalosti (audit)" nechce duplikovať objednávkové zmeny — tie majú
+    vlastnú kartu "Objednávky" (#548)."""
+    log_event(EventLog.EventType.ORDER_ADMIN_CREATE, actor=admin_user, target_user=user)
+    log_event(EventLog.EventType.ORDER_ADMIN_DELETE, actor=admin_user, target_user=user)
+    log_event(EventLog.EventType.SETTINGS_CHANGE, actor=admin_user)
+
+    response = admin_client.get(
+        "/api/admin/event-logs/",
+        {"exclude_event_type": "order_admin_create,order_admin_delete"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["event_type"] == EventLog.EventType.SETTINGS_CHANGE
+
+
+@pytest.mark.django_db
 def test_manual_and_cron_auto_order_runs_are_audited(admin_client, admin_user):
     manual_result = {"created": ["a@example.com"], "skipped": 2, "date": "2026-08-03"}
     with patch("api.services.apply_auto_orders", return_value=manual_result):

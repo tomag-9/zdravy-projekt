@@ -166,6 +166,7 @@ class Command(BaseCommand):
 
         if mode == "verify":
             # Only check
+            self._verify_auto_order()
             self._verify_tasks(gs)
             self._verify_push_tasks(gs)
             self._verify_weekly_task()
@@ -173,6 +174,7 @@ class Command(BaseCommand):
             return
 
         # Mode: fix
+        self._sync_auto_order(gs)
         self._sync_tasks(gs)
         self._sync_push_tasks(gs)
         self._sync_weekly_task()
@@ -383,6 +385,59 @@ class Command(BaseCommand):
         except Exception as exc:
             self.stdout.write(self.style.ERROR(f"✗ Failed to sync push tasks: {exc}"))
             logger.exception("Failed to sync push reminder tasks")
+
+    def _verify_auto_order(self):
+        """Auto-objednávka sa dosiaľ zakladala len cez `post_save` signál na
+        `GlobalSettings` — na produkcii, kde sa deadliny od nasadenia tejto
+        funkcie neupravovali, tak nikdy nevznikla. Tento príkaz beží pri
+        každom deployi (`deploy_bootstrap.py`), takže sem patrí rovnako ako
+        ostatné naplánované úlohy nižšie.
+
+        Jeden beh na skupinu jedál so zdieľanou uzávierkou (#548) — rovnako
+        ako push pripomienky, preto sa aj overuje rovnako (podľa prefixu,
+        nie podľa jedného pevného mena)."""
+        from django_celery_beat.models import PeriodicTask
+
+        from api.signals import AUTO_ORDER_TASK_PREFIX
+
+        self.stdout.write("\n--- Auto-objednávka (podľa skupiny uzávierok) ---")
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX)
+        )
+        if not tasks:
+            self.stdout.write(
+                self.style.ERROR(
+                    "✗ No auto-order tasks found!\n"
+                    "  Run 'python manage.py sync_periodic_tasks --fix' to create them."
+                )
+            )
+        else:
+            for task in tasks:
+                schedule = (
+                    f"{_format_crontab_time(task.crontab)} (tz: {task.crontab.timezone})"
+                    if task.crontab
+                    else "no schedule"
+                )
+                status = (
+                    self.style.SUCCESS("✓")
+                    if task.enabled
+                    else self.style.WARNING("⚠ disabled")
+                )
+                self.stdout.write(f"  {status} {task.name} → {schedule}")
+
+    def _sync_auto_order(self, gs):
+        from api.signals import _sync_auto_order_schedule
+
+        self.stdout.write("\n--- Syncing Auto-Order Task ---")
+        try:
+            _sync_auto_order_schedule(gs)
+            self.stdout.write(self.style.SUCCESS("✓ Auto-order task synced!"))
+            self._verify_auto_order()
+        except Exception as exc:
+            self.stdout.write(
+                self.style.ERROR(f"✗ Failed to sync auto-order task: {exc}")
+            )
+            logger.exception("Failed to sync auto-order task")
 
     def _verify_weekly_task(self):
         from django_celery_beat.models import PeriodicTask

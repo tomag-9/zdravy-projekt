@@ -566,6 +566,35 @@ describe('AdminOrderEditorModal', () => {
         expect(within(lunchCard).getAllByRole('button', { name: '+' })).toHaveLength(8);
     });
 
+    it('hides a menu restricted to another day of the week (Menu B, piatok only, on a Tuesday)', () => {
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                menuDayRestrictions={{ B: [5] }}
+                existingOrder={{ id: 1, date: '2099-03-03', data: {} }}
+            />,
+        );
+        fireEvent.click(screen.getByRole('switch', { name: /obed - prepnúť/i }));
+
+        const lunchCard = getMealCard('Obed');
+        // Bez Menu B: Jasle/Škôlka/ZŠ1/ZŠ2/Dospelý po jednom (len Menu A) = 5.
+        expect(within(lunchCard).getAllByRole('button', { name: '+' })).toHaveLength(5);
+    });
+
+    it('shows the restricted menu on the day it is allowed (Menu B, piatok only, on a Friday)', () => {
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                menuDayRestrictions={{ B: [5] }}
+                existingOrder={{ id: 1, date: '2099-03-06', data: {} }}
+            />,
+        );
+        fireEvent.click(screen.getByRole('switch', { name: /obed - prepnúť/i }));
+
+        const lunchCard = getMealCard('Obed');
+        expect(within(lunchCard).getAllByRole('button', { name: '+' })).toHaveLength(8);
+    });
+
     it('shows the full-day card and, once enabled, keeps meal cards visible with full-day status', () => {
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 

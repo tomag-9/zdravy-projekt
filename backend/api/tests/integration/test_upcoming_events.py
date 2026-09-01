@@ -2,7 +2,6 @@
 
 import json
 import zoneinfo
-from datetime import timedelta
 
 import pytest
 from django.utils.dateparse import parse_datetime
@@ -91,10 +90,10 @@ def test_next_run_matches_configured_local_time_not_shifted_by_utc_offset(
     next_run = parse_datetime(entry["next_run"])
     local = next_run.astimezone(zoneinfo.ZoneInfo("Europe/Bratislava"))
     # `crontab.remaining_estimate()` cieli pár mikrosekúnd PRED nastupujúcu
-    # minútu (aby beat stihol spustiť presne na hranici) — preto zaokrúhlené
-    # nahor, nie priame porovnanie .hour/.minute.
-    rounded = (local + timedelta(seconds=1)).replace(microsecond=0)
-    assert (rounded.hour, rounded.minute) == (1, 35)
+    # minútu (aby beat stihol spustiť presne na hranici) — `_next_run()` to
+    # zaokrúhľuje nahor na celú minútu, inak by admin v tabuľke videl čas
+    # o minútu skôr, než kedy úloha naozaj pobeží.
+    assert (local.hour, local.minute, local.second, local.microsecond) == (1, 35, 0, 0)
 
 
 @pytest.mark.django_db
@@ -140,6 +139,41 @@ def test_weekly_reminder_task_carries_a_text_preview(admin_client):
     )
     assert entry["push_preview"]["title"] == REMINDER_TITLE
     assert "budúci týždeň" in entry["push_preview"]["body"]
+
+
+@pytest.mark.django_db
+def test_deadline_lock_entries_group_meals_by_shared_deadline(admin_client):
+    """Appka uzávierku nevynucuje cronom, ale priebežne — "Nadchádzajúce" preto
+    dopĺňa syntetické riadky priamo z `GlobalSettings.deadline_*`, zoskupené
+    presne tak ako push pripomienka (#548): raňajky zvlášť (deň vopred), obed
+    a olovrant spolu (v deň podávania, keď zdieľajú deadline)."""
+    import datetime
+
+    from api.models import GlobalSettings
+
+    GlobalSettings.objects.update_or_create(
+        pk=1,
+        defaults={
+            "deadline_breakfast": datetime.time(21, 0),
+            "deadline_breakfast_is_day_before": True,
+            "deadline_lunch": datetime.time(7, 35),
+            "deadline_lunch_is_day_before": False,
+            "deadline_olovrant": datetime.time(7, 35),
+            "deadline_olovrant_is_day_before": False,
+        },
+    )
+
+    response = admin_client.get("/api/admin/upcoming-events/")
+
+    assert response.status_code == status.HTTP_200_OK
+    results = response.json()["results"]
+    lock_entries = {r["name"]: r for r in results if r["task"] == "order-lock"}
+
+    assert set(lock_entries) == {"order-lock-breakfast", "order-lock-lunch-olovrant"}
+    assert "raňajky" in lock_entries["order-lock-breakfast"]["description"]
+    assert "obed/olovrant" in lock_entries["order-lock-lunch-olovrant"]["description"]
+    for entry in lock_entries.values():
+        assert entry["next_run"] is not None
 
 
 @pytest.mark.django_db

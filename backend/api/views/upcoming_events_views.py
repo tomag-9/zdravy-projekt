@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import viewsets
@@ -77,9 +78,13 @@ _PUSH_PREVIEW_BUILDERS = {
 }
 
 
-def _next_run(periodic_task):
-    """Najbližší beh naplánovanej úlohy, alebo None ak sa nedá spočítať."""
-    schedule = periodic_task.schedule
+def _next_run_for_schedule(schedule, log_label):
+    """Najbližší beh daného rozvrhu, alebo None ak sa nedá spočítať.
+
+    Berie priamo `schedule` (celery `crontab`), nie `PeriodicTask` — vďaka
+    tomu vie počítať aj pre syntetické uzávierky nižšie, ktoré v DB žiadny
+    riadok nemajú (sú odvodené priamo z `GlobalSettings`, nie z vlastného cronu).
+    """
     if schedule is None:
         return None
     now = timezone.now()
@@ -93,12 +98,76 @@ def _next_run(periodic_task):
         # zopakovať ručne, lebo remaining_estimate() sám o sebe to nerobí.
         schedule_tz = getattr(schedule, "tz", None)
         reference = now.astimezone(schedule_tz) if schedule_tz else now
-        return now + schedule.remaining_estimate(reference)
+        next_run = now + schedule.remaining_estimate(reference)
+        # `remaining_estimate()` cieli pár mikrosekúnd PRED nastupujúcu minútu
+        # (aby Celery Beat stihol spustiť presne na hranici) — bez tejto
+        # korekcie admin v tabuľke videl čas o minútu skôr, než kedy úloha
+        # naozaj pobeží (viď regresný test na `next_run`).
+        return (next_run + timedelta(seconds=1)).replace(microsecond=0)
     except Exception:
-        logger.warning(
-            "upcoming-events: remaining_estimate zlyhal pre %s", periodic_task.name
-        )
+        logger.warning("upcoming-events: remaining_estimate zlyhal pre %s", log_label)
         return None
+
+
+def _next_run(periodic_task):
+    """Najbližší beh naplánovanej úlohy, alebo None ak sa nedá spočítať."""
+    return _next_run_for_schedule(periodic_task.schedule, periodic_task.name)
+
+
+def _deadline_lock_entries():
+    """Syntetické riadky uzávierky objednávok — kedy appka prestane prijímať
+    zmeny pre raňajky/obed/olovrant (#548).
+
+    Toto NIE JE cron: appka uzávierku vynucuje priebežne pri každej požiadavke
+    porovnaním s `GlobalSettings.deadline_*`, žiadna úloha ju "nespustí". Admin
+    v "Nadchádzajúcich" ale dovtedy videl len push pripomienku PRED uzávierkou
+    (`send_push_deadline_reminder_task`), nie moment uzávierky samotnej — preto
+    sa tu z tých istých polí dopočíta rovnako, ako to pre pripomienku aj
+    auto-objednávku robí `api.signals` (rovnaké zoskupenie podľa zhodného času
+    a `is_day_before`, rovnaká maska dní).
+    """
+    from django.conf import settings
+
+    try:
+        from django_celery_beat.models import CrontabSchedule
+    except ImportError:
+        return []
+
+    from ..cached_settings_service import get_global_settings
+    from ..signals import _day_of_week, _group_meals_by_deadline, _meal_types_label_sk
+
+    try:
+        gs = get_global_settings()
+    except Exception:
+        return []
+
+    entries = []
+    for (deadline, is_day_before), meal_types in _group_meals_by_deadline(gs).items():
+        meal_types = sorted(meal_types)
+        # Neuložený riadok — táto uzávierka nemá vlastnú DB úlohu, počíta sa
+        # len na zobrazenie, nemá zmysel ju ukladať.
+        schedule = CrontabSchedule(
+            minute=deadline.minute,
+            hour=deadline.hour,
+            day_of_week=_day_of_week(is_day_before),
+            day_of_month="*",
+            month_of_year="*",
+            timezone=settings.TIME_ZONE,
+        )
+        name = "order-lock-" + "-".join(meal_types)
+        entries.append(
+            {
+                "name": name,
+                "task": "order-lock",
+                "description": (
+                    f"Uzávierka objednávok ({_meal_types_label_sk(meal_types)}): "
+                    f"appka odteraz odmietne zmeny objednávky na tento deň "
+                    f"(uzávierka: {deadline.strftime('%H:%M')})."
+                ),
+                "next_run": _next_run_for_schedule(schedule.schedule, name),
+            }
+        )
+    return entries
 
 
 class AdminUpcomingEventsViewSet(viewsets.ViewSet):
@@ -130,6 +199,8 @@ class AdminUpcomingEventsViewSet(viewsets.ViewSet):
             if preview_builder is not None:
                 entry["push_preview"] = preview_builder(task, next_run)
             results.append(entry)
+
+        results.extend(_deadline_lock_entries())
 
         # Bez next_run (napr. nespočítateľný rozvrh) na koniec, nech tabuľka
         # zostane čitateľná zoradená podľa toho, čo príde skôr.

@@ -582,6 +582,51 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                         }
                     )
 
+    @staticmethod
+    def _enforce_menu_day_restrictions(
+        prevadzka: Prevadzka, order_date: datetime.date, data: Dict[str, Any]
+    ) -> None:
+        """Odmietni menu písmeno v deň, na ktorý ho prevádzka neobmedzila.
+
+        `menu_day_restrictions` je `{menu písmeno: [ISO deň, 1=pondelok..7=nedeľa]}`
+        — napr. `{"B": [5]}` = Menu B len v piatok. Chýbajúci kľúč alebo prázdny
+        zoznam = každý deň, rovnaká sémantika ako `filterMenusByDay` na frontende
+        (`useOrder.ts`). Bez tejto kontroly frontend len *skryje* zakázaný deň v
+        UI klienta — AdminOrderEditorModal aj priamy zápis do API ho vôbec
+        nepozná, takže by sa dal zapísať bez obmedzenia.
+        """
+        restrictions = prevadzka.menu_day_restrictions or {}
+        if not restrictions:
+            return
+        weekday = order_date.isoweekday()
+        for meal_key, meal in data.items():
+            if meal_key == DailyOrderSerializer._SPECIAL_DIET_NOTE_KEY:
+                continue
+            if not isinstance(meal, dict) or DailyOrderSerializer._is_leaf_payload(
+                meal
+            ):
+                continue
+            for cat_name, cat_data in meal.items():
+                if not isinstance(cat_data, dict):
+                    continue
+                menu_counts = cat_data.get("menuCounts")
+                if not isinstance(menu_counts, dict):
+                    continue
+                for menu_letter, count in menu_counts.items():
+                    allowed_days = restrictions.get(menu_letter)
+                    if not allowed_days:
+                        continue
+                    if (count or 0) > 0 and weekday not in allowed_days:
+                        raise serializers.ValidationError(
+                            {
+                                "data": (
+                                    f"Prevádzka '{prevadzka.nazov}' má menu "
+                                    f"'{menu_letter}' povolené len v iný deň "
+                                    "v týždni."
+                                )
+                            }
+                        )
+
     def create(self, validated_data: Dict[str, Any]) -> DailyOrder:
         """
         Upsert a DailyOrder for (user, date).
@@ -614,7 +659,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             user, input_status, validated_data["date"], prevadzka
         )
         if input_status != "draft":
-            self._enforce_portion_types(prevadzka, validated_data.get("data", {}))
+            order_data = validated_data.get("data", {})
+            self._enforce_portion_types(prevadzka, order_data)
+            self._enforce_menu_day_restrictions(
+                prevadzka, validated_data["date"], order_data
+            )
 
         # If status is passed as 'draft', we treat it as a deletion request
         # because we do not persist drafts.
@@ -755,6 +804,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         if input_status != "draft" and instance.prevadzka_id:
             self._enforce_portion_types(instance.prevadzka, new_data)
+            self._enforce_menu_day_restrictions(
+                instance.prevadzka, instance.date, new_data
+            )
 
         if input_status == "draft":
             prevadzka = instance.prevadzka

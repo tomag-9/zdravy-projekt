@@ -5,7 +5,7 @@ import OrderFormBody from '../client/components/order/OrderFormBody';
 import OrderSummary from '../client/components/order/OrderSummary';
 import PackSeparatelySelector from '../client/components/order/PackSeparatelySelector';
 import OrderService, { DailyOrder, MealData, PackTarget } from '../client/services/OrderService';
-import { getVisibleMenusForMeal as resolveVisibleMenusForMeal } from '../client/hooks/useOrder';
+import { filterMenusByDay, getVisibleMenusForMeal as resolveVisibleMenusForMeal } from '../client/hooks/useOrder';
 import { CATEGORIES } from '../client/config/constants';
 import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
@@ -29,6 +29,8 @@ interface Props {
     clientId?: string | number | null;
     prevadzkaId: string | number;
     visibleMenus: string[];
+    /** `{menu písmeno: [ISO deň, 1=pondelok..7=nedeľa]}` — napr. Menu B len v piatok. */
+    menuDayRestrictions?: Record<string, number[]> | null;
     visibleMeals: string[];
     visibleDiets: number[];
     portionTypeNames: string[];
@@ -155,6 +157,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     clientId,
     prevadzkaId,
     visibleMenus,
+    menuDayRestrictions,
     visibleMeals,
     visibleDiets,
     portionTypeNames,
@@ -182,9 +185,12 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         () => allDiets.filter((d) => visibleDiets.includes(d.id)).map((d) => d.name),
         [allDiets, visibleDiets],
     );
-    const visibleMenusForMeal = (meal: MealKey) => resolveVisibleMenusForMeal(meal, visibleMenus);
-
     const [date, setDate] = useState<string>(existingOrder?.date ?? OrderService.toLocalDateString(new Date()));
+    // Menu B napr. "len v piatok" (#menu_day_restrictions) — editor predtým
+    // toto obmedzenie vôbec nepoznal, takže admin vedel zapísať zakázaný deň
+    // aj tam, kde ho klientský OrderPage už dávno skrýva.
+    const visibleMenusForMeal = (meal: MealKey) =>
+        filterMenusByDay(resolveVisibleMenusForMeal(meal, visibleMenus), menuDayRestrictions, date);
     const [order, setOrder] = useState<DailyOrder>(() => buildInitialOrder(categories, existingOrder));
     const [fullDayOrder, setFullDayOrder] = useState(false);
     const [fullDayData, setFullDayData] = useState<MealData>(() => {
