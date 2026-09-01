@@ -405,6 +405,7 @@ def apply_auto_orders_task(self, date_str: str | None = None):
     try:
         import datetime
 
+        from api.cache_service import clear_gramage_dashboard_cache
         from api.models import EventLog
         from api.services import apply_auto_orders
         from api.services.event_log_service import log_event
@@ -425,6 +426,9 @@ def apply_auto_orders_task(self, date_str: str | None = None):
                 return {"skipped": True, "reason": reason}
 
         result = apply_auto_orders(target_date)
+        # Deadline práve pridal auto-objednávky — gramage dashboard by ich
+        # ešte 5 minút neukazoval, keby cache ostala z pred deadline.
+        clear_gramage_dashboard_cache(result["date"])
         log_event(
             EventLog.EventType.AUTO_ORDER_RUN,
             actor_label="cron",
@@ -625,6 +629,7 @@ def scrape_edupage_orders_task(
         from django.db import transaction
         from django.utils import timezone
 
+        from api.cache_service import clear_gramage_dashboard_cache
         from api.edupage_scraper import (
             EdupageScraper,
             allowed_diet_names,
@@ -886,6 +891,11 @@ def scrape_edupage_orders_task(
                         }
                         order.save(update_fields=["data", "scrape_flags", "updated_at"])
                     scraped += 1
+
+        # Scrape prepísal DailyOrder.data pre tieto dni — gramage dashboard by
+        # ich inak mohol ešte 5 minút ukazovať s počtami spred scrapu.
+        for target_date in date_to_meals:
+            clear_gramage_dashboard_cache(str(target_date))
 
         summary = {
             "scraped": scraped,

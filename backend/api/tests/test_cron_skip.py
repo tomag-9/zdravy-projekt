@@ -87,6 +87,27 @@ def test_apply_auto_orders_task_runs_on_explicit_date_even_on_weekend(monkeypatc
 
 
 @pytest.mark.django_db
+def test_apply_auto_orders_task_clears_gramage_dashboard_cache(monkeypatch):
+    """Deadline práve pridal auto-objednávky — cache gramage dashboardu z pred
+    deadline by ich ešte 5 minút neukazovala, tak sa musí zahodiť."""
+    from django.core.cache import cache
+
+    from api.cache_service import get_gramage_dashboard_cache_key, set_cached
+
+    monkeypatch.setattr(
+        "api.services.apply_auto_orders",
+        lambda target_date: {"date": str(target_date), "created": [], "skipped": 0},
+    )
+
+    cache_key = get_gramage_dashboard_cache_key(SATURDAY.isoformat())
+    set_cached(cache_key, {"stale": True}, timeout=300)
+
+    apply_auto_orders_task.run(date_str=SATURDAY.isoformat())
+
+    assert cache.get(cache_key) is None
+
+
+@pytest.mark.django_db
 def test_apply_auto_orders_task_skips_past_a_holiday_on_the_resolved_target(
     monkeypatch,
 ):
