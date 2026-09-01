@@ -343,6 +343,53 @@ const AdminDashboard: React.FC = () => {
       <PageHead
         eyebrow="Tabuľka"
         title="Gramáž jedál"
+        titleExtra={
+          // Dátumový prepínač — vpravo od nadpisu, kompaktne, nech tabuľka
+          // dole dostane čo najviac výšky (nie je to vlastný riadok pod ním).
+          <Card className="zpa-datenav-card">
+            <div className="zpa-datenav zpa-datenav--compact">
+              <button
+                className="zpa-navchip"
+                onClick={() => setDate(prevWeekday(date))}
+                disabled={closing || unlocking}
+                aria-label="Predchádzajúci deň"
+                title="Predchádzajúci deň"
+              >
+                <ChevronLeft />
+              </button>
+              <div className="mid">
+                <input
+                  type="date" value={date} max={maxDate}
+                  disabled={closing || unlocking}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    if (!isWeekday(new Date(val + "T12:00:00"))) return;
+                    if (val <= maxDate) setDate(val);
+                  }}
+                  className="zpa-input"
+                  style={{ width: "auto" }}
+                />
+                {date === actualToday && <Badge tone="orange">Dnes</Badge>}
+                {date === maxDate && date !== actualToday && date > actualToday && (
+                  <Badge tone="orange">Zajtra</Badge>
+                )}
+                {date === maxDate && date !== actualToday && date < actualToday && (
+                  <Badge tone="gray">Posledný pracovný deň</Badge>
+                )}
+              </div>
+              <button
+                className="zpa-navchip"
+                onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
+                disabled={isAtMax || closing || unlocking}
+                aria-label="Nasledujúci deň"
+                title="Nasledujúci deň"
+              >
+                <ChevronRight />
+              </button>
+            </div>
+          </Card>
+        }
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
           <>
@@ -370,43 +417,6 @@ const AdminDashboard: React.FC = () => {
       />
 
       <div className="zpa-stack">
-        {/* Date navigator */}
-        <Card>
-          <div className="zpa-datenav">
-            <button className="zpa-navchip" onClick={() => setDate(prevWeekday(date))} disabled={closing || unlocking}>
-              <ChevronLeft /> Predchádzajúci deň
-            </button>
-            <div className="mid">
-              <input
-                type="date" value={date} max={maxDate}
-                disabled={closing || unlocking}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (!val) return;
-                  if (!isWeekday(new Date(val + "T12:00:00"))) return;
-                  if (val <= maxDate) setDate(val);
-                }}
-                className="zpa-input"
-                style={{ width: "auto" }}
-              />
-              {date === actualToday && <Badge tone="orange">Dnes</Badge>}
-              {date === maxDate && date !== actualToday && date > actualToday && (
-                <Badge tone="orange">Zajtra</Badge>
-              )}
-              {date === maxDate && date !== actualToday && date < actualToday && (
-                <Badge tone="gray">Posledný pracovný deň</Badge>
-              )}
-            </div>
-            <button
-              className="zpa-navchip"
-              onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
-              disabled={isAtMax || closing || unlocking}
-            >
-              Nasledujúci deň <ChevronRight />
-            </button>
-          </div>
-        </Card>
-
         {/* Content */}
         {loading && <Empty>Načítavam dáta…</Empty>}
 
@@ -608,27 +618,6 @@ const toggleSelection = (current: string[], value: string, all: string[]): strin
   return next.length === all.length ? [] : next;
 };
 
-const FilterRow: React.FC<{
-  label: string;
-  items: Array<{ key: string; label: string; selected: boolean }>;
-  onToggle: (key: string) => void;
-}> = ({ label, items, onToggle }) => (
-  <div className="row">
-    <span className="lbl">{label}</span>
-    {items.map((item) => (
-      <button
-        key={item.key}
-        type="button"
-        className={`chip${item.selected ? " on" : ""}`}
-        aria-pressed={item.selected}
-        onClick={() => onToggle(item.key)}
-      >
-        {item.label}
-      </button>
-    ))}
-  </div>
-);
-
 /**
  * Vlastný multi-select dropdown pre clustre — natívny <select> nešiel poriadne
  * ofarbiť (zoznam možností kreslí prehliadač po svojom, na tmavom pozadí to
@@ -726,17 +715,28 @@ const PrintFilter: React.FC<{
   const allSelected = sections.every((section) => section.selected) && selectedVydaje.length === 0;
   return (
     <div className="zpa-section-filter">
-      <FilterRow
-        label="Jedlá"
-        items={sections.map((section) => ({ ...section, key: section.key }))}
-        onToggle={onToggleSection}
-      />
-      {vydaje.length > 1 && (
-        <div className="row">
-          <span className="lbl">Cluster</span>
-          <ClusterFilter vydaje={vydaje} selected={selectedVydaje} onChange={onVydajeChange} />
-        </div>
-      )}
+      {/* Cluster výber ide v tom istom riadku ako filter jedál — nie je to
+       * ďalší samostatný riadok navyše. */}
+      <div className="row">
+        <span className="lbl">Jedlá</span>
+        {sections.map((section) => (
+          <button
+            key={section.key}
+            type="button"
+            className={`chip${section.selected ? " on" : ""}`}
+            aria-pressed={section.selected}
+            onClick={() => onToggleSection(section.key)}
+          >
+            {section.label}
+          </button>
+        ))}
+        {vydaje.length > 1 && (
+          <>
+            <span className="lbl zpa-cluster-lbl">Cluster</span>
+            <ClusterFilter vydaje={vydaje} selected={selectedVydaje} onChange={onVydajeChange} />
+          </>
+        )}
+      </div>
       <div className="row">
         <span className="hint">
           {allSelected
