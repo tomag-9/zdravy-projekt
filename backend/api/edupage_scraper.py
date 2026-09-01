@@ -74,6 +74,11 @@ PORTION_CODE_MAP = {
     "2": "ZŠ 2.stupeň",
     "3": "Dospelý (SŠ)",
     "4": "Dospelý (SŠ)",
+    # British School má pre učiteľov vlastný porcia kód (payer skupiny "Učiteľ
+    # Klasik"/"Učiteľ VEGE") — bez tohto by neznámy kód spadol na
+    # DEFAULT_PORTION_NAME ("Škôlka") a učitelia by dostávali MŠ porcie
+    # namiesto dospelých (systémová kontrola 1.9.2026).
+    "5": "Dospelý (SŠ)",
 }
 
 PREDSKOLAK_PORTION_NAME = "Predškolák"
