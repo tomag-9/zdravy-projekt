@@ -742,10 +742,26 @@ const ClientDetail: React.FC = () => {
                                           const dietEntries = Object.entries(diets)
                                             .filter(([, count]) => Number(count) > 0)
                                             .sort(([a], [b]) => a.localeCompare(b, "sk"));
+                                          // Rovnako súhrn nepovedal, koľko bolo z ktorého menu písmena
+                                          // (napr. Menu B pre dospelých) — rozpíš aj tie, keď je z čoho
+                                          // vyberať (jedno jediné písmeno by len duplikovalo súhrn).
+                                          const menuEntries = Object.entries(menuCounts)
+                                            .filter(([, count]) => Number(count) > 0)
+                                            .sort(([a], [b]) => {
+                                              return ALL_MENUS.includes(a) && ALL_MENUS.includes(b)
+                                                ? ALL_MENUS.indexOf(a) - ALL_MENUS.indexOf(b)
+                                                : a.localeCompare(b, "sk");
+                                            });
                                           if (Number(totalPortions) > 0) {
                                             items.push(
                                               <div key={catName} style={{ display: "flex", flexDirection: "column", marginBottom: 4, borderBottom: "1px solid var(--line-soft)", paddingBottom: 4 }}>
                                                 <span style={{ fontWeight: 600, color: "var(--ink-1)" }}>{String(totalPortions)}x {catName}</span>
+                                                {menuEntries.length > 1 && menuEntries.map(([menu, count]) => (
+                                                  <span key={`menu-${menu}`} style={{ fontSize: 12, color: "var(--ink-mute)", paddingLeft: 8, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                                    <span aria-hidden="true">•</span>
+                                                    <span>{String(count)}x Menu {menu}</span>
+                                                  </span>
+                                                ))}
                                                 {dietEntries.map(([dietName, count]) => {
                                                   const diet = dietByName.get(dietName);
                                                   return (
