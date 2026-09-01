@@ -519,6 +519,14 @@ class MealPlanService:
             for diet in active_diets
             if diet.base_diets.exists()
         }
+        # #2 — poznámka ku konkrétnej diéte (napr. "NoGluten – kontrolovať s
+        # rodičom"), nastavená v Správe diét (`Diet.description`). Predtým sa
+        # ukazovala len tam, kuchyňa ju v gramážnej tabuľke/PDF nevidela.
+        diet_description_map = {
+            diet.name: diet.description.strip()
+            for diet in active_diets
+            if (diet.description or "").strip()
+        }
 
         def _normalize_variant(value: object) -> str:
             variant = str(value or "").strip()
@@ -1568,4 +1576,5 @@ class MealPlanService:
             "count_summary": count_summary,
             "diet_colors": diet_color_map,
             "diet_base_colors": diet_base_color_map,
+            "diet_descriptions": diet_description_map,
         }

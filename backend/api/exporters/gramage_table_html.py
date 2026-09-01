@@ -98,6 +98,9 @@ def _cell(cell: dict) -> str:
         inner = text
         if cell.get("swatch"):
             inner = _swatch(cell["swatch"]) + inner
+        note = cell.get("note")
+        if note:
+            inner += f'<span class="diet-note-inline"> — {escape(str(note))}</span>'
         count = escape(str(cell["count"]))
         body = (
             f'<span class="lbl-line"><span>{inner}</span>'

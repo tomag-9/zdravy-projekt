@@ -652,6 +652,11 @@ def _client_rows(
                 "color": f"#{diet_color(data, sub_row)}",
                 "base_colors": sub_row.get("diet_base_colors") or [],
             }
+            # #2 — poznámka ku konkrétnej diéte (Diet.description), nastavená
+            # v Správe diét. Kuchyňa ju predtým videla len tam, teraz aj tu.
+            cell["note"] = (data.get("diet_descriptions") or {}).get(
+                sub_row.get("diet_name")
+            )
         out.append(
             {
                 "kind": "sub-row",
@@ -722,6 +727,7 @@ def _client_rows(
                             "color": f"#{hex_color}",
                             "base_colors": diet.get("base_colors") or [],
                         },
+                        note=(data.get("diet_descriptions") or {}).get(name),
                     )
                 ]
                 + _gram_cells(

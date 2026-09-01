@@ -257,6 +257,30 @@ def test_client_row_note_column_is_empty_without_a_prevadzka_note():
     assert client["cells"][1]["text"] == ""
 
 
+def test_diet_sub_row_and_summary_show_the_diet_description():
+    """#2 — poznámka ku konkrétnej diéte (Diet.description) je vidno hneď pri
+    diéte, v sub-riadku aj v jej rozbalenom súčte, nielen v Správe diét."""
+    payload = _payload(diet_descriptions={"No Milk": "kontrolovať s rodičom"})
+    spec = build_table_spec(payload)
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0]["note"] == "kontrolovať s rodičom"
+
+    diet_summary_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_summary_row["cells"][0]["note"] == "kontrolovať s rodičom"
+
+
+def test_diet_note_is_absent_when_no_description_is_set():
+    spec = build_table_spec(_payload())
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0].get("note") is None
+
+
 def test_empty_routes_are_skipped():
     payload = _payload(
         vydaje=[

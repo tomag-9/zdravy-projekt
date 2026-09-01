@@ -304,7 +304,7 @@ const DietManager: React.FC = () => {
                 placeholder="Názov novej diéty (napr. Bez lepku)"
               />
             </Field>
-            <Field label="Popis">
+            <Field label="Popis" hint="zobrazí sa v gramážnej tabuľke aj PDF priamo pri diéte">
               <Input
                 value={newDietDescription}
                 onChange={(e) => setNewDietDescription(e.target.value)}
@@ -544,7 +544,7 @@ const DietManager: React.FC = () => {
               onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, sortOrder: Number(e.target.value) || 0 } : prev))}
             />
           </Field>
-          <Field label="Popis">
+          <Field label="Popis" hint="zobrazí sa v gramážnej tabuľke aj PDF priamo pri diéte">
             <Textarea
               value={renameModal.description}
               onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, description: e.target.value } : prev))}

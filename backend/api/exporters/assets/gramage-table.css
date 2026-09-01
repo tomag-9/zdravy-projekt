@@ -170,6 +170,10 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .sub-row.diet .lbl { font-style: italic; font-size: 12px; padding-left: 24px; }
 .zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .zpa-gram .lbl-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* #2 — poznámka ku konkrétnej diéte (Diet.description zo Správy diét).
+ * Zdieľa riadok s názvom diéty — pri dlhšom texte sa oreže elipsou (viď
+ * pravidlo vyššie), aby nenaťahovala výšku riadku. */
+.zpa-gram .diet-note-inline { font-weight: 500; font-style: normal; opacity: 0.8; }
 .zpa-gram .count-badge {
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
     min-width: 24px; height: 19px; padding: 0 6px; border-radius: var(--radius-pill);

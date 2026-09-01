@@ -78,6 +78,7 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
                 </span>
               )}
               {cell.text}
+              {cell.note && <span className="diet-note-inline"> — {cell.note}</span>}
             </span>
             <span className="count-badge">{cell.count}</span>
           </span>
