@@ -318,12 +318,11 @@ class TestGramageDashboardExports:
         html = render_table(build_table_spec(data))
 
         assert "<strong>Rozvoz:</strong> zadný vchod" in html
-        # Poznámka prevádzky žije hneď za názvom na klientskom riadku, nie
-        # v samostatnom (vždy prázdnom) stĺpci Poznámka — dlhší text by tam
-        # zalamoval riadok. Vlastný sub-riadok už nemá — bol by to ten istý
-        # text dvakrát.
-        assert '<span class="client-note-inline">bez cibule</span>' in html
-        assert '<td class="cell-note meal-sep"></td>' in html
+        # Poznámka prevádzky žije hneď za názvom a počtami na klientskom riadku
+        # (oddelená lomítkom), nie v samostatnom stĺpci — ten bol zrušený, dlhší
+        # text by v ňom zalamoval riadok. Vlastný sub-riadok už nemá — bol by
+        # to ten istý text dvakrát.
+        assert ' / <span class="client-note-inline">bez cibule</span>' in html
         assert "Poznámka k objednávke:" not in html
 
     def test_diet_with_a_description_shows_it_next_to_the_diet_in_html(self):

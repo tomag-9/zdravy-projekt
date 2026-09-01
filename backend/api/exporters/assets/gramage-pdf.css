@@ -165,10 +165,6 @@ h1 small {
  * miest naraz a každé chce svoju tabuľku, nie polovicu spoločnej strany. */
 .zpa-gram tr.page-break { break-before: page; page-break-before: always; }
 
-/* Poznámkový stĺpec musí ostať dosť široký, aby sa doň dalo písať rukou. */
-.zpa-gram .cell-note,
-.zpa-gram thead .grp-note,
-.zpa-gram thead .comp-note { width: 22mm; }
 .zpa-gram thead .mealband { font-size: 8pt; padding: 1.2mm; }
 
 /* `tfoot` je štandardne table-footer-group a zopakoval by sa na konci každej
