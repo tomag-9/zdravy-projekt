@@ -422,7 +422,7 @@ const AdminDashboard: React.FC = () => {
         )}
 
         {!loading && data && hasData && (
-          <>
+          <div className="zpa-gram-fill">
             <PrintFilter
               sections={data.spec.sections}
               vydaje={data.spec.vydaje ?? []}
@@ -442,8 +442,8 @@ const AdminDashboard: React.FC = () => {
                 setSelectedVydaje([]);
               }}
             />
-            <GramageTable spec={data.spec} onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
-          </>
+            <GramageTable spec={data.spec} fill onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
+          </div>
         )}
         {!loading && data && !hasData && hasOrderCounts && orderReport && (
           <OrderCountsTable report={orderReport} />

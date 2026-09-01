@@ -178,6 +178,18 @@ export function EventTime({ value }: { value: string }) {
     );
 }
 
+/** Dátum objednávky (`payload.date`), na ktorú sa úprava vzťahuje — nie čas
+ * zápisu do logu, ktorý je v stĺpci "Čas". Je to obyčajný dátum bez času,
+ * preto sa formátuje bez prevodu časového pásma (ten by ho pri polnoci vedel
+ * posunúť o deň). */
+function orderDayLabel(payload: Record<string, unknown>): string {
+    const raw = payload.date;
+    if (typeof raw !== 'string') return '—';
+    const [year, month, day] = raw.split('-');
+    if (!year || !month || !day) return raw;
+    return `${day}.${month}.${year}`;
+}
+
 function levelTone(level: string): BadgeTone {
     if (level === 'CRITICAL' || level === 'ERROR') return 'coral';
     if (level === 'WARNING') return 'honey';
@@ -512,7 +524,7 @@ export default function AdminLogs() {
                             ) : (
                                 <div className="zpa-table-wrap">
                                     <table className="zpa-table">
-                                        <thead><tr><th>Čas (BA)</th><th>Zmena</th><th>Prevádzka</th><th>Kto</th><th>Koľko čoho</th><th /></tr></thead>
+                                        <thead><tr><th>Čas (BA)</th><th>Zmena</th><th>Deň objednávky</th><th>Prevádzka</th><th>Kto</th><th>Koľko čoho</th><th /></tr></thead>
                                         <tbody>
                                             {orderEvents.map((entry) => {
                                                 const isExpanded = expandedOrders.has(entry.id);
@@ -525,6 +537,7 @@ export default function AdminLogs() {
                                                                     {orderActionLabel(entry.event_type)}
                                                                 </span>
                                                             </td>
+                                                            <td>{orderDayLabel(entry.payload)}</td>
                                                             <td>{entry.prevadzka_nazov || (entry.prevadzka ? `#${entry.prevadzka}` : '—')}</td>
                                                             <td>{actorDisplay(entry)}</td>
                                                             <td>{summarizeOrderMeals(entry.payload)}</td>
@@ -536,7 +549,7 @@ export default function AdminLogs() {
                                                         </tr>
                                                         {isExpanded && (
                                                             <tr>
-                                                                <td colSpan={6}>
+                                                                <td colSpan={7}>
                                                                     <div style={{ marginBottom: 8, color: 'var(--ink-mute)' }}>{entry.summary}</div>
                                                                     <EventPayloadDetails payload={entry.payload} />
                                                                 </td>

@@ -379,7 +379,7 @@ describe("GramageTable renders straight from the spec", () => {
     expect(screen.queryByText("Škôlka - Obed Menu A")).not.toBeInTheDocument();
   });
 
-  it("shows the prevádzka note in the note column even while collapsed (#513)", async () => {
+  it("shows the prevádzka note right after the client name even while collapsed (#513)", async () => {
     const withNote = {
       ...GRAMAGE_WITH_ROWS,
       spec: {
@@ -388,8 +388,7 @@ describe("GramageTable renders straight from the spec", () => {
           {
             ...GRAMAGE_WITH_ROWS.spec.rows[0],
             cells: [
-              { ...GRAMAGE_WITH_ROWS.spec.rows[0].cells[0], colspan: 1 },
-              { text: "bez cibule", css: "cell-note client-note" },
+              { ...GRAMAGE_WITH_ROWS.spec.rows[0].cells[0], note: "bez cibule" },
             ],
           },
           ...GRAMAGE_WITH_ROWS.spec.rows.slice(1),

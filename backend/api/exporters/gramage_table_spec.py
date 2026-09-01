@@ -33,9 +33,6 @@ EMPTY = "—"
 # pevnú, na kombinácii nezávislú farbu. Text riadku ostáva farbou prvej diéty.
 COMBO_DIET_FALLBACK_BACKGROUND = "F97316"
 
-# Prázdny stĺpec na ručné poznámky pri tlači (požiadavka prevádzky 17. 8. 2026).
-NOTE_COLUMN_LABEL = "Poznámka"
-
 # Ktoré stĺpcové skupiny patria pod ktoré jedlo. Kuchyňa čítala tabuľku ako jeden
 # pás stĺpcov a hľadala, kde končia raňajky a začína obed — hlavička preto nesie
 # ešte jednu, nadradenú úroveň s názvom jedla.
@@ -116,15 +113,6 @@ def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> li
     return keep or list(range(len(col_groups)))
 
 
-def _note_cell() -> dict:
-    """Prázdna bunka posledného stĺpca — miesto na ručnú poznámku vo vytlačenej
-    tabuľke. Nesie `meal-sep`, rovnako ako hlavička nad ňou (`grp-note`/`comp-note`)
-    — inak by oddeľovacia čiara medzi posledným jedlom a Poznámkou chýbala, hoci
-    medzi všetkými ostatnými jedlami je. Vracia sa nová inštancia, nie zdieľaný
-    dict, nech si ju renderer nemôže omylom premutovať naprieč riadkami."""
-    return {"text": "", "css": "cell-note meal-sep"}
-
-
 def _gram_cells(
     col_grams: list,
     groups: list[dict],
@@ -159,7 +147,6 @@ def _gram_cells(
                         "css": f"cell-num mh-{hue}-cell{separator}",
                     }
                 )
-    cells.append(_note_cell())
     return cells
 
 
@@ -239,6 +226,101 @@ def _totals_from_summary(summary: list[dict]) -> list[list]:
     ]
 
 
+def _sum_col_grams(left: list, right: list) -> list:
+    """Sčíta dve serializované gramážové mriežky (list skupín × komponentov).
+
+    Rovnaká logika ako `MealPlanService._sum_col_grams` (delenie polievky) —
+    kopíruje sa sem, aby si tento modul nemusel ťahať závislosť na
+    `meal_plan_service` len kvôli jednej pomocnej funkcii.
+    """
+    result = []
+    for left_group, right_group in zip(left, right):
+        if not left_group:
+            result.append(right_group)
+        elif not right_group:
+            result.append(left_group)
+        else:
+            result.append(
+                [
+                    str((Decimal(a) + Decimal(b)).quantize(Decimal("0.01")))
+                    for a, b in zip(left_group, right_group)
+                ]
+            )
+    return result
+
+
+def _aggregate_diet_summary(rows_for_summary: list[dict]) -> list[dict]:
+    """Diétny súhrn naprieč viacerými klientskymi riadkami (pre Sumár X/dokopy).
+
+    Každý klientský riadok už nesie vlastný `diet_summary_rows` (count +
+    col_grams per diéta v tom riadku) — táto funkcia ich len sčíta naprieč
+    zadanou skupinou, rovnako ako sa per-klient diéty sčítavajú vnútri
+    jedného riadku.
+    """
+    totals: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows_for_summary:
+        for diet in row.get("diet_summary_rows") or []:
+            name = str(diet.get("name") or "")
+            if not name:
+                continue
+            if name not in totals:
+                totals[name] = {
+                    "name": name,
+                    "color": diet.get("color"),
+                    "base_colors": diet.get("base_colors") or [],
+                    "count": Decimal("0"),
+                    "col_grams": [[] for _ in (diet.get("col_grams") or [])],
+                }
+                order.append(name)
+            entry = totals[name]
+            entry["count"] += _as_decimal(diet.get("count"))
+            entry["col_grams"] = _sum_col_grams(
+                entry["col_grams"], diet.get("col_grams") or []
+            )
+    return [totals[name] for name in order]
+
+
+def _diet_breakdown_rows(
+    rows_for_summary: list[dict],
+    data: dict,
+    groups: list[dict],
+    hues: list[str],
+) -> list[dict]:
+    """Riadky „koľko z ktorej diéty" pod daným súhrnom (Sumár 1/2/1a2/dokopy).
+
+    Vizuálne totožné s per-klientským diétnym súhrnom (`summary-diet`), len
+    sčítané naprieč všetkými klientmi v danej skupine — admin/kuchyňa vidí
+    diétny rozpad aj na úrovni celého klastra/dňa, nielen jedného klienta.
+    """
+    out: list[dict] = []
+    for diet in _aggregate_diet_summary(rows_for_summary):
+        if not diet["count"]:
+            continue
+        text_hex, background_hex = _diet_text_and_background(data, diet)
+        out.append(
+            {
+                "kind": "summary-diet",
+                "css": "summ-diet",
+                "color": f"#{readable_text_color(text_hex)}",
+                "background": f"#{blend_with_white(background_hex)}",
+                "cells": [
+                    _label_cell(
+                        diet["name"],
+                        diet["count"],
+                        swatch={
+                            "color": f"#{diet_color(data, diet)}",
+                            "base_colors": diet.get("base_colors") or [],
+                        },
+                        note=(data.get("diet_descriptions") or {}).get(diet["name"]),
+                    )
+                ]
+                + _gram_cells(diet.get("col_grams") or [], groups, hues),
+            }
+        )
+    return out
+
+
 def build_table_spec(
     data: dict,
     sections: list[str] | None = None,
@@ -259,8 +341,8 @@ def build_table_spec(
     hues = [meal_hue(g.get("meal"), g.get("variant")) for _, g in groups]
 
     total_components = sum(len(g.get("components") or []) for _, g in groups)
-    # 1 = názov prevádzky/riadku, +1 = prázdny stĺpec „Poznámka" na konci.
-    total_columns = 1 + total_components + 1
+    # 1 = názov prevádzky/riadku.
+    total_columns = 1 + total_components
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
@@ -328,6 +410,7 @@ def build_table_spec(
                     total_columns,
                 )
             )
+            rows.extend(_diet_breakdown_rows(vydaj_rows, data, groups, hues))
             # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
             # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
             # bez tretieho klastra). Zmysel má, až keď je aj tretí (British
@@ -343,6 +426,7 @@ def build_table_spec(
                         total_columns,
                     )
                 )
+                rows.extend(_diet_breakdown_rows(first_two_rows, data, groups, hues))
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
@@ -383,9 +467,11 @@ def build_table_spec(
         ]
         footer_summary = portion_summary(data, visible_rows)
         footer_totals = _totals_from_summary(footer_summary)
+        footer_rows = visible_rows
     else:
         footer_summary = portion_summary(data)
         footer_totals = data.get("totals") or []
+        footer_rows = data.get("rows") or []
 
     footer = _portion_summary_rows(
         "Sumár dokopy",
@@ -395,6 +481,7 @@ def build_table_spec(
         hues,
         total_columns,
     )
+    footer.extend(_diet_breakdown_rows(footer_rows, data, groups, hues))
     footer.append(_totals_row(footer_totals, keep, groups, hues))
     # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
     # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
@@ -468,8 +555,6 @@ def _meal_band_cells(groups: list[dict]) -> list[dict]:
         cells.append(
             {"text": label, "css": f"mealband {css}{separator}", "colspan": span}
         )
-    if cells:
-        cells.append({"text": "", "css": "mealband mb-note meal-sep", "colspan": 1})
     return cells
 
 
@@ -498,15 +583,6 @@ def _build_header(groups: list[dict], hues: list[str]) -> dict:
                     "css": f"comp mh-{hues[position]}-2{component_separator}",
                 }
             )
-    group_cells.append(
-        {
-            "text": NOTE_COLUMN_LABEL,
-            "sub": "",
-            "css": "grp grp-note meal-sep",
-            "colspan": 1,
-        }
-    )
-    component_cells.append({"text": "", "sub": "", "css": "comp comp-note meal-sep"})
     return {
         "corner": "Prevádzka / Riadok",
         "meals": _meal_band_cells(groups),
@@ -597,8 +673,8 @@ def _client_rows(
     # sub-riadok už nie je, aby text nebol v tabuľke dvakrát. Pôvodne šla do
     # samostatného úzkeho stĺpca Poznámka — dlhší text tam ale zalamoval
     # a naťahoval riadok na viacero riadkov (klient hlásenie), preto ide
-    # rovno za názov prevádzky; stĺpec Poznámka ostáva prázdny na rukou
-    # písané poznámky kuchyne.
+    # rovno za názov prevádzky; samostatný stĺpec Poznámka je odvtedy zbytočný
+    # a bol zrušený.
     admin_order_note = str(row.get("admin_order_note") or "").strip()
     # Poznámka k „Špeciálnej" diéte — kuchyňa inak nemá odkiaľ vedieť, čo pre
     # dieťa nabrať (samotný názov diéty „Špeciálna" nič nehovorí). Ide do tej
@@ -627,9 +703,8 @@ def _client_rows(
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
-                    "colspan": total_columns - 1,
+                    "colspan": total_columns,
                 },
-                _note_cell(),
             ],
         }
     ]
@@ -775,7 +850,6 @@ def _totals_row(
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             cells.append({"text": text or EMPTY, "css": separator.strip()})
-    cells.append(_note_cell())
     return {
         "kind": "total",
         "css": "total",

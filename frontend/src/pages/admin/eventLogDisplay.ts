@@ -19,9 +19,10 @@ export const EVENT_TONES: Record<string, BadgeTone> = {
     auto_order_run: 'teal',
     cron_skipped: 'gray',
     cron_failed: 'coral',
-    // objednávky
+    // objednávky — vytvorenie zelené, úprava oranžová, zmazanie červené (#548),
+    // nech sa dá skenovať očami aj bez čítania textu odznaku.
     order_admin_create: 'green',
-    order_admin_update: 'green',
+    order_admin_update: 'orange',
     order_admin_delete: 'coral',
     // ostatné úkony
     settings_change: 'orange',

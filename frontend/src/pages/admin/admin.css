@@ -271,6 +271,40 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
 .zpa-content--wide {
     max-width: min(1840px, calc(100vw - 116px));
 }
+/* Gramáž jedál (admin Prehľad): stránka sama sa neroluje, roluje sa len telo
+ * tabuľky — dátumový prepínač a filter tak ostávajú stále na očiach a tabuľka
+ * dostane čo najviac výšky namiesto toho, aby ju odhrýzol scroll celej strany. */
+.zpa-content--fill {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 20px;
+    gap: 16px;
+}
+.zpa-content--fill .zpa-stack {
+    flex: 1;
+    min-height: 0;
+    gap: 16px;
+}
+.zpa-content--fill .zpa-gram-fill {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.zpa-content--fill .zpa-card--fill {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+.zpa-gram-wrap--fill {
+    max-height: none;
+    flex: 1;
+    min-height: 0;
+}
 
 /* Page header */
 .zpa-pagehead {

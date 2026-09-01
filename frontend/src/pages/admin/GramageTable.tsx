@@ -71,7 +71,7 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
       <td key={index} className={cell.css || undefined} colSpan={cell.colspan}>
         {cell.count !== undefined ? (
           <span className="lbl-line">
-            <span>
+            <span title={cell.note ? `${cell.text} — ${cell.note}` : cell.text}>
               {cell.swatch && (
                 <span style={{ display: "inline-flex", marginRight: 8 }}>
                   <DietColorSwatch color={cell.swatch.color} baseColors={cell.swatch.base_colors} size={9} />
@@ -103,9 +103,15 @@ interface GramageTableProps {
    * ju neposiela, tam názov zostáva iba text.
    */
   onClientNameClick?: (prevadzkaId: number) => void;
+  /**
+   * Namiesto vlastného výškového stropu (`max-height: 100vh - ...`) sa tabuľka
+   * roztiahne na celú výšku rodiča a roluje sa iba ona — okolie (dátum, filter)
+   * tak zostáva stále na očiach. Admin Prehľad ju posiela, kuchyňa nie (#548).
+   */
+  fill?: boolean;
 }
 
-const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction, onClientNameClick }) => {
+const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction, onClientNameClick, fill }) => {
   const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
   const toggleClient = (key: string) => {
@@ -126,10 +132,9 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
 
     if (row.kind === "client") {
       const cell = row.cells[0];
-      // #513 — poznámka prevádzky (ak je nastavená) ide do stĺpca Poznámka
-      // hneď na tomto (vždy viditeľnom) riadku, nie len do collapsible
-      // note-admin sub-riadku nižšie.
-      const noteCell = row.cells[1];
+      // #513 — poznámka prevádzky (ak je nastavená) ide rovno za názov na
+      // tomto (vždy viditeľnom) riadku, nie len do collapsible note-admin
+      // sub-riadku nižšie.
       const isExpanded = expandedClients.includes(row.group_id ?? "");
       const action =
         renderClientAction && row.prevadzka_id != null
@@ -173,7 +178,6 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
               {action}
             </div>
           </td>
-          {noteCell && <td className={noteCell.css} title={noteCell.text || undefined}>{noteCell.text}</td>}
         </tr>
       );
     }
@@ -184,7 +188,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
         <tr key={index} className={row.css}>
           <td colSpan={cell.colspan}>
             <span className="route-pill">
-              <span>{cell.text}</span>
+              <span title={cell.text}>{cell.text}</span>
               {cell.sub && <small>{cell.sub}</small>}
             </span>
           </td>
@@ -219,8 +223,8 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
   );
 
   return (
-    <Card style={{ overflow: "hidden" }}>
-      <div className={`zpa-table-wrap zpa-gram-wrap${className ? ` ${className}` : ''}`}>
+    <Card style={{ overflow: "hidden" }} className={fill ? "zpa-card--fill" : undefined}>
+      <div className={`zpa-table-wrap zpa-gram-wrap${fill ? ' zpa-gram-wrap--fill' : ''}${className ? ` ${className}` : ''}`}>
         <table className="zpa-gram">
           <thead>
             {mealBands.length > 0 && (
@@ -239,7 +243,7 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
               )}
               {spec.header.groups.map((group, index) => (
                 <th key={index} className={group.css} colSpan={group.colspan}>
-                  {group.text}<small>{group.sub}</small>
+                  {group.text}<small title={group.sub || undefined}>{group.sub}</small>
                 </th>
               ))}
             </tr>
