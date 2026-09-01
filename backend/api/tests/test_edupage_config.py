@@ -843,6 +843,25 @@ class TestSkolickamsPayerHook(unittest.TestCase):
         # bez oddeľovača "-" to nie je dodávateľský prefix
         self.assertIsNone(skolickams_payer_hook("Bratislava"))
 
+    def test_speci_luka_gets_full_diet_and_child_portion(self):
+        """'ŠPECI - Lúka' (payer type 13, live 2.9.2026) — nahlásené rodičom
+        a potvrdené p. Kohútom 1.9.2026. Payer porcia=3 by inak dala inú
+        porciu než ostatní v triede — hook ju pribíja na detskú."""
+        rule = skolickams_payer_hook("ŠPECI - Lúka")
+        self.assertEqual(rule.match_name, "Lúka")
+        self.assertEqual(
+            rule.diet,
+            "NO GLUTEN – NO ORECH – NO STRUKOVINY – NO PARADAJKA – NO PAPRIKA – "
+            "NO POHANKA – NO SOJA – NO QUINOA",
+        )
+        self.assertEqual(rule.portion, "Škôlka")
+
+    def test_speci_ascii_s_tolerated(self):
+        # EduPage môže poslať aj bez mäkčeňa ("SPECI").
+        rule = skolickams_payer_hook("SPECI - Lúka")
+        self.assertEqual(rule.match_name, "Lúka")
+        self.assertIsNotNone(rule.diet)
+
 
 class TestPayerHookInParse(unittest.TestCase):
     """payer_hook strip prefixu umožní match na čistý `Les`/`Lúka` a odvodí NO MILK."""

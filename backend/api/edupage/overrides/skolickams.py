@@ -24,6 +24,13 @@ default (payer `porcia=0` → `Škôlka`), takže porciu tu nenútime.
 Po strippnutí `sd`/`učiteľ` variantov prefixovo sadnú na `Lúka`/`Les`. `Hosť` (hosť bez
 výdajne) rozhodnutím usera 7/13 **rátame k Lúke** — prepíšeme `match_name` na `Lúka`.
 Stupne 1./2. sa cez tento EduPage neobjednávajú (v guest dátach nie sú).
+
+`ŠPECI - Lúka` (payer type 13, live od 2.9.2026): jedno dieťa v triede Lúka so
+špeciálnou stravou, nahlásené p. Berlakovi (rodič, 1.9.2026 večer) a potvrdené
+p. Kohútom — bez lepku, orechov, strukovín, paradajok, papriky, pohánky, sóje,
+quinoy. Na rozdiel od `B`/`BM` nesie tento prefix rovno celú diétu, nie len
+dodávateľa — payer `porcia=3` by inak dal inú porciu než ostatní v triede, tak ju
+tu explicitne pribijeme na detskú (rovnako ako Lúka/Les vždy).
 """
 
 from __future__ import annotations
@@ -35,8 +42,15 @@ from ..base import PayerRule
 
 # Vedúci token "B" alebo "BM" oddelený pomlčkou = dodávateľ.
 _SUPPLIER_PREFIX_RE = re.compile(r"^\s*(BM|B)\s*[-–]\s*(.+)$", re.IGNORECASE)
+# "ŠPECI - Lúka" — nenesie dodávateľa, ale rovno celú špeciálnu diétu.
+_SPECI_PREFIX_RE = re.compile(r"^\s*[SŠ]PECI\s*[-–]\s*(.+)$", re.IGNORECASE)
+_SPECI_DIET = (
+    "NO GLUTEN – NO ORECH – NO STRUKOVINY – NO PARADAJKA – NO PAPRIKA – "
+    "NO POHANKA – NO SOJA – NO QUINOA"
+)
 
 _LUKA = "Lúka"
+_DETSKA = "Škôlka"
 
 
 def _fold(value: str) -> str:
@@ -53,6 +67,14 @@ def skolickams_payer_hook(payer_name: str) -> PayerRule | None:
     # aby diakritika/veľkosť písmen nerozhodla ("Hosť"/"host"/"HOSŤ").
     if _fold(name) == "host":
         return PayerRule(match_name=_LUKA)
+
+    speci_match = _SPECI_PREFIX_RE.match(name)
+    if speci_match is not None:
+        return PayerRule(
+            match_name=speci_match.group(1).strip(),
+            diet=_SPECI_DIET,
+            portion=_DETSKA,
+        )
 
     match = _SUPPLIER_PREFIX_RE.match(name)
     if match is None:
