@@ -99,6 +99,34 @@ def test_edupage_scrape_persists_unmapped_diets_flag(edupage_user, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_edupage_scrape_clears_gramage_dashboard_cache(edupage_user, monkeypatch):
+    """Scrape prepíše DailyOrder.data pre svoj deň — cache gramage dashboardu
+    z pred scrapu by ešte 5 minút ukazovala staré počty, tak ju zahoď."""
+    from django.core.cache import cache
+
+    from api.cache_service import get_gramage_dashboard_cache_key, set_cached
+
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 5}}})
+
+    cache_key = get_gramage_dashboard_cache_key(target_date.isoformat())
+    set_cached(cache_key, {"stale": True}, timeout=300)
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    assert cache.get(cache_key) is None
+
+
+@pytest.mark.django_db
 def test_edupage_scrape_uses_next_workday_for_day_before_meal(
     edupage_user, monkeypatch
 ):

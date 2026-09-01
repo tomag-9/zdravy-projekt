@@ -31,6 +31,15 @@ p. Kohútom — bez lepku, orechov, strukovín, paradajok, papriky, pohánky, s�
 quinoy. Na rozdiel od `B`/`BM` nesie tento prefix rovno celú diétu, nie len
 dodávateľa — payer `porcia=3` by inak dal inú porciu než ostatní v triede, tak ju
 tu explicitne pribijeme na detskú (rovnako ako Lúka/Les vždy).
+
+Reálny guest dump (1.9.2026) ukázal, že „ŠPECI" nechodí len ako payer label — je to
+aj samostatné menu písmeno (skratka `ŠPECI`, názov "noGLUT ORECH STRUK PARAD PAPRIKA
+POH SOJA QUINOA"). Engine by ho bez `letter_hook` fuzzy-matchol len na jednu zložku
+(padlo to na `NO ORECH`, flagnuté ako `uncertain`) a keďže diéta na úrovni písmena má
+prednosť pred `payer_hook` diétou (`effective_diet = diet_name or payer_diet`),
+`payer_hook` diéta by sa nikdy nepoužila. `letter_hook` nižšie preto rieši diétu
+priamo na písmene; `payer_hook` diéta ostáva ako fallback pre prípad, že by payer 13
+padol pod iné písmeno.
 """
 
 from __future__ import annotations
@@ -38,7 +47,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from ..base import PayerRule
+from ..base import LetterRule, PayerRule
 
 # Vedúci token "B" alebo "BM" oddelený pomlčkou = dodávateľ.
 _SUPPLIER_PREFIX_RE = re.compile(r"^\s*(BM|B)\s*[-–]\s*(.+)$", re.IGNORECASE)
@@ -82,3 +91,10 @@ def skolickams_payer_hook(payer_name: str) -> PayerRule | None:
     supplier, zvysok = match.group(1).upper(), match.group(2).strip()
     diet = "NO MILK" if supplier == "BM" else None
     return PayerRule(match_name=zvysok, diet=diet)
+
+
+def skolickams_letter_hook(letter: str, skratka: str, nazov: str) -> LetterRule | None:
+    """Menu písmeno so skratkou `ŠPECI` = plná špeciálna diéta (viď modul docstring)."""
+    if _fold(skratka) == _fold("ŠPECI"):
+        return LetterRule(diet=_SPECI_DIET)
+    return None

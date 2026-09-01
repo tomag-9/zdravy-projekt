@@ -568,6 +568,16 @@ def _client_rows(
     # v `collapsible` sub-riadku, takže kým sa klient nerozbalil, admin o nej
     # nevedel; ten sub-riadok už nie je, aby text nebol v tabuľke dvakrát.
     admin_order_note = str(row.get("admin_order_note") or "").strip()
+    # Poznámka k „Špeciálnej" diéte — kuchyňa inak nemá odkiaľ vedieť, čo pre
+    # dieťa nabrať (samotný názov diéty „Špeciálna" nič nehovorí). Ide do tej
+    # istej bunky ako admin_order_note, nech je vidno hneď na zbalenom riadku.
+    special_diet_note = str(row.get("special_diet_note") or "").strip()
+    note_parts = []
+    if special_diet_note:
+        note_parts.append(f"Špeciálna diéta: {special_diet_note}")
+    if admin_order_note:
+        note_parts.append(admin_order_note)
+    combined_note = " · ".join(note_parts)
 
     out: list[dict] = [
         {
@@ -587,8 +597,8 @@ def _client_rows(
                     "colspan": total_columns - 1,
                 },
                 (
-                    {"text": admin_order_note, "css": "cell-note client-note"}
-                    if admin_order_note
+                    {"text": combined_note, "css": "cell-note client-note"}
+                    if combined_note
                     else _note_cell()
                 ),
             ],

@@ -66,29 +66,3 @@ def ensure_default_visible_portion_types_for_empty_prevadzky(
         if ensure_default_visible_portion_types(prevadzka.visible_portion_types):
             updated_count += 1
     return updated_count
-
-
-def ensure_all_visible_meals_for_prevadzky(
-    prevadzky: QuerySet[Prevadzka] | None = None,
-) -> int:
-    qs = Prevadzka.objects.all() if prevadzky is None else prevadzky
-    updated_count = 0
-    for prevadzka in qs:
-        if prevadzka.visible_meals != DEFAULT_VISIBLE_MEALS:
-            prevadzka.visible_meals = DEFAULT_VISIBLE_MEALS
-            prevadzka.save(update_fields=["visible_meals"])
-            updated_count += 1
-    return updated_count
-
-
-def ensure_all_visible_menus_for_prevadzky(
-    prevadzky: QuerySet[Prevadzka] | None = None,
-) -> int:
-    qs = Prevadzka.objects.all() if prevadzky is None else prevadzky
-    updated_count = 0
-    for prevadzka in qs:
-        if prevadzka.visible_menus != DEFAULT_VISIBLE_MENUS:
-            prevadzka.visible_menus = DEFAULT_VISIBLE_MENUS
-            prevadzka.save(update_fields=["visible_menus"])
-            updated_count += 1
-    return updated_count

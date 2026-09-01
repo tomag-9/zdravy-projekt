@@ -20,11 +20,14 @@ def get_cached_gramage_dashboard_data(date_str: str) -> dict:
 
     The aggregation (orders × plan items × diety × portion types) is pure
     Python work over the day's data and identical for the screen and the PDF
-    export, so both share this cache. No write-side invalidation — same
-    tradeoff as `daily-stats`: the underlying orders change too often to
-    track per-write, so a short TTL bounds the staleness instead. Callers
-    still apply their own `section`/`vydaj` filtering (build_table_spec) on
-    top of the cached, unfiltered data.
+    export, so both share this cache. Ad-hoc order edits don't invalidate it —
+    same tradeoff as `daily-stats`: those change too often to track per-write,
+    so the 5-minute TTL bounds the staleness instead. The bulk write points
+    (day close, deadline auto-orders, EduPage scrape) do invalidate explicitly
+    via `clear_gramage_dashboard_cache` — see `closed_day_views.py` and
+    `tasks.py` (`apply_auto_orders_task`, `scrape_edupage_orders_task`).
+    Callers still apply their own `section`/`vydaj` filtering
+    (build_table_spec) on top of the cached, unfiltered data.
     """
     cache_key = get_gramage_dashboard_cache_key(date_str)
     cached_data = get_cached(cache_key)

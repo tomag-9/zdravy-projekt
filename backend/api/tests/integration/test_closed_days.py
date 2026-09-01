@@ -244,3 +244,49 @@ def test_unlocking_day_clears_cached_pdf(admin_client, monkeypatch):
 
     assert unlocked.status_code == status.HTTP_200_OK
     assert cache.get(cache_key) is None
+
+
+def test_closing_day_clears_gramage_dashboard_cache(admin_client, monkeypatch):
+    """Uzavretie dňa zahodí gramage dashboard cache, nech `cache_closed_day_pdf_task`
+    nepostaví PDF snapshot na dátach spred uzavretia (5-minútové TTL). Úloha
+    (spustená tu synchrónne) si cache hneď zas naplní čerstvými dátami, takže
+    overujeme, že stará ("stale") hodnota tam už nie je, nie že je prázdna."""
+    from django.core.cache import cache
+
+    from api.cache_service import get_gramage_dashboard_cache_key, set_cached
+
+    _run_pdf_task_inline(monkeypatch)
+
+    cache_key = get_gramage_dashboard_cache_key(TARGET_DATE.isoformat())
+    set_cached(cache_key, {"stale": True}, timeout=300)
+
+    close = admin_client.post(
+        reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
+    )
+
+    assert close.status_code == status.HTTP_201_CREATED
+    assert cache.get(cache_key) != {"stale": True}
+
+
+def test_unlocking_day_clears_gramage_dashboard_cache(admin_client, monkeypatch):
+    from django.core.cache import cache
+
+    from api.cache_service import get_gramage_dashboard_cache_key, set_cached
+
+    _run_pdf_task_inline(monkeypatch)
+
+    admin_client.post(
+        reverse("closed-day-list"), {"date": TARGET_DATE.isoformat()}, format="json"
+    )
+
+    cache_key = get_gramage_dashboard_cache_key(TARGET_DATE.isoformat())
+    set_cached(cache_key, {"stale": True}, timeout=300)
+
+    unlocked = admin_client.delete(
+        reverse("closed-day-unlock"),
+        {"date": TARGET_DATE.isoformat()},
+        format="json",
+    )
+
+    assert unlocked.status_code == status.HTTP_200_OK
+    assert cache.get(cache_key) is None

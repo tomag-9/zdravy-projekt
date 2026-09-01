@@ -15,8 +15,6 @@ from django.core.management.base import BaseCommand
 
 from api.default_visibility import (
     DEFAULT_VISIBLE_MEALS,
-    ensure_all_visible_meals_for_prevadzky,
-    ensure_all_visible_menus_for_prevadzky,
     ensure_default_visible_diets,
     ensure_default_visible_portion_types,
 )
@@ -179,8 +177,6 @@ class Command(BaseCommand):
                 zdroj_objednavok=Celok.ZdrojObjednavok.EDUPAGE,
                 billing_name=school["company_name"],
             )
-            ensure_all_visible_menus_for_prevadzky(prevadzky)
-            ensure_all_visible_meals_for_prevadzky(prevadzky)
             excluded_prevadzka_names = EDUPAGE_CONNECTION_EXCLUDED_PREVADZKY.get(
                 school["subdomain"], set()
             )

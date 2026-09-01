@@ -31,9 +31,10 @@ DAILY_STATS_TIMEOUT = 300  # 5 minutes
 # Invalidated explicitly via signals on write (see api/signals.py), so the TTL
 # here is only a poistka for writes that bypass the ORM (e.g. bulk_update).
 ADMIN_CELOK_LIST_TIMEOUT = 3600  # 1 hour
-# No write-side invalidation (same tradeoff as daily stats) — the underlying
-# data (orders, meal plan) changes too often to track per-write, so a short
-# TTL bounds the staleness instead.
+# Ad-hoc order edits don't invalidate this (same tradeoff as daily stats) —
+# too frequent to track per-write, so the TTL bounds that staleness. The bulk
+# write points (day close, deadline auto-orders, EduPage scrape) do invalidate
+# explicitly via clear_gramage_dashboard_cache().
 GRAMAGE_DASHBOARD_TIMEOUT = 300  # 5 minutes
 # Predgenerované PDF snapshot uzavretého dňa (#528). Objednávky uzavretého
 # dňa sa už nedajú meniť, takže na rozdiel od GRAMAGE_DASHBOARD_TIMEOUT tu
@@ -202,6 +203,18 @@ def clear_daily_stats_cache(date_str: Optional[str] = None) -> None:
         # the Django cache API does not support wildcard deletion in a backend-
         # agnostic way. Callers should explicitly clear known date keys instead.
         pass
+
+
+def clear_gramage_dashboard_cache(date_str: str) -> None:
+    """Clear the cached gramage dashboard data for a specific date.
+
+    Called from the write points that make the 5-minute TTL not good enough
+    on its own: closing a day (`ClosedDayViewSet.create`, ktorá si hneď potom
+    dopredu vyrenderuje PDF a bez tohto by ho postavila na starých dátach),
+    auto-objednávky po deadline (`apply_auto_orders_task`) a EduPage scrape
+    (`scrape_edupage_orders_task`).
+    """
+    delete_cached(get_gramage_dashboard_cache_key(date_str))
 
 
 def clear_closed_day_pdf_cache(date_str: str) -> None:
