@@ -137,7 +137,7 @@ const AdminLayout: React.FC = () => {
             </aside>
 
             <main className="zpa-main" id="zpa-main">
-                <div className={`zpa-content${location.pathname === '/admin/dashboard' ? ' zpa-content--wide' : ''}`}>
+                <div className={`zpa-content${location.pathname === '/admin/dashboard' ? ' zpa-content--wide zpa-content--fill' : ''}`}>
                     <Outlet />
                 </div>
             </main>

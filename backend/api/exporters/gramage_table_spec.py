@@ -33,9 +33,6 @@ EMPTY = "—"
 # pevnú, na kombinácii nezávislú farbu. Text riadku ostáva farbou prvej diéty.
 COMBO_DIET_FALLBACK_BACKGROUND = "F97316"
 
-# Prázdny stĺpec na ručné poznámky pri tlači (požiadavka prevádzky 17. 8. 2026).
-NOTE_COLUMN_LABEL = "Poznámka"
-
 # Ktoré stĺpcové skupiny patria pod ktoré jedlo. Kuchyňa čítala tabuľku ako jeden
 # pás stĺpcov a hľadala, kde končia raňajky a začína obed — hlavička preto nesie
 # ešte jednu, nadradenú úroveň s názvom jedla.
@@ -116,15 +113,6 @@ def _filter_col_groups(col_groups: list[dict], sections: list[str] | None) -> li
     return keep or list(range(len(col_groups)))
 
 
-def _note_cell() -> dict:
-    """Prázdna bunka posledného stĺpca — miesto na ručnú poznámku vo vytlačenej
-    tabuľke. Nesie `meal-sep`, rovnako ako hlavička nad ňou (`grp-note`/`comp-note`)
-    — inak by oddeľovacia čiara medzi posledným jedlom a Poznámkou chýbala, hoci
-    medzi všetkými ostatnými jedlami je. Vracia sa nová inštancia, nie zdieľaný
-    dict, nech si ju renderer nemôže omylom premutovať naprieč riadkami."""
-    return {"text": "", "css": "cell-note meal-sep"}
-
-
 def _gram_cells(
     col_grams: list,
     groups: list[dict],
@@ -159,7 +147,6 @@ def _gram_cells(
                         "css": f"cell-num mh-{hue}-cell{separator}",
                     }
                 )
-    cells.append(_note_cell())
     return cells
 
 
@@ -259,8 +246,8 @@ def build_table_spec(
     hues = [meal_hue(g.get("meal"), g.get("variant")) for _, g in groups]
 
     total_components = sum(len(g.get("components") or []) for _, g in groups)
-    # 1 = názov prevádzky/riadku, +1 = prázdny stĺpec „Poznámka" na konci.
-    total_columns = 1 + total_components + 1
+    # 1 = názov prevádzky/riadku.
+    total_columns = 1 + total_components
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
@@ -468,8 +455,6 @@ def _meal_band_cells(groups: list[dict]) -> list[dict]:
         cells.append(
             {"text": label, "css": f"mealband {css}{separator}", "colspan": span}
         )
-    if cells:
-        cells.append({"text": "", "css": "mealband mb-note meal-sep", "colspan": 1})
     return cells
 
 
@@ -498,15 +483,6 @@ def _build_header(groups: list[dict], hues: list[str]) -> dict:
                     "css": f"comp mh-{hues[position]}-2{component_separator}",
                 }
             )
-    group_cells.append(
-        {
-            "text": NOTE_COLUMN_LABEL,
-            "sub": "",
-            "css": "grp grp-note meal-sep",
-            "colspan": 1,
-        }
-    )
-    component_cells.append({"text": "", "sub": "", "css": "comp comp-note meal-sep"})
     return {
         "corner": "Prevádzka / Riadok",
         "meals": _meal_band_cells(groups),
@@ -597,8 +573,8 @@ def _client_rows(
     # sub-riadok už nie je, aby text nebol v tabuľke dvakrát. Pôvodne šla do
     # samostatného úzkeho stĺpca Poznámka — dlhší text tam ale zalamoval
     # a naťahoval riadok na viacero riadkov (klient hlásenie), preto ide
-    # rovno za názov prevádzky; stĺpec Poznámka ostáva prázdny na rukou
-    # písané poznámky kuchyne.
+    # rovno za názov prevádzky; samostatný stĺpec Poznámka je odvtedy zbytočný
+    # a bol zrušený.
     admin_order_note = str(row.get("admin_order_note") or "").strip()
     # Poznámka k „Špeciálnej" diéte — kuchyňa inak nemá odkiaľ vedieť, čo pre
     # dieťa nabrať (samotný názov diéty „Špeciálna" nič nehovorí). Ide do tej
@@ -627,9 +603,8 @@ def _client_rows(
                     "meta_right": (
                         f"spolu porcií {format_count(standard_count + diet_total)}"
                     ),
-                    "colspan": total_columns - 1,
+                    "colspan": total_columns,
                 },
-                _note_cell(),
             ],
         }
     ]
@@ -775,7 +750,6 @@ def _totals_row(
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             cells.append({"text": text or EMPTY, "css": separator.strip()})
-    cells.append(_note_cell())
     return {
         "kind": "total",
         "css": "total",

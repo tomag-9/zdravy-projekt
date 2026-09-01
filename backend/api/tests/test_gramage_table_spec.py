@@ -129,12 +129,12 @@ def test_there_is_no_separate_count_column():
     """Počet je odznak v labeli, nie vlastný stĺpec — inak sa tlač rozíde s obrazovkou."""
     spec = build_table_spec(_payload())
 
-    # 1 = názov riadku, 3 = zložky, 1 = prázdny stĺpec „Poznámka".
-    assert spec["total_columns"] == 1 + 3 + 1
-    assert len(spec["header"]["components"]) == 3 + 1
+    # 1 = názov riadku, 3 = zložky.
+    assert spec["total_columns"] == 1 + 3
+    assert len(spec["header"]["components"]) == 3
     sub_row = next(r for r in spec["rows"] if r["kind"] == "sub-row")
     assert sub_row["cells"][0]["count"] == "8"
-    assert len(sub_row["cells"]) == 1 + 3 + 1
+    assert len(sub_row["cells"]) == 1 + 3
 
 
 def test_every_second_sub_row_is_striped():
@@ -171,9 +171,7 @@ def _sub_rows_by_client(spec):
 def test_header_keeps_the_template_name():
     spec = build_table_spec(_payload())
 
-    assert [
-        g["sub"] for g in spec["header"]["groups"] if "grp-note" not in g["css"]
-    ] == [
+    assert [g["sub"] for g in spec["header"]["groups"]] == [
         "Hrášková",
         "Kuracie",
         "Vege",
@@ -235,16 +233,13 @@ def test_client_row_carries_the_screen_metadata():
 def test_client_row_shows_the_prevadzka_note_right_after_the_name():
     """Issue #513: poznámka prevádzky musí byť vidno hneď na zbalenom riadku
     klienta, nielen v collapsible note-admin sub-riadku. Ide priamo za názov
-    (nie do stĺpca Poznámka) — dlhší text tam predtým zalamoval riadok."""
+    (nie do samostatného stĺpca — ten bol zrušený, keďže je poznámka odvtedy
+    vidno inline)."""
     spec = build_table_spec(_payload())
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
     assert client["cells"][0]["note"] == "bez cibule"
-    # Stĺpec Poznámka ostáva prázdny — je na ručné poznámky kuchyne.
-    assert client["cells"][1]["text"] == ""
-    assert "cell-note" in client["cells"][1]["css"]
-    total_columns = spec["total_columns"]
-    assert client["cells"][0]["colspan"] == total_columns - 1
+    assert client["cells"][0]["colspan"] == spec["total_columns"]
 
 
 def test_client_row_note_column_is_empty_without_a_prevadzka_note():
@@ -254,7 +249,6 @@ def test_client_row_note_column_is_empty_without_a_prevadzka_note():
     client = next(r for r in spec["rows"] if r["kind"] == "client")
 
     assert client["cells"][0]["note"] is None
-    assert client["cells"][1]["text"] == ""
 
 
 def test_diet_sub_row_and_summary_show_the_diet_description():
@@ -366,11 +360,9 @@ def test_totals_row_uses_a_dash_for_empty_columns():
     """Obrazovka tu dnes píše „0", čo si protirečí s telom tabuľky — spec to zjednocuje."""
     spec = build_table_spec(_payload())
 
-    # Posledná pätková bunka je súčet MŠ porcií, gramáž je riadok pred ňou;
-    # posledná bunka gramáže je prázdna „Poznámka".
+    # Posledná pätková bunka je súčet MŠ porcií, gramáž je riadok pred ňou.
     totals_row = spec["footer"][-2]
-    assert totals_row["cells"][-1]["css"] == "cell-note meal-sep"
-    assert totals_row["cells"][-2]["text"] == "—"
+    assert totals_row["cells"][-1]["text"] == "—"
 
 
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
@@ -416,13 +408,7 @@ def _with_breakfast_and_snack():
 
 
 def _group_labels(spec):
-    """Názvy stĺpcových skupín bez koncového stĺpca „Poznámka" — ten nie je
-    jedlo a s filtrom sekcií nemá nič spoločné."""
-    return [
-        group["text"]
-        for group in spec["header"]["groups"]
-        if "grp-note" not in group["css"]
-    ]
+    return [group["text"] for group in spec["header"]["groups"]]
 
 
 def test_no_filter_means_the_complete_table():
@@ -542,29 +528,7 @@ def test_a_diet_absent_from_the_visible_sections_is_not_summarised():
     ]
 
 
-# ── Poznámkový stĺpec a pás jedál ────────────────────────────────────────────
-
-
-def test_note_column_is_empty_on_every_data_row():
-    """Prázdny stĺpec na ručné poznámky do vytlačenej tabuľky.
-
-    `meal-sep` na poslednom stĺpci je zámerne rovnaké ako medzi ostatnými
-    jedlami — bez neho by čiara medzi posledným jedlom (napr. Olovrant) a
-    Poznámkou chýbala, hoci medzi Raňajkami/Obedom/Olovrantom je.
-    """
-    spec = build_table_spec(_payload())
-
-    assert spec["header"]["groups"][-1]["text"] == "Poznámka"
-    data_rows = [
-        row
-        for row in spec["rows"] + spec["footer"]
-        # Pásy a poznámky idú cez celú šírku, tie posledný stĺpec nemajú.
-        if row["kind"]
-        in {"sub-row", "summary-std", "summary-diet", "portion-row", "total"}
-    ]
-    assert data_rows
-    for row in data_rows:
-        assert row["cells"][-1] == {"text": "", "css": "cell-note meal-sep"}
+# ── Pás jedál ────────────────────────────────────────────────────────────────
 
 
 def test_meal_band_merges_soup_with_main_course():
@@ -572,9 +536,7 @@ def test_meal_band_merges_soup_with_main_course():
     spec = build_table_spec(_with_breakfast_and_snack())
 
     bands = [(band["text"], band["colspan"]) for band in spec["header"]["meals"]]
-    # Posledný pás patrí stĺpcu „Poznámka" a je bez názvu.
-    assert bands[-1][0] == ""
-    assert [text for text, _ in bands[:-1]] == [
+    assert [text for text, _ in bands] == [
         "Obed",
         "Raňajky / desiata",
         "Olovrant",
@@ -755,7 +717,7 @@ def _snack_cell_css(spec):
             continue
         if row["cells"][0]["text"] != "Škôlka - Olovrant":
             continue
-        # Posledná číselná bunka pred stĺpcom Poznámka je stĺpec afternoon_snack.
+        # Posledná číselná bunka v riadku je stĺpec afternoon_snack.
         num_cells = [cell for cell in row["cells"] if "cell-num" in cell["css"]]
         return num_cells[-1]["css"]
     raise AssertionError("sub-row olovrantu sa v spec-e nenašiel")

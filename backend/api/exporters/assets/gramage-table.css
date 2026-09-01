@@ -54,7 +54,6 @@
 .zpa-gram thead .mb-lunch { background: #24310E; }
 .zpa-gram thead .mb-snack { background: #63283F; }
 .zpa-gram thead .mb-other { background: var(--green-800); }
-.zpa-gram thead .mb-note { background: var(--green-900); }
 
 /* meal hues */
 /* meal hues — seven visually distinct families (raňajky ≠ olovrant;
@@ -209,20 +208,15 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
-/* Stĺpec „Poznámka" — kuchyňa doň píše rukou do vytlačenej tabuľky, ostáva
- * vždy prázdny (poznámka prevádzky ide od teraz rovno za názov, viď nižšie
- * — dlhší text v tomto úzkom stĺpci predtým zalamoval celý riadok). */
-.zpa-gram .cell-note { background: rgba(255,255,255,0.55); min-width: 120px; }
 /* Poznámka prevádzky (#513) hneď za názvom na klientskom riadku, v tej istej
- * širokej bunke ako meno — nezalamuje riadok tak, ako v úzkom stĺpci Poznámka. */
+ * širokej bunke ako meno — predtým bola v samostatnom úzkom stĺpci Poznámka,
+ * kde dlhší text zalamoval celý riadok; ten stĺpec bol zrušený. */
 .zpa-gram .client-toggle .client-note-inline {
     font-size: 12px;
     font-weight: 500;
     color: var(--green-900);
     opacity: 0.85;
 }
-.zpa-gram thead .grp-note,
-.zpa-gram thead .comp-note { background: var(--green-900); }
 
 /* Farebná bodka pred názvom diéty. Na obrazovke ju kreslí DietColorSwatch,
  * v PDF gramage_table_html._swatch — obe len dosadia `background`. */
