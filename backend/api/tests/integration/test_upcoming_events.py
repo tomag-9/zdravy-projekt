@@ -171,7 +171,7 @@ def test_deadline_lock_entries_group_meals_by_shared_deadline(admin_client):
 
     assert set(lock_entries) == {"order-lock-breakfast", "order-lock-lunch-olovrant"}
     assert "raňajky" in lock_entries["order-lock-breakfast"]["description"]
-    assert "obed a olovrant" in lock_entries["order-lock-lunch-olovrant"]["description"]
+    assert "obed/olovrant" in lock_entries["order-lock-lunch-olovrant"]["description"]
     for entry in lock_entries.values():
         assert entry["next_run"] is not None
 

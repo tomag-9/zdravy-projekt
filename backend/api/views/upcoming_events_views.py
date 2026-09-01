@@ -134,24 +134,15 @@ def _deadline_lock_entries():
         return []
 
     from ..cached_settings_service import get_global_settings
-    from ..services.push_reminder_service import build_meal_str
-    from ..signals import _day_of_week
+    from ..signals import _day_of_week, _group_meals_by_deadline, _meal_types_label_sk
 
     try:
         gs = get_global_settings()
     except Exception:
         return []
 
-    groups: dict[tuple, list[str]] = {}
-    for meal_type in ("breakfast", "lunch", "olovrant"):
-        deadline = getattr(gs, f"deadline_{meal_type}", None)
-        if deadline is None:
-            continue
-        is_day_before = bool(getattr(gs, f"deadline_{meal_type}_is_day_before", False))
-        groups.setdefault((deadline, is_day_before), []).append(meal_type)
-
     entries = []
-    for (deadline, is_day_before), meal_types in groups.items():
+    for (deadline, is_day_before), meal_types in _group_meals_by_deadline(gs).items():
         meal_types = sorted(meal_types)
         # Neuložený riadok — táto uzávierka nemá vlastnú DB úlohu, počíta sa
         # len na zobrazenie, nemá zmysel ju ukladať.
@@ -169,8 +160,9 @@ def _deadline_lock_entries():
                 "name": name,
                 "task": "order-lock",
                 "description": (
-                    f"Uzávierka objednávok: {build_meal_str(meal_types)}. "
-                    "Appka odteraz odmietne zmeny objednávky na tento deň."
+                    f"Uzávierka objednávok ({_meal_types_label_sk(meal_types)}): "
+                    f"appka odteraz odmietne zmeny objednávky na tento deň "
+                    f"(uzávierka: {deadline.strftime('%H:%M')})."
                 ),
                 "next_run": _next_run_for_schedule(schedule.schedule, name),
             }

@@ -391,32 +391,39 @@ class Command(BaseCommand):
         `GlobalSettings` — na produkcii, kde sa deadliny od nasadenia tejto
         funkcie neupravovali, tak nikdy nevznikla. Tento príkaz beží pri
         každom deployi (`deploy_bootstrap.py`), takže sem patrí rovnako ako
-        ostatné naplánované úlohy nižšie."""
+        ostatné naplánované úlohy nižšie.
+
+        Jeden beh na skupinu jedál so zdieľanou uzávierkou (#548) — rovnako
+        ako push pripomienky, preto sa aj overuje rovnako (podľa prefixu,
+        nie podľa jedného pevného mena)."""
         from django_celery_beat.models import PeriodicTask
 
-        from api.signals import PERIODIC_TASK_NAME_AUTO_ORDER
+        from api.signals import AUTO_ORDER_TASK_PREFIX
 
-        self.stdout.write("\n--- Auto-objednávka (predvečer pracovného dňa) ---")
-        task = PeriodicTask.objects.filter(name=PERIODIC_TASK_NAME_AUTO_ORDER).first()
-        if task:
-            schedule = (
-                f"{_format_crontab_time(task.crontab)} Ne–Št (tz: {task.crontab.timezone})"
-                if task.crontab
-                else "no schedule"
-            )
-            status = (
-                self.style.SUCCESS("✓")
-                if task.enabled
-                else self.style.WARNING("⚠ disabled")
-            )
-            self.stdout.write(f"  {status} {task.name} → {schedule}")
-        else:
+        self.stdout.write("\n--- Auto-objednávka (podľa skupiny uzávierok) ---")
+        tasks = list(
+            PeriodicTask.objects.filter(name__startswith=AUTO_ORDER_TASK_PREFIX)
+        )
+        if not tasks:
             self.stdout.write(
                 self.style.ERROR(
-                    f"✗ Auto-order task MISSING: {PERIODIC_TASK_NAME_AUTO_ORDER}\n"
-                    "  Run 'python manage.py sync_periodic_tasks --fix' to create it."
+                    "✗ No auto-order tasks found!\n"
+                    "  Run 'python manage.py sync_periodic_tasks --fix' to create them."
                 )
             )
+        else:
+            for task in tasks:
+                schedule = (
+                    f"{_format_crontab_time(task.crontab)} (tz: {task.crontab.timezone})"
+                    if task.crontab
+                    else "no schedule"
+                )
+                status = (
+                    self.style.SUCCESS("✓")
+                    if task.enabled
+                    else self.style.WARNING("⚠ disabled")
+                )
+                self.stdout.write(f"  {status} {task.name} → {schedule}")
 
     def _sync_auto_order(self, gs):
         from api.signals import _sync_auto_order_schedule
