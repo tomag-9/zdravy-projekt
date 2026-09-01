@@ -27,6 +27,9 @@ _RULES: dict[str, LetterRule] = {
     "NGNF": LetterRule(diet="NO GLUTEN – NO FISH"),
     "NMNE": LetterRule(diet="NO MILK/NO EGG"),
     "MŠ NMNG BEZ ARAS": LetterRule(diet="NO MILK – NO GLUTEN – NO ARASIDY"),
+    # "Ng+Olo" — potvrdené s userom 1.9.2026, fuzzy tip (NO GLUTEN) bol správny,
+    # istá diéta namiesto uncertain.
+    "NG+OLO": LetterRule(diet="NO GLUTEN"),
 }
 
 
