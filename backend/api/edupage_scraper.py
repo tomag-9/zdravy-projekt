@@ -110,6 +110,16 @@ _SKRATKA_MAP: dict[str, str] = {
     "NGNM": "NO MILK/NO GLUTEN",
     "NMNG": "NO MILK/NO GLUTEN",
     "NMG": "NO MILK/NO GLUTEN",
+    # ZŠ Ivanka pri Dunaji: "NMNGnORECH" — bez tejto zhody by substringový
+    # heuristický fallback ("nmng" v compact_sk, viď nižšie) odrezal "orech" a
+    # priradil len 2-zložkovú "NO MILK/NO GLUTEN" (potvrdené manuálne 2.9.2026,
+    # kontrolou skutočného scrapu — appka reálne existujúcu 3-zložkovú diétu
+    # "NO MILK – NO GLUTEN – NO ORECH" má, len ju táto skratka nenašla).
+    "NMNGNORECH": "NO MILK – NO GLUTEN – NO ORECH",
+    # MŠ Edulienka: "nGH" — bez tejto zhody končí na generickom "ngh" fallbacku
+    # nižšie, ktorý vracia len "NO GLUTEN" a stráca histamín (potvrdené
+    # manuálne 2.9.2026).
+    "NGH": "HISTAMIN, NO GLUTEN",
     "NE": "NO EGG",
     "NENO": "NO EGG",
     "NS": "NO SOJA",

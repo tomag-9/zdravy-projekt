@@ -103,6 +103,18 @@ class TestResolveDietName(unittest.TestCase):
             ("NoGluten", "NoGluten", "NO GLUTEN"),  # MŠ Dobrého Pastiera
             ("PnM", "Palisády nM", "NO MILK"),  # MŠ Edulienka
             ("Vege", "Vege", "VEGGIE"),  # British School
+            # Skratka nesie 3 obmedzenia — bez exaktnej zhody by substringový
+            # heuristický fallback ("nmng" v compact_sk) odrezal "orech" a
+            # priradil len 2-zložkovú diétu (over_edupage check, 2.9.2026).
+            (
+                "NMNGnORECH",
+                "NMNGnORECH",
+                "NO MILK – NO GLUTEN – NO ORECH",
+            ),  # ZŠ Ivanka pri Dunaji
+            # Bez tejto zhody končí na generickom "ngh" fallbacku, ktorý
+            # vracia len "NO GLUTEN" a stráca histamín (over_edupage check,
+            # 2.9.2026).
+            ("nGH", "nGH", "HISTAMIN, NO GLUTEN"),  # MŠ Edulienka
         ]
         for skratka, nazov, expected in cases:
             with self.subTest(skratka=skratka, nazov=nazov):
