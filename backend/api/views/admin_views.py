@@ -55,6 +55,9 @@ class AdminEventLogSerializer(serializers.ModelSerializer):
         source="target_user.email", read_only=True
     )
     target_user_name = serializers.SerializerMethodField()
+    prevadzka_nazov = serializers.CharField(
+        source="prevadzka.nazov", read_only=True, default=None
+    )
 
     class Meta:
         model = EventLog
@@ -69,6 +72,8 @@ class AdminEventLogSerializer(serializers.ModelSerializer):
             "target_user",
             "target_user_email",
             "target_user_name",
+            "prevadzka",
+            "prevadzka_nazov",
             "summary",
             "payload",
             "created_at",
@@ -345,16 +350,34 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
         # Profily sa ťahajú spolu s používateľmi: meno pre tabuľku ich číta pre
         # každý riadok, takže bez toho je to N+1 dotazov na stránku.
         queryset = EventLog.objects.select_related(
-            "actor", "actor__profile", "target_user", "target_user__profile"
+            "actor",
+            "actor__profile",
+            "target_user",
+            "target_user__profile",
+            "prevadzka",
         )
         event_type = self.request.query_params.get("event_type", "").strip()
+        prevadzka = self.request.query_params.get("prevadzka", "").strip()
         actor = self.request.query_params.get("actor", "").strip()
         date_from = self.request.query_params.get("date_from", "").strip()
         date_to = self.request.query_params.get("date_to", "").strip()
         ordering = self.request.query_params.get("ordering", "-created_at")
 
         if event_type:
-            queryset = queryset.filter(event_type=event_type)
+            # Karta "Objednávky" chce naraz create/update/delete — čiarkou
+            # oddelený zoznam typov namiesto troch samostatných requestov.
+            types = [item for item in event_type.split(",") if item]
+            queryset = (
+                queryset.filter(event_type__in=types)
+                if len(types) > 1
+                else queryset.filter(event_type=types[0])
+            )
+        if prevadzka:
+            try:
+                prevadzka_id = int(prevadzka)
+            except ValueError as exc:
+                raise ValidationError({"prevadzka": "Must be an integer."}) from exc
+            queryset = queryset.filter(prevadzka_id=prevadzka_id)
         if actor:
             try:
                 actor_id = int(actor)

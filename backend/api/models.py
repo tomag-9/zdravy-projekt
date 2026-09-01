@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 class EventLog(models.Model):
     class EventType(models.TextChoices):
-        ORDER_ADMIN_CREATE = "order_admin_create", "Admin vytvoril objednávku"
-        ORDER_ADMIN_UPDATE = "order_admin_update", "Admin upravil objednávku"
-        ORDER_ADMIN_DELETE = "order_admin_delete", "Admin vymazal objednávku"
+        # Kľúče si držia pôvodné meno `order_admin_*` (historické dáta, filtre,
+        # frontend) hoci teraz sa logujú objednávky všetkých aktorov, nielen
+        # admina — mení sa preto len zobrazovaný label, nie hodnota v DB.
+        ORDER_ADMIN_CREATE = "order_admin_create", "Objednávka vytvorená"
+        ORDER_ADMIN_UPDATE = "order_admin_update", "Objednávka upravená"
+        ORDER_ADMIN_DELETE = "order_admin_delete", "Objednávka vymazaná"
         AUTO_ORDER_RUN = "auto_order_run", "Spustenie auto-objednávok"
         PUSH_BROADCAST = "push_broadcast", "Odoslanie push notifikácie"
         SETTINGS_CHANGE = "settings_change", "Zmena nastavení"
@@ -41,6 +44,16 @@ class EventLog(models.Model):
         on_delete=models.SET_NULL,
         related_name="targeted_event_logs",
     )
+    # Ktorej prevádzky sa udalosť týka — pri objednávkach je to identita
+    # riadku (`DailyOrder.prevadzka`), zatiaľ čo `target_user` môže mať viac
+    # prevádzok naraz, takže samo osebe nestačí na filter "ktorá prevádzka".
+    prevadzka = models.ForeignKey(
+        "Prevadzka",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="event_logs",
+    )
     summary = models.CharField(max_length=255)
     payload = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,6 +65,7 @@ class EventLog(models.Model):
             models.Index(fields=["event_type"]),
             models.Index(fields=["actor"]),
             models.Index(fields=["target_user"]),
+            models.Index(fields=["prevadzka"]),
         ]
 
     def __str__(self) -> str:

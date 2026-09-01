@@ -634,13 +634,20 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             ).delete()
             self._sync_auto_order_pause(prevadzka, {})
             # Return an unsaved instance for the response
-            return DailyOrder(
+            result = DailyOrder(
                 user=user,
                 prevadzka=prevadzka,
                 date=validated_data["date"],
                 status="draft",
                 data={},
             )
+            # Audit trail (viď `perform_create` v `order_views.py`): draft je
+            # jediná cesta, ktorou klient objednávku maže — POST na `/orders/`,
+            # nikdy DELETE. Bez tohto tagu by sa toto zmazanie v EventLogu
+            # stratilo, lebo view nemá odkiaľ vziať pôvodné dáta.
+            result._audit_event = "delete" if existing_order else None
+            result._audit_previous_data = existing_order.data if existing_order else {}
+            return result
 
         new_data = validated_data.get("data", {})
         existing_order = (
@@ -704,6 +711,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     order.save(update_fields=["data", "updated_at"])
 
         self._sync_auto_order_pause(prevadzka, new_data)
+        # Audit trail: `create()` je upsert (viď docstring), takže "create"
+        # requesty tu bežne aj prepisujú existujúci riadok. `perform_create`
+        # v `order_views.py` z tohto odvodí, či ide o skutočné vytvorenie
+        # alebo o úpravu, a čo bolo predtým.
+        order._audit_event = "update" if existing_order else "create"
+        order._audit_previous_data = existing_order.data if existing_order else {}
         return order
 
     @staticmethod

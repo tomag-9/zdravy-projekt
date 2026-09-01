@@ -14,14 +14,21 @@ import { logger } from '../../lib/logger';
 import { SECTION, canRead } from '../../lib/sections';
 import { PageHead, Button, Card, Field, Input, Select, SearchBox } from './ui';
 import type { BadgeTone } from './eventLogDisplay';
-import { actorDisplay, eventTone, targetDisplay } from './eventLogDisplay';
+import {
+    ORDER_EVENT_TYPES,
+    actorDisplay,
+    eventTone,
+    orderActionLabel,
+    summarizeOrderMeals,
+    targetDisplay,
+} from './eventLogDisplay';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const LEVELS = ['INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const;
 const EVENT_TYPES = [
-    ['order_admin_create', 'Admin vytvoril objednávku'],
-    ['order_admin_update', 'Admin upravil objednávku'],
-    ['order_admin_delete', 'Admin vymazal objednávku'],
+    ['order_admin_create', 'Objednávka vytvorená'],
+    ['order_admin_update', 'Objednávka upravená'],
+    ['order_admin_delete', 'Objednávka vymazaná'],
     ['auto_order_run', 'Spustenie auto-objednávok'],
     ['cron_run', 'Cron úloha dobehla'],
     ['cron_skipped', 'Cron úloha preskočená (víkend/voľný deň)'],
@@ -49,7 +56,7 @@ function taskLabel(entry: UpcomingEventEntry): string {
     return TASK_LABELS_SK[entry.task] ?? entry.name;
 }
 
-type ActiveTab = 'events' | 'upcoming' | 'system';
+type ActiveTab = 'events' | 'orders' | 'upcoming' | 'system';
 
 interface AdminLogEntry {
     id: number;
@@ -78,6 +85,8 @@ interface EventLogEntry {
     target_user: number | null;
     target_user_email?: string;
     target_user_name?: string;
+    prevadzka: number | null;
+    prevadzka_nazov?: string | null;
     summary: string;
     payload: Record<string, unknown>;
     created_at: string;
@@ -214,6 +223,18 @@ export default function AdminLogs() {
     const [eventError, setEventError] = useState<string | null>(null);
     const [expandedEvents, setExpandedEvents] = useState<Set<number>>(() => new Set());
 
+    const [orderEvents, setOrderEvents] = useState<EventLogEntry[]>([]);
+    const [orderCount, setOrderCount] = useState(0);
+    const [orderType, setOrderType] = useState('');
+    const [orderPrevadzka, setOrderPrevadzka] = useState('');
+    const [orderDateFrom, setOrderDateFrom] = useState('');
+    const [orderDateTo, setOrderDateTo] = useState('');
+    const [orderPage, setOrderPage] = useState(1);
+    const [orderHasNext, setOrderHasNext] = useState(false);
+    const [orderLoading, setOrderLoading] = useState(true);
+    const [orderError, setOrderError] = useState<string | null>(null);
+    const [expandedOrders, setExpandedOrders] = useState<Set<number>>(() => new Set());
+
     const [upcoming, setUpcoming] = useState<UpcomingEventEntry[]>([]);
     const [upcomingLoading, setUpcomingLoading] = useState(true);
     const [upcomingError, setUpcomingError] = useState<string | null>(null);
@@ -251,6 +272,32 @@ export default function AdminLogs() {
             setEventLoading(false);
         }
     }, [actor, apiFetch, dateFrom, dateTo, eventPage, eventType]);
+
+    const fetchOrderEvents = useCallback(async () => {
+        setOrderLoading(true);
+        setOrderError(null);
+        try {
+            const params = new URLSearchParams({
+                ordering: '-created_at',
+                page: String(orderPage),
+                event_type: orderType || ORDER_EVENT_TYPES.join(','),
+            });
+            if (orderPrevadzka.trim()) params.set('prevadzka', orderPrevadzka.trim());
+            if (orderDateFrom) params.set('date_from', orderDateFrom);
+            if (orderDateTo) params.set('date_to', orderDateTo);
+            const res = await apiFetch(`${API_URL}/admin/event-logs/?${params.toString()}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = (await res.json()) as EventLogsResponse;
+            setOrderEvents(data.results);
+            setOrderCount(data.count);
+            setOrderHasNext(Boolean(data.next));
+        } catch (e) {
+            logger.error(e);
+            setOrderError('Objednávkové udalosti sa nepodarilo načítať');
+        } finally {
+            setOrderLoading(false);
+        }
+    }, [apiFetch, orderDateFrom, orderDateTo, orderPage, orderPrevadzka, orderType]);
 
     const fetchSystemLogs = useCallback(async () => {
         setSystemLoading(true);
@@ -290,9 +337,11 @@ export default function AdminLogs() {
     }, [apiFetch]);
 
     useEffect(() => { void fetchEvents(); }, [fetchEvents]);
+    useEffect(() => { void fetchOrderEvents(); }, [fetchOrderEvents]);
     useEffect(() => { if (canSeeUpcoming) void fetchUpcoming(); }, [canSeeUpcoming, fetchUpcoming]);
     useEffect(() => { void fetchSystemLogs(); }, [fetchSystemLogs]);
     useEffect(() => { setEventPage(1); }, [actor, dateFrom, dateTo, eventType]);
+    useEffect(() => { setOrderPage(1); }, [orderPrevadzka, orderDateFrom, orderDateTo, orderType]);
 
     const counts = useMemo(() => entries.reduce<Record<string, number>>((acc, entry) => {
         acc[entry.level] = (acc[entry.level] || 0) + 1;
@@ -310,9 +359,12 @@ export default function AdminLogs() {
         });
     };
 
-    const loading = activeTab === 'events' ? eventLoading : activeTab === 'upcoming' ? upcomingLoading : systemLoading;
+    const loading = activeTab === 'events' ? eventLoading
+        : activeTab === 'orders' ? orderLoading
+            : activeTab === 'upcoming' ? upcomingLoading : systemLoading;
     const refresh = () => {
         if (activeTab === 'events') return fetchEvents();
+        if (activeTab === 'orders') return fetchOrderEvents();
         if (activeTab === 'upcoming') return fetchUpcoming();
         return fetchSystemLogs();
     };
@@ -340,6 +392,9 @@ export default function AdminLogs() {
                     <div className="zpa-tabs">
                         <button type="button" onClick={() => setActiveTab('events')} className={`zpa-tab${activeTab === 'events' ? ' active' : ''}`}>
                             Udalosti (audit)
+                        </button>
+                        <button type="button" onClick={() => setActiveTab('orders')} className={`zpa-tab${activeTab === 'orders' ? ' active' : ''}`}>
+                            Objednávky
                         </button>
                         {canSeeUpcoming && (
                             <button type="button" onClick={() => setActiveTab('upcoming')} className={`zpa-tab${activeTab === 'upcoming' ? ' active' : ''}`}>
@@ -422,6 +477,82 @@ export default function AdminLogs() {
                                 <Button variant="secondary" sm disabled={eventPage === 1 || eventLoading} onClick={() => setEventPage((page) => page - 1)}>Predchádzajúca</Button>
                                 <span>Strana {eventPage}</span>
                                 <Button variant="secondary" sm disabled={!eventHasNext || eventLoading} onClick={() => setEventPage((page) => page + 1)}>Ďalšia</Button>
+                            </div>
+                        </Card>
+                    </>
+                ) : activeTab === 'orders' ? (
+                    <>
+                        <Card pad>
+                            <div className="zpa-grid-3">
+                                <Field label="Typ zmeny">
+                                    <Select value={orderType} onChange={(e) => setOrderType(e.target.value)}>
+                                        <option value="">Vytvorenie, úprava aj zmazanie</option>
+                                        <option value="order_admin_create">Vytvorenie</option>
+                                        <option value="order_admin_update">Úprava</option>
+                                        <option value="order_admin_delete">Zmazanie</option>
+                                    </Select>
+                                </Field>
+                                <Field label="ID prevádzky">
+                                    <Input type="number" min="1" value={orderPrevadzka} onChange={(e) => setOrderPrevadzka(e.target.value)} placeholder="Všetky prevádzky" />
+                                </Field>
+                                <div className="zpa-grid-2">
+                                    <Field label="Od"><Input type="date" value={orderDateFrom} onChange={(e) => setOrderDateFrom(e.target.value)} /></Field>
+                                    <Field label="Do"><Input type="date" value={orderDateTo} onChange={(e) => setOrderDateTo(e.target.value)} /></Field>
+                                </div>
+                            </div>
+                        </Card>
+
+                        {orderError && <div className="zpa-empty">{orderError}</div>}
+                        <Card style={{ overflow: 'hidden' }}>
+                            <div className="zpa-card-head" style={{ padding: '14px 20px', borderBottom: '1px solid var(--line-soft)' }}>
+                                <h3>Objednávky ({orderCount})</h3>
+                            </div>
+                            {orderLoading ? <div className="zpa-empty">Načítavam…</div> : orderEvents.length === 0 ? (
+                                <div className="zpa-empty">Žiadne objednávkové udalosti pre aktuálne filtre</div>
+                            ) : (
+                                <div className="zpa-table-wrap">
+                                    <table className="zpa-table">
+                                        <thead><tr><th>Čas (BA)</th><th>Zmena</th><th>Prevádzka</th><th>Kto</th><th>Koľko čoho</th><th /></tr></thead>
+                                        <tbody>
+                                            {orderEvents.map((entry) => {
+                                                const isExpanded = expandedOrders.has(entry.id);
+                                                return (
+                                                    <Fragment key={entry.id}>
+                                                        <tr>
+                                                            <td><EventTime value={entry.created_at} /></td>
+                                                            <td>
+                                                                <span className={`zpa-badge zpa-badge--${eventTone(entry.event_type)}`}>
+                                                                    {orderActionLabel(entry.event_type)}
+                                                                </span>
+                                                            </td>
+                                                            <td>{entry.prevadzka_nazov || (entry.prevadzka ? `#${entry.prevadzka}` : '—')}</td>
+                                                            <td>{actorDisplay(entry)}</td>
+                                                            <td>{summarizeOrderMeals(entry.payload)}</td>
+                                                            <td className="r">
+                                                                <Button variant="ghost" sm onClick={() => toggleExpanded(setExpandedOrders, entry.id)}>
+                                                                    {isExpanded ? <ChevronDown /> : <ChevronRight />} Detail
+                                                                </Button>
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={6}>
+                                                                    <div style={{ marginBottom: 8, color: 'var(--ink-mute)' }}>{entry.summary}</div>
+                                                                    <EventPayloadDetails payload={entry.payload} />
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </Fragment>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '14px 20px', borderTop: '1px solid var(--line-soft)' }}>
+                                <Button variant="secondary" sm disabled={orderPage === 1 || orderLoading} onClick={() => setOrderPage((page) => page - 1)}>Predchádzajúca</Button>
+                                <span>Strana {orderPage}</span>
+                                <Button variant="secondary" sm disabled={!orderHasNext || orderLoading} onClick={() => setOrderPage((page) => page + 1)}>Ďalšia</Button>
                             </div>
                         </Card>
                     </>
