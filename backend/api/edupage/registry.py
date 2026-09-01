@@ -60,12 +60,14 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
     PrevadzkaConfig(
         subdomena="zsivanka",
         ucty=("Ivanka pri Dunaji",),
-        olovrant_mode=OlovrantMode.NEZNAMY,
+        olovrant_mode=OlovrantMode.EDUPAGE,
         poznamka=(
-            "Čaká na nenulové dáta. Pozor: menu A=NM, nie klasik! "
-            "NGNF/NMNE/'MŠ NMNG bez ARAS' fuzzy-matchovali len na jedno "
-            "obmedzenie z viacerých (#527) — letter_hook opravuje na plné "
-            "kombinácie."
+            "1.9.2026: prvé nenulové dáta potvrdili vlastný jid pre olovrant — "
+            "líši sa od obeda aj diétou (Škôlka obed 'NO MILK – NO GLUTEN – NO "
+            "ORECH' vs olovrant 'NO MILK/NO GLUTEN'), nie je to len kópia. "
+            "Pozor: menu A=NM, nie klasik! NGNF/NMNE/'MŠ NMNG bez ARAS' "
+            "fuzzy-matchovali len na jedno obmedzenie z viacerých (#527) — "
+            "letter_hook opravuje na plné kombinácie."
         ),
         letter_hook=ivanka_letter_hook,
     ),
