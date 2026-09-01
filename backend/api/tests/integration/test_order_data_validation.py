@@ -142,6 +142,45 @@ class TestOrderDataValidation:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    def test_special_diet_ordered_without_note_rejected(self, authenticated_client):
+        """Kuchyňa nevie čo dieťaťu naložiť, ak 'Špeciálna' nemá poznámku."""
+        data = {
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 1}, "diets": {"Špeciálna": 1}},
+            },
+        }
+        response = self._post(authenticated_client, data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_special_diet_ordered_with_blank_note_rejected(self, authenticated_client):
+        data = {
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 1}, "diets": {"Špeciálna": 1}},
+            },
+            "special_diet_note": "   ",
+        }
+        response = self._post(authenticated_client, data)
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_special_diet_ordered_with_note_accepted(self, authenticated_client):
+        data = {
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 1}, "diets": {"Špeciálna": 1}},
+            },
+            "special_diet_note": "Bez orechov",
+        }
+        response = self._post(authenticated_client, data)
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_special_diet_zero_count_does_not_require_note(self, authenticated_client):
+        data = {
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 1}, "diets": {"Špeciálna": 0}},
+            },
+        }
+        response = self._post(authenticated_client, data)
+        assert response.status_code == status.HTTP_201_CREATED
+
     # ------------------------------------------------------------------ #
     # Flat shape compatibility
     # ------------------------------------------------------------------ #

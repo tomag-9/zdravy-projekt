@@ -79,6 +79,10 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     # Poznámka k špeciálnej diéte sedí v `data` vedľa jedál (tak ju posiela klient
     # aj admin editor a tak ju číta admin UI), takže musí prejsť allowlistom —
     # nie je to jedlo, preto sa validuje zvlášť a preskakuje traverzáciu kategórií.
+    # Musí sedieť s `SPECIAL_DIET_NAME` vo frontende (`config/constants.ts`) —
+    # obe strany porovnávajú rovnaký reťazec z `diets` mapy, diéty žijú v DB,
+    # nie ako zdieľaný enum.
+    _SPECIAL_DIET_NAME = "Špeciálna"
     _SPECIAL_DIET_NOTE_KEY = "special_diet_note"
     _ALLOWED_DATA_KEYS = _ALLOWED_MEAL_KEYS | {_SPECIAL_DIET_NOTE_KEY}
     _MAX_NOTE_CHARS = 1000
@@ -124,6 +128,18 @@ class DailyOrderSerializer(serializers.ModelSerializer):
 
         if self._SPECIAL_DIET_NOTE_KEY in data:
             self._validate_special_diet_note(data[self._SPECIAL_DIET_NOTE_KEY])
+
+        # Frontend (OrderPage aj AdminOrderEditorModal) blokuje odoslanie bez
+        # poznámky, keď je objednaná diéta "Špeciálna" — jej názov kuchyni nič
+        # nehovorí, kuchyňa potrebuje vedieť čo dieťaťu naložiť (viď gramážová
+        # tabuľka). Vynucujeme to aj tu, nech to nejde obísť priamym API volaním.
+        if self._order_has_special_diet(data):
+            note = str(data.get(self._SPECIAL_DIET_NOTE_KEY) or "").strip()
+            if not note:
+                raise serializers.ValidationError(
+                    f"Pri diéte '{self._SPECIAL_DIET_NAME}' je potrebné vyplniť "
+                    f"'{self._SPECIAL_DIET_NOTE_KEY}'."
+                )
 
         raw_size = len(
             json.dumps(data, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -180,6 +196,39 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     # s poznámkou "do GN" pre kuchyňu). Súčet oboch pre daný kľúč nesmie
     # prekročiť objednaný počet.
     _PACK_FIELDS = ("packSeparately", "packSeparatelyGn")
+
+    @classmethod
+    def _order_has_special_diet(cls, data: Dict[str, Any]) -> bool:
+        """Walk the same meal/category/sub-category shape as the main loop,
+        looking for a positive count under diets['Špeciálna'] anywhere."""
+        for meal_key, meal in data.items():
+            if meal_key == cls._SPECIAL_DIET_NOTE_KEY or not isinstance(meal, dict):
+                continue
+            if cls._is_leaf_payload(meal):
+                if cls._leaf_has_special_diet(meal):
+                    return True
+                continue
+            for cat_data in meal.values():
+                if not isinstance(cat_data, dict):
+                    continue
+                if cls._is_leaf_payload(cat_data):
+                    if cls._leaf_has_special_diet(cat_data):
+                        return True
+                    continue
+                for sub_data in cat_data.values():
+                    if isinstance(sub_data, dict) and cls._leaf_has_special_diet(
+                        sub_data
+                    ):
+                        return True
+        return False
+
+    @classmethod
+    def _leaf_has_special_diet(cls, leaf: Dict[str, Any]) -> bool:
+        diets = leaf.get("diets")
+        if not isinstance(diets, dict):
+            return False
+        value = diets.get(cls._SPECIAL_DIET_NAME)
+        return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
     @staticmethod
     def _is_leaf_payload(value: Any) -> bool:
