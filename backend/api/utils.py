@@ -106,19 +106,33 @@ def build_user_meal_row(order_data: Dict[str, Any], meal_key: str) -> Dict[str, 
     return OrderData(order_data).meal_row(meal_key)
 
 
-def meal_counts(order_data: Dict[str, Any]) -> Dict[str, int]:
-    """Return per-meal totals for an order: {breakfast, lunch, olovrant, total}.
+def meal_counts(order_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Return per-meal totals for an order: {breakfast, lunch, olovrant, total,
+    standard_total, diet_counts}.
 
-    Zdieľané reportmi, ktorým stačia holé počty (nie rozpis menu/diét).
+    Zdieľané reportmi, ktorým stačia holé počty (nie plný rozpis menu/diét po
+    kategóriách, ten dá `build_user_meal_row`). `diet_counts` je súčet za
+    všetky chody dokopy — koľko detí má v daný deň ktorú diétu; `standard_total`
+    je `total` bez detí s diétou (diéta nie je nad rámec bežnej porcie, len jej
+    variant, takže sa z `total` odpočítava, nie pripočítava).
     """
-    bf = build_user_meal_row(order_data, "breakfast")["total"]
-    lu = build_user_meal_row(order_data, "lunch")["total"]
-    ol = build_user_meal_row(order_data, "olovrant")["total"]
+    rows = {
+        meal: build_user_meal_row(order_data, meal)
+        for meal in ("breakfast", "lunch", "olovrant")
+    }
+    diet_counts: Dict[str, int] = {}
+    for meal_row in rows.values():
+        for category in meal_row["categories"]:
+            for diet, count in category["diets"].items():
+                diet_counts[diet] = diet_counts.get(diet, 0) + count
+    total = sum(meal_row["total"] for meal_row in rows.values())
     return {
-        "breakfast": bf,
-        "lunch": lu,
-        "olovrant": ol,
-        "total": bf + lu + ol,
+        "breakfast": rows["breakfast"]["total"],
+        "lunch": rows["lunch"]["total"],
+        "olovrant": rows["olovrant"]["total"],
+        "total": total,
+        "standard_total": total - sum(diet_counts.values()),
+        "diet_counts": diet_counts,
     }
 
 

@@ -17,6 +17,8 @@ interface OverviewCounts {
   lunch: number;
   olovrant: number;
   total: number;
+  standard_total: number;
+  diet_counts: Record<string, number>;
 }
 
 interface OverviewRow {
@@ -123,6 +125,7 @@ const OverviewRowItem: React.FC<{ row: OverviewRow; source: "edupage" | "app" }>
     ...(row.flags.unmapped_diets ?? []),
     ...(row.flags.uncertain_diets ?? []),
   ];
+  const dietEntries = Object.entries(row.counts.diet_counts ?? {}).filter(([, count]) => count > 0);
   return (
     <div className="zpa-ovrow" id={`prevadzka-row-${row.prevadzka_id}`}>
       <StatusDot row={row} source={source} />
@@ -131,6 +134,14 @@ const OverviewRowItem: React.FC<{ row: OverviewRow; source: "edupage" | "app" }>
           <div className="nm">{row.nazov}</div>
         </Link>
         {showCelok && <div className="sub">{row.celok}</div>}
+        {/* Klasik hore, diéty pod tým — súčet vrátane detí s diétou ostáva
+            v „Spolu" napravo (reálny počet na rozvoz), toto je len rozpis. */}
+        {row.delivered && dietEntries.length > 0 && (
+          <div className="sub">
+            {`klasik ${row.counts.standard_total}, `}
+            {dietEntries.map(([name, count]) => `${name} ${count}`).join(", ")}
+          </div>
+        )}
         {dietWarnings.length > 0 && (
           <div className="sub" style={{ color: "var(--mustard-700)" }}>
             {dietWarnings.join(", ")}

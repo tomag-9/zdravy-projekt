@@ -100,6 +100,37 @@ describe("PrevadzkaOverview", () => {
     expect(screen.getByText(/XYZ→NO MILK/)).toBeInTheDocument();
   });
 
+  it("shows classic count and per-diet breakdown below the row, separate from the delivery total", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [
+          {
+            ...baseRow,
+            counts: {
+              breakfast: 0,
+              lunch: 5,
+              olovrant: 0,
+              total: 5,
+              standard_total: 3,
+              diet_counts: { "Bezlaktózová": 2 },
+            },
+            flags: { attention: [], config_notes: [], unmapped_diets: [], uncertain_diets: [] },
+          },
+        ],
+        app: [],
+      }),
+    });
+
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    expect(screen.getByText("klasik 3, Bezlaktózová 2")).toBeInTheDocument();
+    // "Spolu" (celkový počet na rozvoz) ostáva nedotknuté, vrátane detí s diétou.
+    expect(screen.getAllByText("5").length).toBeGreaterThan(0);
+  });
+
   it("does not render an extra warning line when there are no diet flags", async () => {
     mockApiFetch.mockResolvedValue({
       ok: true,

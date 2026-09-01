@@ -42,12 +42,19 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
         "Manual App", is_edupage=False
     )
 
-    # EduPage prevádzka dodala podklady s upozornením.
+    # EduPage prevádzka dodala podklady s upozornením, 3 deti majú diétu.
     DailyOrder.objects.create(
         user=edu_user,
         prevadzka=edu_prev,
         date=DATE,
-        data={"lunch": {"EduŠkola": {"menuCounts": {"A": 12}}}},
+        data={
+            "lunch": {
+                "EduŠkola": {
+                    "menuCounts": {"A": 12},
+                    "diets": {"Bezlaktózová": 3},
+                }
+            }
+        },
         scrape_flags={"attention": ["A:KZ?"], "config_notes": []},
     )
     # App prevádzka nedodala nič (žiadny DailyOrder).
@@ -89,6 +96,8 @@ def test_overview_splits_edupage_and_app_and_flags(admin_client):
     assert edu["delivered"] is True
     assert edu["counts"]["lunch"] == 12
     assert edu["counts"]["total"] == 12
+    assert edu["counts"]["standard_total"] == 9
+    assert edu["counts"]["diet_counts"] == {"Bezlaktózová": 3}
     assert edu["has_warning"] is True
     assert edu["flags"]["attention"] == ["A:KZ?"]
 
