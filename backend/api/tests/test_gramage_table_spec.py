@@ -345,15 +345,40 @@ def test_combined_diet_of_three_or_more_uses_fixed_orange_background():
 def test_footer_is_the_portion_summary_plus_the_grand_total():
     spec = build_table_spec(_payload())
 
+    # "summary-diet" pred "total" — celodenný diétny rozpad ("koľko z ktorej
+    # diéty máme spolu") pod súhrnom porcií, rovnako ako per-klient.
     assert [row["kind"] for row in spec["footer"]] == [
         "portion-band",
         "portion-row",
         "portion-row",
         "portion-row",
+        "summary-diet",
         "total",
         "total-ms-porcie",
     ]
     assert spec["footer"][-2]["cells"][0]["text"] == "CELKOM (g / ml)"
+
+
+def test_footer_diet_breakdown_sums_the_diet_across_all_clients():
+    """Sumár dokopy má diétny rozpad sčítaný cez VŠETKÝCH klientov, nie len jedného."""
+    payload = _payload()
+    second_client = dict(payload["rows"][0])
+    second_client["client"] = "MŠ Druhá"
+    second_client["diet_summary_rows"] = [
+        {
+            "name": "No Milk",
+            "count": 3,
+            "color": "#F59E0B",
+            "col_grams": [["300.00"], ["450.00"], []],
+        }
+    ]
+    payload["rows"].append(second_client)
+
+    spec = build_table_spec(payload)
+    diet_row = next(row for row in spec["footer"] if row["kind"] == "summary-diet")
+
+    assert diet_row["cells"][0]["text"] == "No Milk"
+    assert diet_row["cells"][0]["count"] == format_count(2 + 3)
 
 
 def test_totals_row_uses_a_dash_for_empty_columns():
@@ -694,6 +719,39 @@ def test_combined_first_two_summary_equals_the_portion_summary_over_both():
     assert [row["cells"][0]["count"] for row in combined_rows] == [
         format_count(item["count"]) for item in expected
     ]
+
+
+def test_each_numbered_summary_gets_its_own_diet_breakdown():
+    """Sumár 1/2/3 aj Sumár 1 a 2 majú diétny rozpad, nielen Sumár dokopy.
+
+    Riadky idú v pevnom poradí: pásmo "Sumár X" (`portion-summary-band`), 3
+    riadky porcií (Polievka, Menu A, Menu B podľa fixture) a hneď za nimi náš
+    nový diétny riadok — priamo za bandom sa preto dá spoľahnúť, bez potreby
+    odlišovať ho od per-klientského "summary-diet" (ten `group_id` nenesie,
+    takže sa tak odlíšiť nedá).
+    """
+    spec = build_table_spec(_three_vydaje_payload())
+
+    band_indexes = [
+        index
+        for index, row in enumerate(spec["rows"])
+        if "portion-summary-band" in row["css"]
+    ]
+    band_titles = [spec["rows"][index]["cells"][0]["text"] for index in band_indexes]
+    assert band_titles == ["Sumár 1", "Sumár 2", "Sumár 1 a 2", "Sumár 3"]
+
+    diet_rows_after_band = [spec["rows"][index + 4] for index in band_indexes]
+    assert [row["kind"] for row in diet_rows_after_band] == ["summary-diet"] * 4
+
+    # "Sumár 1 a 2" sčíta rovnakého klienta z oboch výdajov (2 + 2 = 4),
+    # ostatné súhrny (jeden výdaj) ostávajú pri pôvodných 2.
+    counts_by_band = dict(
+        zip(band_titles, (row["cells"][0]["count"] for row in diet_rows_after_band))
+    )
+    assert counts_by_band["Sumár 1"] == format_count(2)
+    assert counts_by_band["Sumár 2"] == format_count(2)
+    assert counts_by_band["Sumár 1 a 2"] == format_count(4)
+    assert counts_by_band["Sumár 3"] == format_count(2)
 
 
 def test_two_vydaje_do_not_get_a_combined_summary():

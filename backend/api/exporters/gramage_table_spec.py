@@ -226,6 +226,101 @@ def _totals_from_summary(summary: list[dict]) -> list[list]:
     ]
 
 
+def _sum_col_grams(left: list, right: list) -> list:
+    """Sčíta dve serializované gramážové mriežky (list skupín × komponentov).
+
+    Rovnaká logika ako `MealPlanService._sum_col_grams` (delenie polievky) —
+    kopíruje sa sem, aby si tento modul nemusel ťahať závislosť na
+    `meal_plan_service` len kvôli jednej pomocnej funkcii.
+    """
+    result = []
+    for left_group, right_group in zip(left, right):
+        if not left_group:
+            result.append(right_group)
+        elif not right_group:
+            result.append(left_group)
+        else:
+            result.append(
+                [
+                    str((Decimal(a) + Decimal(b)).quantize(Decimal("0.01")))
+                    for a, b in zip(left_group, right_group)
+                ]
+            )
+    return result
+
+
+def _aggregate_diet_summary(rows_for_summary: list[dict]) -> list[dict]:
+    """Diétny súhrn naprieč viacerými klientskymi riadkami (pre Sumár X/dokopy).
+
+    Každý klientský riadok už nesie vlastný `diet_summary_rows` (count +
+    col_grams per diéta v tom riadku) — táto funkcia ich len sčíta naprieč
+    zadanou skupinou, rovnako ako sa per-klient diéty sčítavajú vnútri
+    jedného riadku.
+    """
+    totals: dict[str, dict] = {}
+    order: list[str] = []
+    for row in rows_for_summary:
+        for diet in row.get("diet_summary_rows") or []:
+            name = str(diet.get("name") or "")
+            if not name:
+                continue
+            if name not in totals:
+                totals[name] = {
+                    "name": name,
+                    "color": diet.get("color"),
+                    "base_colors": diet.get("base_colors") or [],
+                    "count": Decimal("0"),
+                    "col_grams": [[] for _ in (diet.get("col_grams") or [])],
+                }
+                order.append(name)
+            entry = totals[name]
+            entry["count"] += _as_decimal(diet.get("count"))
+            entry["col_grams"] = _sum_col_grams(
+                entry["col_grams"], diet.get("col_grams") or []
+            )
+    return [totals[name] for name in order]
+
+
+def _diet_breakdown_rows(
+    rows_for_summary: list[dict],
+    data: dict,
+    groups: list[dict],
+    hues: list[str],
+) -> list[dict]:
+    """Riadky „koľko z ktorej diéty" pod daným súhrnom (Sumár 1/2/1a2/dokopy).
+
+    Vizuálne totožné s per-klientským diétnym súhrnom (`summary-diet`), len
+    sčítané naprieč všetkými klientmi v danej skupine — admin/kuchyňa vidí
+    diétny rozpad aj na úrovni celého klastra/dňa, nielen jedného klienta.
+    """
+    out: list[dict] = []
+    for diet in _aggregate_diet_summary(rows_for_summary):
+        if not diet["count"]:
+            continue
+        text_hex, background_hex = _diet_text_and_background(data, diet)
+        out.append(
+            {
+                "kind": "summary-diet",
+                "css": "summ-diet",
+                "color": f"#{readable_text_color(text_hex)}",
+                "background": f"#{blend_with_white(background_hex)}",
+                "cells": [
+                    _label_cell(
+                        diet["name"],
+                        diet["count"],
+                        swatch={
+                            "color": f"#{diet_color(data, diet)}",
+                            "base_colors": diet.get("base_colors") or [],
+                        },
+                        note=(data.get("diet_descriptions") or {}).get(diet["name"]),
+                    )
+                ]
+                + _gram_cells(diet.get("col_grams") or [], groups, hues),
+            }
+        )
+    return out
+
+
 def build_table_spec(
     data: dict,
     sections: list[str] | None = None,
@@ -315,6 +410,7 @@ def build_table_spec(
                     total_columns,
                 )
             )
+            rows.extend(_diet_breakdown_rows(vydaj_rows, data, groups, hues))
             # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
             # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
             # bez tretieho klastra). Zmysel má, až keď je aj tretí (British
@@ -330,6 +426,7 @@ def build_table_spec(
                         total_columns,
                     )
                 )
+                rows.extend(_diet_breakdown_rows(first_two_rows, data, groups, hues))
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
         if unassigned:
             rows.append(
@@ -370,9 +467,11 @@ def build_table_spec(
         ]
         footer_summary = portion_summary(data, visible_rows)
         footer_totals = _totals_from_summary(footer_summary)
+        footer_rows = visible_rows
     else:
         footer_summary = portion_summary(data)
         footer_totals = data.get("totals") or []
+        footer_rows = data.get("rows") or []
 
     footer = _portion_summary_rows(
         "Sumár dokopy",
@@ -382,6 +481,7 @@ def build_table_spec(
         hues,
         total_columns,
     )
+    footer.extend(_diet_breakdown_rows(footer_rows, data, groups, hues))
     footer.append(_totals_row(footer_totals, keep, groups, hues))
     # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
     # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
