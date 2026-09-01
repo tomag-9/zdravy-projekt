@@ -231,3 +231,49 @@ def test_dashboard_reports_soup_inside_the_menu_rows():
 
     # Celkový stĺpcový súčet polievky sa zlúčením nesmie zmeniť.
     assert [Decimal(v) for v in data["totals"][soup_index]] == [Decimal("2000.00")]
+
+
+@pytest.mark.django_db
+def test_dashboard_does_not_duplicate_soup_for_a_fully_packed_separately_portion():
+    """Motýlik a Včielka, 1.9.2026: 3 hlavy Menu A, celé balené "zvlášť".
+
+    Polievka nemá vlastné menu stĺpce, takže sa počíta z tej istej "lunch"
+    kategórie ako hlavné jedlo (`ORDER_MEAL_TO_PLAN_MEALS["lunch"] = ["soup",
+    "main_course"]`). Odpočet "zabaliť zvlášť" počtu z "čistého" riadku bol
+    naviazaný len na `is_variant_meal` (polievka nemá variant), takže sa pre
+    polievku nikdy nevykonal — "čistý" polievkový riadok si držal PLNÝ počet
+    navyše k riadku "zvlášť", a keďže nemal k čomu splynúť (hlavné jedlo malo
+    len riadok "zvlášť", nie "čistý"), zostal v tabuľke ako osamotený riadok
+    "Polievka" s počtom, ktorý nikto neobjednal.
+    """
+    plan = _plan_with_soup_and_two_menus(datetime.date(2026, 9, 1))
+    celok = Celok.objects.create(nazov="Motýlik a Včielka")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Motýlik a Včielka")
+    user = User.objects.create_user(username="motylik@example.com", password="x")
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=plan.date,
+        data={
+            "lunch": {
+                "Dospelý (SŠ)": {
+                    "menuCounts": {"A": 3},
+                    "diets": {},
+                    "packSeparately": {"menus": {"A": 3}, "diets": {}},
+                }
+            }
+        },
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+    row = data["rows"][0]
+    sub_rows = row["sub_rows"]
+
+    # Presne jeden riadok — polievka sa v ňom rozpísala do stĺpca, samostatný
+    # "Polievka" riadok navyše (s neobjednaným počtom) tam nesmie byť.
+    assert [(r["meal"], r["type"]) for r in sub_rows] == [("main_course", "zvlast")]
+    assert sub_rows[0]["count"] == 3
+    assert sub_rows[0]["absorbed_meals"] == ["soup"]
+
+    # Súhrnný počet hláv nesmie ani zdvojiť, ani stratiť tie tri porcie.
+    assert row["standard_total_count"] == 3

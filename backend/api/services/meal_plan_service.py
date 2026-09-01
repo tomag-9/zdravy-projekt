@@ -994,13 +994,21 @@ class MealPlanService:
                         # "čistý" riadok, inak sa rovnaká osoba vypíše dvakrát.
                         pack_by_variant: dict[str, int] = {}
                         pack_diet_totals: dict[str, int] = {}
-                        if is_variant_meal:
-                            for pack_menu_counts in pack_menu_counts_by_target.values():
-                                for v, c in pack_menu_counts.items():
-                                    nv = _normalize_variant(v)
-                                    pack_by_variant[nv] = pack_by_variant.get(
-                                        nv, 0
-                                    ) + _safe_nonneg_int(c)
+                        # Bez `is_variant_meal` vetvy tu: jedlo bez vlastných menu
+                        # stĺpcov (polievka, olovrant bez variantu) má v
+                        # `variant_counts` nižšie jediný kľúč "" - keby sa sem
+                        # "zabaliť zvlášť" počty (naviazané na reálny variant,
+                        # napr. "A") nesčítali pod ten istý kľúč "", odpočet z
+                        # "čistého" riadku by ich nenašiel a ten istý človek by sa
+                        # vykázal dvakrát: raz v "čistom" (neodpočítanom) riadku,
+                        # raz v riadku "zvlášť" (issue: Motýlik a Včielka, 3x
+                        # polievka, ktorá nebola objednaná).
+                        for pack_menu_counts in pack_menu_counts_by_target.values():
+                            for v, c in pack_menu_counts.items():
+                                nv = _normalize_variant(v) if is_variant_meal else ""
+                                pack_by_variant[nv] = pack_by_variant.get(
+                                    nv, 0
+                                ) + _safe_nonneg_int(c)
                         for pack_diet_counts in pack_diet_counts_by_target.values():
                             for diet_name, c in pack_diet_counts.items():
                                 pack_diet_totals[diet_name] = pack_diet_totals.get(
@@ -1221,12 +1229,11 @@ class MealPlanService:
                                     }
                                 )
                                 # Odpočítalo sa vyššie z "čistého" riadku (súčet
-                                # oboch cieľov) len keď is_variant_meal (inak sa
-                                # zvlášť polievky nespočítava samostatne, ale
-                                # nechá na hlavnom chode) - dorátať do súhrnu
-                                # presne v tom istom prípade, nech sa hlava
-                                # nestratí, ale ani nezaráta dvakrát.
-                                if is_variant_meal and count_towards_summary:
+                                # oboch cieľov) pre KAŽDÉ jedlo, aj bez variantu
+                                # (polievka) - dorátať do súhrnu treba rovnako
+                                # vždy, nech sa hlava nestratí, ale ani nezaráta
+                                # dvakrát.
+                                if count_towards_summary:
                                     client_total_count += _billed_count(
                                         pack_count, billing_coeff
                                     )
