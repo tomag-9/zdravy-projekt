@@ -465,8 +465,8 @@ class TestIvankaLetterHook(unittest.TestCase):
     obmedzenie z viacerých — EduPage nazov potvrdzuje plné kombinácie
     (nahlásené Stanom 31.8.2026)."""
 
-    def _rule(self, skratka) -> LetterRule:
-        return ivanka_letter_hook("X", skratka, "")
+    def _rule(self, skratka, nazov="") -> LetterRule:
+        return ivanka_letter_hook("X", skratka, nazov)
 
     def test_ngnf_full_combo(self):
         self.assertEqual(self._rule("NGNF").diet, "NO GLUTEN – NO FISH")
@@ -486,6 +486,20 @@ class TestIvankaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NG"))
+
+    def test_nmngnorech_with_orech_in_nazov_is_full_combo(self):
+        """Letter N: skratka 'NMNGnORECH', nazov 'NoMilk/NoGluten/NoOrech' —
+        potvrdené na existujúcu diétu pk 132 (user 1.9.2026)."""
+        self.assertEqual(
+            self._rule("NMNGnORECH", "NoMilk/NoGluten/NoOrech").diet,
+            "NO MILK – NO GLUTEN – NO ORECH",
+        )
+
+    def test_nmngnorech_without_orech_in_nazov_falls_through(self):
+        """Rovnaká skratka sa na tejto škole recykluje aj pre letter A, kde
+        nazov orech vôbec nespomína ('NoMilk/NoGluten') — nesmie dostať plnú
+        trojkombináciu, necháva sa na engine (fuzzy NO MILK/NO GLUTEN)."""
+        self.assertIsNone(self._rule("NMNGnORECH", "NoMilk/NoGluten"))
 
 
 class TestLibellusLetterHook(unittest.TestCase):
@@ -578,6 +592,11 @@ class TestFilipanerihoLetterHook(unittest.TestCase):
         GLUTEN), hríb sa strácal — potvrdené na existujúcu diétu pk 58
         (user 1.9.2026)."""
         self.assertEqual(self._rule("NG hríb").diet, "NO GLUTEN, HRÍBY")
+
+    def test_nnno_confirmed_certain(self):
+        """'NNNO'/'NoNoNo orech' — rovnaký vzor ako Rozmanitá, orech sa
+        strácal (0 detí v čase nálezu, doplnené preventívne, user 1.9.2026)."""
+        self.assertEqual(self._rule("NNNO").diet, "NONONO, NO ORECH")
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
