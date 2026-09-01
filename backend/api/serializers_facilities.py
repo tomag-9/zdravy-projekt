@@ -86,6 +86,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "is_active",
             "billing_portion_coefficients",
             "visible_menus",
+            "menu_day_restrictions",
             "visible_meals",
             "visible_diets",
             "visible_portion_types",

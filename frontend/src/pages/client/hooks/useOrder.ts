@@ -65,6 +65,27 @@ export const getVisibleMenusForMeal = (
     adminVisibleMenus: string[],
 ) => (mealKey === 'lunch' ? adminVisibleMenus : ['A']);
 
+/** ISO deň v týždni pre `date` (YYYY-MM-DD): 1=pondelok..7=nedeľa. */
+const isoWeekday = (date: string): number => {
+    const day = new Date(`${date}T12:00:00`).getDay();
+    return day === 0 ? 7 : day;
+};
+
+/** Menu B napr. „len v piatok" (#menu_day_restrictions) — mimo povolených dní
+ * sa v zozname neponúka, aj keď je inak vo `visible_menus` zapnuté. */
+export const filterMenusByDay = (
+    menus: string[],
+    dayRestrictions: Record<string, number[]> | null | undefined,
+    date: string,
+): string[] => {
+    if (!dayRestrictions) return menus;
+    const weekday = isoWeekday(date);
+    return menus.filter((menu) => {
+        const allowedDays = dayRestrictions[menu];
+        return !allowedDays || allowedDays.length === 0 || allowedDays.includes(weekday);
+    });
+};
+
 export class OrderRequestError extends Error {
     code?: string;
 
@@ -773,9 +794,14 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const prevadzkaSettings = prevadzky.find((item) => item.id === activePrevadzkaId);
 
     const adminVisibleMenusSetting = prevadzkaSettings?.visible_menus;
-    const adminVisibleMenus = adminVisibleMenusSetting == null
+    const adminVisibleMenusBase = adminVisibleMenusSetting == null
         ? ['A', 'B', 'C', 'D', 'V']
         : adminVisibleMenusSetting;
+    const adminVisibleMenus = filterMenusByDay(
+        adminVisibleMenusBase,
+        prevadzkaSettings?.menu_day_restrictions,
+        selectedDate,
+    );
 
     const resolvedVisibleMenusForMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') =>
         getVisibleMenusForMeal(mealKey, adminVisibleMenus);

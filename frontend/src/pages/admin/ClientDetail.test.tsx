@@ -271,6 +271,28 @@ describe("ClientDetail facility & login management", () => {
     });
   });
 
+  it("restricts a menu to a chosen weekday and saves it, without touching other menus", async () => {
+    mockApiFetch.mockImplementation(buildFetchMock());
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(screen.getByRole("button", { name: "Menu B - Pi" }));
+    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.menu_day_restrictions).toEqual({ B: [5] });
+      // Ostatné menu (A, C, V) sú stále bez obmedzenia — každý deň.
+      expect(body.visible_menus).toEqual(["A", "B", "C", "V"]);
+    });
+  });
+
   it("deletes the facility and navigates back to facilities", async () => {
     mockApiFetch.mockImplementation(buildFetchMock());
     const user = userEvent.setup();
