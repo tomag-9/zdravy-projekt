@@ -26,6 +26,7 @@ from ..base import LetterRule
 
 DETSKA = "Škôlka"
 DOSPELA = "Dospelý (SŠ)"
+PREDSKOLAK = "Predškolák"
 
 # skratka (upper, bez medzier/pomlčiek) → pravidlo
 _RULES: dict[str, LetterRule] = {
@@ -38,6 +39,16 @@ _RULES: dict[str, LetterRule] = {
     "KZD": LetterRule(portion=DETSKA, menu="A"),
     "NMZD": LetterRule(portion=DETSKA, diet="NO MILK"),
     "DIA": LetterRule(portion=DETSKA, diet="DIA"),
+    # Platiteľské typy vysvetlil Stanislav Šulc (EduPage admin, 1.9.2026) po
+    # zmene typov platiteľov v Edupage — predtým uncertain fuzzy matche
+    # (len NO MILK, bez porcie).
+    # "D" = Dospelý (zamestnanec, dospelá porcia).
+    "DNM": LetterRule(portion=DOSPELA, diet="NO MILK"),
+    # "PD" = Predškolák.
+    "PDNM": LetterRule(portion=PREDSKOLAK, diet="NO MILK"),
+    # "Z1/2" = Dospelý 1/2 (zamestnanec, ale porcia MŠ — NIE dospelá, hoci
+    # obsahuje "zamestnanec"; na rozdiel od KZ/NMZ vyššie).
+    "Z1/2NM": LetterRule(portion=DETSKA, diet="NO MILK"),
 }
 
 
