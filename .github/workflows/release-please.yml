@@ -46,8 +46,12 @@ jobs:
         if: steps.release.outputs.pr != ''
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          # Passed via env, NOT interpolated into the script body: the PR JSON
+          # (title/body carry the changelog) contains quotes/parens/newlines
+          # that break bash if spliced in with ${{ }} directly.
+          RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
         run: |
-          PR_NUMBER=$(echo '${{ steps.release.outputs.pr }}' | jq -r .number)
+          PR_NUMBER=$(echo "$RELEASE_PR_JSON" | jq -r .number)
           echo "Merging release-please PR #$PR_NUMBER"
           gh pr merge "$PR_NUMBER" --squash --delete-branch=false --repo "$GITHUB_REPOSITORY"
 
