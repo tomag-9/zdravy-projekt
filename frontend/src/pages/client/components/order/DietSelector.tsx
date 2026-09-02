@@ -26,6 +26,18 @@ const DietSelector = ({
     // Diéty sa pripočítavajú k Menu A, takže tu nie je žiadny strop.
     const currentDietSum = Object.values(diets || {}).reduce((a: number, b: number) => a + b, 0);
 
+    // Objednávka môže obsahovať diétu, ktorá už nie je v `enabledDiets` — napr.
+    // admin ju medzičasom vypol pre prevádzku/kategóriu, kategória obmedzuje
+    // dostupné diéty (Vegetariánske pri menu V), alebo ju takto priniesol
+    // EduPage scrape (`allowed_diet_names()` v edupage_scraper.py rieši
+    // globálne aktívne diéty, nie visible_diets tejto konkrétnej prevádzky).
+    // Bez tohto doplnenia by sa jej riadok vôbec nevykreslil a nedalo by sa
+    // s ňou v modáli pracovať (ani ju vynulovať).
+    const orderedDietsNotEnabled = Object.entries(diets || {})
+        .filter(([diet, count]) => count > 0 && !enabledDiets.includes(diet))
+        .map(([diet]) => diet);
+    const visibleDiets = [...enabledDiets, ...orderedDietsNotEnabled];
+
     return createPortal(
         <div className="zp-sheet-scrim" onClick={onClose}>
             <div className="zp-sheet" onClick={(e) => e.stopPropagation()}>
@@ -43,13 +55,13 @@ const DietSelector = ({
                 </div>
 
                 <div className="zp-sheet-body">
-                    {enabledDiets.length === 0 ? (
+                    {visibleDiets.length === 0 ? (
                         <div className="zp-empty" style={{ margin: "16px 0" }}>
                             <p>Žiadne povolené diéty.</p>
                             <p style={{ fontSize: 12, marginTop: 4 }}>Prejdite do nastavení pre zapnutie.</p>
                         </div>
                     ) : (
-                        enabledDiets.map(diet => {
+                        visibleDiets.map(diet => {
                             const count = diets?.[diet] || 0;
                             return (
                                 <div key={diet} className={`zp-diet-row${count > 0 ? " active" : ""}`}>
