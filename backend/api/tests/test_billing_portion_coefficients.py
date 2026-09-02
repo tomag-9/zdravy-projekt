@@ -265,66 +265,6 @@ def test_dashboard_folds_predskolak_into_ms_row_like_the_real_workbook():
     assert sub_rows[0]["count"] == Decimal("8.25")
     assert sub_rows[0]["col_grams"] == [["1650.00"]]
     assert data["rows"][0]["standard_total_count"] == Decimal("8.25")
-    # `_heads` (surový počet hláv, 7 + 1 = 8, BEZ koeficientu 1,25) musí
-    # prežiť až do finálneho sub_row — `gramage_table_spec` ho potrebuje na
-    # „hlavný údaj" súhrnu (#529). Predtým sa tu vždy popol (`.pop("_heads")`
-    # v MealPlanService), takže „bez diét/diéta/spolu" v PDF vždy ukazovali
-    # „—" a jediné reálne číslo bolo „počet prepočítané na MŠ porcie".
-    assert sub_rows[0]["_heads"] == 8
-
-
-@pytest.mark.django_db
-def test_headline_summary_shows_both_raw_heads_and_billed_ms_porcie():
-    """#529 end-to-end — reprodukcia hlásenia, kde „bez diét/diéta/spolu"
-    ukazovali „—" a len „MŠ porcie" mala číslo (`_heads` sa v MealPlanService
-    strácal skôr, než sa dostal do `gramage_table_spec`)."""
-    from api.exporters.gramage_table_spec import build_table_spec
-
-    call_command("init_reference_data")
-
-    template = MealTemplate.objects.create(
-        name="Obed 200g",
-        category="main_course",
-        components=[{"label": "Hlavné jedlo", "grams": "200", "unit": "g"}],
-        base_weight_grams="200",
-    )
-    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 7, 20))
-    MealPlanItem.objects.create(
-        meal_plan=plan, template=template, category="main_course", menu_variant=""
-    )
-
-    celok = Celok.objects.create(nazov="MŠ Edulienka hlavný údaj")
-    prevadzka = Prevadzka.objects.create(
-        celok=celok,
-        nazov="MŠ Edulienka hlavný údaj",
-        billing_portion_coefficients={"Predškolák": "1.25"},
-    )
-    user = User.objects.create_user(username="edulienka3@example.com", password="x")
-    DailyOrder.objects.create(
-        user=user,
-        prevadzka=prevadzka,
-        date=plan.date,
-        data={
-            "lunch": {
-                "Škôlka": {"menuCounts": {"A": 7}, "diets": {}},
-                "Predškolák": {"menuCounts": {"A": 1}, "diets": {}},
-            }
-        },
-    )
-
-    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
-    spec = build_table_spec(data)
-
-    headline = {
-        r["cells"][0]["label"]: r["cells"][0]["text"]
-        for r in spec["footer"]
-        if r["kind"] == "headline-summary"
-    }
-    assert headline["Obed bez diét:"] == "8"
-    assert headline["Obed diéta:"] == "—"
-    assert headline["Obed spolu:"] == "8"
-    # 7 MŠ (koef. 1) + 1 predškolák (koef. 1,25) = 8,25.
-    assert headline["Obed počet prepočítané na MŠ porcie:"] == "8,25"
 
 
 @pytest.mark.django_db
