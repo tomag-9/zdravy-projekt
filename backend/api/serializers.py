@@ -436,11 +436,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         new_data: Dict[str, Any],
         existing_data: Dict[str, Any] | None = None,
         input_status: str = "submitted",
-    ) -> bool:
+    ) -> list[str]:
+        """Meal keys (`lunch`, ...) whose Menu B/C/D content changed. Returns a
+        list (still truthy/falsy like the old bool) — `_validate_deadlines`
+        needs the keys to check per-meal whether the change was an increase."""
+
         def sig(meal_data: Any) -> frozenset:
             return cls._meal_menu_signature(meal_data, cls._RESTRICTED_MENUS)
 
-        changed = cls._walk_meal_changes(
+        return cls._walk_meal_changes(
             new_data,
             existing_data,
             input_status,
@@ -449,7 +453,53 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 sig(prev) != sig(curr) and (sig(prev) or sig(curr))
             ),
         )
-        return bool(changed)
+
+    @classmethod
+    def _restricted_menu_counts(
+        cls, meal_data: Any, allowed_menus: frozenset
+    ) -> dict[tuple[Any, str], int]:
+        """{(prevádzka, portion, menu): count} pre `allowed_menus`, na porovnanie
+        starého a nového počtu — na rozdiel od `_meal_menu_signature` (frozenset
+        na detekciu "zmenilo sa niečo") toto zachová KTORÝ počet sa zmenil a AKO."""
+        od = OrderData({"_": meal_data})
+        counts: dict[tuple[Any, str], int] = {}
+        for cat in od.iter_categories("_"):
+            prefix = (cat.prevadzka, cat.name)
+            for menu, count in cat.menu_counts.items():
+                if menu not in allowed_menus:
+                    continue
+                c = safe_count(count)
+                if c:
+                    counts[(prefix, menu)] = c
+        return counts
+
+    @classmethod
+    def _restricted_menu_increased(cls, prev_meal: Any, curr_meal: Any) -> bool:
+        """True, ak sa aspoň jeden Menu B/C/D počet (na prevádzku/porciu/menu)
+        zvýšil alebo pribudol nový — odhlásenie/zníženie (nikdy nová/vyššia
+        hodnota) sa nepovažuje za "increase" (user 2.9.2026: odhlásiť sa dá až
+        do rána, nahlásiť/zvýšiť len do 2-dňového termínu)."""
+        prev_counts = cls._restricted_menu_counts(prev_meal, cls._RESTRICTED_MENUS)
+        curr_counts = cls._restricted_menu_counts(curr_meal, cls._RESTRICTED_MENUS)
+        return any(
+            count > prev_counts.get(key, 0) for key, count in curr_counts.items()
+        )
+
+    @classmethod
+    def _restricted_menus_increased(
+        cls,
+        new_data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None,
+        changed_meal_keys: list[str],
+    ) -> bool:
+        existing_data = existing_data or {}
+        return any(
+            cls._restricted_menu_increased(
+                existing_data.get(meal_key, {}) or {},
+                new_data.get(meal_key, {}) or {},
+            )
+            for meal_key in changed_meal_keys
+        )
 
     @classmethod
     def _validate_deadlines(
@@ -494,9 +544,23 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 )
 
         if changed_restricted_menus:
-            deadline_date = target_date - datetime.timedelta(
-                days=settings.deadline_menu_bc_days_before
+            # Nahlásiť/zvýšiť Menu B/C má prísny 2-dňový termín (kuchyňa ich
+            # dokupuje vopred) — ale ODHLÁSIŤ/znížiť sa dá až do rána v deň
+            # výdaja, rovnaký termín ako bežné jedlo (user 2.9.2026: "nahlasit
+            # si to vedia najviac 2 dni vopred ale odhlasit si to vedia az do
+            # rana"). Bez tohto rozlíšenia by rodič nemohol odhlásiť dieťa
+            # tesne pred obedom, len preto, že B/C termín už prešiel.
+            is_increase = cls._restricted_menus_increased(
+                new_data, existing_data, changed_restricted_menus
             )
+            if is_increase:
+                deadline_date = target_date - datetime.timedelta(
+                    days=settings.deadline_menu_bc_days_before
+                )
+                detail = "Menu B a C už nie je možné objednať ani zmeniť."
+            else:
+                deadline_date = target_date
+                detail = "Menu B a C už nie je možné odhlásiť ani znížiť."
             deadline_dt = timezone.make_aware(
                 datetime.datetime.combine(deadline_date, settings.deadline_menu_bc),
                 current_tz,
@@ -506,8 +570,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     deadline_time=deadline_dt.strftime("%d.%m.%Y %H:%M"),
                     current_time=current_dt.strftime("%d.%m.%Y %H:%M"),
                     detail=(
-                        "Menu B a C už nie je možné objednať ani zmeniť. "
-                        f"Termín: {deadline_dt.strftime('%d.%m.%Y %H:%M')}"
+                        f"{detail} Termín: {deadline_dt.strftime('%d.%m.%Y %H:%M')}"
                     ),
                 )
 
