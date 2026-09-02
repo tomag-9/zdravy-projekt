@@ -222,9 +222,12 @@ const AdminDashboard: React.FC = () => {
   }, [sections, selectedVydaje, dietClusters, showEmpty, clusterSummary, expanded]);
 
   const fetchData = useCallback(async () => {
+    // Zámerne NEnulujeme `data`/`orderReport` pred fetchom — Nastavenia
+    // tabuľky sú v samostatnom modáli podmienenom `data` (pozri nižšie), takže
+    // vynulovanie by ho na chvíľu odmountovalo (bliknutie, strata scrollu).
+    // Tabuľka nižšie tak počas prefiltrovania ukazuje starý obsah, kým
+    // nepríde nový — mení sa len ona, modál zostáva na mieste.
     setLoading(true);
-    setData(null);
-    setOrderReport(null);
     try {
       const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}${sectionQuery}`);
       if (res.ok) {
@@ -236,8 +239,13 @@ const AdminDashboard: React.FC = () => {
         // objednávok, nech admin vidí porcie namiesto prázdna.
         if (!gramage.meal_plan_id || gramage.col_groups.length === 0) {
           const reportRes = await apiFetch(`${API}/admin/summary/daily-report/?date=${date}`);
-          if (reportRes.ok) setOrderReport(await reportRes.json());
+          setOrderReport(reportRes.ok ? await reportRes.json() : null);
+        } else {
+          setOrderReport(null);
         }
+      } else {
+        setData(null);
+        setOrderReport(null);
       }
     } catch (e) { logger.error(e); }
     finally { setLoading(false); }
@@ -438,7 +446,11 @@ const AdminDashboard: React.FC = () => {
 
       <div className="zpa-stack">
         {/* Content */}
-        {loading && <Empty>Načítavam dáta…</Empty>}
+        {/* Kým beží prefiltrovanie (Nastavenia tabuľky) a staré dáta ešte
+            máme, necháme tabuľku vidno (jemne stlmenú) namiesto toho, aby ju
+            na chvíľu nahradil "Načítavam dáta…" — to by zhodilo scroll aj
+            odmountovalo modál nad ňou. Placeholder patrí len prvému načítaniu. */}
+        {loading && !data && <Empty>Načítavam dáta…</Empty>}
 
         {!loading && data && !hasData && !hasOrderCounts && (
           <Empty icon={<Inbox />}>
@@ -451,8 +463,8 @@ const AdminDashboard: React.FC = () => {
           </Empty>
         )}
 
-        {!loading && data && hasData && (
-          <div className="zpa-gram-fill">
+        {data && hasData && (
+          <div className="zpa-gram-fill" style={loading ? { opacity: 0.55, transition: "opacity .15s" } : undefined}>
             <GramageTable spec={data.spec} fill onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
           </div>
         )}
