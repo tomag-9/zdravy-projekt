@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, AlertTriangle, Send, Gauge, ClipboardCheck } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
@@ -14,6 +14,7 @@ import { PrevadzkaFields, type EdupageConnectionOption, type PrevadzkaForm } fro
 import { EMPTY_LOGIN } from "./facility/constants";
 import PrevadzkaClosures from "./facility/PrevadzkaClosures";
 import { DietColorSwatch } from "./DietColorSwatch";
+import { toDateKey } from "../../lib/businessDay";
 
 interface Diet {
   id: number;
@@ -166,6 +167,7 @@ const ClientDetail: React.FC = () => {
   // Order actions
   const [deleteOrderTarget, setDeleteOrderTarget] = useState<DailyOrder | null>(null);
   const [resetOrderTarget, setResetOrderTarget] = useState<DailyOrder | null>(null);
+  const [copyOrderTarget, setCopyOrderTarget] = useState<DailyOrder | null>(null);
   const [editOrderTarget, setEditOrderTarget] = useState<DailyOrder | null>(null);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderActionLoading, setOrderActionLoading] = useState(false);
@@ -412,6 +414,35 @@ const ClientDetail: React.FC = () => {
     } catch (e) {
       logger.error(e);
       toastError("Chyba pri vynulovaní objednávky.");
+    } finally {
+      setOrderActionLoading(false);
+    }
+  };
+
+  // Endpoint /orders/ je pri POST upsert na (prevadzka, date) — bezpečne
+  // prepíše prípadnú existujúcu dnešnú objednávku (na to upozorňuje potvrdzovací modal).
+  const handleCopyToToday = async () => {
+    if (!copyOrderTarget || !facilityId || !facility) return;
+    setOrderActionLoading(true);
+    try {
+      const today = toDateKey(new Date());
+      const query = user?.id ? `?user_id=${encodeURIComponent(String(user.id))}` : "";
+      const res = await apiFetch(`${API}/orders/${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: today, data: copyOrderTarget.data, prevadzka: facility.id }),
+      });
+      if (res.ok) {
+        success("Objednávka bola skopírovaná na dnešný deň.");
+        setCopyOrderTarget(null);
+        fetchOrders();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        toastError(body?.error?.message || "Nepodarilo sa skopírovať objednávku.");
+      }
+    } catch (e) {
+      logger.error(e);
+      toastError("Chyba pri kopírovaní objednávky.");
     } finally {
       setOrderActionLoading(false);
     }
@@ -738,6 +769,9 @@ const ClientDetail: React.FC = () => {
                             <td className="r">
                               <div style={{ display: "inline-flex", gap: 4 }}>
                                 <IconButton onClick={() => setEditOrderTarget(order)} title="Upraviť objednávku" aria-label="Upraviť objednávku"><Pencil /></IconButton>
+                                {order.date !== toDateKey(new Date()) && (
+                                  <IconButton onClick={() => setCopyOrderTarget(order)} title="Skopírovať na dnes" aria-label="Skopírovať na dnes"><Copy /></IconButton>
+                                )}
                                 <IconButton onClick={() => setResetOrderTarget(order)} title="Vynulovať objednávku" aria-label="Vynulovať objednávku"><RotateCcw /></IconButton>
                                 <IconButton onClick={() => setDeleteOrderTarget(order)} title="Odstrániť objednávku" aria-label="Odstrániť objednávku"><Trash2 /></IconButton>
                               </div>
@@ -1277,6 +1311,29 @@ const ClientDetail: React.FC = () => {
         >
           <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
             Naozaj chcete vynulovať objednávku zo dňa <strong style={{ color: "var(--green-900)" }}>{resetOrderTarget.date}</strong>? Všetky položky budú vymazané, záznam zostane zachovaný.
+          </p>
+        </Modal>
+      )}
+
+      {/* ── Copy order to today confirmation modal ── */}
+      {copyOrderTarget && (
+        <Modal
+          title="Skopírovať objednávku na dnes"
+          onClose={() => setCopyOrderTarget(null)}
+          icon={<Copy />}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setCopyOrderTarget(null)} disabled={orderActionLoading}>Zrušiť</Button>
+              <Button variant="primary" onClick={handleCopyToToday} disabled={orderActionLoading}>{orderActionLoading ? "Kopírujem…" : "Skopírovať"}</Button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+            Naozaj chcete skopírovať objednávku zo dňa <strong style={{ color: "var(--green-900)" }}>{copyOrderTarget.date}</strong> na dnešný deň (
+            <strong style={{ color: "var(--green-900)" }}>{toDateKey(new Date())}</strong>)?
+            {recentOrders.some((o) => o.date === toDateKey(new Date())) && (
+              <> Prevádzka už na dnes objednávku má — táto akcia ju prepíše.</>
+            )}
           </p>
         </Modal>
       )}
