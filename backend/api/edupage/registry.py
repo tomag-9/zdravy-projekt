@@ -17,6 +17,7 @@ from .overrides.britishschool import (
     british_school_letter_hook,
     british_school_payer_hook,
 )
+from .overrides.cmspezinok import cmspezinok_letter_hook
 from .overrides.cvernicka import cvernicka_letter_hook
 from .overrides.fantasticka import fantasticka_letter_hook
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -98,6 +99,19 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "opravuje na NO MILK/NO EGG (EduPage nazov='NoMilk/NoEgg')."
         ),
         letter_hook=zdravebrusko_letter_hook,
+    ),
+    PrevadzkaConfig(
+        subdomena="cmspezinok",
+        ucty=("CMŠ Pezinok",),
+        olovrant_mode=_C,
+        poznamka=(
+            "Vlastný jid pre raňajky aj olovrant (2.9.2026). Skratka 'H' = "
+            "'Hlavná budova' (administratívna skupina, cena 0), NIE Histamín — "
+            "bez letter_hooku by exaktný _SKRATKA_MAP['H']='HISTAMIN' túto "
+            "skupinu tíško zaradil ako diétu. User 2.9.2026 potvrdil, že sa "
+            "má úplne preskočiť."
+        ),
+        letter_hook=cmspezinok_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="emsmelanchtona",

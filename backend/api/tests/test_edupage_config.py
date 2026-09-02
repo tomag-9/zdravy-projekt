@@ -16,6 +16,7 @@ from api.edupage.overrides.britishschool import (
     british_school_letter_hook,
     british_school_payer_hook,
 )
+from api.edupage.overrides.cmspezinok import cmspezinok_letter_hook
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
 from api.edupage.overrides.fantasticka import fantasticka_letter_hook
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -141,6 +142,12 @@ class TestConfigPreUrl(unittest.TestCase):
 
     def test_montessorisk_has_letter_hook(self):
         cfg = config_pre_url("https://montessorisk.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+
+    def test_cmspezinok_has_letter_hook(self):
+        cfg = config_pre_url("https://cmspezinok.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg)
+        self.assertEqual(cfg.olovrant_mode, OlovrantMode.EDUPAGE)
         self.assertIsNotNone(cfg.letter_hook)
 
 
@@ -563,6 +570,23 @@ class TestMontessoriLetterHook(unittest.TestCase):
         for skratka in ("Iná", "Iná NmNo"):
             rule = self._rule(skratka)
             self.assertIsNone(rule, msg=skratka)  # necháva sa na engine
+
+
+class TestCmsPezinokLetterHook(unittest.TestCase):
+    """'H'/'Hlavná budova' je administratívna skupina, nie diéta HISTAMIN —
+    bez tohto hooku by exaktný `_SKRATKA_MAP['H']` ju tíško zaradil ako diétu
+    (user 2.9.2026: má sa úplne preskočiť)."""
+
+    def _rule(self, skratka) -> LetterRule | None:
+        return cmspezinok_letter_hook("X", skratka, "Hlavná budova")
+
+    def test_h_is_skipped(self):
+        rule = self._rule("H")
+        self.assertIsNotNone(rule)
+        self.assertTrue(rule.skip)
+
+    def test_other_letters_fall_through_to_engine(self):
+        self.assertIsNone(self._rule("NG"))
 
 
 class TestFilipanerihoLetterHook(unittest.TestCase):
