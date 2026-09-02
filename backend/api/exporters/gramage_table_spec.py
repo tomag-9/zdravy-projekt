@@ -356,6 +356,11 @@ def _aggregate_diet_summary(rows_for_summary: list[dict]) -> list[dict]:
                     "base_colors": diet.get("base_colors") or [],
                     "count": Decimal("0"),
                     "col_grams": [[] for _ in (diet.get("col_grams") or [])],
+                    # Rozpis podľa jedla (#560) — `count` je plochý súčet cez
+                    # raňajky/obed/olovrant, ktorý by rovnaké dieťa objednané na
+                    # viac jedál rátal viackrát; zobrazenie použije radšej tento
+                    # rozpis, viď `_diet_name_rows`.
+                    "meal_counts": {},
                 }
                 order.append(name)
             entry = totals[name]
@@ -363,6 +368,10 @@ def _aggregate_diet_summary(rows_for_summary: list[dict]) -> list[dict]:
             entry["col_grams"] = _sum_col_grams(
                 entry["col_grams"], diet.get("col_grams") or []
             )
+            for meal, count in (diet.get("meal_counts") or {}).items():
+                entry["meal_counts"][meal] = _as_decimal(
+                    entry["meal_counts"].get(meal, 0)
+                ) + _as_decimal(count)
     return [totals[name] for name in order]
 
 
@@ -385,22 +394,27 @@ def _diet_name_rows(
         if not diet["count"]:
             continue
         text_hex, background_hex = _diet_text_and_background(data, diet)
+        label_cell = _label_cell(
+            diet["name"],
+            diet["count"],
+            swatch={
+                "color": f"#{diet_color(data, diet)}",
+                "base_colors": diet.get("base_colors") or [],
+            },
+        )
+        # Viac ako jedno jedlo prispieva do súčtu (#560) — plochý `count` by
+        # rátal to isté dieťa na raňajkách/obede/olovrante viackrát, rozpis
+        # "R x + Ob y + Ol z" ukáže reálny počet za každé jedlo zvlášť.
+        meal_counts = diet.get("meal_counts") or {}
+        if len(meal_counts) > 1:
+            label_cell["count"] = _composite_meal_count_text(meal_counts)
         diet_rows.append(
             {
                 "kind": "summary-diet",
                 "css": "summ-diet",
                 "color": f"#{readable_text_color(text_hex)}",
                 "background": f"#{blend_with_white(background_hex)}",
-                "cells": [
-                    _label_cell(
-                        diet["name"],
-                        diet["count"],
-                        swatch={
-                            "color": f"#{diet_color(data, diet)}",
-                            "base_colors": diet.get("base_colors") or [],
-                        },
-                    )
-                ]
+                "cells": [label_cell]
                 + _gram_cells(diet.get("col_grams") or [], groups, hues),
             }
         )
@@ -789,6 +803,13 @@ def _client_rows(
         sub_row for sub_row, _ in visible if not sub_row.get("diet_name")
     )
     diet_counts: dict[str, Decimal] = {}
+    # Rozpis diétneho počtu podľa jedla (#560) — `_meal_counts` na zlúčenom
+    # sub-riadku (viď `_merge_sub_rows_across_meals`) drží, koľko z tejto
+    # diéty patrí raňajkám/obedu/olovrantu zvlášť. `diet_counts` nižšie ostáva
+    # plochý súčet pre "spolu porcií" (to je reálny počet pripravovaných
+    # porcií, sčítanie je tam správne) — rozpis sa použije len na zobrazenie
+    # riadku diéty, nech sa jedno dieťa na troch jedlách nepočíta 3×.
+    diet_meal_counts: dict[str, dict[str, Decimal]] = {}
     for sub_row, _ in visible:
         if not sub_row.get("diet_name"):
             continue
@@ -796,6 +817,14 @@ def _client_rows(
         diet_counts[name] = diet_counts.get(name, Decimal("0")) + _as_decimal(
             sub_row.get("count")
         )
+        meal_counts = sub_row.get("_meal_counts") or {
+            sub_row.get("meal"): sub_row.get("count")
+        }
+        bucket = diet_meal_counts.setdefault(name, {})
+        for meal, count in meal_counts.items():
+            if not meal:
+                continue
+            bucket[meal] = bucket.get(meal, Decimal("0")) + _as_decimal(count)
     diet_total = sum(diet_counts.values(), Decimal("0"))
 
     meta = f"štandard {format_count(standard_count)}"
@@ -931,22 +960,27 @@ def _client_rows(
             continue
         hex_color = diet_color(data, diet)
         text_hex, background_hex = _diet_text_and_background(data, diet)
+        label_cell = _label_cell(
+            name,
+            diet_counts[name],
+            swatch={
+                "color": f"#{hex_color}",
+                "base_colors": diet.get("base_colors") or [],
+            },
+        )
+        # Viac ako jedno jedlo prispieva k tejto diéte (#560) — plochý súčet
+        # by rátal to isté dieťa na raňajkách/obede/olovrante viackrát,
+        # rozpis "R x + Ob y + Ol z" ukáže reálny počet za jedlo zvlášť.
+        meal_counts = diet_meal_counts.get(name) or {}
+        if len(meal_counts) > 1:
+            label_cell["count"] = _composite_meal_count_text(meal_counts)
         out.append(
             {
                 "kind": "summary-diet",
                 "css": "summ-diet",
                 "color": f"#{readable_text_color(text_hex)}",
                 "background": f"#{blend_with_white(background_hex)}",
-                "cells": [
-                    _label_cell(
-                        name,
-                        diet_counts[name],
-                        swatch={
-                            "color": f"#{hex_color}",
-                            "base_colors": diet.get("base_colors") or [],
-                        },
-                    )
-                ]
+                "cells": [label_cell]
                 + _gram_cells(
                     diet.get("col_grams") or [], groups, hues, snack_with_lunch
                 ),

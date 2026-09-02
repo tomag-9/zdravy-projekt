@@ -895,6 +895,14 @@ class MealPlanService:
             client_standard_totals = _empty_group_totals()
             diet_summary_totals: dict[str, list[list[Decimal]]] = {}
             diet_summary_counts: dict[str, int | Decimal] = {}
+            # Rozpis diétneho počtu podľa jedla ("breakfast_snack"/"soup" alebo
+            # "main_course"/"afternoon_snack" - `meal` prvého jedla, ktoré do
+            # daného `order_meal` prispieva, viď `count_towards_summary`).
+            # `diet_summary_counts` ostáva plochý súčet (grafy/gramáž naň
+            # nesiahajú), tento rozpis nesie `gramage_table_spec` na zobrazenie
+            # "R 12 + Ob 12 + Ol 10" namiesto naspočítaného súčtu, ktorý by
+            # rovnaké dieťa na raňajkách/obede/olovrante rátal 3× (#560).
+            diet_summary_meal_counts: dict[str, dict[str, int | Decimal]] = {}
             order_data = order.data if isinstance(order.data, dict) else {}
             if prevadzka_key in SNACK_MIRRORS_LUNCH_PREVADZKY:
                 # Report-only: klientov Excel neráta olovrant zo skutočných
@@ -1155,11 +1163,16 @@ class MealPlanService:
                             if diet_name not in diet_summary_totals:
                                 diet_summary_totals[diet_name] = _empty_group_totals()
                                 diet_summary_counts[diet_name] = 0
+                                diet_summary_meal_counts[diet_name] = {}
                             _merge_group_totals(
                                 diet_summary_totals[diet_name], diet_grams
                             )
                             if count_towards_summary:
                                 diet_summary_counts[diet_name] += billed_diet_count
+                                diet_summary_meal_counts[diet_name][meal] = (
+                                    diet_summary_meal_counts[diet_name].get(meal, 0)
+                                    + billed_diet_count
+                                )
 
                         # Rozpočet, z ktorého obidva ciele čerpajú (zvlast najprv,
                         # zvlast_gn dostane zvyšok) - `pack_available_by_variant`
@@ -1287,8 +1300,14 @@ class MealPlanService:
                                             _empty_group_totals()
                                         )
                                         diet_summary_counts[diet_name] = 0
-                                    diet_summary_counts[diet_name] += _billed_count(
+                                        diet_summary_meal_counts[diet_name] = {}
+                                    pack_billed = _billed_count(
                                         pack_count, billing_coeff
+                                    )
+                                    diet_summary_counts[diet_name] += pack_billed
+                                    diet_summary_meal_counts[diet_name][meal] = (
+                                        diet_summary_meal_counts[diet_name].get(meal, 0)
+                                        + pack_billed
                                     )
 
             for correction in order_data.get("__gram_corrections__", []):
@@ -1354,6 +1373,16 @@ class MealPlanService:
                         "base_colors": diet_base_color_map.get(name, []),
                         "count": _tidy_count(diet_summary_counts[name]),
                         "col_grams": _serialize_group_totals(diet_summary_totals[name]),
+                        # Rozpis podľa jedla, viď komentár pri
+                        # `diet_summary_meal_counts` vyššie - `count` ostáva
+                        # plochý súčet (gramáž/#532 naň spolieha), toto je len
+                        # pre zobrazenie "R x + Ob y + Ol z" namiesto neho.
+                        "meal_counts": {
+                            meal: _tidy_count(count)
+                            for meal, count in (
+                                diet_summary_meal_counts.get(name) or {}
+                            ).items()
+                        },
                     }
                     for name in sorted(diet_summary_counts)
                 ]
