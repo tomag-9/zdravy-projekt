@@ -550,25 +550,19 @@ class TestMontessoriLetterHook(unittest.TestCase):
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("Iná NmNg"))
 
-    def test_zs_bezna_is_plain_menu_not_diet(self):
-        """Code review 2026-08-31/09-01: 'C'/'ZŠ'/'ZŠ Bežná' je obyčajná ZŠ
-        porcia, žiadna diéta — bez tohto pravidla `resolve_menu_variant` ju
-        nespoznal, engine skúsil fuzzy diet-match, zlyhal a Montessori
-        vypadla z importu celá (žiadne raňajky)."""
-        rule = self._rule("ZŠ")
-        self.assertEqual(rule.menu, "A")
-        self.assertIsNone(rule.diet)
-        self.assertIsNone(rule.portion)
-
-    def test_employee_letters_are_adult_portion(self):
-        """'H'/'ZŠ zam.'/'Zamestnanec Bežná' a 'I'/'FK zam.'/'Zamestnanec
-        FoodKut' — zamestnanecký status = DOSPELÁ porcia (rovnaký princíp
-        ako Krásňanko `KZ`), user 1.9.2026."""
-        for skratka in ("ZŠ zam.", "FK zam."):
+    def test_non_ina_letters_are_skipped(self):
+        """User 2.9.2026: appka má z EduPage rátať VÝHRADNE 'Iná' skupinu —
+        bežné MŠ/ZŠ menu aj zamestnanecké porcie sa majú ignorovať celkom."""
+        for skratka in ("MŠ", "ZŠ", "ZŠ 1.", "ZŠ FK 2.", "ZŠ zam.", "FK zam.", ".."):
             rule = self._rule(skratka)
-            self.assertEqual(rule.portion, "Dospelý (SŠ)")
-            self.assertEqual(rule.menu, "A")
-            self.assertIsNone(rule.diet)
+            self.assertTrue(rule.skip, msg=skratka)
+
+    def test_ina_group_is_not_skipped(self):
+        """'Iná' (A) aj 'Iná NmNo' (D) ostávajú v hre — len ostatné písmená
+        sa preskakujú."""
+        for skratka in ("Iná", "Iná NmNo"):
+            rule = self._rule(skratka)
+            self.assertIsNone(rule, msg=skratka)  # necháva sa na engine
 
 
 class TestFilipanerihoLetterHook(unittest.TestCase):
@@ -731,13 +725,13 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
 
-    def test_montessori_zs_bezna_lands_as_menu_count_not_unmapped_diet(self):
-        """Regression 2026-09-01: bez `letter_hook` pravidla táto skratka
-        vypadla ako unmapped diéta a celá škola nedostala import."""
+    def test_montessori_zs_bezna_is_skipped_entirely(self):
+        """User 2.9.2026: appka počíta z Montessori EduPage výhradne 'Iná' —
+        bežné 'ZŠ' menu sa má úplne vynechať, nie počítať ako menu A."""
         cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=montessori_letter_hook)
         res = self._parse("ZŠ", cfg)
-        self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"], {"A": 1})
-        self.assertEqual(res.order_data["lunch"]["Škôlka"].get("diets", {}), {})
+        self.assertEqual(res.order_data, {})
+        self.assertEqual(res.skipped_letters, ["E:ZŠ"])
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
 

@@ -29,12 +29,18 @@ class LetterRule:
     `None` v poli = nechaj engine rozhodnúť. `portion` prebíja `porcia` kód payera —
     práve preto tento hook existuje: niektoré školy nesú porciu v menu skratke
     (Krásňanko `KZ` = dospelý), nie v payer configu.
+
+    `skip=True` = riadok tohto písmena sa vôbec nezaráta (napr. Montessori: appka má
+    počítať len 'Iná', ostatné písmená z EduPage ignorovať — user 2.9.2026). Na rozdiel
+    od neznámej diéty (ktorá sa zapíše a nahlási) sa skip riadok tíško vynechá — je to
+    vedomé rozhodnutie, nie chýbajúci mapping.
     """
 
     portion: str | None = None
     menu: str | None = None
     diet: str | None = None
     flag: str | None = None  # napr. "!" — vyžaduje manuálnu kontrolu
+    skip: bool = False
 
 
 # Hook beží pri parsovaní, na každé menu písmeno pred agregáciou.

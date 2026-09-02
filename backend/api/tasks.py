@@ -829,6 +829,14 @@ def scrape_edupage_orders_task(
                         target_date,
                         result.unmapped_letters,
                     )
+                if result.skipped_letters:
+                    logger.info(
+                        "scrape_edupage_orders_task: písmená vynechané podľa configu "
+                        "(skip=True) pre %s na %s: %s",
+                        operation["name"],
+                        target_date,
+                        result.skipped_letters,
+                    )
 
                 # Jedna prevádzka → celý objem jej; viac → podľa edupage_match.
                 if len(prevadzky) > 1:

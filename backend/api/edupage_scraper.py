@@ -339,6 +339,10 @@ class ScrapeResult:
     # nastavenia). Diagnostika pre nás, NIE signál zlyhania — nesmie sa miešať
     # do `warnings`, inak by config drift zablokoval import platných objednávok.
     config_notes: list[str] = field(default_factory=list)
+    # Písmená, ktoré `letter_hook` označil `skip=True` a appka ich vôbec nezarátala
+    # (napr. Montessori: len 'Iná' sa počíta z EduPage, ostatné písmená sa ignorujú —
+    # user 2.9.2026). Vedomé rozhodnutie, nie signál zlyhania.
+    skipped_letters: list[str] = field(default_factory=list)
     # Písmená označené per-prevádzka hookom ako „skontroluj ručne" (napr. Krásňanko ZD).
     attention: list[str] = field(default_factory=list)
     # `attention` rozpadnuté podľa prevádzky, do ktorej porcie s daným flagom
@@ -754,6 +758,7 @@ class EdupageScraper:
         unmapped: list[str] = []
         uncertain: list[str] = []
         attention: list[str] = []
+        skipped_letters: list[str] = []
         # Normalizovaný index, aby `no milk` z EduPage sadlo na našu `NO MILK` a
         # nezaložilo druhú, len inak písanú diétu.
         allowed_by_key = {
@@ -813,6 +818,9 @@ class EdupageScraper:
                 nazov = nm_entry.get("nazov", letter)
 
                 rule = letter_hook(letter, skratka, nazov) if letter_hook else None
+                if rule is not None and rule.skip:
+                    skipped_letters.append(f"{letter}:{skratka}")
+                    continue
                 portion_override = rule.portion if rule else None
 
                 flag_label: str | None = None
@@ -971,6 +979,7 @@ class EdupageScraper:
                 if bucket and labels
             },
             warnings=warnings,
+            skipped_letters=sorted(set(skipped_letters)),
             attention=sorted(set(attention)),
             attention_by_prevadzka={
                 bucket: sorted(flags)
