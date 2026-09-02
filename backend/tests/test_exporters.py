@@ -37,6 +37,25 @@ def _rendered_rows(data: dict) -> list[tuple[str, str]]:
     return rows
 
 
+def _portion_rows_after_band(data: dict, band_title: str) -> list[tuple[str, str]]:
+    """(label, počet) z `portion-row` riadkov priamo pod pásmom s daným
+    presným textom (napr. „Sumár 1 — KLASIK", #532)."""
+    spec = build_table_spec(data)
+    all_rows = [*spec["rows"], *spec["footer"]]
+    band_index = next(
+        index
+        for index, row in enumerate(all_rows)
+        if row["kind"] == "portion-band" and row["cells"][0].get("text") == band_title
+    )
+    out = []
+    for row in all_rows[band_index + 1 :]:
+        if row["kind"] != "portion-row":
+            break
+        cell = row["cells"][0]
+        out.append((str(cell.get("text") or ""), cell.get("count") or ""))
+    return out
+
+
 @pytest.mark.django_db
 class TestGramageDashboardExports:
     def test_dashboard_subtotals_exclude_diets_and_export_to_xlsx(self):
@@ -256,26 +275,19 @@ class TestGramageDashboardExports:
             [row for route in vydaj.get("routes", []) for row in route.get("rows", [])]
             for vydaj in data["vydaje"]
         ]
+        # Objednávky tu nemajú diéty, takže KLASIK (bez diét, surové hlavy)
+        # sedí presne s priamo dopočítaným `portion_summary()` — #532.
         expected_summaries = [
-            (
-                f"Sumár {index + 1} — spolu aj s diétami (MŠ)",
-                portion_summary(data, rows),
-            )
+            (f"Sumár {index + 1} — KLASIK", portion_summary(data, rows))
             for index, rows in enumerate(vydaj_rows)
         ]
         # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
         # identický so "Sumár dokopy"); ten sa objaví až od 3 klastrov (#531).
-        expected_summaries.append(
-            ("Sumár dokopy — spolu aj s diétami (MŠ)", portion_summary(data))
-        )
+        expected_summaries.append(("Sumár dokopy — KLASIK", portion_summary(data)))
 
-        rendered = _rendered_rows(data)
         for title, expected_rows in expected_summaries:
-            band_index = next(
-                index for index, (label, _) in enumerate(rendered) if label == title
-            )
-            for offset, expected in enumerate(expected_rows, start=1):
-                label, count = rendered[band_index + offset]
+            actual_rows = _portion_rows_after_band(data, title)
+            for expected, (label, count) in zip(expected_rows, actual_rows):
                 assert label == expected["label"]
                 assert count == format_count(expected["count"])
 

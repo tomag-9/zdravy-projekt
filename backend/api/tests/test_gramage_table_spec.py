@@ -68,6 +68,7 @@ def _payload(**overrides):
                         "portion_name": "Škôlka",
                         "label": "Škôlka - Obed Menu A",
                         "count": 8,
+                        "_heads": 8,
                         "col_grams": [["1600.00"], ["2400.00"], []],
                     },
                     {
@@ -78,6 +79,7 @@ def _payload(**overrides):
                         "diet_name": "No Milk",
                         "diet_color": "#F59E0B",
                         "count": 2,
+                        "_heads": 2,
                         "col_grams": [["400.00"], ["600.00"], []],
                     },
                 ],
@@ -336,21 +338,19 @@ def test_combined_diet_of_three_or_more_uses_fixed_orange_background():
 
 
 def test_footer_is_the_portion_summary_plus_the_grand_total():
+    """#532 — päť pomenovaných sekcií (počet/prepočet/klasik/diéty/spolu),
+    každá s tromi riadkami porcií (Polievka/Menu A/Menu B); pod „diéty" navyše
+    diétny rozpad podľa mena (`summary-diet`) pred posledným "total"/"total-ms-porcie".
+    """
     spec = build_table_spec(_payload())
 
-    # "diet-band" ("Diéty") + "summary-diet" pred "total" — celodenný diétny
-    # rozpad ("koľko z ktorej diéty máme spolu") pod súhrnom porcií, rovnako
-    # ako per-klient, s vlastným nadpisom sekcie (#528).
-    assert [row["kind"] for row in spec["footer"]] == [
-        "portion-band",
-        "portion-row",
-        "portion-row",
-        "portion-row",
-        "diet-band",
-        "summary-diet",
-        "total",
-        "total-ms-porcie",
-    ]
+    band_and_rows = ["portion-band", "portion-row", "portion-row", "portion-row"]
+    assert [row["kind"] for row in spec["footer"]] == (
+        band_and_rows * 4  # počet, prepočet, klasik, diéty
+        + ["summary-diet"]
+        + band_and_rows  # spolu
+        + ["total", "total-ms-porcie"]
+    )
     assert spec["footer"][-2]["cells"][0]["text"] == "CELKOM (g / ml)"
 
 
@@ -472,7 +472,9 @@ def test_filter_also_trims_the_portion_summary():
         for row in spec["footer"]
         if row["kind"] == "portion-row"
     ]
-    assert labels == ["Polievka", "Menu A"]
+    # 5 sekcií (počet/prepočet/klasik/diéty/spolu), každá s tými istými
+    # dvomi vybranými skupinami.
+    assert labels == ["Polievka", "Menu A"] * 5
 
 
 def test_filter_drops_rows_that_lose_all_their_numbers():
@@ -660,13 +662,23 @@ def test_long_portion_names_are_abbreviated():
     assert sub_row["cells"][0]["text"] == "1.st"
 
 
-def test_diet_breakdown_gets_a_section_heading():
-    """#528 — pod „Sumár X" je diétny rozpad označený vlastným nadpisom
-    „Diéty", nech je jasné, že Sumár vyššie je s diétami už prepočítaný."""
+def test_summary_has_five_named_sections():
+    """#532 — súhrn porcií má päť pomenovaných sekcií: počet (surové hlavy),
+    prepočet (MŠ), klasik (bez diét), diéty, spolu — v tomto poradí."""
     spec = build_table_spec(_payload())
 
-    diet_band = next(r for r in spec["footer"] if r["kind"] == "diet-band")
-    assert diet_band["cells"][0]["text"] == "Diéty"
+    band_titles = [
+        row["cells"][0]["text"]
+        for row in spec["footer"]
+        if row["kind"] == "portion-band"
+    ]
+    assert band_titles == [
+        "Sumár dokopy — POČET",
+        "Sumár dokopy — PREPOČET",
+        "Sumár dokopy — KLASIK",
+        "Sumár dokopy — DIÉTY",
+        "Sumár dokopy — SPOLU",
+    ]
 
 
 # ── Filter výdajných bodov ───────────────────────────────────────────────────
@@ -782,37 +794,55 @@ def _three_vydaje_payload():
 
 
 def _portion_summary_titles(spec):
-    return [
-        row["cells"][0]["text"]
-        for row in spec["rows"]
-        if "portion-summary-band" in row["css"]
-    ]
+    """Zoznam klastrov ("Sumár 1", "Sumár 1 a 2", ...) — každý má teraz 5
+    pomenovaných sekcií ("— POČET"/"— PREPOČET"/...), preto sa tu rátajú len
+    unikátne predpony pred " — ", nie každý band zvlášť (#532)."""
+    seen: list[str] = []
+    for row in spec["rows"]:
+        if "portion-summary-band" not in row["css"]:
+            continue
+        prefix = row["cells"][0]["text"].split(" — ")[0]
+        if prefix not in seen:
+            seen.append(prefix)
+    return seen
+
+
+def _rows_for_section(rows: list[dict], band_title: str) -> list[dict]:
+    """`portion-row` riadky priamo pod pásmom s daným presným textom."""
+    band_index = next(
+        index
+        for index, row in enumerate(rows)
+        if row["kind"] == "portion-band" and row["cells"][0]["text"] == band_title
+    )
+    out = []
+    for row in rows[band_index + 1 :]:
+        if row["kind"] != "portion-row":
+            break
+        out.append(row)
+    return out
 
 
 def test_three_vydaje_get_numbered_summaries_and_a_combined_first_two():
     spec = build_table_spec(_three_vydaje_payload())
 
     assert _portion_summary_titles(spec) == [
-        "Sumár 1 — spolu aj s diétami (MŠ)",
-        "Sumár 2 — spolu aj s diétami (MŠ)",
-        "Sumár 1 a 2 — spolu aj s diétami (MŠ)",
-        "Sumár 3 — spolu aj s diétami (MŠ)",
+        "Sumár 1",
+        "Sumár 2",
+        "Sumár 1 a 2",
+        "Sumár 3",
     ]
-    assert (
-        spec["footer"][0]["cells"][0]["text"]
-        == "Sumár dokopy — spolu aj s diétami (MŠ)"
-    )
+    assert spec["footer"][0]["cells"][0]["text"] == "Sumár dokopy — POČET"
 
 
-def test_combined_first_two_summary_equals_the_portion_summary_over_both():
+def test_combined_first_two_summary_klasik_equals_the_portion_summary_over_both():
+    """KLASIK (bez diét, surové hlavy) pre "Sumár 1 a 2" sedí s priamo
+    dopočítaným `portion_summary()` nad rovnakými riadkami — fixture nemá
+    diétny stĺpec, takže KLASIK aj `portion_summary()` počítajú to isté."""
     from api.exporters.gramage_dashboard_export import portion_summary
 
     payload = _three_vydaje_payload()
     spec = build_table_spec(payload)
-    rows = [r for r in spec["rows"] if r["kind"] == "portion-row"]
-    # Sumár 1, Sumár 2, Sumár 1 a 2, Sumár 3 — v tomto poradí, 3 riadky každý
-    # (Polievka, Menu A, Menu B podľa fixture).
-    combined_rows = rows[6:9]
+    combined_rows = _rows_for_section(spec["rows"], "Sumár 1 a 2 — KLASIK")
 
     vydaj_a_rows = payload["vydaje"][0]["routes"][0]["rows"]
     vydaj_b_rows = payload["vydaje"][1]["routes"][0]["rows"]
@@ -824,61 +854,59 @@ def test_combined_first_two_summary_equals_the_portion_summary_over_both():
 
 
 def test_each_numbered_summary_gets_its_own_diet_breakdown():
-    """Sumár 1/2/3 aj Sumár 1 a 2 majú diétny rozpad, nielen Sumár dokopy.
-
-    Riadky idú v pevnom poradí: pásmo "Sumár X" (`portion-summary-band`), 3
-    riadky porcií (Polievka, Menu A, Menu B podľa fixture) a hneď za nimi náš
-    nový diétny riadok — priamo za bandom sa preto dá spoľahnúť, bez potreby
-    odlišovať ho od per-klientského "summary-diet" (ten `group_id` nenesie,
-    takže sa tak odlíšiť nedá).
-    """
+    """Sumár 1/2/3 aj Sumár 1 a 2 majú diétny rozpad (pod sekciou DIÉTY),
+    nielen Sumár dokopy."""
     spec = build_table_spec(_three_vydaje_payload())
 
-    band_indexes = [
-        index
-        for index, row in enumerate(spec["rows"])
-        if "portion-summary-band" in row["css"]
-    ]
-    band_titles = [spec["rows"][index]["cells"][0]["text"] for index in band_indexes]
-    assert band_titles == [
-        "Sumár 1 — spolu aj s diétami (MŠ)",
-        "Sumár 2 — spolu aj s diétami (MŠ)",
-        "Sumár 1 a 2 — spolu aj s diétami (MŠ)",
-        "Sumár 3 — spolu aj s diétami (MŠ)",
-    ]
+    diet_rows_by_cluster = {
+        prefix: [
+            row["cells"][0]["count"]
+            for row in _rows_for_section(spec["rows"], f"{prefix} — DIÉTY")
+        ]
+        for prefix in ["Sumár 1", "Sumár 2", "Sumár 1 a 2", "Sumár 3"]
+    }
+    # Fixture nemá stĺpec s `diet_name`, takže per-skupinový rozpad je „—" —
+    # skutočná diéta je vidno v `_diet_name_rows` (`summary-diet`) hneď pod
+    # sekciou, tie sa hľadajú samostatne nižšie.
+    for counts in diet_rows_by_cluster.values():
+        assert counts == ["—", "—", "—"]
 
-    diet_band_rows = [spec["rows"][index + 4] for index in band_indexes]
-    assert [row["kind"] for row in diet_band_rows] == ["diet-band"] * 4
-    assert [row["cells"][0]["text"] for row in diet_band_rows] == ["Diéty"] * 4
-
-    diet_rows_after_band = [spec["rows"][index + 5] for index in band_indexes]
-    assert [row["kind"] for row in diet_rows_after_band] == ["summary-diet"] * 4
+    def _diet_summary_after(prefix: str) -> dict:
+        title = f"{prefix} — DIÉTY"
+        band_index = next(
+            index
+            for index, row in enumerate(spec["rows"])
+            if row["kind"] == "portion-band" and row["cells"][0]["text"] == title
+        )
+        # Preskoč 3 riadky porcií (Polievka/Menu A/Menu B) sekcie DIÉTY,
+        # nasledujúce `summary-diet` riadky sú už rozpad podľa mena diéty.
+        after = spec["rows"][band_index + 4 :]
+        diet_rows = []
+        for row in after:
+            if row["kind"] != "summary-diet":
+                break
+            diet_rows.append(row)
+        return {row["cells"][0]["text"]: row["cells"][0]["count"] for row in diet_rows}
 
     # "Sumár 1 a 2" sčíta rovnakého klienta z oboch výdajov (2 + 2 = 4),
     # ostatné súhrny (jeden výdaj) ostávajú pri pôvodných 2.
-    counts_by_band = dict(
-        zip(band_titles, (row["cells"][0]["count"] for row in diet_rows_after_band))
-    )
-    assert counts_by_band["Sumár 1 — spolu aj s diétami (MŠ)"] == format_count(2)
-    assert counts_by_band["Sumár 2 — spolu aj s diétami (MŠ)"] == format_count(2)
-    assert counts_by_band["Sumár 1 a 2 — spolu aj s diétami (MŠ)"] == format_count(4)
-    assert counts_by_band["Sumár 3 — spolu aj s diétami (MŠ)"] == format_count(2)
+    assert _diet_summary_after("Sumár 1")["No Milk"] == format_count(2)
+    assert _diet_summary_after("Sumár 2")["No Milk"] == format_count(2)
+    assert _diet_summary_after("Sumár 1 a 2")["No Milk"] == format_count(4)
+    assert _diet_summary_after("Sumár 3")["No Milk"] == format_count(2)
 
 
 def test_two_vydaje_do_not_get_a_combined_summary():
     """Kombinovaný medzisúčet dáva zmysel len keď je čo kombinovať navyše."""
     spec = build_table_spec(_two_vydaje_payload())
 
-    assert _portion_summary_titles(spec) == [
-        "Sumár 1 — spolu aj s diétami (MŠ)",
-        "Sumár 2 — spolu aj s diétami (MŠ)",
-    ]
+    assert _portion_summary_titles(spec) == ["Sumár 1", "Sumár 2"]
 
 
 def test_filtering_to_a_single_vydaj_drops_the_combined_summary():
     spec = build_table_spec(_three_vydaje_payload(), vydaje=["C"])
 
-    assert _portion_summary_titles(spec) == ["Sumár 1 — spolu aj s diétami (MŠ)"]
+    assert _portion_summary_titles(spec) == ["Sumár 1"]
 
 
 # ── Olovrant s obedom (Prevadzka.olovrant_s_obedom) ─────────────────────────

@@ -17,9 +17,11 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .gramage_dashboard_export import (
+    add_grid,
     blend_with_white,
     component_subtitle,
     diet_color,
+    empty_grid,
     group_label,
     meal_hue,
     portion_summary,
@@ -366,20 +368,19 @@ def _aggregate_diet_summary(rows_for_summary: list[dict]) -> list[dict]:
     return [totals[name] for name in order]
 
 
-def _diet_breakdown_rows(
+def _diet_name_rows(
     rows_for_summary: list[dict],
     data: dict,
     groups: list[dict],
     hues: list[str],
-    total_columns: int,
 ) -> list[dict]:
-    """„Diéty" sekcia pod daným súhrnom (Sumár 1/2/1a2/dokopy).
+    """Rozpad „koľko z ktorej diéty" naprieč danou skupinou klientov —
+    doplnkový detail pod riadkami sekcie SUMÁR DIÉTY (#532), po mene diéty
+    namiesto po stĺpcovej skupine.
 
     Vizuálne totožné s per-klientským diétnym súhrnom (`summary-diet`), len
     sčítané naprieč všetkými klientmi v danej skupine — admin/kuchyňa vidí
     diétny rozpad aj na úrovni celého klastra/dňa, nielen jedného klienta.
-    Vlastný nadpis „Diéty" pred riadkami, nech je jasné, že „Sumár" vyššie je
-    už aj s nimi prepočítaný a toto je len ich rozpad, nie ďalší súčet.
     """
     diet_rows: list[dict] = []
     for diet in _aggregate_diet_summary(rows_for_summary):
@@ -405,11 +406,7 @@ def _diet_breakdown_rows(
                 + _gram_cells(diet.get("col_grams") or [], groups, hues),
             }
         )
-    if not diet_rows:
-        return []
-    return [
-        _band("diet-band", "Diéty", total_columns, css="diet-breakdown-band")
-    ] + diet_rows
+    return diet_rows
 
 
 def build_table_spec(
@@ -501,17 +498,16 @@ def build_table_spec(
             if position < 2:
                 first_two_rows.extend(vydaj_rows)
             rows.extend(
-                _portion_summary_rows(
-                    f"Sumár {position + 1} — spolu aj s diétami (MŠ)",
-                    portion_summary(data, vydaj_rows),
+                _cluster_summary_rows(
+                    f"Sumár {position + 1}",
+                    vydaj_rows,
+                    data,
+                    all_groups,
                     keep,
                     groups,
                     hues,
                     total_columns,
                 )
-            )
-            rows.extend(
-                _diet_breakdown_rows(vydaj_rows, data, groups, hues, total_columns)
             )
             # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
             # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
@@ -519,18 +515,15 @@ def build_table_spec(
             # School), voči ktorému sa medzisúčet prvých dvoch odlišuje.
             if position == 1 and len(shown_vydaje) > 2:
                 rows.extend(
-                    _portion_summary_rows(
-                        "Sumár 1 a 2 — spolu aj s diétami (MŠ)",
-                        portion_summary(data, first_two_rows),
+                    _cluster_summary_rows(
+                        "Sumár 1 a 2",
+                        first_two_rows,
+                        data,
+                        all_groups,
                         keep,
                         groups,
                         hues,
                         total_columns,
-                    )
-                )
-                rows.extend(
-                    _diet_breakdown_rows(
-                        first_two_rows, data, groups, hues, total_columns
                     )
                 )
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
@@ -571,23 +564,22 @@ def build_table_spec(
             for route in vydaj.get("routes") or []
             for row in route.get("rows") or []
         ]
-        footer_summary = portion_summary(data, visible_rows)
-        footer_totals = _totals_from_summary(footer_summary)
+        footer_totals = _totals_from_summary(portion_summary(data, visible_rows))
         footer_rows = visible_rows
     else:
-        footer_summary = portion_summary(data)
         footer_totals = data.get("totals") or []
         footer_rows = data.get("rows") or []
 
-    footer = _portion_summary_rows(
-        "Sumár dokopy — spolu aj s diétami (MŠ)",
-        footer_summary,
+    footer = _cluster_summary_rows(
+        "Sumár dokopy",
+        footer_rows,
+        data,
+        all_groups,
         keep,
         groups,
         hues,
         total_columns,
     )
-    footer.extend(_diet_breakdown_rows(footer_rows, data, groups, hues, total_columns))
     footer.append(_totals_row(footer_totals, keep, groups, hues))
     # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
     # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
@@ -930,29 +922,120 @@ def _client_rows(
     return out
 
 
-def _portion_summary_rows(
-    title: str,
-    summary: list[dict],
+# Päť pomenovaných sekcií súhrnu porcií (#532), v tomto poradí. Prvé dve sú
+# tá istá vec (kompletný súčet, štandard + diéty) dvoma metrikami — surové
+# hlavy vs. fakturačne prepočítané; posledné tri sú rozpad podľa typu
+# riadku, surovými hlavami (bez prepočtu — ten už dal „prepočet" vyššie).
+# „Spolu" preto číselne sedí s „počet" (klasik + diéty = kompletný súčet) —
+# je to zámerná krížová kontrola, nie duplicitná informácia navyše.
+_SUMMARY_SECTIONS: tuple[tuple[str, str, str | None], ...] = (
+    ("počet", "heads", None),
+    ("prepočet", "count", None),
+    ("klasik", "heads", "standard"),
+    ("diéty", "heads", "diet"),
+    ("spolu", "heads", None),
+)
+
+
+def _own_group_index(sub_row: dict, col_groups: list[dict]) -> int | None:
+    """Ktorej stĺpcovej skupine riadok patrí — rovnaká zhoda (jedlo + variant
+    + diéta cez label) ako `gramage_dashboard_export.portion_summary()`,
+    len tu parametrizovaná na metriku/typ (#532), ktoré `portion_summary()`
+    samo osebe nepočíta."""
+    expected_diet = sub_row.get("label") if sub_row.get("type") == "diet" else ""
+    for group_index, group in enumerate(col_groups):
+        if (
+            group.get("meal") == sub_row.get("meal")
+            and str(group.get("variant") or "") == str(sub_row.get("variant") or "")
+            and str(group.get("diet_name") or "") == str(expected_diet or "")
+        ):
+            return group_index
+    return None
+
+
+def _meal_group_summary(
+    rows_for_summary: list[dict],
+    col_groups: list[dict],
+    metric: str,
+    type_filter: str | None,
+) -> list[dict]:
+    """Súčet porcií po stĺpcových skupinách — jedna položka na skupinu, ako
+    `portion_summary()`, len tu vieme zvoliť metriku (`"heads"` = surové
+    hlavy pred fakturačným prepočtom, `"count"` = už prepočítané na MŠ
+    porcie) a obmedziť na jeden typ riadku (`"standard"`/`"diet"`/`None` =
+    oba, #532)."""
+    summary = [
+        {
+            "label": group_label(group),
+            "count": Decimal("0"),
+            "col_grams": empty_grid(col_groups),
+        }
+        for group in col_groups
+    ]
+    for row in rows_for_summary:
+        for sub_row in row.get("sub_rows") or []:
+            row_type = sub_row.get("type")
+            if row_type not in ("standard", "diet"):
+                continue
+            if type_filter is not None and row_type != type_filter:
+                continue
+            own_index = _own_group_index(sub_row, col_groups)
+            if own_index is None:
+                continue
+            value = sub_row.get("_heads") if metric == "heads" else sub_row.get("count")
+            # Polievka nesie aj gramáž hlavného jedla zlúčenú k sebe (viď
+            # `_merge_soup_into_main_course`) — počet sa preto pripočíta do
+            # každej skupiny, kde riadok má reálne čísla, nielen do „svojej".
+            sub_row_grams = sub_row.get("col_grams") or []
+            for group_index, grams in enumerate(sub_row_grams):
+                if group_index != own_index and not grams:
+                    continue
+                summary[group_index]["count"] += _as_decimal(value)
+                add_grid(summary[group_index]["col_grams"], sub_row_grams, group_index)
+    return summary
+
+
+def _cluster_summary_rows(
+    title_prefix: str,
+    rows_for_summary: list[dict],
+    data: dict,
+    col_groups: list[dict],
     keep: list[int],
     groups: list[dict],
     hues: list[str],
     total_columns: int,
 ) -> list[dict]:
-    rows = [_band("portion-band", title, total_columns)]
-    rows[0]["css"] = "portion-summary-band"
-    for index, item in enumerate(summary):
-        # Súhrn má jednu položku na stĺpcovú skupinu; odfiltrované varianty
-        # (bod 7 — tlač len Menu A) sa nesmú objaviť ani tu.
-        if index not in keep:
-            continue
+    """Celý „Sumár X" blok — päť pomenovaných sekcií (#532): počet, prepočet,
+    klasik, diéty, spolu, každá so svojimi riadkami po stĺpcovej skupine.
+    Sekcia „diéty" má navyše pod sebou rozpad po mene diéty (`_diet_name_rows`),
+    presne taký, aký admin pozná z per-klientského súhrnu.
+    """
+    rows: list[dict] = []
+    for suffix, metric, type_filter in _SUMMARY_SECTIONS:
         rows.append(
-            {
-                "kind": "portion-row",
-                "css": "portion-summary-row",
-                "cells": [_label_cell(item.get("label") or "", item.get("count"))]
-                + _gram_cells(item.get("col_grams") or [], groups, hues),
-            }
+            _band(
+                "portion-band",
+                f"{title_prefix} — {suffix.upper()}",
+                total_columns,
+                css="portion-summary-band",
+            )
         )
+        summary = _meal_group_summary(rows_for_summary, col_groups, metric, type_filter)
+        for index, item in enumerate(summary):
+            # Súhrn má jednu položku na stĺpcovú skupinu; odfiltrované varianty
+            # (bod 7 — tlač len Menu A) sa nesmú objaviť ani tu.
+            if index not in keep:
+                continue
+            rows.append(
+                {
+                    "kind": "portion-row",
+                    "css": "portion-summary-row",
+                    "cells": [_label_cell(item.get("label") or "", item.get("count"))]
+                    + _gram_cells(item.get("col_grams") or [], groups, hues),
+                }
+            )
+        if type_filter == "diet":
+            rows.extend(_diet_name_rows(rows_for_summary, data, groups, hues))
     return rows
 
 
