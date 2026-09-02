@@ -263,6 +263,7 @@ def match_prevadzka(
     payer_name: str,
     menu_nazov: str,
     menu_skratka: str = "",
+    only_payer: bool = False,
 ) -> list[str]:
     """Priraď EduPage riadok prevádzke podľa `edupage_match` prefixu.
 
@@ -280,17 +281,23 @@ def match_prevadzka(
     Vracia zoznam — prázdny znamená „nepriradené", nie „nič sa nedeje": volajúci to
     musí nahlásiť ako neúplný scrape, inak by porcie ticho zmizli.
 
-    Skratka má PREDNOSŤ pred payer labelom, lebo je to jediný spoľahlivý nosič: v
-    skratke je prefix celok a suffix porcia (`dsbNMNE` = Deutsche schule + NoMilk/
-    NoEgg). Payer label pomenúva len skupinu a vie si so skratkou protirečiť —
-    riadok `payer='MŠ Mal. NoMilk'` so skratkou `dsbNMNE` je porcia Deutsche schule,
-    nie Malokarpatského, hoci payer začína na `mšMal`. Keby vyhral payer, porcia by
-    sa fakturovala nesprávnej škole.
+    Skratka má PREDNOSŤ pred payer labelom, lebo je to zvyčajne spoľahlivejší nosič
+    (napr. `dsbA` = Deutsche schule + Klasik). Výnimka je `only_payer=True`
+    (`PayerRule.force_match`, viď `base.py`) — Zdravé Brúško raňajky/olovrant
+    zdieľajú skratku `dsbNMNE` naprieč Deutsche Schule aj MŠ Malokarpatským/
+    Heyrovského, ale payer label si so skratkou protirečí a je tu ten
+    spoľahlivejší nosič: `payer='MŠ Mal. NoMilk'` so skratkou `dsbNMNE` musí byť
+    porcia Malokarpatského, nie Deutsche schule (user 2.9.2026, potvrdené na live
+    dátach — pôvodne to bolo naopak, viď git history).
     """
     kandidati = (
-        _normalise_key(menu_skratka),
-        _normalise_key(payer_name),
-        _normalise_key(menu_nazov),
+        (_normalise_key(payer_name),)
+        if only_payer
+        else (
+            _normalise_key(menu_skratka),
+            _normalise_key(payer_name),
+            _normalise_key(menu_nazov),
+        )
     )
     for key in kandidati:
         if not key:
@@ -894,11 +901,26 @@ class EdupageScraper:
                         or payer_info.get("diet")
                         or None
                     )
-                    effective_diet = diet_name or payer_diet
+                    # `force_match` znamená, že payer label je pre TENTO riadok
+                    # spoľahlivejší než zdieľané menu písmeno (viď `match_prevadzka`)
+                    # — potom musí vyhrať aj jeho diéta, inak by sa prevádzka opravila
+                    # správne, ale diéta zostala z cudzieho (zdieľaného) písmena.
+                    forced_diet = (
+                        payer_rule.diet
+                        if payer_rule and payer_rule.force_match
+                        else None
+                    )
+                    effective_diet = forced_diet or diet_name or payer_diet
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
 
                     if matches:
-                        buckets = match_prevadzka(matches, match_name, nazov, skratka)
+                        buckets = match_prevadzka(
+                            matches,
+                            match_name,
+                            nazov,
+                            skratka,
+                            only_payer=bool(payer_rule and payer_rule.force_match),
+                        )
                         if not buckets:
                             # Radšej nahlás neúplný scrape, než ticho zahodiť porcie.
                             unmatched.append(

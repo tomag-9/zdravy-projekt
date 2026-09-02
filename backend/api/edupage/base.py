@@ -63,6 +63,14 @@ class PayerRule:
     )
     diet: str | None = None
     portion: str | None = None
+    # `match_prevadzka` bežne uprednostní skratku menu pred payer labelom (je to
+    # spoľahlivejší nosič — viď jej docstring). Zdravé Brúško raňajky/olovrant ale
+    # zdieľajú skratku `dsbNMNE` (Deutsche Schule) naprieč MŠ Malokarpatským aj MŠ
+    # Heyrovského — payer label pritom jednoznačne hovorí, ktorej škole riadok
+    # patrí (`MŠ Mal. NoMilk` vs `MŠ Hey. NoGluten`). `force_match=True` prikáže
+    # `match_prevadzka` ignorovať skratku/menu názov a matchovať LEN na
+    # `match_name` (user 2.9.2026, potvrdené na live dátach).
+    force_match: bool = False
 
 
 # Hook beží na každý payer label pred agregáciou.
