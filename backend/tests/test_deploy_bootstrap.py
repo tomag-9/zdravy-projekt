@@ -67,6 +67,7 @@ def test_seed_operations_calls_data_seeds_in_order(monkeypatch):
         call("seed_british_school_2026_08", verbosity=2),
         call("seed_cms_pezinok_2026_08", verbosity=2),
         call("seed_skolicka_zs_2026_09", verbosity=2),
+        call("seed_rozmanita_split_2026_09", verbosity=2),
     ]
 
 

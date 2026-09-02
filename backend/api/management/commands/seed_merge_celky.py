@@ -5,8 +5,10 @@ celkov 1:1 s prevádzkou (napr. Bystrá 1/2/Jasle/Krasňany/Skypark). Patria vš
 školu → jeden fakturačný celok s viacerými prevádzkami. Tento príkaz to idempotentne
 konsoliduje: prevádzky presunie pod cieľový celok a celok access loginov zmení
 na konkrétne prevádzka access záznamy, aby sa rozsah nezmenil (dôležité
-pri Rozmanitej — edupage škôlka + app škola pod jedným celkom; login smie scrapovať len
-škôlku). Prázdne zdrojové celky zmaže.
+pri Rozmanitej — MŠ a ZŠ pod jedným celkom, login má prístup len k MŠ prevádzke).
+EduPage split MŠ/ZŠ/Dosp pre Rozmanitú rieši `seed_rozmanita_split_2026_09`
+(bežal pôvodne len škôlka — klient potvrdil 2.9.2026, že škola má ísť tiež cez
+EduPage). Prázdne zdrojové celky zmaže.
 
 Beží po `seed_real_delivery_layout` (ktorý app-celky vytvára). Vďaka opravenému
 `_upsert_prevadzka` (nájdenú prevádzku len doplní, nepresúva) sa po zlúčení zdrojové celky
@@ -56,7 +58,10 @@ MERGES: dict[str, list[str]] = {
     "Rozmanitá": ["MŠ Rozmanitá", "Rozmanita Škola"],
     "Benjamín": ["benjamín pezinok", "benjamín senec"],
     "Pohodička": ["pohodička 1", "pohodička 2"],
-    "Školička": ["Školička 1.stupeň", "Školička 2. stupeň"],
+    # Reálny názov v prode je "Školička ZŠ" (viď seed_skolicka_zs_2026_09) —
+    # v prode ide o dead-code vetvu (real_initial_seed_prevadzky celok pomenuje
+    # rovno správne), tento merge je len pre dev/test dáta z seed_real_delivery_layout.
+    "Školička ZŠ": ["Školička 1.stupeň", "Školička 2. stupeň"],
     "Škôlkáreň": ["Škôlkáreň - Kvetoslavov", "Škôlkáreň - Mokrohájska"],
     "Štvorlístok": ["Štvorlístok škola", "Štvorlístok škôlka"],
     # Dva samostatné objednávkové riadky tej istej školy/tábora. Jeden login potom

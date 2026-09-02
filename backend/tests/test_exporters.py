@@ -10,9 +10,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 
-from api.exporters.gramage_dashboard_export import portion_summary
 from api.exporters.gramage_table_html import render_table
-from api.exporters.gramage_table_spec import build_table_spec, format_count
+from api.exporters.gramage_table_spec import build_table_spec
 from api.models import (
     Celok,
     DailyMealPlan,
@@ -35,6 +34,25 @@ def _rendered_rows(data: dict) -> list[tuple[str, str]]:
         cells = row["cells"]
         rows.append((str(cells[0].get("text") or ""), cells[0].get("count") or ""))
     return rows
+
+
+def _cluster_ms_rows_after_band(data: dict, band_title: str) -> dict[str, str]:
+    """{jedlo: "X MŠ"} z `cluster-ms-row` riadkov priamo pod pásmom s daným
+    presným textom (napr. „SUMÁR CLUSTER A S DIÉTAMI MŠ", #532)."""
+    spec = build_table_spec(data)
+    all_rows = [*spec["rows"], *spec["footer"]]
+    band_index = next(
+        index
+        for index, row in enumerate(all_rows)
+        if row["kind"] == "portion-band" and row["cells"][0].get("text") == band_title
+    )
+    out: dict[str, str] = {}
+    for row in all_rows[band_index + 1 :]:
+        if row["kind"] != "cluster-ms-row":
+            break
+        cell = row["cells"][0]
+        out[str(cell.get("label") or "")] = str(cell.get("text") or "")
+    return out
 
 
 @pytest.mark.django_db
@@ -252,27 +270,21 @@ class TestGramageDashboardExports:
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
         assert len(data["vydaje"]) == 2
         assert len(data["unassigned_rows"]) == 1
-        vydaj_rows = [
-            [row for route in vydaj.get("routes", []) for row in route.get("rows", [])]
-            for vydaj in data["vydaje"]
-        ]
-        expected_summaries = [
-            (f"Sumár {index + 1}", portion_summary(data, rows))
-            for index, rows in enumerate(vydaj_rows)
-        ]
-        # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
-        # identický so "Sumár dokopy"); ten sa objaví až od 3 klastrov (#531).
-        expected_summaries.append(("Sumár dokopy", portion_summary(data)))
 
-        rendered = _rendered_rows(data)
-        for title, expected_rows in expected_summaries:
-            band_index = next(
-                index for index, (label, _) in enumerate(rendered) if label == title
-            )
-            for offset, expected in enumerate(expected_rows, start=1):
-                label, count = rendered[band_index + offset]
-                assert label == expected["label"]
-                assert count == format_count(expected["count"])
+        # Škôlka má PortionType.coefficient 1.0000, žiadne diéty — MŠ prepočet
+        # (#532) sa tu preto rovná surovému počtu hláv z objednávky (1/2/3).
+        assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER A S DIÉTAMI MŠ") == {
+            "Obed:": "1 MŠ"
+        }
+        assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER B S DIÉTAMI MŠ") == {
+            "Obed:": "2 MŠ"
+        }
+        # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
+        # identický s celkovým); ten sa objaví až od 3 klastrov (#531).
+        # Celkový súčet ide cez VŠETKY prevádzky vrátane nepriradenej (1+2+3).
+        assert _cluster_ms_rows_after_band(
+            data, "SUMÁR CLUSTER A + B S DIÉTAMI MŠ"
+        ) == {"Obed:": "6 MŠ"}
 
     def test_admin_order_and_delivery_notes_export_to_xlsx_and_pdf(self):
         user = User.objects.create_user(
@@ -325,9 +337,10 @@ class TestGramageDashboardExports:
         assert ' / <span class="client-note-inline">bez cibule</span>' in html
         assert "Poznámka k objednávke:" not in html
 
-    def test_diet_with_a_description_shows_it_next_to_the_diet_in_html(self):
-        """#2 — poznámka nastavená v Správe diét (`Diet.description`) sa má
-        prejaviť rovno v gramážnej tabuľke/PDF, nielen v Správe diét samotnej."""
+    def test_diet_description_is_computed_but_never_rendered_in_the_table(self):
+        """#528 — `Diet.description` sa v gramážnej tabuľke/PDF nezobrazuje;
+        `gramage_dashboard()` ju naďalej počíta (mohla by ju použiť Správa
+        diét), spec ju len nepremieta do žiadnej bunky."""
         from api.models import Diet
 
         user = User.objects.create_user(
@@ -369,7 +382,8 @@ class TestGramageDashboardExports:
         assert data["diet_descriptions"] == {"No Milk": "kontrolovať s rodičom"}
         html = render_table(build_table_spec(data))
 
-        assert '<span class="diet-note-inline"> — kontrolovať s rodičom</span>' in html
+        assert "kontrolovať s rodičom" not in html
+        assert "diet-note-inline" not in html
 
     def test_snack_with_lunch_prevadzka_highlights_only_its_snack_cells(self):
         """`Prevadzka.olovrant_s_obedom` sa premietne do gramážnej tabuľky ako

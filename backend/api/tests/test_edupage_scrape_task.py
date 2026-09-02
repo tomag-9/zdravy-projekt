@@ -588,6 +588,74 @@ class TestApplyScrapeIdempotency:
         assert out == {}
 
 
+class TestApplyPartialMenuScrape:
+    """Predbežný Menu B/C scrape 1-2 dni vopred: len B/C sa zapíšu, zvyšok
+    (Menu A, diéty, iné jedlá) ostáva netknutý — user 2.9.2026."""
+
+    def test_writes_only_bc_leaves_menu_a_and_diets_untouched(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        existing = {
+            "lunch": {
+                "Škôlka": {"menuCounts": {"A": 12}, "diets": {"NO MILK": 2}},
+            }
+        }
+        imported = {"lunch": {"Škôlka": {"menuCounts": {"B": 3, "C": 1}}}}
+
+        out = _apply_partial_menu_scrape(existing, imported)
+
+        assert out["lunch"]["Škôlka"]["menuCounts"] == {"A": 12, "B": 3, "C": 1}
+        assert out["lunch"]["Škôlka"]["diets"] == {"NO MILK": 2}
+
+    def test_rewrite_replaces_stale_bc_not_adds(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        existing = {"lunch": {"Škôlka": {"menuCounts": {"A": 5, "B": 7}}}}
+        # deň predtým vopred vopred zapísal B=7 (z behu 2 dni vopred);
+        # dnešný beh (1 deň vopred) prináša presnejšie číslo, musí prepísať
+        out = _apply_partial_menu_scrape(
+            existing, {"lunch": {"Škôlka": {"menuCounts": {"B": 4}}}}
+        )
+        assert out["lunch"]["Škôlka"]["menuCounts"] == {"A": 5, "B": 4}
+
+    def test_bc_absent_in_fresh_scrape_clears_stale_value(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        existing = {"lunch": {"Škôlka": {"menuCounts": {"A": 5, "B": 3, "C": 2}}}}
+        # nikto si dnes B/C neobjednal — musí sa vynulovať, nie ostať na starom
+        out = _apply_partial_menu_scrape(existing, {"lunch": {}})
+        assert out["lunch"]["Škôlka"]["menuCounts"] == {"A": 5}
+
+    def test_other_meals_untouched(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        existing = {
+            "lunch": {"Škôlka": {"menuCounts": {"A": 5}}},
+            "olovrant": {"Škôlka": {"menuCounts": {"A": 5}}},
+        }
+        out = _apply_partial_menu_scrape(
+            existing, {"lunch": {"Škôlka": {"menuCounts": {"B": 2}}}}
+        )
+        assert out["olovrant"] == {"Škôlka": {"menuCounts": {"A": 5}}}
+
+    def test_new_prevadzka_only_gets_bc(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        out = _apply_partial_menu_scrape(
+            {}, {"lunch": {"ZŠ 1.stupeň": {"menuCounts": {"B": 2, "C": 1}}}}
+        )
+        assert out == {
+            "lunch": {"ZŠ 1.stupeň": {"menuCounts": {"B": 2, "C": 1}, "diets": {}}}
+        }
+
+    def test_empty_result_drops_meal_key(self):
+        from api.tasks import _apply_partial_menu_scrape
+
+        existing = {"lunch": {"Škôlka": {"menuCounts": {"B": 3}}}}
+        out = _apply_partial_menu_scrape(existing, {"lunch": {}})
+        assert "lunch" not in out
+
+
 @pytest.mark.django_db
 def test_only_deadline_derived_scrape_tasks_are_scheduled():
     """Automatický je len uzávierkový scrape — žiadny ranný ani iný beh navyše.

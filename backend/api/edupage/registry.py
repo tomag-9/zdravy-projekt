@@ -17,6 +17,7 @@ from .overrides.britishschool import (
     british_school_letter_hook,
     british_school_payer_hook,
 )
+from .overrides.cmspezinok import cmspezinok_letter_hook
 from .overrides.cvernicka import cvernicka_letter_hook
 from .overrides.fantasticka import fantasticka_letter_hook
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -37,7 +38,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="skolkapramienok",
         ucty=("Pramienok",),
         olovrant_mode=OlovrantMode.ODVODIT_Z_OBEDU,
-        poznamka="Len jid=2 (obed). Olovrant = obed, potvrdené 6/6 dní v XLSX.",
+        poznamka=(
+            "Len jid=2 (obed). Olovrant = obed, potvrdené 6/6 dní v XLSX. "
+            "Celodenná dochádzka — raňajky sa tiež neobjednávajú samostatne, "
+            "= obed (user 2.9.2026, rovnaký princíp ako olovrant)."
+        ),
+        ranajky_z_obedu=True,
     ),
     PrevadzkaConfig(
         subdomena="montessorisk",
@@ -47,8 +53,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "nastavenia prázdne — žiadny samostatný olovrant jid. Real tabuľka "
             "potvrdzuje olovrant = obed 4/4 dní (27.–30.7.2026). "
             "'Iná..NmNgNe' fuzzy-matchovalo len na NO MILK/NO GLUTEN (#527, "
-            "vajcia sa strácali) — letter_hook opravuje na plnú kombináciu."
+            "vajcia sa strácali) — letter_hook opravuje na plnú kombináciu. "
+            "Montessori Borínska MŠ má celodennú dochádzku — raňajky = obed "
+            "(user 2.9.2026). Config je per-connection (zdieľaná MŠ aj ZŠ), "
+            "takže sa uplatní na obe prevádzky rovnako."
         ),
+        ranajky_z_obedu=True,
         letter_hook=montessori_letter_hook,
     ),
     PrevadzkaConfig(
@@ -98,6 +108,19 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "opravuje na NO MILK/NO EGG (EduPage nazov='NoMilk/NoEgg')."
         ),
         letter_hook=zdravebrusko_letter_hook,
+    ),
+    PrevadzkaConfig(
+        subdomena="cmspezinok",
+        ucty=("CMŠ Pezinok",),
+        olovrant_mode=_C,
+        poznamka=(
+            "Vlastný jid pre raňajky aj olovrant (2.9.2026). Skratka 'H' = "
+            "'Hlavná budova' (administratívna skupina, cena 0), NIE Histamín — "
+            "bez letter_hooku by exaktný _SKRATKA_MAP['H']='HISTAMIN' túto "
+            "skupinu tíško zaradil ako diétu. User 2.9.2026 potvrdil, že sa "
+            "má úplne preskočiť."
+        ),
+        letter_hook=cmspezinok_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="emsmelanchtona",

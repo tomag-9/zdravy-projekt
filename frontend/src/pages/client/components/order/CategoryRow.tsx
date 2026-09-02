@@ -23,7 +23,7 @@ const MenuCounter = ({ type, count, onChange, disabled, isOccupied, closedLabel 
     }
 
     return (
-        <div className="zp-menurow" title={closedLabel}>
+        <div className={`zp-menurow${closedLabel ? " zp-menurow--deadline-closed" : ""}`} title={closedLabel}>
             <span className="name">Menu {type}</span>
             {closedLabel && <span className="zp-menurow-occupied-label">{closedLabel}</span>}
             <span className="spacer"></span>

@@ -68,6 +68,10 @@ h1 small {
 .zpa-gram { width: 100%; font-size: 6.5pt; table-layout: fixed; }
 .zpa-gram thead { display: table-header-group; }
 .zpa-gram tr { page-break-inside: avoid; }
+/* Škôlka ucelená (#527) — jej riadky (názov, sub-riadky, poznámky) sedia v
+ * spoločnom `<tbody>` (`gramage_table_html._tbody_chunks`), tak sa dá
+ * zalomiť ako celok namiesto rozseknutia v polovici zoznamu detí. */
+.zpa-gram tbody.client-group { break-inside: avoid; page-break-inside: avoid; }
 
 /* ── Zúženie stĺpcov ─────────────────────────────────────────────────────────
  * Obrazovka si stĺpce roztiahne podľa obsahu (`width: max-content`) a chýbajúce
@@ -135,6 +139,7 @@ h1 small {
 .zpa-gram .sub-row.diet .lbl { font-size: 6.5pt; padding-left: 3mm; }
 .zpa-gram .note-admin td,
 .zpa-gram .note-delivery td { font-size: 6.5pt; padding: 1.2mm 2mm; }
+.zpa-gram .cluster-ms-row td { font-size: 7pt; padding: 1.2mm 2mm; }
 .zpa-gram .count-badge { min-width: 4mm; height: 3.2mm; padding: 0 1mm; font-size: 6pt; }
 .zpa-gram .diet-dot { width: 1.6mm; height: 1.6mm; margin-right: 1.2mm; }
 

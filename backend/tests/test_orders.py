@@ -305,6 +305,36 @@ class TestOrderDeadlines:
         assert response.data["error"]["code"] == "order_deadline_passed"
         assert DailyOrder.objects.filter(user=user, date=today).count() == 0
 
+    def test_deadline_rejection_is_logged_with_which_meal_and_who(
+        self, authenticated_client, user
+    ):
+        """Predtým sa zamietnutie nikde nezapísalo — dohľadať, PREČO konkrétny
+        request padol, šlo len ručnou rekonštrukciou nad produkčnou DB
+        (incident Vyšehradská, 2.9.2026). Log musí niesť aspoň e-mail
+        používateľa a detail chyby (ktoré jedlo, aký termín)."""
+        self._set_global_deadlines(deadline_lunch=time(10, 0))
+        today = date(2026, 3, 13)
+        payload = {
+            "date": str(today),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 10, 1),
+        ), patch("api.exception_handlers.logger.warning") as mock_warning:
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        mock_warning.assert_called_once()
+        logged = mock_warning.call_args.args
+        assert "order_deadline_passed" in logged
+        assert user.email in logged
+        assert any("obed" in str(arg).lower() for arg in logged)
+
     def test_deadline_error_has_frontend_contract_shape(self, authenticated_client):
         self._set_global_deadlines(deadline_lunch=time(10, 0))
         today = date(2026, 3, 13)
@@ -539,6 +569,33 @@ class TestOrderDeadlines:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert DailyOrder.objects.filter(user=user, date=target_date).count() == 0
 
+    def test_menu_d_order_after_own_deadline_is_rejected(
+        self, authenticated_client, user
+    ):
+        """Menu D zdieľa rovnaký prísnejší termín ako B/C."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)  # Friday
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"D": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 11, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert DailyOrder.objects.filter(user=user, date=target_date).count() == 0
+
     def test_menu_bc_order_before_own_deadline_is_allowed(
         self, authenticated_client, user
     ):
@@ -631,6 +688,114 @@ class TestOrderDeadlines:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         order = DailyOrder.objects.get(user=user, date=target_date)
         assert order.data["lunch"]["menuCounts"]["B"] == 1
+
+    def test_menu_bc_decrease_after_strict_deadline_but_before_morning_is_allowed(
+        self, authenticated_client, user
+    ):
+        """User 2.9.2026: odhlásiť/znížiť Menu B/C sa dá až do rána v deň
+        výdaja, aj keď prísny 2-dňový termín na NOVÉ/vyššie objednávky už
+        prešiel — inak by rodič nemohol dieťa odhlásiť tesne pred obedom."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)  # Friday
+        DailyOrder.objects.create(
+            user=user,
+            date=target_date,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 1, "B": 2}, "diets": {}}},
+        )
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1, "B": 1}, "diets": {}}},
+        }
+
+        # Strict 2-day deadline (Wed 07:30) is long past, but it's still
+        # before Friday 07:30 (the meal's own day) — a decrease must go through.
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 7, 0),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        order = DailyOrder.objects.get(user=user, date=target_date)
+        assert order.data["lunch"]["menuCounts"]["B"] == 1
+
+    def test_menu_bc_decrease_after_meal_day_morning_is_rejected(
+        self, authenticated_client, user
+    ):
+        """Odhlásenie má vlastný termín (rovnaký čas, deň výdaja) — nie je to
+        neobmedzené donekonečna, len dlhšie než nahlásenie."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)  # Friday
+        DailyOrder.objects.create(
+            user=user,
+            date=target_date,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 1, "B": 2}, "diets": {}}},
+        )
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1, "B": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 7, 31),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        order = DailyOrder.objects.get(user=user, date=target_date)
+        assert order.data["lunch"]["menuCounts"]["B"] == 2
+
+    def test_menu_bc_full_cancellation_after_strict_deadline_is_allowed(
+        self, authenticated_client, user
+    ):
+        """Odhlásenie na nulu (menu úplne zmizne z payloadu) je tiež pokles,
+        nie nárast — musí prejsť rovnako ako čiastočné zníženie."""
+        self._set_global_deadlines(
+            deadline_lunch=time(23, 0),
+            deadline_menu_bc=time(7, 30),
+            deadline_menu_bc_days_before=2,
+        )
+        target_date = date(2026, 3, 13)
+        DailyOrder.objects.create(
+            user=user,
+            date=target_date,
+            status="submitted",
+            data={"lunch": {"menuCounts": {"A": 1, "B": 2}, "diets": {}}},
+        )
+        payload = {
+            "date": str(target_date),
+            "status": "submitted",
+            "data": {"lunch": {"menuCounts": {"A": 1}, "diets": {}}},
+        }
+
+        with patch(
+            "api.serializers.timezone.localtime",
+            return_value=self._server_dt(2026, 3, 13, 7, 0),
+        ):
+            response = authenticated_client.post(
+                reverse("dailyorder-list"), payload, format="json"
+            )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        order = DailyOrder.objects.get(user=user, date=target_date)
+        assert "B" not in order.data["lunch"]["menuCounts"]
 
     def test_admin_bypasses_menu_bc_deadline(self, admin_authenticated_client, user):
         prevadzka = user.profile.dostupne_prevadzky().first()

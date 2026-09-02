@@ -759,7 +759,14 @@ class TestParse(unittest.TestCase):
             {"ZŠ 1.stupeň": {"menuCounts": {"A": 13}, "diets": {}}},
         )
 
-    def test_parse_payer_group_can_supply_clean_diet_and_portion(self):
+    def test_parse_payer_group_can_supply_clean_portion_without_forcing_a_diet(self):
+        """SŠV payer group "SŠV žiak" is a plain portion label, not a diet.
+
+        Live data (2.9.2026) confirmed SŠ Veterinárna's actual menu choice — Klasik
+        (A) / Menu B / Vege — lives at the menu-letter level, not the payer group.
+        A previous blanket "ssv in payer name → VEGGIE" rule forced every SŠV order
+        to VEGGIE even when the letter picked was the plain Klasik menu (#557).
+        """
         prehlad = {
             "prehlad": {
                 self.DATE_STR: {
@@ -789,7 +796,42 @@ class TestParse(unittest.TestCase):
 
         self.assertEqual(
             result.order_data["lunch"],
-            {"Dospelý (SŠ)": {"menuCounts": {"A": 4}, "diets": {"VEGGIE": 4}}},
+            {"Dospelý (SŠ)": {"menuCounts": {"A": 4}, "diets": {}}},
+        )
+
+    def test_parse_ssv_vege_letter_still_resolves_to_veggie(self):
+        """The Vege letter itself (skratka "sšvV") must still resolve to VEGGIE —
+        only the payer-group-level default was wrong, not letter-level matching."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "2": {"I": {"typ_platitela": {"12": {"o": 2}}}},
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {"I": {"nazov": "Vege", "skratka": "sšvV"}}
+        nastavenia = [
+            {
+                "setting": "vydaj_normal",
+                "hodnota": json.dumps(
+                    {"1": {"2": {"vydaj_od": "12:00", "vydaj_do": "14:00"}}}
+                ),
+            }
+        ]
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            nastavenia,
+            self._typy([(12, "SŠV žiak", 4)]),
+            self.DATE_STR,
+        )
+        result = self._scrape_html(html)
+
+        self.assertEqual(
+            result.order_data["lunch"],
+            {"Dospelý (SŠ)": {"menuCounts": {"A": 2}, "diets": {"VEGGIE": 2}}},
         )
 
     def test_nest_order_data_by_category_wraps_flat_meals(self):

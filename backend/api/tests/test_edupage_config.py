@@ -16,6 +16,7 @@ from api.edupage.overrides.britishschool import (
     british_school_letter_hook,
     british_school_payer_hook,
 )
+from api.edupage.overrides.cmspezinok import cmspezinok_letter_hook
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
 from api.edupage.overrides.fantasticka import fantasticka_letter_hook
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -89,6 +90,7 @@ class TestConfigPreUrl(unittest.TestCase):
         cfg = config_pre_url("https://skolkapramienok.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg)
         self.assertEqual(cfg.olovrant_mode, OlovrantMode.ODVODIT_Z_OBEDU)
+        self.assertTrue(cfg.ranajky_z_obedu)
 
     def test_unknown_school_returns_none_not_raises(self):
         """Nová škola bez riadku v tabuľke sa musí odscrapovať generickým spôsobom."""
@@ -141,6 +143,13 @@ class TestConfigPreUrl(unittest.TestCase):
 
     def test_montessorisk_has_letter_hook(self):
         cfg = config_pre_url("https://montessorisk.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
+        self.assertTrue(cfg.ranajky_z_obedu)
+
+    def test_cmspezinok_has_letter_hook(self):
+        cfg = config_pre_url("https://cmspezinok.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg)
+        self.assertEqual(cfg.olovrant_mode, OlovrantMode.EDUPAGE)
         self.assertIsNotNone(cfg.letter_hook)
 
 
@@ -224,6 +233,85 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         self.assertEqual(
             res.warnings, [], "config drift nesmie vyzerať ako zlyhanie scrapu"
         )
+
+
+class TestApplyConfigRanajky(unittest.TestCase):
+    """`ranajky_z_obedu` — celodenná dochádzka, raňajky = obed (user 2.9.2026,
+    Pramienok a Montessori Borínska MŠ)."""
+
+    def test_off_by_default_does_not_add_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE))
+        self.assertNotIn("breakfast", res.order_data)
+
+    def test_copies_lunch_into_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertEqual(res.order_data["breakfast"], LUNCH_DATA)
+
+    def test_deep_copies(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        res.order_data["breakfast"]["Škôlka"]["menuCounts"]["A"] = 999
+        self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 10)
+
+    def test_empty_day_stays_empty(self):
+        res = _result({})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertNotIn("breakfast", res.order_data)
+        self.assertEqual(res.config_notes, [])
+
+    def test_warns_if_edupage_suddenly_has_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA, "breakfast": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertTrue(any("over config" in n for n in res.config_notes))
+        self.assertEqual(res.order_data["breakfast"], LUNCH_DATA)
+        self.assertEqual(res.warnings, [])
+
+    def test_uses_each_prevadzka_own_lunch(self):
+        first_lunch = {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}}
+        second_lunch = {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Prvá": {"lunch": first_lunch},
+                "Druhá": {"lunch": second_lunch},
+            },
+        )
+
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+
+        self.assertEqual(res.order_data_by_prevadzka["Prvá"]["breakfast"], first_lunch)
+        self.assertEqual(
+            res.order_data_by_prevadzka["Druhá"]["breakfast"], second_lunch
+        )
+
+
+class TestApplyConfigPerPrevadzkaDrift(unittest.TestCase):
+    """Zdravé Brúško 2.9.2026: merged (celok-wide) pohľad drift skryje, ak čo i
+    len jedna z viacerých prevádzok zdieľanej connection má olovrant/raňajky —
+    per-prevádzka notes s labelom to musia odhaliť (user: "zle ich čítalo,
+    treba preveriť")."""
+
+    def test_merged_view_hides_missing_olovrant_for_one_of_several_prevadzky(self):
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA, "olovrant": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Deutsche schule": {"lunch": LUNCH_DATA, "olovrant": LUNCH_DATA},
+                "MŠ Heyrovského 4": {"lunch": LUNCH_DATA},
+            },
+        )
+
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE))
+
+        # Merged pohľad sám osebe nič nenahlási — olovrant tam je (z Deutsche
+        # schule) — preto potrebujeme per-prevádzka notes s labelom.
+        self.assertTrue(
+            any("MŠ Heyrovského 4" in n and "olovrant" in n for n in res.config_notes)
+        )
+        self.assertFalse(any("Deutsche schule" in n for n in res.config_notes))
 
 
 class TestKrasnankoLetterHook(unittest.TestCase):
@@ -550,25 +638,36 @@ class TestMontessoriLetterHook(unittest.TestCase):
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("Iná NmNg"))
 
-    def test_zs_bezna_is_plain_menu_not_diet(self):
-        """Code review 2026-08-31/09-01: 'C'/'ZŠ'/'ZŠ Bežná' je obyčajná ZŠ
-        porcia, žiadna diéta — bez tohto pravidla `resolve_menu_variant` ju
-        nespoznal, engine skúsil fuzzy diet-match, zlyhal a Montessori
-        vypadla z importu celá (žiadne raňajky)."""
-        rule = self._rule("ZŠ")
-        self.assertEqual(rule.menu, "A")
-        self.assertIsNone(rule.diet)
-        self.assertIsNone(rule.portion)
-
-    def test_employee_letters_are_adult_portion(self):
-        """'H'/'ZŠ zam.'/'Zamestnanec Bežná' a 'I'/'FK zam.'/'Zamestnanec
-        FoodKut' — zamestnanecký status = DOSPELÁ porcia (rovnaký princíp
-        ako Krásňanko `KZ`), user 1.9.2026."""
-        for skratka in ("ZŠ zam.", "FK zam."):
+    def test_non_ina_letters_are_skipped(self):
+        """User 2.9.2026: appka má z EduPage rátať VÝHRADNE 'Iná' skupinu —
+        bežné MŠ/ZŠ menu aj zamestnanecké porcie sa majú ignorovať celkom."""
+        for skratka in ("MŠ", "ZŠ", "ZŠ 1.", "ZŠ FK 2.", "ZŠ zam.", "FK zam.", ".."):
             rule = self._rule(skratka)
-            self.assertEqual(rule.portion, "Dospelý (SŠ)")
-            self.assertEqual(rule.menu, "A")
-            self.assertIsNone(rule.diet)
+            self.assertTrue(rule.skip, msg=skratka)
+
+    def test_ina_group_is_not_skipped(self):
+        """'Iná' (A) aj 'Iná NmNo' (D) ostávajú v hre — len ostatné písmená
+        sa preskakujú."""
+        for skratka in ("Iná", "Iná NmNo"):
+            rule = self._rule(skratka)
+            self.assertIsNone(rule, msg=skratka)  # necháva sa na engine
+
+
+class TestCmsPezinokLetterHook(unittest.TestCase):
+    """'H'/'Hlavná budova' je administratívna skupina, nie diéta HISTAMIN —
+    bez tohto hooku by exaktný `_SKRATKA_MAP['H']` ju tíško zaradil ako diétu
+    (user 2.9.2026: má sa úplne preskočiť)."""
+
+    def _rule(self, skratka) -> LetterRule | None:
+        return cmspezinok_letter_hook("X", skratka, "Hlavná budova")
+
+    def test_h_is_skipped(self):
+        rule = self._rule("H")
+        self.assertIsNotNone(rule)
+        self.assertTrue(rule.skip)
+
+    def test_other_letters_fall_through_to_engine(self):
+        self.assertIsNone(self._rule("NG"))
 
 
 class TestFilipanerihoLetterHook(unittest.TestCase):
@@ -731,13 +830,13 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
 
-    def test_montessori_zs_bezna_lands_as_menu_count_not_unmapped_diet(self):
-        """Regression 2026-09-01: bez `letter_hook` pravidla táto skratka
-        vypadla ako unmapped diéta a celá škola nedostala import."""
+    def test_montessori_zs_bezna_is_skipped_entirely(self):
+        """User 2.9.2026: appka počíta z Montessori EduPage výhradne 'Iná' —
+        bežné 'ZŠ' menu sa má úplne vynechať, nie počítať ako menu A."""
         cfg = _cfg(OlovrantMode.EDUPAGE, letter_hook=montessori_letter_hook)
         res = self._parse("ZŠ", cfg)
-        self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"], {"A": 1})
-        self.assertEqual(res.order_data["lunch"]["Škôlka"].get("diets", {}), {})
+        self.assertEqual(res.order_data, {})
+        self.assertEqual(res.skipped_letters, ["E:ZŠ"])
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
 

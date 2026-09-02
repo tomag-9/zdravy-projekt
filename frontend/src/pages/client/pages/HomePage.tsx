@@ -105,11 +105,14 @@ const HomePage = () => {
   const { apiFetch, user } = useAuth();
   const toast = useToast();
   const getFriendlyOrderErrorMessage = (error: unknown) => {
+    // Backend pošle presný dôvod (ktoré jedlo, aký termín) v `error.message` —
+    // predtým sa tu zahadzoval a nahrádzal všeobecnou hláškou (incident
+    // Vyšehradská, 2.9.2026).
     if (
       error instanceof OrderRequestError &&
       error.code === "order_deadline_passed"
     ) {
-      return "Objednávku už nie je možné meniť, termín uplynul.";
+      return error.message || "Objednávku už nie je možné meniť, termín uplynul.";
     }
     return "Nepodarilo sa upraviť objednávku. Skúste to znova.";
   };

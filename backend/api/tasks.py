@@ -486,6 +486,13 @@ def _filter_order_data_by_meals(order_data, meal_types):
 
 _ALL_MEALS = ("breakfast", "lunch", "olovrant")
 
+# Menu B/C majú u niektorých škôl skoršiu EduPage uzávierku než zvyšok obeda —
+# kuchyňa chce ich odhad vidieť pár dní vopred (user 2.9.2026). Hardcoded zámerne:
+# "toto zatiaľ môže byť hardcodnuté a napojené na obedový scrape".
+PARTIAL_LUNCH_MEAL = "lunch"
+PARTIAL_LUNCH_MENU_LETTERS = ("B", "C")
+PARTIAL_LUNCH_DAYS_AHEAD = (1, 2)
+
 
 def _apply_scrape(existing_data, imported_data, requested_meals):
     """Vlož výsledok scrapu s UPDATE sémantikou (nie ADD).
@@ -502,6 +509,51 @@ def _apply_scrape(existing_data, imported_data, requested_meals):
             result[meal_type] = scraped
         else:
             result.pop(meal_type, None)
+    return result
+
+
+def _apply_partial_menu_scrape(
+    existing_data: dict,
+    imported_data: dict,
+    meal_type: str = PARTIAL_LUNCH_MEAL,
+    letters: tuple[str, ...] = PARTIAL_LUNCH_MENU_LETTERS,
+) -> dict:
+    """Zapíš len zadané menu písmená (B/C) pre `meal_type`, nič iné.
+
+    Na rozdiel od `_apply_scrape` (celý meal bucket sa prepíše/zmaže) toto len
+    prepíše menu písmená `letters` v `menuCounts` pre každú porciu — Menu A,
+    diéty aj iné jedlá ostávajú netknuté. Používa sa na predbežný scrape 1-2
+    dni pred aktuálnym dňom (kuchyňa dostane skorý odhad Menu B/C, ktoré má
+    skoršiu EduPage uzávierku — user 2.9.2026). Deň samotný potom prepíše
+    normálny plný `_apply_scrape`, ktorý je autoritatívny.
+
+    Porcia, ktorá v čerstvom scrape B/C vôbec nemá (0 objednávok), sa v
+    `menuCounts` na dané písmeno vynuluje/vymaže — inak by po odhlásení ostal
+    v predbežnom odhade zastaraný počet z predošlého behu.
+    """
+    result = dict(existing_data or {})
+    existing_meal = dict(result.get(meal_type) or {})
+    imported_meal = (imported_data or {}).get(meal_type) or {}
+
+    new_meal: dict = {}
+    for portion_name in set(existing_meal) | set(imported_meal):
+        existing_counts = existing_meal.get(portion_name) or {}
+        imported_counts = imported_meal.get(portion_name) or {}
+        menu_counts = dict(existing_counts.get("menuCounts") or {})
+        imported_menu_counts = imported_counts.get("menuCounts") or {}
+        for letter in letters:
+            if letter in imported_menu_counts:
+                menu_counts[letter] = imported_menu_counts[letter]
+            else:
+                menu_counts.pop(letter, None)
+        diets = existing_counts.get("diets") or {}
+        if menu_counts or diets:
+            new_meal[portion_name] = {"menuCounts": menu_counts, "diets": diets}
+
+    if new_meal:
+        result[meal_type] = new_meal
+    else:
+        result.pop(meal_type, None)
     return result
 
 
@@ -666,10 +718,15 @@ def scrape_edupage_orders_task(
             prevadzky_without_match,
         )
         from api.models import DailyOrder, GlobalSettings
-        from api.scheduling import closed_dates_for_prevadzky
+        from api.scheduling import closed_dates_for_prevadzky, is_day_off
         from api.services import _next_workday
         from api.services.edupage_connection_service import edupage_operations
         from api.utils import filter_order_data_for_prevadzka
+
+        # Dátumy pridané nižšie ako predbežný Menu B/C scrape (1-2 dni vopred) —
+        # tie sa pri zápise zlúčia cez `_apply_partial_menu_scrape`, nie plným
+        # `_apply_scrape`. Prázdne pri manuálnom behu s explicitným `date_str`.
+        partial_dates: set = set()
 
         valid_meal_types = {"breakfast", "lunch", "olovrant"}
         if isinstance(meal_types, str):
@@ -745,6 +802,18 @@ def scrape_edupage_orders_task(
                     "skipped_run": True,
                     "reason": skip_reason,
                 }
+
+            # Predbežný Menu B/C scrape 1-2 dni vopred, napojený na obedový beh
+            # (user 2.9.2026): niektoré školy majú pre Menu B/C skoršiu EduPage
+            # uzávierku, kuchyňa chce vidieť odhad skôr. Deň, ktorý je už bežným
+            # cieľom tohto behu, sa nepridáva znova — plný scrape má prednosť.
+            if meal_types is not None and PARTIAL_LUNCH_MEAL in meal_types:
+                for days_ahead in PARTIAL_LUNCH_DAYS_AHEAD:
+                    candidate = today + datetime.timedelta(days=days_ahead)
+                    if candidate in date_to_meals or is_day_off(candidate):
+                        continue
+                    date_to_meals[candidate] = [PARTIAL_LUNCH_MEAL]
+                    partial_dates.add(candidate)
 
         scraper = EdupageScraper()
         # Whitelist diét sa číta raz za beh — je rovnaký pre všetky prevádzky.
@@ -829,6 +898,14 @@ def scrape_edupage_orders_task(
                         target_date,
                         result.unmapped_letters,
                     )
+                if result.skipped_letters:
+                    logger.info(
+                        "scrape_edupage_orders_task: písmená vynechané podľa configu "
+                        "(skip=True) pre %s na %s: %s",
+                        operation["name"],
+                        target_date,
+                        result.skipped_letters,
+                    )
 
                 # Jedna prevádzka → celý objem jej; viac → podľa edupage_match.
                 if len(prevadzky) > 1:
@@ -898,16 +975,23 @@ def scrape_edupage_orders_task(
                     # Úspešný scrape (aj s nulovými počtami) je autoritatívny:
                     # prepíše vyžiadané jedlá a vyčistí tie, čo dnes klesli na nulu.
                     # Explicitný záznam (aj prázdny) odlíši "0 objednávok" od
-                    # "nikdy nescrapované".
+                    # "nikdy nescrapované". Predbežný dátum (1-2 dni vopred) je
+                    # výnimka: zapíše len Menu B/C, ostatné jedlá/porcie na tento
+                    # deň ostávajú netknuté (deň samotný to neskôr prepíše plne).
                     with transaction.atomic():
                         order, _ = DailyOrder.objects.select_for_update().get_or_create(
                             prevadzka=prevadzka,
                             date=target_date,
                             defaults={"user": operation["user"], "data": {}},
                         )
-                        order.data = _apply_scrape(
-                            order.data, imported_data, requested_meals
-                        )
+                        if target_date in partial_dates:
+                            order.data = _apply_partial_menu_scrape(
+                                order.data, imported_data
+                            )
+                        else:
+                            order.data = _apply_scrape(
+                                order.data, imported_data, requested_meals
+                            )
                         # Upozornenia posledného scrapu — prepíšeme (aj prázdnym),
                         # nech admin prehľad nezobrazuje výkričník z minulého behu,
                         # ktorý sa už medzitým vyriešil.
@@ -932,9 +1016,17 @@ def scrape_edupage_orders_task(
             "dates": [str(target_date) for target_date in date_to_meals],
             "meal_types": meal_types,
         }
+        # Predbežné dátumy (partial_dates) dostali len Menu B/C odhad, nie plný
+        # scrape — chained report na ne nesmie ísť, poslal by kuchyni neúplné
+        # čísla ako keby boli finálne. Report čaká na deň, keď ho prepíše
+        # autoritatívny plný `_apply_scrape`.
         dispatched = _dispatch_chained_reports(
             chained_reports,
-            [str(target_date) for target_date in date_to_meals],
+            [
+                str(target_date)
+                for target_date in date_to_meals
+                if target_date not in partial_dates
+            ],
             scrape_failed=False,
         )
         if dispatched:

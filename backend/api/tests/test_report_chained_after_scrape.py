@@ -73,7 +73,9 @@ class TestChainedReportDispatch:
                 meal_types=["lunch"], chained_reports=[["breakfast", "lunch"]]
             )
 
-        assert result["dates"] == ["2026-06-29"]
+        # `dates` nesie aj predbežný Menu B/C scrape 1-2 dni vopred (#fb118d2)
+        # — ale ten sa chainovaný report netýka, ten čaká na plný scrape dňa.
+        assert result["dates"] == ["2026-06-29", "2026-06-30", "2026-07-01"]
         apply_async.assert_called_once_with(
             kwargs={
                 "meals": ["breakfast", "lunch"],

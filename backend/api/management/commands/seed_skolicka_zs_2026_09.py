@@ -17,7 +17,7 @@ from api.models import Celok, EdupageConnection, Prevadzka
 
 SKOLICKA_URL = "https://skolicka.edupage.org/menu/mealsGuest?id=u6r7uz8"
 
-CELOK_NAZOV = "Školička"
+CELOK_NAZOV = "Školička ZŠ"
 PREVADZKY_MATCH = [
     ("Školička 1.stupeň", "1.stupeň"),
     ("Školička 2. stupeň", "2.stupeň"),

@@ -129,6 +129,18 @@
     font-family: var(--font-display);
     padding-left: 20px;
 }
+/* Klastrový súhrn prepočítaný na MŠ porcie (#532) — "Obed: 3345 MŠ", jeden
+   riadok na jedlo namiesto celej gramážovej mriežky. */
+.zpa-gram .cluster-ms-row td {
+    background: rgba(255,201,92,0.08);
+    color: var(--green-900);
+    border-top: 1px solid rgba(201,150,35,0.16);
+    padding: 8px 20px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 13px;
+}
+.zpa-gram .cluster-ms-row strong { color: var(--mustard-700); }
 /* Začiatok novej škôlky (prevádzky) — výrazný žltý pás cez celý riadok. */
 .zpa-gram .client-row td {
     background: rgba(255,201,92,0.42);
@@ -169,10 +181,6 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .sub-row.diet .lbl { font-style: italic; font-size: 12px; padding-left: 24px; }
 .zpa-gram .lbl-line { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
 .zpa-gram .lbl-line > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* #2 — poznámka ku konkrétnej diéte (Diet.description zo Správy diét).
- * Zdieľa riadok s názvom diéty — pri dlhšom texte sa oreže elipsou (viď
- * pravidlo vyššie), aby nenaťahovala výšku riadku. */
-.zpa-gram .diet-note-inline { font-weight: 500; font-style: normal; opacity: 0.8; }
 .zpa-gram .count-badge {
     display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
     min-width: 24px; height: 19px; padding: 0 6px; border-radius: var(--radius-pill);
@@ -200,22 +208,24 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 }
 
 /* Poznámky pod klientom — predtým inline štýly v JSX, teraz triedy zo spec-u,
- * aby ich rovnako zafarbilo aj PDF. */
+ * aby ich rovnako zafarbilo aj PDF. Tučné červené (#528) — poznámka je pre
+ * kuchyňu/vodiča upozornenie, nemá sa stratiť v bežnom texte riadku. */
 .zpa-gram .note-admin td,
-.zpa-gram .note-delivery td { font-size: 13px; padding: 10px 20px; }
-.zpa-gram .note-admin td { background: rgba(114,136,75,0.06); color: var(--green-800); }
-.zpa-gram .note-delivery td { background: rgba(255,201,92,0.14); color: var(--mustard-700); }
+.zpa-gram .note-delivery td { font-size: 13px; padding: 10px 20px; font-weight: 700; }
+.zpa-gram .note-admin td { background: rgba(114,136,75,0.06); color: var(--coral-600); }
+.zpa-gram .note-delivery td { background: rgba(255,201,92,0.14); color: var(--coral-600); }
 .zpa-gram .note-admin strong,
 .zpa-gram .note-delivery strong { font-family: var(--font-display); }
 
 /* Poznámka prevádzky (#513) hneď za názvom na klientskom riadku, v tej istej
  * širokej bunke ako meno — predtým bola v samostatnom úzkom stĺpci Poznámka,
- * kde dlhší text zalamoval celý riadok; ten stĺpec bol zrušený. */
+ * kde dlhší text zalamoval celý riadok; ten stĺpec bol zrušený. Tučné
+ * červené ako ostatné poznámky (#528) — vidieť ju hneď, aj na zbalenom
+ * riadku. */
 .zpa-gram .client-toggle .client-note-inline {
     font-size: 12px;
-    font-weight: 500;
-    color: var(--green-900);
-    opacity: 0.85;
+    font-weight: 700;
+    color: var(--coral-600);
 }
 
 /* Farebná bodka pred názvom diéty. Na obrazovke ju kreslí DietColorSwatch,

@@ -53,3 +53,6 @@ class Command(BaseCommand):
             management.call_command(
                 "seed_skolicka_zs_2026_09", verbosity=options.get("verbosity", 1)
             )
+            management.call_command(
+                "seed_rozmanita_split_2026_09", verbosity=options.get("verbosity", 1)
+            )

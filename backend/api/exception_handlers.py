@@ -15,9 +15,24 @@ from rest_framework.exceptions import APIException, Throttled, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
-from .exceptions import BaseAPIException
+from .exceptions import (
+    BaseAPIException,
+    HolidayOrderNotAllowedError,
+    OrderDeadlinePassedError,
+    PrevadzkaClosureOrderNotAllowedError,
+)
 
 logger = logging.getLogger(__name__)
+
+# Objednávkové zamietnutia, ktoré klientovi vyzerajú ako "nepodarilo sa
+# odoslať" bez zjavnej príčiny — predtým sa nelogovali vôbec, takže dohľadať
+# PREČO konkrétny request padol (ktoré jedlo, aký termín) šlo len ručnou
+# rekonštrukciou nad produkčnou DB (viď incident Vyšehradská, 2.9.2026).
+_ORDER_REJECTION_EXCEPTIONS = (
+    OrderDeadlinePassedError,
+    HolidayOrderNotAllowedError,
+    PrevadzkaClosureOrderNotAllowedError,
+)
 
 
 def custom_exception_handler(exc, context):
@@ -123,6 +138,17 @@ def custom_exception_handler(exc, context):
             "message": str(exc.detail),
             "details": exc.extra,
         }
+        if isinstance(exc, _ORDER_REJECTION_EXCEPTIONS):
+            request = context.get("request")
+            user = getattr(request, "user", None)
+            logger.warning(
+                "Objednávka zamietnutá (%s): user=%s path=%s detail=%s extra=%s",
+                exc.error_code,
+                getattr(user, "email", None) or "anonymous",
+                getattr(request, "path", "?"),
+                exc.detail,
+                exc.extra,
+            )
         response.data = {"error": error_data}
         return response
 

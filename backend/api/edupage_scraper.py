@@ -339,6 +339,10 @@ class ScrapeResult:
     # nastavenia). Diagnostika pre nás, NIE signál zlyhania — nesmie sa miešať
     # do `warnings`, inak by config drift zablokoval import platných objednávok.
     config_notes: list[str] = field(default_factory=list)
+    # Písmená, ktoré `letter_hook` označil `skip=True` a appka ich vôbec nezarátala
+    # (napr. Montessori: len 'Iná' sa počíta z EduPage, ostatné písmená sa ignorujú —
+    # user 2.9.2026). Vedomé rozhodnutie, nie signál zlyhania.
+    skipped_letters: list[str] = field(default_factory=list)
     # Písmená označené per-prevádzka hookom ako „skontroluj ručne" (napr. Krásňanko ZD).
     attention: list[str] = field(default_factory=list)
     # `attention` rozpadnuté podľa prevádzky, do ktorej porcie s daným flagom
@@ -687,12 +691,16 @@ class EdupageScraper:
 
     @staticmethod
     def resolve_payer_diet_name(nazov: str) -> str | None:
-        """Map an Edupage payer group label to one of our Diet.name values."""
-        key = _normalise_key(nazov)
+        """Map an Edupage payer group label to one of our Diet.name values.
 
-        # SŠV is used by Edupage schools for the vegetarian secondary-school group.
-        if "ssv" in key:
-            return "VEGGIE"
+        Do NOT special-case "SŠV" here: live data (2.9.2026) shows SŠ Veterinárna
+        payer groups are "SŠV Žiak"/"SŠV dospelý" — plain portion labels, not diets.
+        Their actual menu choice (Klasik/Menu B/Vege) lives at the menu-letter level
+        (skratka "sšvA"/"sšvB"/"sšvV") and is resolved there. A previous blanket
+        "ssv in key → VEGGIE" rule forced every SŠV order to VEGGIE regardless of
+        the letter they actually picked (user-reported 2.9.2026).
+        """
+        key = _normalise_key(nazov)
 
         for fragment, diet_name in sorted(
             _NAZOV_KEYWORD_MAP.items(), key=lambda item: len(item[0]), reverse=True
@@ -750,6 +758,7 @@ class EdupageScraper:
         unmapped: list[str] = []
         uncertain: list[str] = []
         attention: list[str] = []
+        skipped_letters: list[str] = []
         # Normalizovaný index, aby `no milk` z EduPage sadlo na našu `NO MILK` a
         # nezaložilo druhú, len inak písanú diétu.
         allowed_by_key = {
@@ -809,6 +818,9 @@ class EdupageScraper:
                 nazov = nm_entry.get("nazov", letter)
 
                 rule = letter_hook(letter, skratka, nazov) if letter_hook else None
+                if rule is not None and rule.skip:
+                    skipped_letters.append(f"{letter}:{skratka}")
+                    continue
                 portion_override = rule.portion if rule else None
 
                 flag_label: str | None = None
@@ -967,6 +979,7 @@ class EdupageScraper:
                 if bucket and labels
             },
             warnings=warnings,
+            skipped_letters=sorted(set(skipped_letters)),
             attention=sorted(set(attention)),
             attention_by_prevadzka={
                 bucket: sorted(flags)
