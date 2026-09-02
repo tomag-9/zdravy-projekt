@@ -18,6 +18,10 @@ jobs:
     name: Build and Push Production Images
     runs-on: self-hosted
     environment: production
+    # Skip the deploy that release-please's own version-bump merge causes —
+    # it only touches VERSION/CHANGELOG.md/frontend package.json, no app
+    # code, and the bumped version reaches prod on the next real deploy.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(main): release ') }}
 
     steps:
       - name: Checkout code
