@@ -946,3 +946,89 @@ def test_snack_with_lunch_flag_is_per_row_not_global():
     assert (
         "mh-snack-cell" in css_by_row[1] and "mh-snacklunch-cell" not in css_by_row[1]
     )
+
+
+# ── "Nastavenia tabuľky" (2.9.2026): show_empty / show_cluster_summary / diet_clusters ──
+
+
+def _payload_with_empty_route():
+    """Cluster A má reálne dáta, Cluster B má trasu úplne bez riadkov."""
+    return _payload(
+        vydaje=[
+            {
+                "key": "A",
+                "name": "Cluster A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": _payload()["rows"]}],
+            },
+            {
+                "key": "B",
+                "name": "Cluster B",
+                "routes": [{"id": 2, "name": "Trasa prázdna", "rows": []}],
+            },
+        ],
+        rows=[],
+        unassigned_rows=[],
+    )
+
+
+def _route_names(spec):
+    return [row["cells"][0]["text"] for row in spec["rows"] if row["kind"] == "route"]
+
+
+def test_show_empty_default_skips_routes_without_rows():
+    spec = build_table_spec(_payload_with_empty_route())
+    assert _route_names(spec) == ["Trasa 1"]
+
+
+def test_show_empty_true_renders_routes_without_rows():
+    spec = build_table_spec(_payload_with_empty_route(), show_empty=True)
+    assert _route_names(spec) == ["Trasa 1", "Trasa prázdna"]
+    # Prázdna trasa dostane aj svoj block-band/route-row, len žiadneho klienta pod ním.
+    assert _band_texts(spec) == ["Cluster A", "Cluster B"]
+
+
+def test_show_cluster_summary_false_drops_all_summary_bands():
+    spec = build_table_spec(_three_vydaje_payload(), show_cluster_summary=False)
+    assert _cluster_summary_band_titles(spec["rows"]) == []
+    assert _cluster_summary_band_titles(spec["footer"]) == []
+    # Ostatné pätkové riadky (celkom g/ml, SUM TOTAL OBED MŠ) ostávajú.
+    assert spec["footer"][-2]["cells"][0]["text"] == "CELKOM (g / ml)"
+    assert spec["footer"][-1]["cells"][0]["label"] == "SUM TOTAL OBED MŠ"
+
+
+def test_diet_clusters_limits_diet_breakdown_to_named_clusters():
+    spec = build_table_spec(_three_vydaje_payload(), diet_clusters=["A"])
+
+    def _has_diet_band(title: str) -> bool:
+        return any(
+            row["kind"] == "portion-band" and row["cells"][0]["text"] == title
+            for row in spec["rows"]
+        )
+
+    assert _has_diet_band("CLUSTER A DIÉTY") is True
+    assert _has_diet_band("CLUSTER B DIÉTY") is False
+    assert _has_diet_band("CLUSTER C DIÉTY") is False
+    # "Obed: N MŠ" riadok ostáva pre všetky clustre — vypína sa len rozpad diét.
+    assert (
+        _rows_for_section(spec["rows"], "SUMÁR CLUSTER B S DIÉTAMI MŠ")[0]["cells"][0][
+            "text"
+        ]
+        == "10 MŠ"
+    )
+
+
+def test_diet_clusters_combined_summary_shown_if_either_half_is_enabled():
+    """ "Cluster A + B" má diéty, ak má diéty zapnuté aspoň jeden z dvoch —
+    tu len B, A nie."""
+    spec = build_table_spec(_three_vydaje_payload(), diet_clusters=["B"])
+
+    def _has_diet_band(title: str) -> bool:
+        return any(
+            row["kind"] == "portion-band" and row["cells"][0]["text"] == title
+            for row in spec["rows"]
+        )
+
+    assert _has_diet_band("CLUSTER A DIÉTY") is False
+    assert _has_diet_band("CLUSTER B DIÉTY") is True
+    assert _has_diet_band("CLUSTER A + B DIÉTY") is True
+    assert _has_diet_band("CLUSTER C DIÉTY") is False
