@@ -90,6 +90,7 @@ class TestConfigPreUrl(unittest.TestCase):
         cfg = config_pre_url("https://skolkapramienok.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg)
         self.assertEqual(cfg.olovrant_mode, OlovrantMode.ODVODIT_Z_OBEDU)
+        self.assertTrue(cfg.ranajky_z_obedu)
 
     def test_unknown_school_returns_none_not_raises(self):
         """Nová škola bez riadku v tabuľke sa musí odscrapovať generickým spôsobom."""
@@ -143,6 +144,7 @@ class TestConfigPreUrl(unittest.TestCase):
     def test_montessorisk_has_letter_hook(self):
         cfg = config_pre_url("https://montessorisk.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg.letter_hook)
+        self.assertTrue(cfg.ranajky_z_obedu)
 
     def test_cmspezinok_has_letter_hook(self):
         cfg = config_pre_url("https://cmspezinok.edupage.org/menu/mealsGuest?id=x")
@@ -230,6 +232,59 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         self.assertTrue(res.config_notes)
         self.assertEqual(
             res.warnings, [], "config drift nesmie vyzerať ako zlyhanie scrapu"
+        )
+
+
+class TestApplyConfigRanajky(unittest.TestCase):
+    """`ranajky_z_obedu` — celodenná dochádzka, raňajky = obed (user 2.9.2026,
+    Pramienok a Montessori Borínska MŠ)."""
+
+    def test_off_by_default_does_not_add_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE))
+        self.assertNotIn("breakfast", res.order_data)
+
+    def test_copies_lunch_into_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertEqual(res.order_data["breakfast"], LUNCH_DATA)
+
+    def test_deep_copies(self):
+        res = _result({"lunch": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        res.order_data["breakfast"]["Škôlka"]["menuCounts"]["A"] = 999
+        self.assertEqual(res.order_data["lunch"]["Škôlka"]["menuCounts"]["A"], 10)
+
+    def test_empty_day_stays_empty(self):
+        res = _result({})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertNotIn("breakfast", res.order_data)
+        self.assertEqual(res.config_notes, [])
+
+    def test_warns_if_edupage_suddenly_has_breakfast(self):
+        res = _result({"lunch": LUNCH_DATA, "breakfast": LUNCH_DATA})
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+        self.assertTrue(any("over config" in n for n in res.config_notes))
+        self.assertEqual(res.order_data["breakfast"], LUNCH_DATA)
+        self.assertEqual(res.warnings, [])
+
+    def test_uses_each_prevadzka_own_lunch(self):
+        first_lunch = {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}}
+        second_lunch = {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Prvá": {"lunch": first_lunch},
+                "Druhá": {"lunch": second_lunch},
+            },
+        )
+
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE, ranajky_z_obedu=True))
+
+        self.assertEqual(res.order_data_by_prevadzka["Prvá"]["breakfast"], first_lunch)
+        self.assertEqual(
+            res.order_data_by_prevadzka["Druhá"]["breakfast"], second_lunch
         )
 
 

@@ -89,6 +89,11 @@ class PrevadzkaConfig:
     poznamka: str = ""
     letter_hook: LetterHook | None = None
     payer_hook: PayerHook | None = None
+    # Škola má "celodennú" dochádzku — raňajky sa neobjednávajú samostatne cez
+    # EduPage, majú byť rovnaké ako obed (rovnaký princíp ako
+    # OlovrantMode.ODVODIT_Z_OBEDU, len pre raňajky — user 2.9.2026, Pramienok
+    # a Montessori Borínska MŠ).
+    ranajky_z_obedu: bool = False
 
 
 def _apply_olovrant_config(
@@ -137,6 +142,34 @@ def _apply_olovrant_config(
     return order_data
 
 
+def _apply_ranajky_config(
+    order_data: dict,
+    config: PrevadzkaConfig,
+    config_notes: list[str] | None = None,
+) -> dict:
+    """Aplikuj `ranajky_z_obedu` na jeden order_data slovník.
+
+    Rovnaká logika ako `_apply_olovrant_config`/`ODVODIT_Z_OBEDU`, len pre raňajky —
+    škola má celodennú dochádzku, raňajky sa neobjednávajú cez EduPage samostatne.
+    """
+    if not config.ranajky_z_obedu:
+        return order_data
+
+    lunch = order_data.get(LUNCH)
+    has_breakfast = bool(order_data.get(BREAKFAST))
+
+    if has_breakfast and config_notes is not None:
+        # Škola začala raňajky objednávať cez EduPage → config je zastaraný.
+        config_notes.append(
+            f"{config.subdomena}: ranajky_z_obedu=True, ale EduPage raňajky "
+            f"reálne obsahuje — over config"
+        )
+    if lunch:
+        order_data[BREAKFAST] = copy.deepcopy(lunch)
+
+    return order_data
+
+
 def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     """Aplikuj per-prevádzka pravidlá na výsledok scrapingu.
 
@@ -148,7 +181,9 @@ def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     zlyhaním nie je.
     """
     _apply_olovrant_config(result.order_data, config, result.config_notes)
+    _apply_ranajky_config(result.order_data, config, result.config_notes)
     for order_data in result.order_data_by_prevadzka.values():
         _apply_olovrant_config(order_data, config)
+        _apply_ranajky_config(order_data, config)
 
     return result
