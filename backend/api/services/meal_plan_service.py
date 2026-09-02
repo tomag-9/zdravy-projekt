@@ -1303,8 +1303,9 @@ class MealPlanService:
             # Až po zlúčení fakturačných riadkov — polievka sa má rozdeliť
             # medzi finálne menu riadky, nie medzi tie pred premenovaním.
             sub_rows = _merge_soup_into_main_course(sub_rows)
-            for sub_row in sub_rows:
-                sub_row.pop("_heads", None)
+            # `_heads` (surový počet hláv pred `_billed_count`) ostáva na
+            # riadku — gramage_table_spec (#529) ho potrebuje na „bez
+            # prepočtu" súčet vedľa `count` (už prepočítaného na MŠ porcie).
 
             if sub_rows:
                 admin_order_note = str(
