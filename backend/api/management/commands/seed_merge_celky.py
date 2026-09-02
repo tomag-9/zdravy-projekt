@@ -56,7 +56,10 @@ MERGES: dict[str, list[str]] = {
     "Rozmanitá": ["MŠ Rozmanitá", "Rozmanita Škola"],
     "Benjamín": ["benjamín pezinok", "benjamín senec"],
     "Pohodička": ["pohodička 1", "pohodička 2"],
-    "Školička": ["Školička 1.stupeň", "Školička 2. stupeň"],
+    # Reálny názov v prode je "Školička ZŠ" (viď seed_skolicka_zs_2026_09) —
+    # v prode ide o dead-code vetvu (real_initial_seed_prevadzky celok pomenuje
+    # rovno správne), tento merge je len pre dev/test dáta z seed_real_delivery_layout.
+    "Školička ZŠ": ["Školička 1.stupeň", "Školička 2. stupeň"],
     "Škôlkáreň": ["Škôlkáreň - Kvetoslavov", "Škôlkáreň - Mokrohájska"],
     "Štvorlístok": ["Štvorlístok škola", "Štvorlístok škôlka"],
     # Dva samostatné objednávkové riadky tej istej školy/tábora. Jeden login potom

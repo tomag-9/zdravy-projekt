@@ -8,7 +8,7 @@ from api.models import Celok, EdupageConnection, Prevadzka
 
 
 def _seed_existing_facility() -> None:
-    celok = Celok.objects.create(nazov="Školička")
+    celok = Celok.objects.create(nazov="Školička ZŠ")
     Prevadzka.objects.create(celok=celok, nazov="Školička 1.stupeň")
     Prevadzka.objects.create(celok=celok, nazov="Školička 2. stupeň")
 
@@ -21,7 +21,7 @@ def test_seed_skolicka_zs_links_facility():
 
     connection = EdupageConnection.objects.get(mealsguest_url=SKOLICKA_URL)
 
-    celok = Celok.objects.get(nazov="Školička")
+    celok = Celok.objects.get(nazov="Školička ZŠ")
     assert celok.zdroj_objednavok == Celok.ZdrojObjednavok.EDUPAGE
 
     prvy = celok.prevadzky.get(nazov="Školička 1.stupeň")
@@ -60,13 +60,13 @@ def test_seed_skolicka_zs_warns_and_continues_when_celok_missing():
 
     call_command("seed_skolicka_zs_2026_09", stdout=stdout)
 
-    assert "Školička: celok neexistuje, prepojenie preskakujem" in stdout.getvalue()
+    assert "Školička ZŠ: celok neexistuje, prepojenie preskakujem" in stdout.getvalue()
     assert EdupageConnection.objects.filter(mealsguest_url=SKOLICKA_URL).exists()
 
 
 @pytest.mark.django_db
 def test_seed_skolicka_zs_warns_and_continues_when_prevadzka_missing():
-    celok = Celok.objects.create(nazov="Školička")
+    celok = Celok.objects.create(nazov="Školička ZŠ")
     Prevadzka.objects.create(celok=celok, nazov="Školička 1.stupeň")
     stdout = StringIO()
 
