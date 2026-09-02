@@ -132,7 +132,13 @@ _SKRATKA_MAP: dict[str, str] = {
     "NF": "NO FISH",
     "NGNF": "NO GLUTEN",
     "NN": "NO ORECH",  # British School: "nN" = noNuts (nie NONONO — kolízia s "nnn" substringom)
-    "NMNE": "NO MILK",
+    # "NMNE"/"NMNEGG" = No Milk No Egg — bez tejto zhody padalo len na "NO MILK"
+    # a strácalo sa vajíčko (rovnaký #527 vzor ako "dsbNMNE", opravené per-školu
+    # cez letter_hook v zdravebrusko/ivanka/libellus). MŠ Naša Škola Poznania
+    # skratku píše vypísanú celú ("nMnEgg") a nemá letter_hook, tak sa opravuje
+    # tu v základnej mape (user-reported 2.9.2026, "H:nMnEgg→NO MILK").
+    "NMNE": "NO MILK/NO EGG",
+    "NMNEGG": "NO MILK/NO EGG",
     "NMNO": "NO MILK",
     "NMZ": "NO MILK",
     "NMZD": "NO MILK",

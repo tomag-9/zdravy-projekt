@@ -73,6 +73,14 @@ class TestResolveDietName(unittest.TestCase):
         # skratka lookup normalises to upper
         self.assertEqual(self._r("nm", "whatever"), "NO MILK")
 
+    def test_known_skratka_nmne(self):
+        # #527 vzor: bez tejto zhody padalo len na "NO MILK" a strácalo vajíčko
+        self.assertEqual(self._r("NMNE", "NoMilk/NoEgg"), "NO MILK/NO EGG")
+
+    def test_known_skratka_nmnegg(self):
+        # MŠ Naša Škola Poznania píše skratku vypísanú celú ("nMnEgg")
+        self.assertEqual(self._r("nMnEgg", "NoMilk/NoEgg"), "NO MILK/NO EGG")
+
     def test_keyword_fallback_nomilk_in_nazov(self):
         # Unknown skratka, but nazov contains "NoMilk"
         self.assertEqual(self._r("XYZ", "NoMilk"), "NO MILK")
