@@ -162,6 +162,7 @@ class TestGramageDashboardExports:
                 "base_colors": [],
                 "count": 2,
                 "col_grams": [["0.00"], ["400.00"], ["0.00"], ["0.00"]],
+                "meal_counts": {"main_course": 2},
             },
             {
                 "name": "Vegan",
@@ -169,6 +170,7 @@ class TestGramageDashboardExports:
                 "base_colors": [],
                 "count": 1,
                 "col_grams": [["100.00"], ["0.00"], ["0.00"], ["0.00"]],
+                "meal_counts": {"breakfast_snack": 1},
             },
         ]
         assert data["totals"] == [["300.00"], ["600.00"], ["500.00"], ["150.00"]]

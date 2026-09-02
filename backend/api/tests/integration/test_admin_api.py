@@ -1314,6 +1314,53 @@ class AdminMealPlanApiTest(APITestCase):
         self.assertEqual(pdf_response["Content-Type"], "application/pdf")
         self.assertTrue(pdf_response.content.startswith(b"%PDF"))
 
+    def test_gramage_dashboard_diet_summary_does_not_triple_count_same_children(self):
+        """#560 — rovnaké deti na raňajkách + obede + olovrante sa diétny
+        súhrn nesmie počítať 3× (2 deti s bezlepkovou na všetkých troch
+        jedlách musí ukázať "2", nie "6" — plochý súčet cez jedlá)."""
+        self._create_plan()
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-16",
+            status="submitted",
+            data={
+                "breakfast": {
+                    "Škôlka": {"menuCounts": {"A": 8}, "diets": {"Bezlepková": 2}}
+                },
+                "lunch": {
+                    "Škôlka": {"menuCounts": {"A": 8}, "diets": {"Bezlepková": 2}}
+                },
+                "olovrant": {
+                    "Škôlka": {"menuCounts": {"A": 8}, "diets": {"Bezlepková": 2}}
+                },
+            },
+        )
+
+        response = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-16"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+
+        diet_row = payload["rows"][0]["diet_summary_rows"][0]
+        self.assertEqual(diet_row["name"], "Bezlepková")
+        # Plochý súčet ostáva pre gramáž (3 rôzne jedlá, každé má vlastnú
+        # gramáž) — 2 hlavy × 3 jedlá.
+        self.assertEqual(diet_row["count"], 6)
+        self.assertEqual(
+            diet_row["meal_counts"],
+            {"breakfast_snack": 2, "main_course": 2, "afternoon_snack": 2},
+        )
+
+        summary_diet_cells = [
+            row["cells"][0]
+            for row in payload["spec"]["rows"]
+            if row["kind"] == "summary-diet"
+        ]
+        self.assertEqual(len(summary_diet_cells), 1)
+        # Zobrazený počet je rozpis podľa jedla, nie plochý súčet "6".
+        self.assertEqual(summary_diet_cells[0]["count"], "R 2 + Ob 2 + Ol 2")
+
     def test_meal_plan_endpoints_require_admin(self):
         self.client.force_authenticate(user=self.client_user)
 
