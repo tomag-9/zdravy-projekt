@@ -120,6 +120,11 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     color: var(--green-700); background: var(--bg-cream-soft);
     padding: 3px 10px; border-radius: var(--radius-pill);
 }
+.zpa-version {
+    font-size: 10.5px; font-weight: 600;
+    color: var(--ink-mute); letter-spacing: 0.02em;
+    margin-top: -4px;
+}
 .zpa-sidebar:hover .brand-mini { display: none; }
 .zpa-sidebar:hover .brand-full { display: flex; }
 

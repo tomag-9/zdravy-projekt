@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import pkg from './package.json' with { type: 'json' };
 
 const devProxyTarget = process.env.VITE_DEV_PROXY_TARGET || 'http://127.0.0.1:8000';
 const hmrPort = process.env.VITE_HMR_PORT ? Number(process.env.VITE_HMR_PORT) : undefined;
@@ -7,6 +8,11 @@ const hmrPort = process.env.VITE_HMR_PORT ? Number(process.env.VITE_HMR_PORT) : 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  // package.json "version" je držaná v sync s koreňovým VERSION súborom
+  // (release-please extra-files) — __APP_VERSION__ je z toho jediný zdroj pravdy vo frontende.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   server: {
     host: true,
     port: 3000,

@@ -22,6 +22,7 @@ import { SECTION, canRead } from '../../lib/sections';
 import { visibleNav, type NavEntry } from './adminNav';
 import { Modal, Button } from './ui';
 import AdminProfileModal from './AdminProfileModal';
+import { APP_VERSION } from '../../lib/appVersion';
 
 
 const NAV: NavEntry[] = [
@@ -87,6 +88,7 @@ const AdminLayout: React.FC = () => {
                         <div className="brand-full">
                             <img src="/logo-zdravy-projekt.png" alt="Zdravý projekt" />
                             <span className="badge">Administrácia</span>
+                            <span className="zpa-version">v{APP_VERSION}</span>
                         </div>
                     </div>
 

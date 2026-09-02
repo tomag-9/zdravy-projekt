@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Mail, Phone, Globe } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { APP_VERSION } from "../../../lib/appVersion";
 
 const AboutPage = () => {
   const navigate = useNavigate();
@@ -135,6 +136,8 @@ const AboutPage = () => {
 
         <p style={{ fontSize: 12, color: "var(--ink-mute)", textAlign: "center" }}>
           © {new Date().getFullYear()} Zdravý projekt s. r. o.
+          <br />
+          Verzia {APP_VERSION}
         </p>
       </div>
     </div>
