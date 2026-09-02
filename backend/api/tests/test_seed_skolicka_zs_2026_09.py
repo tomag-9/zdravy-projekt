@@ -29,7 +29,7 @@ def test_seed_skolicka_zs_links_facility():
     assert prvy.edupage_connection == connection
     assert prvy.edupage_match == "1.stupeň"
     assert druhy.edupage_connection == connection
-    assert druhy.edupage_match == "2.stupeň"
+    assert druhy.edupage_match == "2.stupeň; učiteľ"
 
 
 @pytest.mark.django_db
