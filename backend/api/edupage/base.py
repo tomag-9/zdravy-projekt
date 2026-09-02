@@ -100,17 +100,26 @@ def _apply_olovrant_config(
     order_data: dict,
     config: PrevadzkaConfig,
     config_notes: list[str] | None = None,
+    label: str | None = None,
 ) -> dict:
-    """Aplikuj olovrant config na jeden order_data slovník."""
+    """Aplikuj olovrant config na jeden order_data slovník.
+
+    `label` (napr. názov konkrétnej prevádzky pri viac-prevádzkovej connection) sa
+    pridá do config_notes textu, aby drift bolo vidno aj vtedy, keď sa v merged
+    (celok-wide) pohľade stratí — napr. Zdravé Brúško: Deutsche Schule má olovrant,
+    Heyrovského/Malokarpatská ho nemajú, ale merged pohľad to prekryje (user
+    2.9.2026: "zle ich čítalo, treba preveriť").
+    """
     lunch = order_data.get(LUNCH)
     has_olovrant = bool(order_data.get(OLOVRANT))
+    kde = f"{config.subdomena}/{label}" if label else config.subdomena
 
     match config.olovrant_mode:
         case OlovrantMode.ODVODIT_Z_OBEDU:
             if has_olovrant and config_notes is not None:
                 # Škola začala olovrant objednávať cez EduPage → config je zastaraný.
                 config_notes.append(
-                    f"{config.subdomena}: olovrant_mode=odvodit_z_obedu, "
+                    f"{kde}: olovrant_mode=odvodit_z_obedu, "
                     f"ale EduPage olovrant reálne obsahuje — over config"
                 )
             if lunch:
@@ -120,7 +129,7 @@ def _apply_olovrant_config(
             if has_olovrant:
                 if config_notes is not None:
                     config_notes.append(
-                        f"{config.subdomena}: olovrant_mode=mimo_appky, "
+                        f"{kde}: olovrant_mode=mimo_appky, "
                         f"ale EduPage olovrant obsahuje — over config"
                     )
                 order_data.pop(OLOVRANT, None)
@@ -128,14 +137,13 @@ def _apply_olovrant_config(
         case OlovrantMode.EDUPAGE:
             if lunch and not has_olovrant and config_notes is not None:
                 config_notes.append(
-                    f"{config.subdomena}: očakávaný olovrant z EduPage chýba "
-                    f"(obed prítomný)"
+                    f"{kde}: očakávaný olovrant z EduPage chýba (obed prítomný)"
                 )
 
         case OlovrantMode.NEZNAMY:
             if lunch and not has_olovrant and config_notes is not None:
                 config_notes.append(
-                    f"{config.subdomena}: olovrant_mode nepotvrdený a olovrant chýba "
+                    f"{kde}: olovrant_mode nepotvrdený a olovrant chýba "
                     f"— netipujeme, treba doplniť config"
                 )
 
@@ -146,22 +154,25 @@ def _apply_ranajky_config(
     order_data: dict,
     config: PrevadzkaConfig,
     config_notes: list[str] | None = None,
+    label: str | None = None,
 ) -> dict:
     """Aplikuj `ranajky_z_obedu` na jeden order_data slovník.
 
     Rovnaká logika ako `_apply_olovrant_config`/`ODVODIT_Z_OBEDU`, len pre raňajky —
     škola má celodennú dochádzku, raňajky sa neobjednávajú cez EduPage samostatne.
+    `label` — viď `_apply_olovrant_config`.
     """
     if not config.ranajky_z_obedu:
         return order_data
 
     lunch = order_data.get(LUNCH)
     has_breakfast = bool(order_data.get(BREAKFAST))
+    kde = f"{config.subdomena}/{label}" if label else config.subdomena
 
     if has_breakfast and config_notes is not None:
         # Škola začala raňajky objednávať cez EduPage → config je zastaraný.
         config_notes.append(
-            f"{config.subdomena}: ranajky_z_obedu=True, ale EduPage raňajky "
+            f"{kde}: ranajky_z_obedu=True, ale EduPage raňajky "
             f"reálne obsahuje — over config"
         )
     if lunch:
@@ -182,8 +193,11 @@ def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     """
     _apply_olovrant_config(result.order_data, config, result.config_notes)
     _apply_ranajky_config(result.order_data, config, result.config_notes)
-    for order_data in result.order_data_by_prevadzka.values():
-        _apply_olovrant_config(order_data, config)
-        _apply_ranajky_config(order_data, config)
+    # Per-prevádzka drift (napr. len niektoré prevádzky viac-prevádzkovej connection
+    # majú EduPage olovrant/raňajky chýbajúce) by v merged pohľade vyššie zmizlo, ak
+    # čo i len jedna prevádzka dané jedlo má — preto ho hlásime aj tu, s labelom.
+    for nazov, order_data in result.order_data_by_prevadzka.items():
+        _apply_olovrant_config(order_data, config, result.config_notes, label=nazov)
+        _apply_ranajky_config(order_data, config, result.config_notes, label=nazov)
 
     return result

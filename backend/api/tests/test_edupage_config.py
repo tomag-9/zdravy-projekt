@@ -288,6 +288,32 @@ class TestApplyConfigRanajky(unittest.TestCase):
         )
 
 
+class TestApplyConfigPerPrevadzkaDrift(unittest.TestCase):
+    """Zdravé Brúško 2.9.2026: merged (celok-wide) pohľad drift skryje, ak čo i
+    len jedna z viacerých prevádzok zdieľanej connection má olovrant/raňajky —
+    per-prevádzka notes s labelom to musia odhaliť (user: "zle ich čítalo,
+    treba preveriť")."""
+
+    def test_merged_view_hides_missing_olovrant_for_one_of_several_prevadzky(self):
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA, "olovrant": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Deutsche schule": {"lunch": LUNCH_DATA, "olovrant": LUNCH_DATA},
+                "MŠ Heyrovského 4": {"lunch": LUNCH_DATA},
+            },
+        )
+
+        apply_config(res, _cfg(OlovrantMode.EDUPAGE))
+
+        # Merged pohľad sám osebe nič nenahlási — olovrant tam je (z Deutsche
+        # schule) — preto potrebujeme per-prevádzka notes s labelom.
+        self.assertTrue(
+            any("MŠ Heyrovského 4" in n and "olovrant" in n for n in res.config_notes)
+        )
+        self.assertFalse(any("Deutsche schule" in n for n in res.config_notes))
+
+
 class TestKrasnankoLetterHook(unittest.TestCase):
     def _rule(self, skratka) -> LetterRule:
         return krasnanko_letter_hook("X", skratka, "")
