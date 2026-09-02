@@ -679,6 +679,7 @@ def scrape_edupage_orders_task(
     connection_id: int | None = None,
     exclude_connection_ids: list[int] | None = None,
     target_next_workday: bool = False,
+    days_ahead: int | None = None,
 ):
     """
     Scrape mealsGuest HTML for all Edupage operations and upsert DailyOrder records.
@@ -702,6 +703,15 @@ def scrape_edupage_orders_task(
     ``target_next_workday`` mirrors a `deadline_*_is_day_before` meal (target =
     the next workday, not today) for a run that has no `meal_types` of its own
     to read that flag from.
+
+    ``days_ahead`` runs an hourly "preview" scrape instead of the deadline-driven
+    one (2.9.2026): scrapes today through today + `days_ahead` (all three meals,
+    full `_apply_scrape` — same UPDATE-not-ADD semantics as the deadline run, so
+    re-scraping the same day every hour is safe/idempotent), independent of any
+    `GlobalSettings` deadline. Day-off dates in that window are dropped rather
+    than shifted — this is a rolling preview, not "the next N business days".
+    Mutually exclusive with `meal_types`-driven deadline resolution; ignored
+    when `date_str` is given (an explicit single-date run, e.g. manual trigger).
     """
     try:
         import datetime
@@ -769,7 +779,20 @@ def scrape_edupage_orders_task(
                 }
 
             today = timezone.localdate()
-            if meal_types is None:
+            if days_ahead is not None:
+                # Hodinový "preview" beh: dnes .. dnes+days_ahead, všetky jedlá
+                # naraz (`None` = `_ALL_MEALS` v `_apply_scrape`/`_filter_order_
+                # data_by_meals`). Voľné dni sa v okne len vynechajú, nie
+                # posunú — je to priebežný náhľad, nie "najbližšie N pracovných
+                # dní". Prázdne okno (napr. dlhšie prázdniny) nie je chyba.
+                date_to_meals = {
+                    candidate: None
+                    for offset in range(days_ahead + 1)
+                    if not is_day_off(
+                        candidate := today + datetime.timedelta(days=offset)
+                    )
+                }
+            elif meal_types is None:
                 target_date = _next_workday(today) if target_next_workday else today
                 date_to_meals = {target_date: None}
             else:
@@ -808,8 +831,8 @@ def scrape_edupage_orders_task(
             # uzávierku, kuchyňa chce vidieť odhad skôr. Deň, ktorý je už bežným
             # cieľom tohto behu, sa nepridáva znova — plný scrape má prednosť.
             if meal_types is not None and PARTIAL_LUNCH_MEAL in meal_types:
-                for days_ahead in PARTIAL_LUNCH_DAYS_AHEAD:
-                    candidate = today + datetime.timedelta(days=days_ahead)
+                for partial_days_ahead in PARTIAL_LUNCH_DAYS_AHEAD:
+                    candidate = today + datetime.timedelta(days=partial_days_ahead)
                     if candidate in date_to_meals or is_day_off(candidate):
                         continue
                     date_to_meals[candidate] = [PARTIAL_LUNCH_MEAL]
@@ -1033,9 +1056,14 @@ def scrape_edupage_orders_task(
             summary["chained_reports_dispatched"] = dispatched
         logger.info("scrape_edupage_orders_task result: %s", summary)
         scraped_dates = ", ".join(str(target_date) for target_date in date_to_meals)
+        run_label = (
+            f"Predbežný náhľad (+{days_ahead} dni)"
+            if days_ahead is not None
+            else "Cron"
+        )
         _log_cron_run(
             "scrape_edupage_orders_task",
-            f"Cron stiahol EduPage objednávky ({scraped_dates}): "
+            f"{run_label} stiahol EduPage objednávky ({scraped_dates}): "
             f"{scraped} prevádzok, {errors} chýb, {skipped} preskočených.",
             summary,
         )

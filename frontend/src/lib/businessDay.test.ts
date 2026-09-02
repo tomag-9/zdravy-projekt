@@ -85,33 +85,32 @@ describe("businessDays", () => {
   });
 });
 
-// #535 — British School sa scrapuje 12:15 deň vopred, dashboard preto
-// odomyká zajtrajšok o 12:00, pokiaľ samo zajtra nie je voľno.
+// Hodinový EduPage priebežný náhľad (`_sync_edupage_preview_scrape_schedule`)
+// dopĺňa dáta na dnes + 2 pracovné dni celý deň, takže dashboard už nemusí
+// čakať na konkrétnu hodinu ako predtým (#535, len pre zajtrajšok) — vždy
+// odomkne rovnaké okno, bez ohľadu na to, kedy sa otvorí.
 describe("dashboardMaxDate", () => {
-  it("stays on today before noon", () => {
-    expect(dashboardMaxDate(atHour(monday(), 11))).toBe("2026-08-10");
+  it("extends 2 business days ahead of today, any hour", () => {
+    expect(dashboardMaxDate(atHour(monday(), 0))).toBe("2026-08-12");
+    expect(dashboardMaxDate(atHour(monday(), 23))).toBe("2026-08-12");
   });
 
-  it("unlocks tomorrow from noon on a weekday whose tomorrow is a workday", () => {
-    expect(dashboardMaxDate(atHour(monday(), 12))).toBe("2026-08-11");
-  });
-
-  it("does not unlock past a weekend — Friday noon stays on Friday", () => {
+  it("skips the weekend when counting the 2 business days ahead", () => {
     const friday = new Date(2026, 7, 7);
-    expect(dashboardMaxDate(atHour(friday, 12))).toBe("2026-08-07");
+    expect(dashboardMaxDate(atHour(friday, 12))).toBe("2026-08-11");
   });
 
-  it("unlocks Monday from Sunday noon, matching the Sun–Thu scrape crontab", () => {
-    expect(dashboardMaxDate(atHour(sunday(), 12))).toBe("2026-08-10");
+  it("Sunday collapses to Friday first, same result as Friday", () => {
+    expect(dashboardMaxDate(atHour(sunday(), 12))).toBe("2026-08-11");
   });
 
-  it("does not unlock a tomorrow that is a holiday", () => {
+  it("Saturday collapses to Friday first, same result as Friday", () => {
+    expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-11");
+  });
+
+  it("skips a holiday inside the 2-business-day window", () => {
     const holidays = new Set(["2026-08-11"]);
-    expect(dashboardMaxDate(atHour(monday(), 12), { holidays })).toBe("2026-08-10");
-  });
-
-  it("saturday noon stays on the last business day (Friday)", () => {
-    expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-07");
+    expect(dashboardMaxDate(atHour(monday(), 12), { holidays })).toBe("2026-08-13");
   });
 });
 

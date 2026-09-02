@@ -19,7 +19,10 @@ from .overrides.britishschool import (
 )
 from .overrides.cmspezinok import cmspezinok_letter_hook
 from .overrides.cvernicka import cvernicka_letter_hook
-from .overrides.fantasticka import fantasticka_letter_hook
+from .overrides.fantasticka import (
+    fantasticka_letter_hook,
+    fantastickaskolka_letter_hook,
+)
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
 from .overrides.filipaneriho import filipaneriho_letter_hook
 from .overrides.ivanka import ivanka_letter_hook
@@ -27,9 +30,13 @@ from .overrides.krasnanko import krasnanko_letter_hook
 from .overrides.libellus import libellus_letter_hook
 from .overrides.montessori import montessori_letter_hook
 from .overrides.rozmanita import rozmanita_letter_hook
+from .overrides.skolicka import skolicka_zs_payer_hook
 from .overrides.skolickams import skolickams_letter_hook, skolickams_payer_hook
 from .overrides.strecnianska import strecnianska_letter_hook
-from .overrides.zdravebrusko import zdravebrusko_letter_hook
+from .overrides.zdravebrusko import (
+    zdravebrusko_letter_hook,
+    zdravebrusko_payer_hook,
+)
 
 _C = OlovrantMode.EDUPAGE
 
@@ -103,11 +110,17 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         ucty=("Ďumbierska", "Lamač", "Malý", "Heyrovského"),
         olovrant_mode=_C,
         poznamka=(
-            "SŠV → VEGGIE. Split areálov Lamač/Mal./Hey. rieši krok 3. "
-            "dsbNMNE fuzzy-matchovalo len na NO EGG (#527) — letter_hook "
-            "opravuje na NO MILK/NO EGG (EduPage nazov='NoMilk/NoEgg')."
+            "SŠV → VEGGIE (letter_hook, user 2.9.2026). Split areálov "
+            "Lamač/Mal./Hey. rieši krok 3. dsbNMNE fuzzy-matchovalo len na "
+            "NO EGG (#527) — letter_hook opravuje na NO MILK/NO EGG "
+            "(EduPage nazov='NoMilk/NoEgg'). zšlaNM (bez ďalších "
+            "obmedzení) → NO MILK potvrdené rovnako. Raňajky/olovrant: MŠ "
+            "Mal./Hey. diétne porcie zdieľajú dsbNMNE s Deutsche Schule — "
+            "payer_hook ich cez force_match vracia správnej škole aj s "
+            "vlastnou diétou (user 2.9.2026, live dáta)."
         ),
         letter_hook=zdravebrusko_letter_hook,
+        payer_hook=zdravebrusko_payer_hook,
     ),
     PrevadzkaConfig(
         subdomena="cmspezinok",
@@ -172,7 +185,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="fantastickaskolka",
         ucty=("MŠ Fantastická",),
         olovrant_mode=_C,
-        poznamka="0 payerov, len menu A. Najjednoduchšia — smoke test configu.",
+        poznamka=(
+            "Skratka 'B' (riadok 'MŠ nM/nG') fuzzy-matchovala na "
+            "NO MILK/NO GLUTEN — letter_hook to potvrdzuje ako isté "
+            "(user 2.9.2026)."
+        ),
+        letter_hook=fantastickaskolka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="mslibellus",
@@ -208,6 +226,20 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         ),
         payer_hook=skolickams_payer_hook,
         letter_hook=skolickams_letter_hook,
+    ),
+    PrevadzkaConfig(
+        subdomena="skolicka",
+        ucty=("Školička 1.stupeň", "Školička 2. stupeň"),
+        olovrant_mode=OlovrantMode.NEZNAMY,
+        poznamka=(
+            "Nový onboarding (#564, 2.9.2026) — olovrant_mode zatiaľ nepotvrdený. "
+            "Payer labely 'X.stupeň - variant': variant je 'klasik' (bez diéty), "
+            "'vege'/'histamín' (celé slovo, chytí generický engine), alebo skratka "
+            "B/N (bez/no, prvé písmeno sa ignoruje) + M/G (mlieko/gluten) — "
+            "BM/NM/BG/NG a kombinácie, plus samostatné 'H' = Histamín skratkou "
+            "(user 2.9.2026)."
+        ),
+        payer_hook=skolicka_zs_payer_hook,
     ),
     PrevadzkaConfig(
         subdomena="msdobrehopastiera",

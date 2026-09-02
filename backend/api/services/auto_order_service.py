@@ -8,8 +8,6 @@ from django.contrib.auth.models import User
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from api.roles import klient_q
-
 from ..exceptions import ClosedDayOrderModificationError
 from ..models import Celok, DailyOrder, Prevadzka
 from ..order_data import MEAL_KEYS, OrderData
@@ -169,19 +167,25 @@ def apply_auto_orders(
         )
         return {"created": [], "skipped": 0, "date": str(target_date)}
 
-    # Rola, nie `is_staff`: kuchyňa má tiež `is_staff=False` a takýto dotaz
-    # by jej začal generovať auto-objednávky (#482).
-    clients = list(User.objects.filter(klient_q(), is_active=True))
-    client_ids = [c.id for c in clients]
-
     # Auto-objednávky sa vedú per prevádzka, nie per login: celok s tromi
-    # prevádzkami musí dostať tri objednávky, nie jednu.
+    # prevádzkami musí dostať tri objednávky, nie jednu. Šablóna aj kontrola
+    # "už existuje" preto filtrujú podľa prevádzky, NIE podľa `user` —
+    # `DailyOrder.user` je iba audit toho, kto riadok naposledy zapísal
+    # (viď `DailyOrderViewSet.get_queryset`: "Objednávka patrí prevádzke,
+    # user je iba audit"). Skorší filter `user_id__in=client_ids` admin-
+    # -nastavené objednávky (user=admin, keď prevádzka nemá klientský login)
+    # z tejto úvahy úplne vyradil — nikdy sa nepoužili ako šablóna a systém
+    # si "nevšimol", že prevádzka na daný deň objednávku už má.
+    active_prevadzka_ids = set(
+        Prevadzka.objects.filter(is_active=True).values_list("id", flat=True)
+    )
+
     # V scoped behu (meal_types) treba dáta existujúceho riadku prečítať aj
     # dopísať doň, preto celý objekt, nie len id.
     existing_orders_by_prevadzka: Dict[int, DailyOrder] = {
         order.prevadzka_id: order
         for order in DailyOrder.objects.filter(
-            user_id__in=client_ids, date=target_date, prevadzka__isnull=False
+            date=target_date, prevadzka_id__in=active_prevadzka_ids
         )
     }
 
@@ -191,11 +195,10 @@ def apply_auto_orders(
     paused_prevadzka_ids: set[int] = set()
     for order in (
         DailyOrder.objects.filter(
-            user_id__in=client_ids,
             date__lt=target_date,
-            prevadzka__isnull=False,
+            prevadzka_id__in=active_prevadzka_ids,
         )
-        .select_related("prevadzka")
+        .select_related("prevadzka", "user")
         .prefetch_related("prevadzka__visible_portion_types")
         .order_by("prevadzka_id", "-date")
     ):
@@ -223,7 +226,6 @@ def apply_auto_orders(
         ).items()
         if days
     }
-    clients_by_id = {c.id: c for c in clients}
     created = []
     skipped = 0
     skipped_edupage = 0
@@ -249,7 +251,11 @@ def apply_auto_orders(
             skipped += 1
             continue
 
-        client = clients_by_id.get(template.user_id)
+        # `client` je tu len audit autora nového riadku (viď komentár vyššie
+        # pri `active_prevadzka_ids`) — prevzatý od šablóny nech je ňou
+        # ktokoľvek (klient aj admin). `user=None` (zmazaný login) jediný
+        # prípad, kedy nemá zmysel pokračovať.
+        client = template.user
         if client is None:
             skipped += 1
             continue

@@ -34,6 +34,16 @@ from .audit_mixins import AuditedModelViewSetMixin
 _XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
+def _parse_bool_param(request, name: str, default: bool) -> bool:
+    """Query-param booleans pre "Nastavenia tabuľky" (gramáž, 2.9.2026):
+    chýbajúci parameter = `default`, "0"/"false"/"no" = False, čokoľvek iné
+    (vrátane "1") = True."""
+    raw = request.query_params.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in ("0", "false", "no")
+
+
 class PortionTypeViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     """
     List portion types (age-group coefficients); non-staff see only active
@@ -306,7 +316,16 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
 
         sections = request.query_params.getlist("section") or None
         vydaje = request.query_params.getlist("vydaj") or None
-        data["spec"] = build_table_spec(data, sections=sections, vydaje=vydaje)
+        diet_clusters = request.query_params.getlist("diet_cluster") or None
+        data["spec"] = build_table_spec(
+            data,
+            sections=sections,
+            vydaje=vydaje,
+            include_summary_rows=not _parse_bool_param(request, "expanded", False),
+            show_empty=_parse_bool_param(request, "show_empty", True),
+            show_cluster_summary=_parse_bool_param(request, "cluster_summary", True),
+            diet_clusters=diet_clusters,
+        )
         return Response(data)
 
     @action(detail=False, methods=["get"], url_path="gramage-dashboard-pdf")
@@ -320,16 +339,34 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         date = parse_date_param(date_str)
         sections = request.query_params.getlist("section") or None
         vydaje = request.query_params.getlist("vydaj") or None
+        diet_clusters = request.query_params.getlist("diet_cluster") or None
+        show_empty = _parse_bool_param(request, "show_empty", True)
+        show_cluster_summary = _parse_bool_param(request, "cluster_summary", True)
+        # "Nastavenia tabuľky" (2.9.2026): ten istý filter, ktorý admin práve
+        # vidí na obrazovke, sa má tlačiť aj do PDF — všetko okrem default
+        # stavu preto obchádza uzavretého-dňa cache rovnako ako section/vydaj.
+        is_default_view = (
+            not sections
+            and not vydaje
+            and not diet_clusters
+            and show_empty
+            and show_cluster_summary
+        )
 
         # Uzavretý deň má PDF predgenerované a nacachované už pri uzavretí
         # (#528, viď closed_day_views) — ale len pre neprefiltrovaný export,
         # presne taký, aký sa vtedy predgeneroval.
         pdf_bytes = None
-        if not sections and not vydaje:
+        if is_default_view:
             pdf_bytes = get_cached(get_closed_day_pdf_cache_key(date.isoformat()))
         if pdf_bytes is None:
             pdf_bytes = render_gramage_dashboard_pdf(
-                date.isoformat(), sections=sections, vydaje=vydaje
+                date.isoformat(),
+                sections=sections,
+                vydaje=vydaje,
+                show_empty=show_empty,
+                show_cluster_summary=show_cluster_summary,
+                diet_clusters=diet_clusters,
             )
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
         fname = f"gramaz_{date}.pdf"

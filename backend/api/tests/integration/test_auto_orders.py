@@ -351,8 +351,17 @@ class TestApplyAutoOrders:
         # Respects manual empty order, uses most recent non-empty
         assert auto is not None
 
-    def test_staff_never_get_auto_orders(self, admin_user):
-        """Staff users are excluded from auto-order generation."""
+    def test_admin_authored_order_still_used_as_auto_order_template(self, admin_user):
+        """Objednávka, ktorú namiesto klienta zapísal admin (`DailyOrder.user
+        = admin_user`), sa musí preklopiť na ďalší deň rovnako ako klientská.
+
+        Identita riadku je `(prevadzka, date)` — `user` je iba audit toho,
+        kto ho naposledy zapísal (viď `DailyOrderViewSet.get_queryset`).
+        Predtým `apply_auto_orders` filtroval šablóny cez
+        `user_id__in=<klienti>`, takže admin-zapísané objednávky (typicky pri
+        prevádzke bez priradeného klientského loginu) sa nikdy nepoužili ako
+        šablóna a nikdy sa nepreklopili — nahlásený bug.
+        """
         from api.models import Celok, Prevadzka
 
         celok = Celok.objects.create(nazov="Staff celok")
@@ -363,8 +372,10 @@ class TestApplyAutoOrders:
 
         result = apply_auto_orders(target_date=TUESDAY)
 
-        assert admin_user.email not in result["created"]
-        assert not DailyOrder.objects.filter(user=admin_user, date=TUESDAY).exists()
+        assert admin_user.email in result["created"]
+        auto = DailyOrder.objects.get(prevadzka=prevadzka, date=TUESDAY)
+        assert auto.is_auto is True
+        assert auto.data.get("lunch") == NON_EMPTY_DATA["lunch"]
 
     def test_weekend_target_date_skipped(self, user):
         """Passing a Saturday/Sunday as target_date → service returns early."""

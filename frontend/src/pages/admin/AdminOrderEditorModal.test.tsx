@@ -113,6 +113,24 @@ describe('AdminOrderEditorModal', () => {
         expect(screen.getByRole('button', { name: 'Uložiť' })).toBeInTheDocument();
     });
 
+    it('shows an emphasized "Dnes" label for today and updates it when the date changes', () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-09-02T10:00:00'));
+        try {
+            render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+            expect(screen.getByText('Dnes streda 2.9.')).toBeInTheDocument();
+
+            fireEvent.change(screen.getByLabelText(/dátum objednávky/i), { target: { value: '2026-09-03' } });
+            expect(screen.getByText('Zajtra štvrtok 3.9.')).toBeInTheDocument();
+
+            fireEvent.change(screen.getByLabelText(/dátum objednávky/i), { target: { value: '2026-09-08' } });
+            expect(screen.getByText('Utorok 8.9.')).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('renders edit mode without date input', () => {
         render(
             <AdminOrderEditorModal

@@ -18,7 +18,10 @@ from api.edupage.overrides.britishschool import (
 )
 from api.edupage.overrides.cmspezinok import cmspezinok_letter_hook
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
-from api.edupage.overrides.fantasticka import fantasticka_letter_hook
+from api.edupage.overrides.fantasticka import (
+    fantasticka_letter_hook,
+    fantastickaskolka_letter_hook,
+)
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
 from api.edupage.overrides.filipaneriho import filipaneriho_letter_hook
 from api.edupage.overrides.ivanka import ivanka_letter_hook
@@ -26,12 +29,16 @@ from api.edupage.overrides.krasnanko import krasnanko_letter_hook
 from api.edupage.overrides.libellus import libellus_letter_hook
 from api.edupage.overrides.montessori import montessori_letter_hook
 from api.edupage.overrides.rozmanita import rozmanita_letter_hook
+from api.edupage.overrides.skolicka import skolicka_zs_payer_hook
 from api.edupage.overrides.skolickams import (
     skolickams_letter_hook,
     skolickams_payer_hook,
 )
 from api.edupage.overrides.strecnianska import strecnianska_letter_hook
-from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
+from api.edupage.overrides.zdravebrusko import (
+    zdravebrusko_letter_hook,
+    zdravebrusko_payer_hook,
+)
 from api.edupage_scraper import (
     EdupageScraper,
     ScrapeResult,
@@ -128,6 +135,10 @@ class TestConfigPreUrl(unittest.TestCase):
         ms = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
         zs = config_pre_url("https://szsfan.edupage.org/menu?id=x")
         self.assertNotEqual(ms.ucty, zs.ucty)
+
+    def test_fantastickaskolka_has_its_own_letter_hook(self):
+        cfg = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
 
     def test_szsfan_has_letter_hook(self):
         cfg = config_pre_url("https://szsfan.edupage.org/menu/mealsGuest?id=x")
@@ -526,8 +537,59 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
         self.assertEqual(rule.diet, "NO MILK – NO EGG – NO ORECH – NO JABLKO")
         self.assertIsNone(rule.flag)
 
+    def test_zs_malokarpatska_milk_only_confirmed(self):
+        """'zšlaNM' (len mlieko, bez ďalších obmedzení) bol uncertain fuzzy
+        match — potvrdené na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("zšlaNM").diet, "NO MILK")
+
+    def test_ss_veterinarna_veggie_confirmed(self):
+        """'sšvV' (SŠ Veterinárna, piaty areál na tomto feede) bol uncertain
+        fuzzy match — potvrdené na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("sšvV").diet, "VEGGIE")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("something else entirely"))
+
+
+class TestZdravebruskoPayerHook(unittest.TestCase):
+    """Raňajky/olovrant: MŠ Mal./Hey. zdieľajú písmeno dsbNMNE s Deutsche Schule
+    — payer_hook musí vrátiť správnu prevádzku (force_match) aj vlastnú diétu,
+    nie tú z cudzieho zdieľaného písmena (user 2.9.2026, live dáta)."""
+
+    def test_malokarpatske_no_milk(self):
+        rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk")
+        self.assertEqual(rule.match_name, "mšMal")
+        self.assertEqual(rule.diet, "NO MILK")
+        self.assertTrue(rule.force_match)
+
+    def test_malokarpatske_no_gluten(self):
+        rule = zdravebrusko_payer_hook("MŠ Mal. NoGluten")
+        self.assertEqual(rule.match_name, "mšMal")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+
+    def test_heyrovskeho_no_gluten(self):
+        rule = zdravebrusko_payer_hook("MŠ Hey. NoGluten")
+        self.assertEqual(rule.match_name, "mšHey")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+        self.assertTrue(rule.force_match)
+
+    def test_combo_is_no_milk_no_gluten(self):
+        rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoGluten")
+        self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
+
+    def test_no_diet_fragment_still_forces_match(self):
+        """Neznáma prípona (napr. 'NoBanán') nemá rozpoznanú diétu, ale
+        prevádzka sa musí opraviť aj tak — diéta ostane None (engine ju
+        vyrieši inak, viď fallback na `payer_info.get('diet')`)."""
+        rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoBanán")
+        self.assertEqual(rule.match_name, "mšMal")
+        self.assertTrue(rule.force_match)
+
+    def test_deutsche_schule_payer_untouched(self):
+        self.assertIsNone(zdravebrusko_payer_hook("MŠ Klasik"))
+
+    def test_unrelated_payer_untouched(self):
+        self.assertIsNone(zdravebrusko_payer_hook("1.stupeň Lamač"))
 
 
 class TestFantastickaLetterHook(unittest.TestCase):
@@ -546,6 +608,21 @@ class TestFantastickaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NM"))
+
+
+class TestFantastickaSkolkaLetterHook(unittest.TestCase):
+    """Samostatné EduPage pripojenie od Fantastickej Školy vyššie (iný
+    subdomain, iný feed) — 'B' (riadok 'MŠ nM/nG') bol uncertain fuzzy match,
+    potvrdené na isté (user 2.9.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return fantastickaskolka_letter_hook("X", skratka, "")
+
+    def test_b_no_milk_no_gluten_confirmed(self):
+        self.assertEqual(self._rule("B").diet, "NO MILK/NO GLUTEN")
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("A"))
 
 
 class TestIvankaLetterHook(unittest.TestCase):
@@ -635,8 +712,14 @@ class TestMontessoriLetterHook(unittest.TestCase):
             self._rule(".Iná NmNgNe.").diet, "NO MILK – NO GLUTEN – NO EGG"
         )
 
+    def test_nmng_no_egg_confirmed_certain(self):
+        """'Iná NmNg' (bez vajec, na rozdiel od 'Iná..NmNgNe' vyššie) bol
+        uncertain fuzzy match (NO MILK/NO GLUTEN) — letter_hook to potvrdzuje
+        na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("Iná NmNg").diet, "NO MILK/NO GLUTEN")
+
     def test_unknown_skratka_falls_through_to_engine(self):
-        self.assertIsNone(self._rule("Iná NmNg"))
+        self.assertIsNone(self._rule("Iná ZZZ"))
 
     def test_non_ina_letters_are_skipped(self):
         """User 2.9.2026: appka má z EduPage rátať VÝHRADNE 'Iná' skupinu —
@@ -1009,6 +1092,54 @@ class TestSkolickamsPayerHook(unittest.TestCase):
         self.assertIsNotNone(rule.diet)
 
 
+class TestSkolickaZsPayerHook(unittest.TestCase):
+    """Školička ZŠ: 'X.stupeň - variant' — variant B/N+M/G → diéta, 'H' → Histamín."""
+
+    def test_klasik_has_no_diet(self):
+        self.assertIsNone(skolicka_zs_payer_hook("1.stupeň - klasik"))
+
+    def test_bm_is_no_milk(self):
+        rule = skolicka_zs_payer_hook("1.stupeň - BM")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_nm_is_also_no_milk(self):
+        """'N' aj 'B' znamenajú "no"/"bez" — prvé písmeno sa ignoruje (user 2.9.2026)."""
+        rule = skolicka_zs_payer_hook("2.stupeň - NM")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_bg_is_no_gluten(self):
+        rule = skolicka_zs_payer_hook("1.stupeň - BG")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+
+    def test_comma_combo_is_no_milk_no_gluten(self):
+        rule = skolicka_zs_payer_hook("1.stupeň - BM,BG")
+        self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
+
+    def test_concatenated_combo_is_no_milk_no_gluten(self):
+        rule = skolicka_zs_payer_hook("2.stupeň - BMBG")
+        self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
+
+    def test_mixed_prefix_combo_is_no_milk_no_gluten(self):
+        rule = skolicka_zs_payer_hook("2.stupeň - nMnG")
+        self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
+
+    def test_bare_h_is_histamin(self):
+        rule = skolicka_zs_payer_hook("učiteľ - H")
+        self.assertEqual(rule.diet, "HISTAMIN")
+
+    def test_full_word_vege_falls_through_to_generic(self):
+        # "vege"/"histamín" celým slovom necháme na generický engine
+        self.assertIsNone(skolicka_zs_payer_hook("1.stupeň - vege"))
+
+    def test_full_word_histamin_falls_through_to_generic(self):
+        self.assertIsNone(skolicka_zs_payer_hook("2.stupeň - histamín"))
+
+    def test_match_name_left_untouched(self):
+        """Hook rieši len diétu — prevádzku priraďuje `edupage_match` prefix."""
+        rule = skolicka_zs_payer_hook("1.stupeň - BM")
+        self.assertIsNone(rule.match_name)
+
+
 class TestSkolickamsLetterHook(unittest.TestCase):
     """Reálny guest dump (1.9.2026): `ŠPECI` chodí aj ako menu písmeno (skratka
     `ŠPECI`, nazov "noGLUT ORECH STRUK PARAD PAPRIKA POH SOJA QUINOA"), nie len
@@ -1136,6 +1267,17 @@ class TestMatchPrevadzka(unittest.TestCase):
         self.assertEqual(
             match_prevadzka(matches, "MŠ Mal. NoMilk", "NoMilk/NoEgg", "dsbNMNE"),
             ["Deutsche schule"],
+        )
+
+    def test_only_payer_ignores_conflicting_skratka(self):
+        """`only_payer=True` (Zdravé Brúško raňajky/olovrant, #564-Mal/Hey) obráti
+        prioritu — payer_hook vie, že skratka je pre tento riadok cudzia."""
+        matches = {"dsb": ["Deutsche schule"], "mšMal": ["MŠ Malokarpatké námestie 6"]}
+        self.assertEqual(
+            match_prevadzka(
+                matches, "mšMal", "NoMilk/NoEgg", "dsbNMNE", only_payer=True
+            ),
+            ["MŠ Malokarpatké námestie 6"],
         )
 
     def test_shared_skratka_hits_both_prevadzky(self):

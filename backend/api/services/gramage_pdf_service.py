@@ -44,12 +44,17 @@ def render_gramage_dashboard_pdf(
     *,
     sections: list[str] | None = None,
     vydaje: list[str] | None = None,
+    show_empty: bool = True,
+    show_cluster_summary: bool = True,
+    diet_clusters: list[str] | None = None,
 ) -> bytes:
     """Zloží PDF gramáže pre daný deň.
 
     Tá istá tabuľka ako na obrazovke: rovnaký spec, rovnaké CSS, len namiesto
     Reactu ju do HTML zloží `gramage_table_html` a WeasyPrint z toho spraví
-    papier.
+    papier. `show_empty`/`show_cluster_summary`/`diet_clusters` zrkadlia
+    "Nastavenia tabuľky" na obrazovke (2.9.2026) — PDF sa má tlačiť presne v
+    tom istom zobrazení, aké má admin práve otvorené.
     """
     from weasyprint import HTML  # ťažký import, len keď treba
 
@@ -57,6 +62,12 @@ def render_gramage_dashboard_pdf(
     # #510 — PDF nemá „zbalený" stav, sub-riadky sú vždy vidno, takže
     # medzisúčty za klienta by len duplikovali čísla o riadok vyššie.
     spec = build_table_spec(
-        data, sections=sections, vydaje=vydaje, include_summary_rows=False
+        data,
+        sections=sections,
+        vydaje=vydaje,
+        include_summary_rows=False,
+        show_empty=show_empty,
+        show_cluster_summary=show_cluster_summary,
+        diet_clusters=diet_clusters,
     )
     return HTML(string=render_document(spec)).write_pdf()

@@ -412,6 +412,9 @@ def build_table_spec(
     sections: list[str] | None = None,
     vydaje: list[str] | None = None,
     include_summary_rows: bool = True,
+    show_empty: bool = False,
+    show_cluster_summary: bool = True,
+    diet_clusters: list[str] | None = None,
 ) -> dict:
     """Prevedie payload z `gramage_dashboard()` na hotový popis tabuľky.
 
@@ -420,7 +423,29 @@ def build_table_spec(
     zmysel len pri zbalenom klientovi (#510) — v statickom PDF exporte sú
     sub-riadky vždy "rozbalené" a súhrny by len duplikovali čísla o riadok
     vyššie, takže PDF volajúci túto funkciu volajú s `False`.
+
+    `show_empty=True` (nastavenia tabuľky, 2.9.2026) vykreslí aj trasy bez
+    jedinej objednávky — inak sa v pôvodnom (default) správaní ticho
+    preskočia (#464-466 nižšie), čo pri chýbajúcich dátach vyzerá ako "trasa
+    neexistuje", nie "trasa je prázdna".
+
+    `show_cluster_summary=False` vynechá pásy "SUMÁR CLUSTER ... S DIÉTAMI
+    MŠ" (per-cluster, kombinovaný aj celkový v pätke) — nedotýka sa
+    "CELKOM (g/ml)" ani "SUM TOTAL OBED MŠ", tie sú iný typ súčtu.
+
+    `diet_clusters` (zoznam `vydaj["key"]`, napr. `["A", "C"]`) obmedzí
+    diétny rozpis v cluster summary blokoch len na vymenované clustre —
+    `None` (default) = diéty vo všetkých zobrazených clustroch, tak ako
+    doteraz. Kombinovaný súhrn (prvé dva/celkový v pätke) diéty ukáže, ak ich
+    má zapnutý aspoň jeden z clustrov, ktoré do neho patria.
     """
+    diet_cluster_keys = None if diet_clusters is None else set(diet_clusters)
+
+    def _cluster_shows_diets(*keys: str) -> bool:
+        if diet_cluster_keys is None:
+            return True
+        return any(key in diet_cluster_keys for key in keys)
+
     all_groups = data.get("col_groups") or []
     keep = _filter_col_groups(all_groups, sections)
     groups = [(index, all_groups[index]) for index in keep]
@@ -432,10 +457,6 @@ def build_table_spec(
 
     header = _build_header(groups, hues)
     rows: list[dict] = []
-    # Sleduje presne tie client_row dicty, ktoré sa naozaj vykreslili (rešpektuje
-    # filter podľa výdajného bodu/nepriradených), aby sa z nich dal na konci
-    # spočítať fakturačný súčet „MŠ porcie" (#4 — billing_portion_coefficients).
-    all_client_rows: list[dict] = []
 
     all_vydaje = data.get("vydaje") or []
     keep_vydaje = _filter_vydaje(all_vydaje, vydaje)
@@ -451,6 +472,7 @@ def build_table_spec(
         # správa rozumne aj keď sa niekedy vynechá stredný klaster z výberu.
         first_two_rows: list[dict] = []
         first_two_names: list[str] = []
+        first_two_keys: list[str] = []
         for position, vydaj in enumerate(shown_vydaje):
             # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
             # vlastný list, nech si ho jeho obsluha vezme celý.
@@ -465,8 +487,9 @@ def build_table_spec(
             first_route_in_block = True
             for route in vydaj.get("routes") or []:
                 route_rows = route.get("rows") or []
-                # Prázdne trasy sa nevykresľujú — obrazovka ich tiež preskakuje.
-                if not route_rows:
+                # Prázdne trasy sa v default móde preskakujú (`show_empty`
+                # ich vie ukázať — 2.9.2026).
+                if not route_rows and not show_empty:
                     continue
                 # Každá trasa na vlastný list — okrem prvej v bloku, tá už má
                 # nový list od `block-band` vyššie (inak by ostal prázdny
@@ -478,7 +501,6 @@ def build_table_spec(
                 )
                 first_route_in_block = False
                 for client_row in route_rows:
-                    all_client_rows.append(client_row)
                     rows.extend(
                         _client_rows(
                             client_row,
@@ -495,24 +517,28 @@ def build_table_spec(
                 for r in route.get("rows") or []
             ]
             cluster_name = vydaj.get("name") or ""
+            cluster_key = str(vydaj.get("key") or "")
             if position < 2:
                 first_two_rows.extend(vydaj_rows)
                 first_two_names.append(cluster_name)
-            rows.extend(
-                _cluster_summary_rows(
-                    [cluster_name],
-                    vydaj_rows,
-                    data,
-                    groups,
-                    hues,
-                    total_columns,
+                first_two_keys.append(cluster_key)
+            if show_cluster_summary:
+                rows.extend(
+                    _cluster_summary_rows(
+                        [cluster_name],
+                        vydaj_rows,
+                        data,
+                        groups,
+                        hues,
+                        total_columns,
+                        include_diets=_cluster_shows_diets(cluster_key),
+                    )
                 )
-            )
             # Presne 2 zobrazené klastre: kombinovaný súhrn by bol identický
             # s celkovým — zbytočná duplicita pre bežný prípad (Vydaj A/B bez
             # tretieho klastra). Zmysel má, až keď je aj tretí (British
             # School), voči ktorému sa medzisúčet prvých dvoch odlišuje.
-            if position == 1 and len(shown_vydaje) > 2:
+            if position == 1 and len(shown_vydaje) > 2 and show_cluster_summary:
                 rows.extend(
                     _cluster_summary_rows(
                         first_two_names,
@@ -521,6 +547,7 @@ def build_table_spec(
                         groups,
                         hues,
                         total_columns,
+                        include_diets=_cluster_shows_diets(*first_two_keys),
                     )
                 )
         unassigned = [] if filtered else (data.get("unassigned_rows") or [])
@@ -534,7 +561,6 @@ def build_table_spec(
                 )
             )
             for client_row in unassigned:
-                all_client_rows.append(client_row)
                 rows.extend(
                     _client_rows(
                         client_row,
@@ -547,7 +573,6 @@ def build_table_spec(
                 )
     else:
         for client_row in data.get("rows") or []:
-            all_client_rows.append(client_row)
             rows.extend(
                 _client_rows(
                     client_row, data, groups, hues, total_columns, include_summary_rows
@@ -568,22 +593,34 @@ def build_table_spec(
         footer_rows = data.get("rows") or []
 
     footer_names = [v.get("name") or "" for v in shown_vydaje]
-    footer = _cluster_summary_rows(
-        footer_names,
-        footer_rows,
-        data,
-        groups,
-        hues,
-        total_columns,
+    footer_keys = [str(v.get("key") or "") for v in shown_vydaje]
+    footer: list[dict] = (
+        _cluster_summary_rows(
+            footer_names,
+            footer_rows,
+            data,
+            groups,
+            hues,
+            total_columns,
+            include_diets=_cluster_shows_diets(*footer_keys),
+        )
+        if show_cluster_summary
+        else []
     )
     footer.append(_totals_row(footer_totals, keep, groups, hues))
-    # #4 — `Prevadzka.billing_portion_coefficients` už váži počty per riadok
-    # (`_client_rows` sčítava `sub_row["count"]`, ktoré je v `MealPlanService`
-    # `_billed_count`), takže `total_count` na klientovi je fakturačný
-    # ekvivalent porcií. Tu sa len sčíta naprieč zobrazenými prevádzkami —
-    # bez vlastného koeficientu (default 1.0) sa nič neprepočítava.
-    ms_porcie_total = sum(
-        (_as_decimal(r.get("total_count")) for r in all_client_rows), Decimal("0")
+    # Posledný riadok pätky: súčet OBEDA (polievka + hlavné jedlo) na MŠ
+    # porcie naprieč VŠETKÝMI zobrazenými klastrami (Cluster A+B+C) —
+    # rovnaký prepočet cez katalógový `PortionType.coefficient`, aký má
+    # každý jednotlivý klastrový súhrn (`_cluster_ms_totals`), len sčítaný
+    # dokopy. Nie fakturačný `billing_portion_coefficients` súčet naprieč
+    # všetkými jedlami (predošlé „Spolu prepočítané na MŠ porcie").
+    obed_total = next(
+        (
+            item["total"]
+            for item in _cluster_ms_totals(footer_rows, groups)
+            if item["label"] == "Obed"
+        ),
+        Decimal("0"),
     )
     footer.append(
         {
@@ -591,8 +628,8 @@ def build_table_spec(
             "css": "total-ms-porcie",
             "cells": [
                 {
-                    "label": "Spolu prepočítané na MŠ porcie",
-                    "text": format_count(ms_porcie_total),
+                    "label": "SUM TOTAL OBED MŠ",
+                    "text": format_count(obed_total),
                     "colspan": total_columns,
                 }
             ],
@@ -994,6 +1031,7 @@ def _cluster_summary_rows(
     groups: list[dict],
     hues: list[str],
     total_columns: int,
+    include_diets: bool = True,
 ) -> list[dict]:
     """Celý súhrn jedného klastra (alebo kombinácie klastrov) — #532:
 
@@ -1002,6 +1040,9 @@ def _cluster_summary_rows(
     spolu, prepočítané cez `PortionType.coefficient`. Hneď pod tým, ak sú v
     skupine nejaké diéty, „CLUSTER A DIÉTY" s rozpadom podľa mena diéty
     (`_diet_name_rows`), rovnaký ako per-klientský súhrn.
+
+    `include_diets=False` (nastavenia tabuľky, per-cluster checkbox) vynechá
+    len tento diétny rozpis — riadky "Obed:"/"Raňajky:"/"Olovrant:" ostávajú.
     """
     rows: list[dict] = [
         _band(
@@ -1025,7 +1066,9 @@ def _cluster_summary_rows(
                 ],
             }
         )
-    diet_rows = _diet_name_rows(rows_for_summary, data, groups, hues)
+    diet_rows = (
+        _diet_name_rows(rows_for_summary, data, groups, hues) if include_diets else []
+    )
     if diet_rows:
         rows.append(
             _band(

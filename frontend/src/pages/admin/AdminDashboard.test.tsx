@@ -51,6 +51,16 @@ const mockDashboardRequests = (
   });
 };
 
+// "Nastavenia tabuľky" je v DOM (teda nájditeľné cez `findByRole`) hneď od
+// prvého renderu, ale ostáva `disabled`, kým sa dáta nenačítajú (`hasData`) —
+// klik naň skôr je no-op a modal sa nikdy neotvorí. Lokálne to prejde skoro
+// vždy (mikrotask s dátami stihne doraziť), v CI je to flaky (#565).
+const openTableSettings = async () => {
+  const button = await screen.findByRole("button", { name: /nastavenia tabuľky/i });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+};
+
 // Tabuľku renderuje hotový `spec` z backendu (gramage_table_spec.py) — fixture
 // ho musí niesť tiež, inak testuje niečo, čo v aplikácii nikdy nenastane.
 const emptySpec = (columns = 0) => ({
@@ -440,6 +450,8 @@ describe("Filter sekcií", () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
+    await openTableSettings();
+
     // Odklik jednej sekcie pošle zvyšné dve — nie prázdny (= všetko) filter.
     fireEvent.click(await screen.findByRole("button", { name: "Olovrant" }));
 
@@ -475,8 +487,13 @@ describe("Filter sekcií", () => {
     });
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Všetky clustre" }));
-    fireEvent.click(screen.getByRole("option", { name: "Cluster B" }));
+    await openTableSettings();
+    // "Cluster A" je aj checkbox v sekcii "Diéty v sumári klastra" — zúž na
+    // sekciu výberu clustra samotného.
+    const clusterSection = (await screen.findByText("Cluster")).parentElement!;
+    // Oba clustre sú predvolene "zapnuté" (prázdny výber = všetko) — odklik
+    // Cluster A necháva zapnutý len Cluster B.
+    fireEvent.click(within(clusterSection).getByRole("button", { name: "Cluster A" }));
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
@@ -496,6 +513,7 @@ describe("Filter sekcií", () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
+    await openTableSettings();
     const olovrant = await screen.findByRole("button", { name: "Olovrant" });
     fireEvent.click(olovrant);
     await waitFor(() => expect(olovrant).toHaveAttribute("aria-pressed", "true"));
@@ -503,6 +521,86 @@ describe("Filter sekcií", () => {
     // Fixture hlási všetky sekcie ako zapnuté, takže druhý klik ich má zapnúť
     // späť a filter úplne zahodiť — inak by v URL zostal zbytočný balast.
     fireEvent.click(olovrant);
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+$/),
+      );
+    });
+  });
+});
+
+describe("Nastavenia tabuľky (2.9.2026)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("turning off 'Zobraziť prázdne' sends show_empty=0", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await openTableSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
+      );
+    });
+  });
+
+  it("turning off 'Zobraziť sumáre klastrov' sends cluster_summary=0 and hides the diet-per-cluster section", async () => {
+    mockDashboardRequests({
+      ...GRAMAGE_WITH_ROWS,
+      spec: {
+        ...GRAMAGE_WITH_ROWS.spec,
+        vydaje: [
+          { key: "A", name: "Cluster A", selected: true },
+          { key: "B", name: "Cluster B", selected: true },
+        ],
+      },
+    });
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await openTableSettings();
+    expect(await screen.findByText("Diéty v sumári klastra")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Zobraziť sumáre klastrov" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&cluster_summary=0$/),
+      );
+    });
+    expect(screen.queryByText("Diéty v sumári klastra")).not.toBeInTheDocument();
+  });
+
+  it("'Zobraziť všetko rozbalené' sends expanded=1", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await openTableSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť všetko rozbalené" }));
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&expanded=1$/),
+      );
+    });
+  });
+
+  it("'Obnoviť predvolené' resets every toggle back to default", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await openTableSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Obnoviť predvolené" }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+$/),

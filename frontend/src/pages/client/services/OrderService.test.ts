@@ -387,6 +387,86 @@ describe('OrderService', () => {
         });
     });
 
+    describe('checkMenuBcDeadline', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+            sessionStorage.removeItem('server_time_offset_ms');
+        });
+
+        it('allows Menu B/C changes more than 2 days before the meal date', () => {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 3);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkMenuBcDeadline(dateStr, { menu_bc: '07:30', menu_bc_days_before: 2 })
+            ).toBe(true);
+        });
+
+        it('blocks Menu B/C changes once the strict 2-day-before deadline has passed', () => {
+            const now = new Date();
+            now.setHours(7, 31, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 2);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkMenuBcDeadline(dateStr, { menu_bc: '07:30', menu_bc_days_before: 2 })
+            ).toBe(false);
+        });
+
+        it('defaults to allowed when no deadlines are provided', () => {
+            expect(OrderService.checkMenuBcDeadline('2099-01-01')).toBe(true);
+        });
+    });
+
+    describe('extractRestrictedMenuCounts', () => {
+        it('collects B/C/D counts keyed by meal|category|menu, skipping zeros and Menu A', () => {
+            const order: DailyOrder = {
+                ...OrderService.createEmptyOrder(),
+                lunch: {
+                    ...OrderService.createEmptyOrder().lunch,
+                    Škôlka: {
+                        menuCounts: { A: 5, B: 3, C: 0 },
+                        diets: {},
+                    },
+                },
+            };
+
+            const counts = OrderService.extractRestrictedMenuCounts(order);
+
+            expect(counts).toEqual({ 'lunch|Škôlka|B': 3 });
+        });
+
+        it('returns an empty map when nothing restricted is present', () => {
+            expect(OrderService.extractRestrictedMenuCounts(OrderService.createEmptyOrder())).toEqual({});
+        });
+    });
+
+    describe('extractRestrictedMenuCountsForMeal', () => {
+        it('collects B/C/D counts under a custom label (celodenná objednávka)', () => {
+            const fullDayData = {
+                ...OrderService.createEmptyMeal(),
+                Škôlka: { menuCounts: { A: 5, B: 2, D: 1 }, diets: {} },
+            };
+
+            expect(OrderService.extractRestrictedMenuCountsForMeal(fullDayData, 'fullDay')).toEqual({
+                'fullDay|Škôlka|B': 2,
+                'fullDay|Škôlka|D': 1,
+            });
+        });
+
+        it('returns an empty map for undefined meal data', () => {
+            expect(OrderService.extractRestrictedMenuCountsForMeal(undefined, 'fullDay')).toEqual({});
+        });
+    });
+
     describe('getServerNow', () => {
         afterEach(() => {
             vi.useRealTimers();
@@ -409,6 +489,46 @@ describe('OrderService', () => {
             sessionStorage.setItem('server_time_offset_ms', 'Infinity');
 
             expect(OrderService.getServerNow().getTime()).toBe(base.getTime());
+        });
+    });
+
+    describe('formatRelativeDayLabel', () => {
+        // Streda 2.9.2026, viď zadanie: dnes/zajtra/pozajtra zvýraznené, ďalej už len deň v týždni + dátum.
+        const today = new Date('2026-09-02T10:00:00');
+
+        it('should label today', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-02', today)).toEqual({
+                text: 'Dnes streda 2.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label tomorrow', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-03', today)).toEqual({
+                text: 'Zajtra štvrtok 3.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label the day after tomorrow', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-04', today)).toEqual({
+                text: 'Pozajtra piatok 4.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label further dates as plain weekday + date, not emphasized', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-07', today)).toEqual({
+                text: 'Pondelok 7.9.',
+                emphasized: false,
+            });
+        });
+
+        it('should label past dates as plain weekday + date, not emphasized', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-01', today)).toEqual({
+                text: 'Utorok 1.9.',
+                emphasized: false,
+            });
         });
     });
 

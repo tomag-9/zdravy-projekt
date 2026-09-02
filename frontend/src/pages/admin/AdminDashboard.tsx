@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronDown, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { PageHead, Button, Card, Badge, Empty } from "./ui";
+import { PageHead, Button, Card, Badge, Empty, Modal, Toggle, Checkbox } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
 import {
   prevWeekday,
@@ -191,18 +191,35 @@ const AdminDashboard: React.FC = () => {
   // Prázdny výber = všetky výdajné body; inak môže byť vybratých aj viac
   // (napr. Cluster A + B naraz).
   const [selectedVydaje, setSelectedVydaje] = useState<string[]>([]);
+  // "Nastavenia tabuľky" (2.9.2026) — predtým voľné filtre nad tabuľkou,
+  // teraz v samostatnom modáli, nech tabuľka dostane celú výšku.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Prázdne trasy (bez objednávok) sa defaultne UKAZUJÚ — inak to vyzerá,
+  // akoby trasa vôbec neexistovala, nie že len nemá dáta.
+  const [showEmpty, setShowEmpty] = useState(true);
+  const [clusterSummary, setClusterSummary] = useState(true);
+  // Prázdny výber = diéty vo všetkých zobrazených clustroch (rovnaký "prázdne
+  // = všetko" princíp ako sections/selectedVydaje).
+  const [dietClusters, setDietClusters] = useState<string[]>([]);
+  // "Rozbaliť všetko" — namiesto zbaleného per-klienta riadku ukáže rovno
+  // rozbalený PDF-formát (bez opakovaného medzisúčtu) priamo na obrazovke.
+  const [expanded, setExpanded] = useState(false);
 
-  // Ktoré sekcie (raňajky / polievka / menu / olovrant) a ktoré výdajné body sa
-  // zobrazujú. Prázdny výber = kompletná tabuľka. Rovnaký filter dostane
-  // obrazovka aj PDF, takže vytlačíš presne to, čo vidíš.
-  const sectionQuery = useMemo(
-    () =>
-      [
-        ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
-        ...selectedVydaje.map((key) => `&vydaj=${encodeURIComponent(key)}`),
-      ].join(""),
-    [sections, selectedVydaje],
-  );
+  // Ktoré sekcie (raňajky / polievka / menu / olovrant), výdajné body a
+  // ostatné "Nastavenia tabuľky" sa zobrazujú. Prázdny výber = kompletná
+  // tabuľka. Rovnaký filter dostane obrazovka aj PDF, takže vytlačíš presne
+  // to, čo vidíš.
+  const sectionQuery = useMemo(() => {
+    const parts = [
+      ...sections.map((key) => `&section=${encodeURIComponent(key)}`),
+      ...selectedVydaje.map((key) => `&vydaj=${encodeURIComponent(key)}`),
+      ...dietClusters.map((key) => `&diet_cluster=${encodeURIComponent(key)}`),
+    ];
+    if (!showEmpty) parts.push("&show_empty=0");
+    if (!clusterSummary) parts.push("&cluster_summary=0");
+    if (expanded) parts.push("&expanded=1");
+    return parts.join("");
+  }, [sections, selectedVydaje, dietClusters, showEmpty, clusterSummary, expanded]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -393,6 +410,9 @@ const AdminDashboard: React.FC = () => {
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
           <>
+            <Button variant="secondary" onClick={() => setSettingsOpen(true)} disabled={!hasData}>
+              <SlidersHorizontal /> Nastavenia tabuľky
+            </Button>
             <Button variant="danger" onClick={() => handleExport("pdf", setPdfLoading)} disabled={pdfLoading || loading || !hasData}>
               {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} Stiahnuť PDF
             </Button>
@@ -433,25 +453,6 @@ const AdminDashboard: React.FC = () => {
 
         {!loading && data && hasData && (
           <div className="zpa-gram-fill">
-            <PrintFilter
-              sections={data.spec.sections}
-              vydaje={data.spec.vydaje ?? []}
-              selectedVydaje={selectedVydaje}
-              onToggleSection={(key) =>
-                setSections((current) =>
-                  toggleSelection(
-                    current,
-                    key,
-                    data.spec.sections.map((section) => section.key),
-                  ),
-                )
-              }
-              onVydajeChange={setSelectedVydaje}
-              onReset={() => {
-                setSections([]);
-                setSelectedVydaje([]);
-              }}
-            />
             <GramageTable spec={data.spec} fill onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
           </div>
         )}
@@ -478,6 +479,44 @@ const AdminDashboard: React.FC = () => {
         confirmText="Odomknúť"
         variant="warning"
       />
+
+      {settingsOpen && data && (
+        <TableSettingsModal
+          sections={data.spec.sections}
+          vydaje={data.spec.vydaje ?? []}
+          dietClusters={dietClusters}
+          showEmpty={showEmpty}
+          clusterSummary={clusterSummary}
+          expanded={expanded}
+          onToggleSection={(key) =>
+            setSections((current) =>
+              toggleSelection(current, key, data.spec.sections.map((section) => section.key)),
+            )
+          }
+          onToggleVydaj={(key) =>
+            setSelectedVydaje((current) =>
+              toggleSelection(current, key, (data.spec.vydaje ?? []).map((v) => v.key)),
+            )
+          }
+          onToggleDietCluster={(key) =>
+            setDietClusters((current) =>
+              toggleSelection(current, key, (data.spec.vydaje ?? []).map((v) => v.key)),
+            )
+          }
+          onShowEmptyChange={setShowEmpty}
+          onClusterSummaryChange={setClusterSummary}
+          onExpandedChange={setExpanded}
+          onReset={() => {
+            setSections([]);
+            setSelectedVydaje([]);
+            setDietClusters([]);
+            setShowEmpty(true);
+            setClusterSummary(true);
+            setExpanded(false);
+          }}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </>
   );
 };
@@ -619,137 +658,124 @@ const toggleSelection = (current: string[], value: string, all: string[]): strin
 };
 
 /**
- * Vlastný multi-select dropdown pre clustre — natívny <select> nešiel poriadne
- * ofarbiť (zoznam možností kreslí prehliadač po svojom, na tmavom pozadí to
- * vyzeralo cudzo a niektoré prehliadače popri vlastnej šípke kreslili aj
- * svoju). Navyše natívny <select> dovolí vybrať len jednu položku naraz —
- * tu ide o zoznam checkboxov, takže sa dá zobraziť aj kombinácia (Cluster A + B).
+ * Všetky filtre a nastavenia tabuľky "Gramáž jedál" v jednom modáli (2.9.2026)
+ * — predtým voľne nad tabuľkou (dva riadky chipov/dropdown), teraz tu, nech
+ * tabuľka dostane celú výšku obrazovky. Rovnaký výber ide na obrazovku aj do
+ * PDF — čo vidíš, to vytlačíš.
  */
-const ClusterFilter: React.FC<{
-  vydaje: SpecVydaj[];
-  selected: string[];
-  onChange: (keys: string[]) => void;
-}> = ({ vydaje, selected, onChange }) => {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const isAll = selected.length === 0;
-
-  useEffect(() => {
-    if (!open) return;
-    const onDocClick = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-
-  const label = isAll
-    ? "Všetky clustre"
-    : vydaje
-        .filter((item) => selected.includes(item.key))
-        .map((item) => item.name)
-        .join(" + ") || "Všetky clustre";
-
-  const toggle = (key: string) => {
-    const next = selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key];
-    onChange(next.length === vydaje.length ? [] : next);
-  };
-
-  return (
-    <div className="cluster-filter" ref={rootRef}>
-      <button
-        type="button"
-        className={`cluster-filter-trigger${!isAll ? " is-active" : ""}`}
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-      >
-        {label}
-        <ChevronDown size={16} className="chevron" />
-      </button>
-      {open && (
-        <div className="cluster-filter-menu" role="listbox" aria-multiselectable="true">
-          <button
-            type="button"
-            role="option"
-            aria-selected={isAll}
-            className={`cluster-filter-option${isAll ? " on" : ""}`}
-            onClick={() => {
-              onChange([]);
-              setOpen(false);
-            }}
-          >
-            <Check size={14} />
-            <span>Všetky clustre</span>
-          </button>
-          {vydaje.map((item) => {
-            const on = selected.includes(item.key);
-            return (
-              <button
-                key={item.key}
-                type="button"
-                role="option"
-                aria-selected={on}
-                className={`cluster-filter-option${on ? " on" : ""}`}
-                onClick={() => toggle(item.key)}
-              >
-                <Check size={14} />
-                <span>{item.name}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const PrintFilter: React.FC<{
+const TableSettingsModal: React.FC<{
   sections: SpecSection[];
   vydaje: SpecVydaj[];
-  selectedVydaje: string[];
+  dietClusters: string[];
+  showEmpty: boolean;
+  clusterSummary: boolean;
+  expanded: boolean;
   onToggleSection: (key: string) => void;
-  onVydajeChange: (keys: string[]) => void;
+  onToggleVydaj: (key: string) => void;
+  onToggleDietCluster: (key: string) => void;
+  onShowEmptyChange: (v: boolean) => void;
+  onClusterSummaryChange: (v: boolean) => void;
+  onExpandedChange: (v: boolean) => void;
   onReset: () => void;
-}> = ({ sections, vydaje, selectedVydaje, onToggleSection, onVydajeChange, onReset }) => {
-  const allSelected = sections.every((section) => section.selected) && selectedVydaje.length === 0;
+  onClose: () => void;
+}> = ({
+  sections,
+  vydaje,
+  dietClusters,
+  showEmpty,
+  clusterSummary,
+  expanded,
+  onToggleSection,
+  onToggleVydaj,
+  onToggleDietCluster,
+  onShowEmptyChange,
+  onClusterSummaryChange,
+  onExpandedChange,
+  onReset,
+  onClose,
+}) => {
+  const dietClusterOn = (key: string) => dietClusters.length === 0 || dietClusters.includes(key);
   return (
-    <div className="zpa-section-filter">
-      {/* Cluster výber ide v tom istom riadku ako filter jedál — nie je to
-       * ďalší samostatný riadok navyše. */}
-      <div className="row">
-        <span className="lbl">Jedlá</span>
-        {sections.map((section) => (
-          <button
-            key={section.key}
-            type="button"
-            className={`chip${section.selected ? " on" : ""}`}
-            aria-pressed={section.selected}
-            onClick={() => onToggleSection(section.key)}
-          >
-            {section.label}
-          </button>
-        ))}
+    <Modal
+      title="Nastavenia tabuľky"
+      onClose={onClose}
+      icon={<SlidersHorizontal />}
+      foot={
+        <>
+          <Button variant="ghost" onClick={onReset}>Obnoviť predvolené</Button>
+          <Button variant="primary" onClick={onClose}>Hotovo</Button>
+        </>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div>
+          <div className="zpa-settings-lbl">Jedlá</div>
+          <div className="zpa-section-filter">
+            {sections.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                className={`chip${section.selected ? " on" : ""}`}
+                aria-pressed={section.selected}
+                onClick={() => onToggleSection(section.key)}
+              >
+                {section.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {vydaje.length > 1 && (
-          <>
-            <span className="lbl zpa-cluster-lbl">Cluster</span>
-            <ClusterFilter vydaje={vydaje} selected={selectedVydaje} onChange={onVydajeChange} />
-          </>
+          <div>
+            <div className="zpa-settings-lbl">Cluster</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {vydaje.map((v) => (
+                <Checkbox key={v.key} on={v.selected} onChange={() => onToggleVydaj(v.key)}>
+                  {v.name}
+                </Checkbox>
+              ))}
+            </div>
+          </div>
         )}
-      </div>
-      <div className="row">
-        <span className="hint">
-          {allSelected
-            ? "Tlačí sa celá tabuľka. Odkliknutím vyberieš, čo sa má zobraziť aj vytlačiť."
-            : "Do PDF ide presne tento výber."}
-        </span>
-        {!allSelected && (
-          <button type="button" className="reset" onClick={onReset}>
-            Zobraziť všetko
-          </button>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť prázdne trasy</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Trasy bez objednávok sa ukážu, nie skryjú.</div>
+          </div>
+          <Toggle on={showEmpty} onChange={onShowEmptyChange} ariaLabel="Zobraziť prázdne trasy" />
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť sumáre klastrov</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Pásy „SUMÁR CLUSTER ... S DIÉTAMI MŠ".</div>
+          </div>
+          <Toggle on={clusterSummary} onChange={onClusterSummaryChange} ariaLabel="Zobraziť sumáre klastrov" />
+        </div>
+
+        {clusterSummary && vydaje.length > 1 && (
+          <div>
+            <div className="zpa-settings-lbl">Diéty v sumári klastra</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {vydaje.map((v) => (
+                <Checkbox key={v.key} on={dietClusterOn(v.key)} onChange={() => onToggleDietCluster(v.key)}>
+                  {v.name}
+                </Checkbox>
+              ))}
+            </div>
+          </div>
         )}
+
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť všetko rozbalené</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Formát ako v PDF — bez zbaleného medzisúčtu za klienta.</div>
+          </div>
+          <Toggle on={expanded} onChange={onExpandedChange} ariaLabel="Zobraziť všetko rozbalené" />
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 };
 

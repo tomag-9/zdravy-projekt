@@ -268,9 +268,14 @@ def test_dashboard_folds_predskolak_into_ms_row_like_the_real_workbook():
 
 
 @pytest.mark.django_db
-def test_table_spec_footer_shows_billed_ms_porcie_total():
-    """#4 — pätka gramážnej tabuľky má súčet prepočítaný cez
-    `billing_portion_coefficients`, nielen holý počet hláv."""
+def test_table_spec_footer_shows_obed_ms_total_not_billing_total():
+    """Posledný riadok pätky je „SUM TOTAL OBED MŠ" — súčet OBEDA (nie
+    raňajok/olovrantu, nie iných jedál) prepočítaný cez katalógový
+    `PortionType.coefficient`, NIE cez `Prevadzka.billing_portion_coefficients`.
+
+    Fixture má úmyselne odlišný fakturačný koeficient (3.00) od katalógového
+    (1.25 pre Predškolák) — keby riadok stále počítal fakturačne, vyšlo by
+    7 + 1×3 = 10, nie 8,25."""
     call_command("init_reference_data")
 
     template = MealTemplate.objects.create(
@@ -288,7 +293,7 @@ def test_table_spec_footer_shows_billed_ms_porcie_total():
     prevadzka = Prevadzka.objects.create(
         celok=celok,
         nazov="MŠ Edulienka",
-        billing_portion_coefficients={"Predškolák": "1.25"},
+        billing_portion_coefficients={"Predškolák": "3.00"},
     )
     user = User.objects.create_user(username="edulienka2@example.com", password="x")
     DailyOrder.objects.create(
@@ -310,8 +315,9 @@ def test_table_spec_footer_shows_billed_ms_porcie_total():
 
     ms_porcie_row = spec["footer"][-1]
     assert ms_porcie_row["kind"] == "total-ms-porcie"
-    assert ms_porcie_row["cells"][0]["label"] == "Spolu prepočítané na MŠ porcie"
-    # 7 MŠ + 1 predškolák × 1,25 = 8,25 — rovnaké číslo ako v Súčte bez diét.
+    assert ms_porcie_row["cells"][0]["label"] == "SUM TOTAL OBED MŠ"
+    # 7 Škôlka × 1,00 + 1 Predškolák × 1,25 (katalóg) = 8,25 — fakturačný
+    # koeficient 3.00 z fixture sa sem premietnuť nesmie.
     assert ms_porcie_row["cells"][0]["text"] == "8,25"
 
 

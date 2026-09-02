@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { PageHead, Card, Input } from "./ui";
-import { previousBusinessDay } from "../../lib/businessDay";
+import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -44,13 +44,6 @@ interface OverviewResponse {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-const toDateString = (d: Date): string => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
 
 // ── Row ───────────────────────────────────────────────────────────────────────
 
@@ -202,7 +195,14 @@ const PrevadzkaOverview: React.FC = () => {
   // "Termín dodania podkladov" nesmie pripadnúť na víkend — pri otvorení cez
   // víkend zobrazí stav za posledný predchádzajúci pracovný deň (piatok),
   // keďže cez víkend sa nič nedodáva a nasledujúci pondelok by ešte nemal dáta.
-  const [date, setDate] = useState(() => toDateString(previousBusinessDay(new Date())));
+  // Rovnaké pravidlo ako gramážny dashboard (`dashboardDefaultDate`): od 21:00
+  // (po večernom scrapi) sa predvolený pohľad sám preklopí na zajtrajšok,
+  // pokiaľ ten sám nie je voľno (user 2.9.2026).
+  const [date, setDate] = useState(() => dashboardDefaultDate());
+  // Rovnaký cap ako gramážny dashboard (`AdminDashboard.tsx`) — dnes + 2
+  // pracovné dni, zosúladené s hodinovým EduPage priebežným náhľadom, ktorý
+  // dáta na toto okno priebežne dopĺňa.
+  const maxDate = useMemo(() => dashboardMaxDate(), []);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -236,7 +236,17 @@ const PrevadzkaOverview: React.FC = () => {
         title="Kontrola objednávok"
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
         actions={
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto" }} />
+          <Input
+            type="date"
+            value={date}
+            max={maxDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (!val || val > maxDate) return;
+              setDate(val);
+            }}
+            style={{ width: "auto" }}
+          />
         }
       />
 

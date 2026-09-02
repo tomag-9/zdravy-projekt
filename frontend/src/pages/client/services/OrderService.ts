@@ -65,6 +65,26 @@ class OrderService {
         return new Date(Date.now() + (Number.isFinite(offsetMs) ? offsetMs : 0));
     }
 
+    /**
+     * Slovenský popisok dátumu vzhľadom na `today` (YYYY-MM-DD) — „Dnes streda 2.9.“,
+     * „Zajtra štvrtok 3.9.“, „Pozajtra piatok 4.9.“, ďalej už len „Pondelok 8.9.“.
+     * `emphasized` hovorí volajúcemu, či dátum zvýrazniť (dnes/zajtra/pozajtra).
+     */
+    static formatRelativeDayLabel(dateStr: string, today: Date = OrderService.getServerNow()): { text: string; emphasized: boolean } {
+        const date = new Date(`${dateStr}T00:00:00`);
+        const todayMidnight = new Date(`${OrderService.toLocalDateString(today)}T00:00:00`);
+        const diffDays = Math.round((date.getTime() - todayMidnight.getTime()) / 86400000);
+
+        const weekday = date.toLocaleDateString('sk-SK', { weekday: 'long' });
+        const weekdayCapitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const dayMonth = `${date.getDate()}.${date.getMonth() + 1}.`;
+
+        if (diffDays === 0) return { text: `Dnes ${weekday} ${dayMonth}`, emphasized: true };
+        if (diffDays === 1) return { text: `Zajtra ${weekday} ${dayMonth}`, emphasized: true };
+        if (diffDays === 2) return { text: `Pozajtra ${weekday} ${dayMonth}`, emphasized: true };
+        return { text: `${weekdayCapitalized} ${dayMonth}`, emphasized: false };
+    }
+
     static createEmptyCategory(categoryName: string): CategoryData {
         const availableMenus = GROUP_CONFIG[categoryName] || ['A'];
         const menuCounts = availableMenus.reduce((acc, menu) => ({ ...acc, [menu]: 0 }), {} as MenuCounts);
@@ -446,6 +466,41 @@ class OrderService {
         if (!deadlines || !deadlines.menu_bc) return true;
         return this.checkDeadlineDaysBefore(dateStr, deadlines.menu_bc, deadlines.menu_bc_days_before ?? 2);
     }
+
+    // Zdieľané s backendom (`_RESTRICTED_MENUS` v api/serializers.py) — tieto
+    // menu majú prísnejší, samostatný termín na NOVÉ/vyššie objednávky.
+    static readonly RESTRICTED_MENUS = ['B', 'C', 'D'];
+
+    /** {"label|category|menuType": count} pre jedno MealData — zdieľané medzi
+     * `extractRestrictedMenuCounts` (breakfast/lunch/olovrant) a celodenný strop
+     * (`fullDay` label), ktorý má vlastný, mimo `DailyOrder` uložený blob. */
+    static extractRestrictedMenuCountsForMeal(
+        mealData: MealData | undefined,
+        label: string
+    ): Record<string, number> {
+        const result: Record<string, number> = {};
+        Object.entries(mealData || {}).forEach(([category, categoryData]) => {
+            this.RESTRICTED_MENUS.forEach((menuType) => {
+                const count = categoryData?.menuCounts?.[menuType];
+                if (count) {
+                    result[`${label}|${category}|${menuType}`] = count;
+                }
+            });
+        });
+        return result;
+    }
+
+    /** {"meal|category|menuType": count} snímka reštrikovaných menu z objednávky —
+     * slúži ako "zamknutý" strop, nad ktorý sa po prísnom termíne už nedá ísť
+     * (user 2.9.2026: nahlásiť/zvýšiť len do termínu, odhlásiť/znížiť aj po ňom). */
+    static extractRestrictedMenuCounts(order: DailyOrder): Record<string, number> {
+        const result: Record<string, number> = {};
+        (['breakfast', 'lunch', 'olovrant'] as const).forEach((mealKey) => {
+            Object.assign(result, this.extractRestrictedMenuCountsForMeal(order[mealKey], mealKey));
+        });
+        return result;
+    }
+
     static fastCopy<T>(source: T): T {
         return JSON.parse(JSON.stringify(source));
     }

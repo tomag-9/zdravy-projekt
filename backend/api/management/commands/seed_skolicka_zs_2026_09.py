@@ -3,8 +3,10 @@
 Guest URL overený naživo: platitelia sú `1.stupeň - klasik/BM/BM,BG/vege/histamín`
 a `2.stupeň - klasik/BM/BMBG/vege/histamín`, prefix pred pomlčkou teda jednoznačne
 určuje prevádzku (`1.stupeň` vs. `2.stupeň`). Platitelia `učiteľ *` (porcia=3) na
-žiadny z dvoch prefixov nesadnú — Školička v appke učiteľskú prevádzku nemá, takže
-tie riadky ostanú v `unmatched_prevadzka`, kým Stano nepotvrdí, kam sa majú počítať.
+žiadny z dvoch prefixov nesadnú — Školička v appke učiteľskú prevádzku nemá. Klient
+potvrdil 2.9.2026, že učitelia/dospelí sa majú počítať pod 2. stupňom, takže
+`Školička 2. stupeň` dostáva druhý prefix `učiteľ` (rovnaká konvencia ako
+`Dospelý` pri Dobrodružstve).
 
     python manage.py seed_skolicka_zs_2026_09
     python manage.py seed_skolicka_zs_2026_09 --dry-run
@@ -20,7 +22,7 @@ SKOLICKA_URL = "https://skolicka.edupage.org/menu/mealsGuest?id=u6r7uz8"
 CELOK_NAZOV = "Školička ZŠ"
 PREVADZKY_MATCH = [
     ("Školička 1.stupeň", "1.stupeň"),
-    ("Školička 2. stupeň", "2.stupeň"),
+    ("Školička 2. stupeň", "2.stupeň; učiteľ"),
 ]
 
 

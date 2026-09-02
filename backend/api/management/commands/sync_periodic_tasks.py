@@ -470,7 +470,11 @@ class Command(BaseCommand):
         from django_celery_beat.models import PeriodicTask
 
         from api.models import GlobalSettings
-        from api.signals import DEDICATED_SCRAPE_TASK_PREFIX, EDUPAGE_SCRAPE_TASK_PREFIX
+        from api.signals import (
+            DEDICATED_SCRAPE_TASK_PREFIX,
+            EDUPAGE_PREVIEW_SCRAPE_TASK_NAME,
+            EDUPAGE_SCRAPE_TASK_PREFIX,
+        )
 
         self.stdout.write("\n--- Edupage Scrape Tasks ---")
         gs = GlobalSettings.objects.filter(pk=1).first()
@@ -497,11 +501,12 @@ class Command(BaseCommand):
                 # Väčšina scrape úloh beží Po–Pi; dedikované pripojenia
                 # (British School, #535) majú vlastný crontab Ne–Št (deň
                 # pred pracovným dňom).
-                days = (
-                    "Ne–Št"
-                    if task.name.startswith(DEDICATED_SCRAPE_TASK_PREFIX)
-                    else "Po–Pi"
-                )
+                if task.name.startswith(DEDICATED_SCRAPE_TASK_PREFIX):
+                    days = "Ne–Št"
+                elif task.name == EDUPAGE_PREVIEW_SCRAPE_TASK_NAME:
+                    days = "denne"
+                else:
+                    days = "Po–Pi"
                 schedule = (
                     f"{_format_crontab_time(task.crontab)} {days}"
                     f" (tz: {task.crontab.timezone})"
@@ -518,6 +523,7 @@ class Command(BaseCommand):
     def _sync_edupage_scrape_tasks(self, gs):
         from api.signals import (
             _sync_dedicated_connection_scrape_schedules,
+            _sync_edupage_preview_scrape_schedule,
             _sync_edupage_scrape_schedule,
         )
 
@@ -528,6 +534,10 @@ class Command(BaseCommand):
             # `exclude_connection_ids` podľa toho, ktoré dedikované
             # pripojenia (British School, #535) už existujú.
             _sync_dedicated_connection_scrape_schedules(gs)
+            # Musí ísť posledná: zdieľa `EDUPAGE_SCRAPE_TASK_PREFIX`, takže by
+            # ju orphan cleanup v `_sync_edupage_scrape_schedule` zmazal,
+            # keby bežala pred ňou (rovnaký vzor ako v `on_global_settings_saved`).
+            _sync_edupage_preview_scrape_schedule(gs)
             self.stdout.write(self.style.SUCCESS("✓ Edupage scrape tasks synced!"))
             self._verify_edupage_scrape_tasks()
         except Exception as exc:

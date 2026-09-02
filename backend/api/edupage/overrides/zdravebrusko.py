@@ -16,11 +16,28 @@ MŠ Malokarpatké nám. 6 "mšMal.", ZŠ Malokarpatská "zšla" — rozdelené c
 - `zšlaNMnEnOnJ` = mlieko+vajcia+orechy+jablko → nová kombinácia (posledné
   písmeno "J" bolo pôvodne neisté, `flag="!"` žiadal manuálnu kontrolu; user
   1.9.2026 potvrdil jablko, nie jahodu — flag odstránený, diéta je istá).
+
+User 2.9.2026 potvrdil ďalšie dve "uncertain" fuzzy matche:
+- `sšvV` = SŠ Veterinárna (piaty areál na tomto feede, ul. Veterinárna) →
+  VEGGIE, presne ako avizuje poznámka na `PrevadzkaConfig` v `registry.py`.
+- `zšlaNM` = ZŠ Malokarpatská, len mlieko (bez ďalších obmedzení, na rozdiel
+  od `zšlaNMnEnOnJ` vyššie) → NO MILK.
+
+`zdravebrusko_payer_hook` — raňajky/olovrant (live 2.9.2026): diétne portie MŠ
+Malokarpatského aj MŠ Heyrovského tam zdieľajú menu písmeno `dsbNMNE` (Deutsche
+Schule) s Deutsche Schule, lebo tento feed pre ne pri raňajkách/olovrante nemá
+vlastné písmeno (na rozdiel od obeda, kde vlastné písmená majú — `MŠMAL. NM`
+atď. vyššie). Bez zásahu by `match_prevadzka` tieto porcie (aj ich diétu)
+pripísal Deutsche Schule, hoci payer label jasne hovorí `MŠ Mal.`/`MŠ Hey.`
+(user 2.9.2026, potvrdené priamo na live dátach — `force_match=True`, viď
+`PayerRule`/`match_prevadzka` docstringy).
 """
 
 from __future__ import annotations
 
-from ..base import LetterRule
+import unicodedata
+
+from ..base import LetterRule, PayerRule
 
 _RULES: dict[str, LetterRule] = {
     "DSBNMNE": LetterRule(diet="NO MILK/NO EGG"),
@@ -33,6 +50,8 @@ _RULES: dict[str, LetterRule] = {
     "MŠMAL. NG": LetterRule(diet="NO GLUTEN"),
     "ZŠLANG": LetterRule(diet="NO GLUTEN"),
     "ZŠLANMNENONJ": LetterRule(diet="NO MILK – NO EGG – NO ORECH – NO JABLKO"),
+    "ZŠLANM": LetterRule(diet="NO MILK"),
+    "SŠVV": LetterRule(diet="VEGGIE"),
 }
 
 
@@ -45,3 +64,35 @@ def zdravebrusko_letter_hook(
 ) -> LetterRule | None:
     """Vráť pravidlo pre menu písmeno, alebo None → nech rozhodne engine."""
     return _RULES.get(_kluc(skratka))
+
+
+def _fold_letters(value: str) -> str:
+    """ASCII-fold + len písmená veľkými (diakritika/interpunkcia nerozhoduje)."""
+    decomposed = unicodedata.normalize("NFKD", (value or "").casefold())
+    return "".join(ch for ch in decomposed if ch.isalpha()).upper()
+
+
+def zdravebrusko_payer_hook(payer_name: str) -> PayerRule | None:
+    """`MŠ Mal.`/`MŠ Hey.` payer label prebíja zdieľané písmeno pri raňajkách/
+    olovrante (viď modul docstring) — `force_match=True` aj vlastná diéta
+    odvodená z payera, nie zo zdieľaného písmena."""
+    key = _fold_letters(payer_name)
+    if key.startswith("MSMAL"):
+        match_name = "mšMal"
+    elif key.startswith("MSHEY"):
+        match_name = "mšHey"
+    else:
+        return None
+
+    has_milk = "NOMILK" in key
+    has_gluten = "NOGLUTEN" in key
+    if has_milk and has_gluten:
+        diet = "NO MILK/NO GLUTEN"
+    elif has_milk:
+        diet = "NO MILK"
+    elif has_gluten:
+        diet = "NO GLUTEN"
+    else:
+        diet = None
+
+    return PayerRule(match_name=match_name, diet=diet, force_match=True)
