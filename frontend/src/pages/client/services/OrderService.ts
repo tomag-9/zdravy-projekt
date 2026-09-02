@@ -65,6 +65,26 @@ class OrderService {
         return new Date(Date.now() + (Number.isFinite(offsetMs) ? offsetMs : 0));
     }
 
+    /**
+     * Slovenský popisok dátumu vzhľadom na `today` (YYYY-MM-DD) — „Dnes streda 2.9.“,
+     * „Zajtra štvrtok 3.9.“, „Pozajtra piatok 4.9.“, ďalej už len „Pondelok 8.9.“.
+     * `emphasized` hovorí volajúcemu, či dátum zvýrazniť (dnes/zajtra/pozajtra).
+     */
+    static formatRelativeDayLabel(dateStr: string, today: Date = OrderService.getServerNow()): { text: string; emphasized: boolean } {
+        const date = new Date(`${dateStr}T00:00:00`);
+        const todayMidnight = new Date(`${OrderService.toLocalDateString(today)}T00:00:00`);
+        const diffDays = Math.round((date.getTime() - todayMidnight.getTime()) / 86400000);
+
+        const weekday = date.toLocaleDateString('sk-SK', { weekday: 'long' });
+        const weekdayCapitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+        const dayMonth = `${date.getDate()}.${date.getMonth() + 1}.`;
+
+        if (diffDays === 0) return { text: `Dnes ${weekday} ${dayMonth}`, emphasized: true };
+        if (diffDays === 1) return { text: `Zajtra ${weekday} ${dayMonth}`, emphasized: true };
+        if (diffDays === 2) return { text: `Pozajtra ${weekday} ${dayMonth}`, emphasized: true };
+        return { text: `${weekdayCapitalized} ${dayMonth}`, emphasized: false };
+    }
+
     static createEmptyCategory(categoryName: string): CategoryData {
         const availableMenus = GROUP_CONFIG[categoryName] || ['A'];
         const menuCounts = availableMenus.reduce((acc, menu) => ({ ...acc, [menu]: 0 }), {} as MenuCounts);

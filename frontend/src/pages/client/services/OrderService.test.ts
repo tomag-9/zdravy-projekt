@@ -492,6 +492,46 @@ describe('OrderService', () => {
         });
     });
 
+    describe('formatRelativeDayLabel', () => {
+        // Streda 2.9.2026, viď zadanie: dnes/zajtra/pozajtra zvýraznené, ďalej už len deň v týždni + dátum.
+        const today = new Date('2026-09-02T10:00:00');
+
+        it('should label today', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-02', today)).toEqual({
+                text: 'Dnes streda 2.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label tomorrow', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-03', today)).toEqual({
+                text: 'Zajtra štvrtok 3.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label the day after tomorrow', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-04', today)).toEqual({
+                text: 'Pozajtra piatok 4.9.',
+                emphasized: true,
+            });
+        });
+
+        it('should label further dates as plain weekday + date, not emphasized', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-07', today)).toEqual({
+                text: 'Pondelok 7.9.',
+                emphasized: false,
+            });
+        });
+
+        it('should label past dates as plain weekday + date, not emphasized', () => {
+            expect(OrderService.formatRelativeDayLabel('2026-09-01', today)).toEqual({
+                text: 'Utorok 1.9.',
+                emphasized: false,
+            });
+        });
+    });
+
     describe('Copying Logic', () => {
         const createMockOrder = (date: string, hasFood: boolean): DailyOrder & { date: string } => {
             const order = {

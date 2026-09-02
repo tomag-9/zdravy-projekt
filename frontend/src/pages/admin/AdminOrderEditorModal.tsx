@@ -186,6 +186,7 @@ const AdminOrderEditorModal: React.FC<Props> = ({
         [allDiets, visibleDiets],
     );
     const [date, setDate] = useState<string>(existingOrder?.date ?? OrderService.toLocalDateString(new Date()));
+    const dateLabel = useMemo(() => OrderService.formatRelativeDayLabel(date), [date]);
     // Menu B napr. "len v piatok" (#menu_day_restrictions) — editor predtým
     // toto obmedzenie vôbec nepoznal, takže admin vedel zapísať zakázaný deň
     // aj tam, kde ho klientský OrderPage už dávno skrýva.
@@ -497,6 +498,16 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                         <Field label="Dátum objednávky">
                             <Input id="order-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
                         </Field>
+                        {/* Dnes/zajtra/pozajtra sa oplatí zvýrazniť — admin si najčastejšie
+                            objednáva na jeden z týchto dní a inak si musí dátum sám prepočítať. */}
+                        <p style={{
+                            margin: '6px 0 0',
+                            fontSize: 13,
+                            fontWeight: dateLabel.emphasized ? 700 : 400,
+                            color: dateLabel.emphasized ? 'var(--mustard-700)' : 'var(--ink-3)',
+                        }}>
+                            {dateLabel.text}
+                        </p>
                     </div>
                 )}
 
