@@ -83,8 +83,10 @@ class TestScrapeLogsItsRun:
 
         log = _cron_runs("scrape_edupage_orders_task").get()
         assert log.actor_label == "cron"
-        assert log.payload["dates"] == ["2026-06-29"]
-        assert log.payload["scraped"] == 1
+        # "lunch" beh so sebou nesie aj predbežný Menu B/C scrape 1-2 dni
+        # vopred (fb118d2) — 3 scrapnuté dni celkovo, nie len dnešok.
+        assert log.payload["dates"] == ["2026-06-29", "2026-06-30", "2026-07-01"]
+        assert log.payload["scraped"] == 3
         assert log.payload["errors"] == 0
         assert "EduPage" in log.summary
 
@@ -107,7 +109,9 @@ class TestScrapeLogsItsRun:
         scrape_edupage_orders_task.run(meal_types=["lunch"])
 
         log = _cron_runs("scrape_edupage_orders_task").get()
-        assert log.payload["errors"] == 1
+        # 3 dni scrapnuté (dnešok + predbežný Menu B/C na 1-2 dni vopred,
+        # fb118d2) → chyba na každom z nich.
+        assert log.payload["errors"] == 3
         assert log.payload["scraped"] == 0
 
     def test_exhausted_retries_are_recorded_as_failure_not_skip(

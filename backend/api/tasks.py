@@ -1016,9 +1016,17 @@ def scrape_edupage_orders_task(
             "dates": [str(target_date) for target_date in date_to_meals],
             "meal_types": meal_types,
         }
+        # Predbežné dátumy (partial_dates) dostali len Menu B/C odhad, nie plný
+        # scrape — chained report na ne nesmie ísť, poslal by kuchyni neúplné
+        # čísla ako keby boli finálne. Report čaká na deň, keď ho prepíše
+        # autoritatívny plný `_apply_scrape`.
         dispatched = _dispatch_chained_reports(
             chained_reports,
-            [str(target_date) for target_date in date_to_meals],
+            [
+                str(target_date)
+                for target_date in date_to_meals
+                if target_date not in partial_dates
+            ],
             scrape_failed=False,
         )
         if dispatched:
