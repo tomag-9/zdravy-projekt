@@ -137,60 +137,50 @@ export function lastWeekdayToday(sets: DayOffSets = {}): string {
   return toDateKey(previousBusinessDay(new Date(), sets));
 }
 
-/** Od ktorej hodiny sa v dashboard tabuľke odomkne zajtrajší deň (#535).
- * British School sa scrapuje o 12:15 predošlý deň, takže admin/kuchyňa
- * potrebuje zajtrajšok vedieť otvoriť ešte pred tým, než dáta pribudnú. */
-const DASHBOARD_NEXT_DAY_UNLOCK_HOUR = 12;
+/** O koľko pracovných dní dopredu (od dnešku/posledného pracovného dňa) smie
+ * dashboard tabuľka (admin Prehľad, kuchyňa, admin/prevadzka-overview)
+ * navigovať dopredu. Zosúladené s hodinovým EduPage priebežným náhľadom
+ * (`_sync_edupage_preview_scrape_schedule`, `EDUPAGE_PREVIEW_SCRAPE_DAYS_
+ * AHEAD` v `backend/api/signals.py`), ktorý dopĺňa čísla na presne toľko dní
+ * dopredu — bez neho by odomknutý deň v dashboarde často ostal prázdny. */
+const DASHBOARD_DAYS_AHEAD = 2;
 
 /** Od ktorej hodiny je zajtrajšok už natoľko "hotový" deň, že sa oplatí ho
  * ukázať ako predvolený pri otvorení tabuľky — po večernom scrapi (den-
- * vopred jedlá bežia okolo 20:xx), nie hneď od odomknutia o 12:00. Odomknutie
+ * vopred jedlá bežia okolo 20:xx), nie hneď od polnoci. Odomknutie
  * (`dashboardMaxDate`) a predvolený pohľad (`dashboardDefaultDate`) sú preto
  * zámerne dve rôzne hranice, nie jedna. */
 const DASHBOARD_NEXT_DAY_DEFAULT_HOUR = 21;
 
-function tomorrowIfUnlocked(
-  now: Date,
-  sets: DayOffSets,
-  unlockHour: number,
-): string | null {
-  if (now.getHours() < unlockHour) return null;
-  const tomorrow = new Date(now);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  if (isDayOff(tomorrow, sets)) return null;
-  return toDateKey(tomorrow);
-}
-
 /**
- * Najneskorší deň, ktorý smie dashboard tabuľka (admin Prehľad, kuchyňa)
- * zobraziť. Za bežných okolností je to `lastWeekdayToday` — dnešok, alebo
- * posledný pracovný deň pred víkendom/sviatkom.
- *
- * Od `DASHBOARD_NEXT_DAY_UNLOCK_HOUR` (12:00) sa navyše odomkne aj
- * nasledujúci kalendárny deň, pokiaľ sám nie je voľno — presne v čase, keď sa
- * pre British School spúšťa jej vlastný scrape (12:15 deň vopred, #535).
- * Mimo tohto okna (napr. piatok poobede, keď je „zajtra" sobota) ostáva
- * `lastWeekdayToday` bez zmeny.
+ * Najneskorší deň, ktorý smie dashboard tabuľka (admin Prehľad, kuchyňa,
+ * admin/prevadzka-overview) zobraziť: dnešok (alebo posledný pracovný deň
+ * pred víkendom/sviatkom, ak dnešok sám je voľno), plus `DASHBOARD_DAYS_
+ * AHEAD` ďalších pracovných dní. Bez hodinovej podmienky — hodinový EduPage
+ * priebežný náhľad dopĺňa dáta na toto okno priebežne celý deň, takže
+ * netreba čakať na konkrétny čas ako predtým (#535, len pre zajtrajšok).
  */
 export function dashboardMaxDate(now: Date = new Date(), sets: DayOffSets = {}): string {
-  return (
-    tomorrowIfUnlocked(now, sets, DASHBOARD_NEXT_DAY_UNLOCK_HOUR) ??
-    toDateKey(previousBusinessDay(now, sets))
-  );
+  const start = previousBusinessDay(now, sets);
+  const days = businessDays(start, DASHBOARD_DAYS_AHEAD + 1, sets);
+  return toDateKey(days[days.length - 1] ?? start);
 }
 
 /**
  * Deň, ktorý má dashboard tabuľka predvolene ukázať pri otvorení. Zámerne
- * inde ako `dashboardMaxDate` (#539) — zajtrajšok je od 12:00 síce
- * navigovateľný (viď vyššie), ale ako predvolený pohľad naskočí až od
+ * inde ako `dashboardMaxDate` (#539) — zajtrajšok je síce navigovateľný (viď
+ * vyššie), ale ako predvolený pohľad naskočí až od
  * `DASHBOARD_NEXT_DAY_DEFAULT_HOUR` (21:00): dovtedy má admin/kuchyňa pri
  * otvorení tabuľky pred očami dnešok, nie deň, ktorý ešte len prebieha.
  */
 export function dashboardDefaultDate(now: Date = new Date(), sets: DayOffSets = {}): string {
-  return (
-    tomorrowIfUnlocked(now, sets, DASHBOARD_NEXT_DAY_DEFAULT_HOUR) ??
-    toDateKey(previousBusinessDay(now, sets))
-  );
+  if (now.getHours() < DASHBOARD_NEXT_DAY_DEFAULT_HOUR) {
+    return toDateKey(previousBusinessDay(now, sets));
+  }
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (isDayOff(tomorrow, sets)) return toDateKey(previousBusinessDay(now, sets));
+  return toDateKey(tomorrow);
 }
 
 export function formatDay(key: string): string {

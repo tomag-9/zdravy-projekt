@@ -993,3 +993,130 @@ def test_scrape_task_runs_on_sunday_for_a_day_before_meal(edupage_user, monkeypa
     assert result.get("skipped_run") is not True
     assert result["dates"] == [str(monday)]
     assert seen_dates == [monday]
+
+
+# ── `days_ahead` — hodinový priebežný náhľad (2.9.2026) ─────────────────────
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
+    edupage_user, monkeypatch
+):
+    """`days_ahead=2` scrapne dnes, dnes+1, dnes+2 — nezávisle od
+    GlobalSettings deadlinov (žiadne v teste), všetky jedlá naraz."""
+    GlobalSettings.objects.create(pk=1)
+    monday = datetime.date(2026, 6, 29)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 3}}})
+
+    monkeypatch.setattr(timezone, "localdate", lambda: monday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(days_ahead=2)
+
+    tuesday = datetime.date(2026, 6, 30)
+    wednesday = datetime.date(2026, 7, 1)
+    assert seen_dates == [monday, tuesday, wednesday]
+    assert result["dates"] == [str(monday), str(tuesday), str(wednesday)]
+    for target_date in (monday, tuesday, wednesday):
+        order = DailyOrder.objects.get(user=edupage_user, date=target_date)
+        assert order.data["lunch"]["Edupage school"]["menuCounts"]["A"] == 3
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_repeated_run_updates_not_accumulates(
+    edupage_user, monkeypatch
+):
+    """Opakovaný hodinový beh na ten istý deň musí PREPÍSAŤ, nie pripočítať —
+    inak by hodinový cron postupne nafukoval počty (užívateľská požiadavka
+    2.9.2026: 'ukladat updateovat NIE PRIPOCITAVAT')."""
+    GlobalSettings.objects.create(pk=1)
+    monday = datetime.date(2026, 6, 29)
+    counts = iter([3, 5])
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": next(counts)}}})
+
+    monkeypatch.setattr(timezone, "localdate", lambda: monday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    scrape_edupage_orders_task.run(days_ahead=0)
+    scrape_edupage_orders_task.run(days_ahead=0)
+
+    assert DailyOrder.objects.filter(user=edupage_user, date=monday).count() == 1
+    order = DailyOrder.objects.get(user=edupage_user, date=monday)
+    assert order.data["lunch"]["Edupage school"]["menuCounts"]["A"] == 5
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_skips_weekend_dates_in_window(
+    edupage_user, monkeypatch
+):
+    """Víkendové dátumy v okne sa vynechajú (nie posunú) — priebežný náhľad,
+    nie 'najbližšie N pracovných dní'."""
+    GlobalSettings.objects.create(pk=1)
+    friday = datetime.date(2026, 6, 26)
+    seen_dates = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        seen_dates.append(target_date)
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 1}}})
+
+    monkeypatch.setattr(timezone, "localdate", lambda: friday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(days_ahead=2)
+
+    # Friday + Sat + Sun window → only Friday itself is a business day.
+    assert seen_dates == [friday]
+    assert result["dates"] == [str(friday)]
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_ignored_when_auto_scrape_disabled(
+    edupage_user, monkeypatch
+):
+    GlobalSettings.objects.create(pk=1, edupage_auto_scrape_enabled=False)
+    monkeypatch.setattr(
+        "api.edupage_scraper.EdupageScraper.scrape",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("should not scrape")),
+    )
+
+    result = scrape_edupage_orders_task.run(days_ahead=2)
+
+    assert result.get("disabled") is True
+
+
+EDUPAGE_PREVIEW_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}preview"
+
+
+@pytest.mark.django_db
+def test_preview_scrape_schedule_creates_hourly_task():
+    from api.signals import _sync_edupage_preview_scrape_schedule
+
+    settings_instance = GlobalSettings.objects.create(pk=1)
+
+    _sync_edupage_preview_scrape_schedule(settings_instance)
+
+    task = PeriodicTask.objects.get(name=EDUPAGE_PREVIEW_TASK_NAME)
+    assert task.crontab.minute == "0"
+    assert task.crontab.hour == "6-21"
+    assert task.crontab.day_of_week == "*"
+    assert json.loads(task.kwargs) == {"days_ahead": 2}
+
+
+@pytest.mark.django_db
+def test_preview_scrape_schedule_removed_when_auto_scrape_disabled():
+    from api.signals import _sync_edupage_preview_scrape_schedule
+
+    settings_instance = GlobalSettings.objects.create(pk=1)
+    _sync_edupage_preview_scrape_schedule(settings_instance)
+    assert PeriodicTask.objects.filter(name=EDUPAGE_PREVIEW_TASK_NAME).exists()
+
+    settings_instance.edupage_auto_scrape_enabled = False
+    settings_instance.save()
+
+    assert not PeriodicTask.objects.filter(name=EDUPAGE_PREVIEW_TASK_NAME).exists()

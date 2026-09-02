@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck, Download } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
@@ -51,6 +51,7 @@ interface FacilityDetail {
   nazov: string;
   adresa: string;
   edupage_connection: number | null;
+  edupage_connection_name?: string | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -88,6 +89,19 @@ interface DailyOrder {
   date: string;
   status: string;
   data: OrderData;
+}
+
+interface ScrapeResult {
+  connection_id: number;
+  name: string;
+  status: string;
+  reason?: string;
+  error?: string;
+  warnings?: string[];
+  unmapped_letters?: string[];
+  config_notes?: string[];
+  attention?: string[];
+  orders?: { prevadzka: string; status: string; order_id: number }[];
 }
 
 const ALL_MENUS = ["A", "B", "C", "D", "V"];
@@ -171,6 +185,13 @@ const ClientDetail: React.FC = () => {
   const [editOrderTarget, setEditOrderTarget] = useState<DailyOrder | null>(null);
   const [showNewOrderModal, setShowNewOrderModal] = useState(false);
   const [orderActionLoading, setOrderActionLoading] = useState(false);
+
+  // Manuálny EduPage scrape (per prevádzka, ale reálne beží na celom
+  // pripojení — pozri handleRunScrape).
+  const [scrapeModalOpen, setScrapeModalOpen] = useState(false);
+  const [scrapeDate, setScrapeDate] = useState(() => toDateKey(new Date()));
+  const [scraping, setScraping] = useState(false);
+  const [scrapeResult, setScrapeResult] = useState<ScrapeResult | null>(null);
   const facilityRequestSeq = useRef(0);
 
   // Password reset
@@ -448,6 +469,44 @@ const ClientDetail: React.FC = () => {
     }
   };
 
+  // Scrape beží per EduPage pripojenie, nie per prevádzka — connection_id
+  // môže patriť viacerým prevádzkam naraz (napr. Zdravé Brúško: 5 celkov na
+  // jednom URL). Tlačidlo je na detaile jednej prevádzky, ale reálne prepíše
+  // dáta všetkých prevádzok na tom istom pripojení — na to varuje modal a
+  // presne to ukáže aj `orders` v `scrapeResult` po dobehnutí.
+  const handleRunScrape = async () => {
+    if (!facility?.edupage_connection) return;
+    setScraping(true);
+    setScrapeResult(null);
+    try {
+      const res = await apiFetch(`${API}/admin/edupage-connections/scrape/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: scrapeDate, connection_id: facility.edupage_connection }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        toastError(body?.error || "Načítanie z EduPage zlyhalo.");
+        return;
+      }
+      const result: ScrapeResult | undefined = body?.results?.[0];
+      setScrapeResult(result ?? null);
+      if (!result || result.status === "error") {
+        toastError(result?.error || "Načítanie z EduPage zlyhalo.");
+      } else if (result.status === "empty" || result.status === "skipped") {
+        toastWarning(`EduPage nevrátil žiadne dáta pre ${scrapeDate} (${result.reason || result.warnings?.join(", ") || "prázdny výsledok"}).`);
+      } else {
+        success(`Načítané z EduPage (${scrapeDate}): ${result.orders?.length ?? 0} prevádzok.`);
+        fetchOrders();
+      }
+    } catch (e) {
+      logger.error(e);
+      toastError("Chyba pri načítaní z EduPage.");
+    } finally {
+      setScraping(false);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     setFacility(null);
@@ -703,6 +762,15 @@ const ClientDetail: React.FC = () => {
               {canResetPassword && (
                 <Button variant="secondary" onClick={() => setShowResetConfirmation(true)} disabled={sendingReset} title="Odoslať reset hesla na email">
                   <KeyRound /> {sendingReset ? "Odosielam…" : "Reset hesla"}
+                </Button>
+              )}
+              {facility.edupage_connection && (
+                <Button
+                  variant="secondary"
+                  onClick={() => { setScrapeResult(null); setScrapeModalOpen(true); }}
+                  title="Manuálne stiahnuť objednávky z EduPage pre zvolený deň"
+                >
+                  <Download /> Scrapnúť z EduPage
                 </Button>
               )}
             </div>
@@ -1335,6 +1403,73 @@ const ClientDetail: React.FC = () => {
               <> Prevádzka už na dnes objednávku má — táto akcia ju prepíše.</>
             )}
           </p>
+        </Modal>
+      )}
+
+      {/* ── Manual EduPage scrape modal ── */}
+      {scrapeModalOpen && (
+        <Modal
+          title="Scrapnúť z EduPage"
+          onClose={() => { if (!scraping) setScrapeModalOpen(false); }}
+          icon={<Download />}
+          iconKind="warn"
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setScrapeModalOpen(false)} disabled={scraping}>Zavrieť</Button>
+              <Button variant="honey" onClick={handleRunScrape} disabled={scraping}>
+                {scraping ? "Sťahujem…" : "Spustiť scrape"}
+              </Button>
+            </>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "var(--ink-2)", marginBottom: 6 }}>Deň</label>
+              <input
+                type="date"
+                className="zpa-input"
+                value={scrapeDate}
+                disabled={scraping}
+                onChange={(e) => e.target.value && setScrapeDate(e.target.value)}
+                style={{ width: "auto" }}
+              />
+            </div>
+            <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
+              Táto akcia stiahne aktuálne dáta z EduPage pre <strong style={{ color: "var(--green-900)" }}>{scrapeDate}</strong> a{" "}
+              <strong style={{ color: "var(--green-900)" }}>úplne prepíše</strong> objednávky na tento deň — pre{" "}
+              <strong style={{ color: "var(--green-900)" }}>všetky prevádzky</strong>, ktoré sú napojené na rovnaké EduPage pripojenie ako{" "}
+              {facility.nazov}
+              {facility.edupage_connection_name ? ` (${facility.edupage_connection_name})` : ""}, nielen na túto jednu. Vypíše sa presný zoznam prevádzok, ktorých sa to dotklo.
+            </p>
+            {scrapeResult && (
+              <div style={{ borderTop: "1px solid var(--line-soft)", paddingTop: 12, fontSize: 13.5 }}>
+                {scrapeResult.status === "error" && (
+                  <p style={{ color: "var(--red-700, #b91c1c)", margin: 0 }}>Chyba: {scrapeResult.error}</p>
+                )}
+                {(scrapeResult.status === "empty" || scrapeResult.status === "skipped") && (
+                  <p style={{ color: "var(--ink-2)", margin: 0 }}>
+                    Prázdny výsledok{scrapeResult.reason ? ` — ${scrapeResult.reason}` : ""}
+                    {scrapeResult.warnings && scrapeResult.warnings.length > 0 ? ` (${scrapeResult.warnings.join(", ")})` : ""}.
+                  </p>
+                )}
+                {scrapeResult.status === "updated" && (
+                  <>
+                    <p style={{ margin: "0 0 6px", fontWeight: 600, color: "var(--green-900)" }}>Prepísané prevádzky:</p>
+                    <ul style={{ margin: 0, paddingLeft: 20 }}>
+                      {scrapeResult.orders?.map((o) => (
+                        <li key={o.order_id}>{o.prevadzka} ({o.status === "created" ? "nová" : "prepísaná"})</li>
+                      ))}
+                    </ul>
+                    {scrapeResult.unmapped_letters && scrapeResult.unmapped_letters.length > 0 && (
+                      <p style={{ marginTop: 8, color: "var(--honey-700, #a16207)" }}>
+                        Neznáme diéty: {scrapeResult.unmapped_letters.join(", ")}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </>

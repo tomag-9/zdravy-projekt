@@ -46,6 +46,15 @@ WEEKLY_REMINDER_TASK_NAME = "weekly-order-reminder-sunday"
 
 EDUPAGE_SCRAPE_TASK_PREFIX = "edupage-scrape-"
 DEDICATED_SCRAPE_TASK_PREFIX = f"{EDUPAGE_SCRAPE_TASK_PREFIX}dedicated-"
+# Hodinový priebežný náhľad (2.9.2026), nezávislý od uzávierok — pozri
+# `_sync_edupage_preview_scrape_schedule`. Meno zdieľa `EDUPAGE_SCRAPE_TASK_
+# PREFIX`, takže ho `_sync_edupage_scrape_schedule`'s orphan cleanup pri
+# každom uložení GlobalSettings zmaže a hneď nato túto funkciu treba zavolať
+# znova, aby ho založila naspäť — rovnaký (neškodný) vzor ako dedikované
+# pripojenia (`_sync_dedicated_connection_scrape_schedules`) nižšie. Poradie
+# volaní v `on_global_settings_saved` je preto dôležité.
+EDUPAGE_PREVIEW_SCRAPE_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}preview"
+EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD = 2
 
 # A connection can opt out of the shared GlobalSettings meal deadlines and
 # scrape on its own crontab instead (day before, Sun–Thu, targeting the next
@@ -621,7 +630,7 @@ def _sync_edupage_scrape_schedule(settings_instance) -> None:
                     ),
                     "enabled": True,
                     "description": (
-                        f"EduPage scrape: načíta objednávky pre "
+                        f"Posledný EduPage scrape: načíta objednávky pre "
                         f"{_meal_types_label_sk(meal_types_group)} "
                         f"(uzávierka: {deadline_labels}, "
                         f"cieli na "
@@ -710,7 +719,7 @@ def _sync_dedicated_connection_scrape_schedules(settings_instance) -> None:
                     ),
                     "enabled": True,
                     "description": (
-                        f"EduPage scrape ({connection.name}): spúšťa sa denne o "
+                        f"Posledný EduPage scrape ({connection.name}): spúšťa sa denne o "
                         f"{connection.dedicated_scrape_hour:02d}:"
                         f"{connection.dedicated_scrape_minute:02d} deň vopred "
                         f"(Ne–Št), načíta objednávky pre nasledujúci pracovný deň."
@@ -739,6 +748,78 @@ def _sync_dedicated_connection_scrape_schedules(settings_instance) -> None:
     except Exception as exc:
         logger.exception("Failed to sync dedicated scrape periodic tasks: %s", exc)
         _capture_signal_failure(exc, "dedicated_connection_scrape_schedule")
+
+
+def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
+    """Hodinový priebežný EduPage scrape na dnes .. dnes+2 dni (2.9.2026).
+
+    Nezávislý od `GlobalSettings` uzávierok/`edupage_scrape_time_*` — bežná
+    denná úloha (`_sync_edupage_scrape_schedule`) je AUTORITATÍVNY posledný
+    scrape pred uzávierkou (jej `PeriodicTask.description` je teraz zámerne
+    „Posledný EduPage scrape..."); táto úloha len priebežne dopĺňa náhľad na
+    ďalšie dni, aby admin/kuchyňa videli čísla skôr, než príde ten posledný
+    beh. Zápis je cez rovnaký `_apply_scrape` (UPDATE, nie ADD), takže
+    opakovaný scrape toho istého dňa každú hodinu je bezpečný — posledný beh
+    dňa ho jednoducho prepíše finálnymi číslami.
+
+    Beží každý deň (aj cez víkend — deň, na ktorý sa dátum v okne padne ako
+    voľno, task sám vynechá), 6:00–21:00, každú celú hodinu. Vypína sa
+    rovnakým prepínačom ako ostatný automatický scrape
+    (`edupage_auto_scrape_enabled`).
+    """
+    try:
+        from django.conf import settings
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+    except ImportError:
+        logger.warning(
+            "django_celery_beat not installed – skipping edupage preview scrape schedule sync."
+        )
+        return
+
+    try:
+        if not getattr(settings_instance, "edupage_auto_scrape_enabled", True):
+            deleted_count, _ = PeriodicTask.objects.filter(
+                name=EDUPAGE_PREVIEW_SCRAPE_TASK_NAME
+            ).delete()
+            if deleted_count:
+                logger.info(
+                    "Edupage auto scrape disabled; deleted preview periodic task"
+                )
+            return
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute="0",
+            hour="6-21",
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+            timezone=settings.TIME_ZONE,
+        )
+        PeriodicTask.objects.update_or_create(
+            name=EDUPAGE_PREVIEW_SCRAPE_TASK_NAME,
+            defaults={
+                "task": "api.tasks.scrape_edupage_orders_task",
+                "crontab": schedule,
+                "args": json.dumps([]),
+                "kwargs": json.dumps({"days_ahead": EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD}),
+                "enabled": True,
+                "description": (
+                    f"EduPage priebežný náhľad: každú hodinu (6:00–21:00) "
+                    f"dočíta objednávky na dnes až +{EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD} "
+                    f"dni dopredu, všetky jedlá. Doplnok k „Poslednému EduPage "
+                    f"scrapu“ — ten zostáva autoritatívny pre uzávierku."
+                ),
+            },
+        )
+        logger.info(
+            "Edupage preview scrape task synced: %s → hodinovo 6-21 (tz: %s)",
+            EDUPAGE_PREVIEW_SCRAPE_TASK_NAME,
+            settings.TIME_ZONE,
+        )
+
+    except Exception as exc:
+        logger.exception("Failed to sync edupage preview scrape periodic task: %s", exc)
+        _capture_signal_failure(exc, "edupage_preview_scrape_schedule")
 
 
 def _sync_weekly_reminder_schedule() -> None:
@@ -799,6 +880,9 @@ def on_global_settings_saved(sender, instance, created=False, **kwargs):
         _sync_weekly_reminder_schedule()
         _sync_edupage_scrape_schedule(instance)
         _sync_dedicated_connection_scrape_schedules(instance)
+        # Musí ísť posledná: zdieľa `EDUPAGE_SCRAPE_TASK_PREFIX`, takže by ju
+        # orphan cleanup vyššie zmazal, keby bežala pred nimi.
+        _sync_edupage_preview_scrape_schedule(instance)
 
         # Invalidate GlobalSettings cache
         from api.cache_service import clear_global_settings_cache

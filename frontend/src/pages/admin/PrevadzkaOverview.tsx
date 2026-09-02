@@ -1,11 +1,11 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { PageHead, Card, Input } from "./ui";
-import { previousBusinessDay } from "../../lib/businessDay";
+import { previousBusinessDay, dashboardMaxDate } from "../../lib/businessDay";
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -203,6 +203,10 @@ const PrevadzkaOverview: React.FC = () => {
   // víkend zobrazí stav za posledný predchádzajúci pracovný deň (piatok),
   // keďže cez víkend sa nič nedodáva a nasledujúci pondelok by ešte nemal dáta.
   const [date, setDate] = useState(() => toDateString(previousBusinessDay(new Date())));
+  // Rovnaký cap ako gramážny dashboard (`AdminDashboard.tsx`) — dnes + 2
+  // pracovné dni, zosúladené s hodinovým EduPage priebežným náhľadom, ktorý
+  // dáta na toto okno priebežne dopĺňa.
+  const maxDate = useMemo(() => dashboardMaxDate(), []);
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -236,7 +240,17 @@ const PrevadzkaOverview: React.FC = () => {
         title="Kontrola objednávok"
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
         actions={
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: "auto" }} />
+          <Input
+            type="date"
+            value={date}
+            max={maxDate}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (!val || val > maxDate) return;
+              setDate(val);
+            }}
+            style={{ width: "auto" }}
+          />
         }
       />
 
