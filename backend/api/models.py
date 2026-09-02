@@ -161,10 +161,15 @@ class ClosedDay(models.Model):
 
     date = models.DateField(unique=True)
     closed_at = models.DateTimeField(auto_now_add=True)
+    # SET_NULL (nie PROTECT) — kto deň uzamkol je audit informácia, nie
+    # niečo, čo má brániť zmazaniu jeho loginu (mazanie admin účtu padalo
+    # na ProtectedError, lebo dotyčný kedysi uzamkol jeden deň).
     closed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="closed_order_days",
+        null=True,
+        blank=True,
     )
 
     class Meta:
