@@ -144,6 +144,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // the previous day's currentOrder under the new date key (race condition fix)
     const selectedDateRef = useRef(selectedDate);
     const loadedPrevadzkaIdRef = useRef(activePrevadzkaId);
+    // "Zamknutý" strop pre Menu B/C/D po prísnom termíne — naposledy potvrdená
+    // (server/submit) hodnota, nad ktorú sa už nedá zvýšiť, len znížiť
+    // (user 2.9.2026). Aktualizuje sa pri načítaní objednávky zo servera a po
+    // úspešnom submite; medzitýmové lokálne úpravy ho nemenia.
+    const restrictedMenuCeilingsRef = useRef<Record<string, number>>({});
     const [prevDayLunches, setPrevDayLunches] = useState(0);
 
     const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(scopedKey('activeMeals', selectedDate), { breakfast: false, lunch: true, olovrant: false }));
@@ -240,6 +245,9 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         setTouchedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
+        // Predbežný strop z lokálneho draftu — server fetch nižšie ho prepíše
+        // autoritatívnou hodnotou hneď, ako odpovie.
+        restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(newOrder);
         setFullDayOrderState(safeParse(scopedKey('fullDayOrder', selectedDate), false));
         setFullDayData(safeParse(scopedKey('fullDayData', selectedDate), OrderService.createEmptyMeal()));
         setSpecialDietNote(safeParse(scopedKey('specialDietNote', selectedDate), ''));
@@ -265,6 +273,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                             const merged = OrderService.enforceStructure(serverOrder.data, OrderService.createEmptyOrder());
                             merged.status = serverOrder.status; // Ensure status is synced
                             setCurrentOrder(merged);
+                            restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(merged);
 
                             // Update active meals based on content
                             setActiveMeals(prevActive => {
@@ -739,6 +748,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 status: 'submitted'
             };
             setCurrentOrder(orderWithStatus);
+            restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(orderWithStatus);
 
             logger.debug('Order submitted to API');
             return true;
@@ -831,6 +841,23 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
     // Enhanced updateMenuCount to handle forced diets
     const updateMenuCount = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, menuType: string, count: number) => {
+        // Menu B/C/D po prísnom termíne: nedá sa nahlásiť/zvýšiť nad naposledy
+        // potvrdený (server/submit) počet, len znížiť/odhlásiť — pokus o vyššie
+        // číslo (aj cez tlačidlo +, aj priamym zadaním) sa preskočí naspäť na
+        // ten zamknutý strop (user 2.9.2026). Backend to aj tak vynúti
+        // (`_validate_deadlines`), toto je len rovnaká UX bez zbytočného
+        // zamietnutého requestu.
+        let clampedCount = count;
+        if (
+            OrderService.RESTRICTED_MENUS.includes(menuType)
+            && !OrderService.checkMenuBcDeadline(selectedDate, globalDeadlines)
+        ) {
+            const ceiling = restrictedMenuCeilingsRef.current[`${mealKey}|${category}|${menuType}`] ?? 0;
+            if (clampedCount > ceiling) {
+                clampedCount = ceiling;
+            }
+        }
+
         setTouchedMeals(prev => {
             const next = new Set(prev);
             next.add(mealKey);
@@ -838,12 +865,12 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         });
         notifyPackSeparatelyAdjustments(
             currentOrder,
-            OrderService.updateMenuCount(currentOrder, mealKey, category, menuType, count),
+            OrderService.updateMenuCount(currentOrder, mealKey, category, menuType, clampedCount),
             mealKey,
             category
         );
         setCurrentOrder((prev) => ({
-            ...OrderService.updateMenuCount(prev, mealKey, category, menuType, count),
+            ...OrderService.updateMenuCount(prev, mealKey, category, menuType, clampedCount),
             status: 'draft',
         }));
     };

@@ -387,6 +387,68 @@ describe('OrderService', () => {
         });
     });
 
+    describe('checkMenuBcDeadline', () => {
+        afterEach(() => {
+            vi.useRealTimers();
+            sessionStorage.removeItem('server_time_offset_ms');
+        });
+
+        it('allows Menu B/C changes more than 2 days before the meal date', () => {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 3);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkMenuBcDeadline(dateStr, { menu_bc: '07:30', menu_bc_days_before: 2 })
+            ).toBe(true);
+        });
+
+        it('blocks Menu B/C changes once the strict 2-day-before deadline has passed', () => {
+            const now = new Date();
+            now.setHours(7, 31, 0, 0);
+            vi.setSystemTime(now);
+
+            const mealDate = new Date(now);
+            mealDate.setDate(mealDate.getDate() + 2);
+            const dateStr = localDateStr(mealDate);
+
+            expect(
+                OrderService.checkMenuBcDeadline(dateStr, { menu_bc: '07:30', menu_bc_days_before: 2 })
+            ).toBe(false);
+        });
+
+        it('defaults to allowed when no deadlines are provided', () => {
+            expect(OrderService.checkMenuBcDeadline('2099-01-01')).toBe(true);
+        });
+    });
+
+    describe('extractRestrictedMenuCounts', () => {
+        it('collects B/C/D counts keyed by meal|category|menu, skipping zeros and Menu A', () => {
+            const order: DailyOrder = {
+                ...OrderService.createEmptyOrder(),
+                lunch: {
+                    ...OrderService.createEmptyOrder().lunch,
+                    Škôlka: {
+                        menuCounts: { A: 5, B: 3, C: 0 },
+                        diets: {},
+                    },
+                },
+            };
+
+            const counts = OrderService.extractRestrictedMenuCounts(order);
+
+            expect(counts).toEqual({ 'lunch|Škôlka|B': 3 });
+        });
+
+        it('returns an empty map when nothing restricted is present', () => {
+            expect(OrderService.extractRestrictedMenuCounts(OrderService.createEmptyOrder())).toEqual({});
+        });
+    });
+
     describe('getServerNow', () => {
         afterEach(() => {
             vi.useRealTimers();
