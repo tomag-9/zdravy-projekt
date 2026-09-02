@@ -687,12 +687,16 @@ class EdupageScraper:
 
     @staticmethod
     def resolve_payer_diet_name(nazov: str) -> str | None:
-        """Map an Edupage payer group label to one of our Diet.name values."""
-        key = _normalise_key(nazov)
+        """Map an Edupage payer group label to one of our Diet.name values.
 
-        # SŠV is used by Edupage schools for the vegetarian secondary-school group.
-        if "ssv" in key:
-            return "VEGGIE"
+        Do NOT special-case "SŠV" here: live data (2.9.2026) shows SŠ Veterinárna
+        payer groups are "SŠV Žiak"/"SŠV dospelý" — plain portion labels, not diets.
+        Their actual menu choice (Klasik/Menu B/Vege) lives at the menu-letter level
+        (skratka "sšvA"/"sšvB"/"sšvV") and is resolved there. A previous blanket
+        "ssv in key → VEGGIE" rule forced every SŠV order to VEGGIE regardless of
+        the letter they actually picked (user-reported 2.9.2026).
+        """
+        key = _normalise_key(nazov)
 
         for fragment, diet_name in sorted(
             _NAZOV_KEYWORD_MAP.items(), key=lambda item: len(item[0]), reverse=True
