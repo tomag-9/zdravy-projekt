@@ -37,6 +37,31 @@ def _rendered_rows(data: dict) -> list[tuple[str, str]]:
     return rows
 
 
+def _portion_rows_after_band(data: dict, band_title: str) -> list[tuple[str, str]]:
+    """(label, počet) presne z riadkov `kind == "portion-row"` pod daným
+    „Sumár X" bandom — preskočí „hlavný údaj" (#529), ktorý má iný tvar bunky
+    (label/text namiesto label/count) a rátal by sa doňho inak."""
+    spec = build_table_spec(data)
+    all_rows = [*spec["rows"], *spec["footer"]]
+    band_index = next(
+        index
+        for index, row in enumerate(all_rows)
+        if row["kind"] in ("portion-band",)
+        and str(row["cells"][0].get("text") or "") == band_title
+    )
+    out = []
+    started = False
+    for row in all_rows[band_index + 1 :]:
+        if row["kind"] != "portion-row":
+            if started:
+                break
+            continue  # preskoč "headline-summary" riadky pred prvým portion-row
+        started = True
+        cell = row["cells"][0]
+        out.append((str(cell.get("text") or ""), cell.get("count") or ""))
+    return out
+
+
 @pytest.mark.django_db
 class TestGramageDashboardExports:
     def test_dashboard_subtotals_exclude_diets_and_export_to_xlsx(self):
@@ -257,20 +282,16 @@ class TestGramageDashboardExports:
             for vydaj in data["vydaje"]
         ]
         expected_summaries = [
-            (f"Sumár {index + 1}", portion_summary(data, rows))
+            (f"Sumár {index + 1} (s diétami)", portion_summary(data, rows))
             for index, rows in enumerate(vydaj_rows)
         ]
         # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
         # identický so "Sumár dokopy"); ten sa objaví až od 3 klastrov (#531).
-        expected_summaries.append(("Sumár dokopy", portion_summary(data)))
+        expected_summaries.append(("Sumár dokopy (s diétami)", portion_summary(data)))
 
-        rendered = _rendered_rows(data)
         for title, expected_rows in expected_summaries:
-            band_index = next(
-                index for index, (label, _) in enumerate(rendered) if label == title
-            )
-            for offset, expected in enumerate(expected_rows, start=1):
-                label, count = rendered[band_index + offset]
+            actual_rows = _portion_rows_after_band(data, title)
+            for expected, (label, count) in zip(expected_rows, actual_rows):
                 assert label == expected["label"]
                 assert count == format_count(expected["count"])
 
@@ -325,9 +346,10 @@ class TestGramageDashboardExports:
         assert ' / <span class="client-note-inline">bez cibule</span>' in html
         assert "Poznámka k objednávke:" not in html
 
-    def test_diet_with_a_description_shows_it_next_to_the_diet_in_html(self):
-        """#2 — poznámka nastavená v Správe diét (`Diet.description`) sa má
-        prejaviť rovno v gramážnej tabuľke/PDF, nielen v Správe diét samotnej."""
+    def test_diet_description_is_computed_but_never_rendered_in_the_table(self):
+        """#528 — `Diet.description` sa v gramážnej tabuľke/PDF nezobrazuje;
+        `gramage_dashboard()` ju naďalej počíta (mohla by ju použiť Správa
+        diét), spec ju len nepremieta do žiadnej bunky."""
         from api.models import Diet
 
         user = User.objects.create_user(
@@ -369,7 +391,8 @@ class TestGramageDashboardExports:
         assert data["diet_descriptions"] == {"No Milk": "kontrolovať s rodičom"}
         html = render_table(build_table_spec(data))
 
-        assert '<span class="diet-note-inline"> — kontrolovať s rodičom</span>' in html
+        assert "kontrolovať s rodičom" not in html
+        assert "diet-note-inline" not in html
 
     def test_snack_with_lunch_prevadzka_highlights_only_its_snack_cells(self):
         """`Prevadzka.olovrant_s_obedom` sa premietne do gramážnej tabuľky ako

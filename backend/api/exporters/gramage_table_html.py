@@ -98,9 +98,6 @@ def _cell(cell: dict) -> str:
         inner = text
         if cell.get("swatch"):
             inner = _swatch(cell["swatch"]) + inner
-        note = cell.get("note")
-        if note:
-            inner += f'<span class="diet-note-inline"> — {escape(str(note))}</span>'
         count = escape(str(cell["count"]))
         body = (
             f'<span class="lbl-line"><span>{inner}</span>'
@@ -153,7 +150,7 @@ def _row(row: dict) -> str:
             f"{sub_html}</span></td></tr>"
         )
 
-    if kind in ("note-admin", "note-delivery", "total-ms-porcie"):
+    if kind in ("note-admin", "note-delivery", "total-ms-porcie", "headline-summary"):
         cell = cells[0]
         return (
             f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
@@ -162,6 +159,31 @@ def _row(row: dict) -> str:
         )
 
     return f"<tr{attrs}{style}>" + "".join(_cell(cell) for cell in cells) + "</tr>"
+
+
+def _tbody_chunks(rows: list[dict]) -> list[list[dict]]:
+    """Zoskupí riadky jednej prevádzky do vlastného `<tbody>` (#527).
+
+    Riadky klienta (`kind == "client"`, jeho sub-riadky a poznámky) nesú
+    rovnaký `group_id` — kým sú v jednom `<tbody>`, prehliadač aj WeasyPrint
+    ho vedia zalomiť ako celok (`break-inside: avoid` v `gramage-pdf.css`),
+    takže sa škôlka na papieri nepretrhne v polovici. Riadky bez `group_id`
+    (trasa, pás výdaja, súhrny) idú každý do vlastného `<tbody>` — netreba im
+    brániť v zalomení, sú to jednotlivé riadky.
+    """
+    chunks: list[list[dict]] = []
+    for row in rows:
+        group_id = row.get("group_id")
+        if group_id and chunks and chunks[-1][0].get("group_id") == group_id:
+            chunks[-1].append(row)
+        else:
+            chunks.append([row])
+    return chunks
+
+
+def _tbody(rows_chunk: list[dict]) -> str:
+    cls = ' class="client-group"' if rows_chunk[0].get("group_id") else ""
+    return f"<tbody{cls}>" + "".join(_row(row) for row in rows_chunk) + "</tbody>"
 
 
 def render_table(spec: dict) -> str:
@@ -182,7 +204,7 @@ def render_table(spec: dict) -> str:
         f"{escape(str(band.get('text') or ''))}</th>"
         for band in header.get("meals") or []
     )
-    body = "".join(_row(row) for row in spec.get("rows") or [])
+    body = "".join(_tbody(chunk) for chunk in _tbody_chunks(spec.get("rows") or []))
     footer = "".join(_row(row) for row in spec.get("footer") or [])
 
     # Hlavička má tri poschodia (jedlo → stĺpcová skupina → zložka). Rohová bunka
@@ -199,7 +221,7 @@ def render_table(spec: dict) -> str:
     return (
         '<table class="zpa-gram">'
         f"<thead>{''.join(head_rows)}</thead>"
-        f"<tbody>{body}</tbody>"
+        f"{body}"
         f"<tfoot>{footer}</tfoot>"
         "</table>"
     )

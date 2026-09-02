@@ -71,14 +71,13 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
       <td key={index} className={cell.css || undefined} colSpan={cell.colspan}>
         {cell.count !== undefined ? (
           <span className="lbl-line">
-            <span title={cell.note ? `${cell.text} — ${cell.note}` : cell.text}>
+            <span title={cell.text}>
               {cell.swatch && (
                 <span style={{ display: "inline-flex", marginRight: 8 }}>
                   <DietColorSwatch color={cell.swatch.color} baseColors={cell.swatch.base_colors} size={9} />
                 </span>
               )}
               {cell.text}
-              {cell.note && <span className="diet-note-inline"> — {cell.note}</span>}
             </span>
             <span className="count-badge">{cell.count}</span>
           </span>
@@ -196,7 +195,12 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
       );
     }
 
-    if (row.kind === "note-admin" || row.kind === "note-delivery" || row.kind === "total-ms-porcie") {
+    if (
+      row.kind === "note-admin" ||
+      row.kind === "note-delivery" ||
+      row.kind === "total-ms-porcie" ||
+      row.kind === "headline-summary"
+    ) {
       const cell = row.cells[0];
       return (
         <tr key={index} className={row.css}>
