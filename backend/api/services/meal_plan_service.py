@@ -126,6 +126,9 @@ def _merge_billed_sub_rows(sub_rows: list[dict]) -> list[dict]:
             continue
         existing["count"] = _tidy_count(existing["count"] + sub_row["count"])
         existing["_heads"] = existing.get("_heads", 0) + sub_row.get("_heads", 0)
+        existing["_ms_recalc"] = existing.get("_ms_recalc", Decimal("0")) + sub_row.get(
+            "_ms_recalc", Decimal("0")
+        )
         existing["col_grams"] = _sum_col_grams(
             existing["col_grams"], sub_row["col_grams"]
         )
@@ -1104,6 +1107,12 @@ class MealPlanService:
                                     "label": label,
                                     "count": billed_count,
                                     "_heads": count,
+                                    # #532 — súhrn porcií prepočítaný na MŠ
+                                    # porcie NIE cez `billing_portion_coefficients`
+                                    # (to je zriedkavá prevádzková výnimka), ale
+                                    # cez všeobecný katalóg `PortionType.coefficient`
+                                    # (MŠ 1×, 1.st 1,25×, dospelý 2× …).
+                                    "_ms_recalc": Decimal(count) * coeff,
                                     "col_grams": grams,
                                 }
                             )
@@ -1139,6 +1148,7 @@ class MealPlanService:
                                     ),
                                     "count": billed_diet_count,
                                     "_heads": diet_count,
+                                    "_ms_recalc": Decimal(diet_count) * coeff,
                                     "col_grams": diet_grams,
                                 }
                             )
@@ -1225,6 +1235,7 @@ class MealPlanService:
                                             pack_count, billing_coeff
                                         ),
                                         "_heads": pack_count,
+                                        "_ms_recalc": Decimal(pack_count) * coeff,
                                         "col_grams": pack_grams,
                                     }
                                 )
@@ -1260,6 +1271,7 @@ class MealPlanService:
                                             pack_count, billing_coeff
                                         ),
                                         "_heads": pack_count,
+                                        "_ms_recalc": Decimal(pack_count) * coeff,
                                         "col_grams": pack_diet_grams,
                                     }
                                 )
@@ -1303,9 +1315,10 @@ class MealPlanService:
             # Až po zlúčení fakturačných riadkov — polievka sa má rozdeliť
             # medzi finálne menu riadky, nie medzi tie pred premenovaním.
             sub_rows = _merge_soup_into_main_course(sub_rows)
-            # `_heads` (surový počet hláv pred `_billed_count`) ostáva na
-            # riadku — gramage_table_spec (#532, súhrny „počet"/„klasik"/
-            # „diéty"/„spolu") ho potrebuje popri už prepočítanom `count`.
+            # `_heads` (surový počet hláv) a `_ms_recalc` (hlavy × katalógový
+            # `PortionType.coefficient`) ostávajú na riadku — gramage_table_spec
+            # (#532, súhrn porcií za klaster) `_ms_recalc` potrebuje na
+            # prepočet „na MŠ porcie" nezávislý od `billing_portion_coefficients`.
 
             if sub_rows:
                 admin_order_note = str(

@@ -17,11 +17,9 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 from .gramage_dashboard_export import (
-    add_grid,
     blend_with_white,
     component_subtitle,
     diet_color,
-    empty_grid,
     group_label,
     meal_hue,
     portion_summary,
@@ -452,6 +450,7 @@ def build_table_spec(
         # tlači je poradie stále "prvý zobrazený, druhý zobrazený", takže sa to
         # správa rozumne aj keď sa niekedy vynechá stredný klaster z výberu.
         first_two_rows: list[dict] = []
+        first_two_names: list[str] = []
         for position, vydaj in enumerate(shown_vydaje):
             # Výdajný bod je najvyššia úroveň tabuľky — v tlači ide každý na
             # vlastný list, nech si ho jeho obsluha vezme celý.
@@ -495,32 +494,30 @@ def build_table_spec(
                 for route in vydaj.get("routes") or []
                 for r in route.get("rows") or []
             ]
+            cluster_name = vydaj.get("name") or ""
             if position < 2:
                 first_two_rows.extend(vydaj_rows)
+                first_two_names.append(cluster_name)
             rows.extend(
                 _cluster_summary_rows(
-                    f"Sumár {position + 1}",
+                    [cluster_name],
                     vydaj_rows,
                     data,
-                    all_groups,
-                    keep,
                     groups,
                     hues,
                     total_columns,
                 )
             )
-            # Presne 2 zobrazené klastre: "Sumár 1 a 2" by bol identický so
-            # "Sumár dokopy" — zbytočná duplicita pre bežný prípad (Vydaj A/B
-            # bez tretieho klastra). Zmysel má, až keď je aj tretí (British
+            # Presne 2 zobrazené klastre: kombinovaný súhrn by bol identický
+            # s celkovým — zbytočná duplicita pre bežný prípad (Vydaj A/B bez
+            # tretieho klastra). Zmysel má, až keď je aj tretí (British
             # School), voči ktorému sa medzisúčet prvých dvoch odlišuje.
             if position == 1 and len(shown_vydaje) > 2:
                 rows.extend(
                     _cluster_summary_rows(
-                        "Sumár 1 a 2",
+                        first_two_names,
                         first_two_rows,
                         data,
-                        all_groups,
-                        keep,
                         groups,
                         hues,
                         total_columns,
@@ -570,12 +567,11 @@ def build_table_spec(
         footer_totals = data.get("totals") or []
         footer_rows = data.get("rows") or []
 
+    footer_names = [v.get("name") or "" for v in shown_vydaje]
     footer = _cluster_summary_rows(
-        "Sumár dokopy",
+        footer_names,
         footer_rows,
         data,
-        all_groups,
-        keep,
         groups,
         hues,
         total_columns,
@@ -922,120 +918,124 @@ def _client_rows(
     return out
 
 
-# Päť pomenovaných sekcií súhrnu porcií (#532), v tomto poradí. Prvé dve sú
-# tá istá vec (kompletný súčet, štandard + diéty) dvoma metrikami — surové
-# hlavy vs. fakturačne prepočítané; posledné tri sú rozpad podľa typu
-# riadku, surovými hlavami (bez prepočtu — ten už dal „prepočet" vyššie).
-# „Spolu" preto číselne sedí s „počet" (klasik + diéty = kompletný súčet) —
-# je to zámerná krížová kontrola, nie duplicitná informácia navyše.
-_SUMMARY_SECTIONS: tuple[tuple[str, str, str | None], ...] = (
-    ("počet", "heads", None),
-    ("prepočet", "count", None),
-    ("klasik", "heads", "standard"),
-    ("diéty", "heads", "diet"),
-    ("spolu", "heads", None),
+# Jedlá zoskupené do troch pásiem pre klastrový súhrn (#532) — polievka a
+# hlavné jedlo sú jeden údaj „Obed", presne ako v hlavičke tabuľky
+# (`_MEAL_BANDS`). Poradie je chronologické (raňajky → obed → olovrant),
+# nezávisle od poradia stĺpcov v tabuľke.
+_CLUSTER_SUMMARY_MEAL_BANDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("breakfast_snack",), "Raňajky"),
+    (("soup", "main_course"), "Obed"),
+    (("afternoon_snack",), "Olovrant"),
 )
 
 
-def _own_group_index(sub_row: dict, col_groups: list[dict]) -> int | None:
-    """Ktorej stĺpcovej skupine riadok patrí — rovnaká zhoda (jedlo + variant
-    + diéta cez label) ako `gramage_dashboard_export.portion_summary()`,
-    len tu parametrizovaná na metriku/typ (#532), ktoré `portion_summary()`
-    samo osebe nepočíta."""
-    expected_diet = sub_row.get("label") if sub_row.get("type") == "diet" else ""
-    for group_index, group in enumerate(col_groups):
-        if (
-            group.get("meal") == sub_row.get("meal")
-            and str(group.get("variant") or "") == str(sub_row.get("variant") or "")
-            and str(group.get("diet_name") or "") == str(expected_diet or "")
-        ):
-            return group_index
-    return None
+def _cluster_short_label(name: str) -> str:
+    """ "Cluster A" → "A" — krátky názov pre kombinovaný nadpis súhrnu
+    ("SUMÁR CLUSTER A + B S DIÉTAMI MŠ")."""
+    stripped = str(name or "").strip()
+    prefix = "cluster "
+    if stripped.lower().startswith(prefix):
+        return stripped[len(prefix) :].strip()
+    return stripped
 
 
-def _meal_group_summary(
-    rows_for_summary: list[dict],
-    col_groups: list[dict],
-    metric: str,
-    type_filter: str | None,
-) -> list[dict]:
-    """Súčet porcií po stĺpcových skupinách — jedna položka na skupinu, ako
-    `portion_summary()`, len tu vieme zvoliť metriku (`"heads"` = surové
-    hlavy pred fakturačným prepočtom, `"count"` = už prepočítané na MŠ
-    porcie) a obmedziť na jeden typ riadku (`"standard"`/`"diet"`/`None` =
-    oba, #532)."""
-    summary = [
-        {
-            "label": group_label(group),
-            "count": Decimal("0"),
-            "col_grams": empty_grid(col_groups),
-        }
-        for group in col_groups
-    ]
-    for row in rows_for_summary:
-        for sub_row in row.get("sub_rows") or []:
-            row_type = sub_row.get("type")
-            if row_type not in ("standard", "diet"):
-                continue
-            if type_filter is not None and row_type != type_filter:
-                continue
-            own_index = _own_group_index(sub_row, col_groups)
-            if own_index is None:
-                continue
-            value = sub_row.get("_heads") if metric == "heads" else sub_row.get("count")
-            # Polievka nesie aj gramáž hlavného jedla zlúčenú k sebe (viď
-            # `_merge_soup_into_main_course`) — počet sa preto pripočíta do
-            # každej skupiny, kde riadok má reálne čísla, nielen do „svojej".
-            sub_row_grams = sub_row.get("col_grams") or []
-            for group_index, grams in enumerate(sub_row_grams):
-                if group_index != own_index and not grams:
+def _cluster_summary_title(names: list[str]) -> str:
+    if not names:
+        return "SUMÁR S DIÉTAMI MŠ"
+    if len(names) == 1:
+        return f"SUMÁR {names[0].upper()} S DIÉTAMI MŠ"
+    combined = " + ".join(_cluster_short_label(name) for name in names)
+    return f"SUMÁR CLUSTER {combined} S DIÉTAMI MŠ"
+
+
+def _cluster_diety_title(names: list[str]) -> str:
+    if not names:
+        return "DIÉTY"
+    if len(names) == 1:
+        return f"{names[0].upper()} DIÉTY"
+    combined = " + ".join(_cluster_short_label(name) for name in names)
+    return f"CLUSTER {combined} DIÉTY"
+
+
+def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list[dict]:
+    """Jeden riadok na jedlo (Raňajky/Obed/Olovrant), len tie, ktoré sú v
+    tabuľke naozaj vidno — a súčet je `_ms_recalc` (surové hlavy × katalógový
+    `PortionType.coefficient`, MealPlanService), nie fakturačný
+    `billing_portion_coefficients` (#532: „ak mám porciu MŠ tak +1, ak
+    dospelý +2, ak 1.st +1,25 — presne podľa toho, ako to je v katalógu
+    jedál"). Sčítava štandard, diétu aj „zvlášť"/„zvlášť do GN" — tie sú
+    komplementárnou podmnožinou toho istého jedla, nie navyše."""
+    present_meals = {group.get("meal") for _, group in groups}
+    out: list[dict] = []
+    for meal_keys, label in _CLUSTER_SUMMARY_MEAL_BANDS:
+        if not present_meals & set(meal_keys):
+            continue
+        total = Decimal("0")
+        for row in rows_for_summary:
+            for sub_row in row.get("sub_rows") or []:
+                if sub_row.get("meal") not in meal_keys:
                     continue
-                summary[group_index]["count"] += _as_decimal(value)
-                add_grid(summary[group_index]["col_grams"], sub_row_grams, group_index)
-    return summary
+                if sub_row.get("type") not in (
+                    "standard",
+                    "diet",
+                    "zvlast",
+                    "zvlast_gn",
+                ):
+                    continue
+                total += _as_decimal(sub_row.get("_ms_recalc"))
+        out.append({"label": label, "total": total})
+    return out
 
 
 def _cluster_summary_rows(
-    title_prefix: str,
+    names: list[str],
     rows_for_summary: list[dict],
     data: dict,
-    col_groups: list[dict],
-    keep: list[int],
     groups: list[dict],
     hues: list[str],
     total_columns: int,
 ) -> list[dict]:
-    """Celý „Sumár X" blok — päť pomenovaných sekcií (#532): počet, prepočet,
-    klasik, diéty, spolu, každá so svojimi riadkami po stĺpcovej skupine.
-    Sekcia „diéty" má navyše pod sebou rozpad po mene diéty (`_diet_name_rows`),
-    presne taký, aký admin pozná z per-klientského súhrnu.
+    """Celý súhrn jedného klastra (alebo kombinácie klastrov) — #532:
+
+    „SUMÁR CLUSTER A S DIÉTAMI MŠ" a pod ním 1–3 riadky (len prítomné
+    jedlá), každý ako „Obed: 3345 MŠ" — jedno číslo, štandard aj diéty
+    spolu, prepočítané cez `PortionType.coefficient`. Hneď pod tým, ak sú v
+    skupine nejaké diéty, „CLUSTER A DIÉTY" s rozpadom podľa mena diéty
+    (`_diet_name_rows`), rovnaký ako per-klientský súhrn.
     """
-    rows: list[dict] = []
-    for suffix, metric, type_filter in _SUMMARY_SECTIONS:
+    rows: list[dict] = [
+        _band(
+            "portion-band",
+            _cluster_summary_title(names),
+            total_columns,
+            css="portion-summary-band",
+        )
+    ]
+    for item in _cluster_ms_totals(rows_for_summary, groups):
+        rows.append(
+            {
+                "kind": "cluster-ms-row",
+                "css": "cluster-ms-row",
+                "cells": [
+                    {
+                        "label": f"{item['label']}:",
+                        "text": f"{format_count(item['total'])} MŠ",
+                        "colspan": total_columns,
+                    }
+                ],
+            }
+        )
+    diet_rows = _diet_name_rows(rows_for_summary, data, groups, hues)
+    if diet_rows:
         rows.append(
             _band(
                 "portion-band",
-                f"{title_prefix} — {suffix.upper()}",
+                _cluster_diety_title(names),
                 total_columns,
                 css="portion-summary-band",
             )
         )
-        summary = _meal_group_summary(rows_for_summary, col_groups, metric, type_filter)
-        for index, item in enumerate(summary):
-            # Súhrn má jednu položku na stĺpcovú skupinu; odfiltrované varianty
-            # (bod 7 — tlač len Menu A) sa nesmú objaviť ani tu.
-            if index not in keep:
-                continue
-            rows.append(
-                {
-                    "kind": "portion-row",
-                    "css": "portion-summary-row",
-                    "cells": [_label_cell(item.get("label") or "", item.get("count"))]
-                    + _gram_cells(item.get("col_grams") or [], groups, hues),
-                }
-            )
-        if type_filter == "diet":
-            rows.extend(_diet_name_rows(rows_for_summary, data, groups, hues))
+        rows.extend(diet_rows)
     return rows
 
 

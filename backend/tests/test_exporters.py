@@ -10,9 +10,8 @@ from decimal import Decimal
 import pytest
 from django.contrib.auth.models import User
 
-from api.exporters.gramage_dashboard_export import portion_summary
 from api.exporters.gramage_table_html import render_table
-from api.exporters.gramage_table_spec import build_table_spec, format_count
+from api.exporters.gramage_table_spec import build_table_spec
 from api.models import (
     Celok,
     DailyMealPlan,
@@ -37,9 +36,9 @@ def _rendered_rows(data: dict) -> list[tuple[str, str]]:
     return rows
 
 
-def _portion_rows_after_band(data: dict, band_title: str) -> list[tuple[str, str]]:
-    """(label, počet) z `portion-row` riadkov priamo pod pásmom s daným
-    presným textom (napr. „Sumár 1 — KLASIK", #532)."""
+def _cluster_ms_rows_after_band(data: dict, band_title: str) -> dict[str, str]:
+    """{jedlo: "X MŠ"} z `cluster-ms-row` riadkov priamo pod pásmom s daným
+    presným textom (napr. „SUMÁR CLUSTER A S DIÉTAMI MŠ", #532)."""
     spec = build_table_spec(data)
     all_rows = [*spec["rows"], *spec["footer"]]
     band_index = next(
@@ -47,12 +46,12 @@ def _portion_rows_after_band(data: dict, band_title: str) -> list[tuple[str, str
         for index, row in enumerate(all_rows)
         if row["kind"] == "portion-band" and row["cells"][0].get("text") == band_title
     )
-    out = []
+    out: dict[str, str] = {}
     for row in all_rows[band_index + 1 :]:
-        if row["kind"] != "portion-row":
+        if row["kind"] != "cluster-ms-row":
             break
         cell = row["cells"][0]
-        out.append((str(cell.get("text") or ""), cell.get("count") or ""))
+        out[str(cell.get("label") or "")] = str(cell.get("text") or "")
     return out
 
 
@@ -271,25 +270,21 @@ class TestGramageDashboardExports:
         data = MealPlanService.gramage_dashboard(plan.date.isoformat())
         assert len(data["vydaje"]) == 2
         assert len(data["unassigned_rows"]) == 1
-        vydaj_rows = [
-            [row for route in vydaj.get("routes", []) for row in route.get("rows", [])]
-            for vydaj in data["vydaje"]
-        ]
-        # Objednávky tu nemajú diéty, takže KLASIK (bez diét, surové hlavy)
-        # sedí presne s priamo dopočítaným `portion_summary()` — #532.
-        expected_summaries = [
-            (f"Sumár {index + 1} — KLASIK", portion_summary(data, rows))
-            for index, rows in enumerate(vydaj_rows)
-        ]
-        # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
-        # identický so "Sumár dokopy"); ten sa objaví až od 3 klastrov (#531).
-        expected_summaries.append(("Sumár dokopy — KLASIK", portion_summary(data)))
 
-        for title, expected_rows in expected_summaries:
-            actual_rows = _portion_rows_after_band(data, title)
-            for expected, (label, count) in zip(expected_rows, actual_rows):
-                assert label == expected["label"]
-                assert count == format_count(expected["count"])
+        # Škôlka má PortionType.coefficient 1.0000, žiadne diéty — MŠ prepočet
+        # (#532) sa tu preto rovná surovému počtu hláv z objednávky (1/2/3).
+        assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER A S DIÉTAMI MŠ") == {
+            "Obed:": "1 MŠ"
+        }
+        assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER B S DIÉTAMI MŠ") == {
+            "Obed:": "2 MŠ"
+        }
+        # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
+        # identický s celkovým); ten sa objaví až od 3 klastrov (#531).
+        # Celkový súčet ide cez VŠETKY prevádzky vrátane nepriradenej (1+2+3).
+        assert _cluster_ms_rows_after_band(
+            data, "SUMÁR CLUSTER A + B S DIÉTAMI MŠ"
+        ) == {"Obed:": "6 MŠ"}
 
     def test_admin_order_and_delivery_notes_export_to_xlsx_and_pdf(self):
         user = User.objects.create_user(

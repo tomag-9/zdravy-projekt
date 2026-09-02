@@ -129,6 +129,18 @@
     font-family: var(--font-display);
     padding-left: 20px;
 }
+/* Klastrový súhrn prepočítaný na MŠ porcie (#532) — "Obed: 3345 MŠ", jeden
+   riadok na jedlo namiesto celej gramážovej mriežky. */
+.zpa-gram .cluster-ms-row td {
+    background: rgba(255,201,92,0.08);
+    color: var(--green-900);
+    border-top: 1px solid rgba(201,150,35,0.16);
+    padding: 8px 20px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 13px;
+}
+.zpa-gram .cluster-ms-row strong { color: var(--mustard-700); }
 /* Začiatok novej škôlky (prevádzky) — výrazný žltý pás cez celý riadok. */
 .zpa-gram .client-row td {
     background: rgba(255,201,92,0.42);

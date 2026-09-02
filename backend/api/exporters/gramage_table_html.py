@@ -150,7 +150,7 @@ def _row(row: dict) -> str:
             f"{sub_html}</span></td></tr>"
         )
 
-    if kind in ("note-admin", "note-delivery", "total-ms-porcie"):
+    if kind in ("note-admin", "note-delivery", "total-ms-porcie", "cluster-ms-row"):
         cell = cells[0]
         return (
             f"<tr{attrs}><td{_attrs(colspan=cell.get('colspan'))}>"
