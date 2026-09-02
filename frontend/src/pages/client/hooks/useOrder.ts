@@ -19,6 +19,12 @@ interface PrevadzkaClosure {
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
+// Celodenná objednávka drží počty v `fullDayData` mimo `DailyOrder.breakfast/
+// lunch/olovrant` — tento label ich v `restrictedMenuCeilingsRef` odlíši od
+// bežných jedál (nemôže kolidovať s reálnym mealKey, tie sú len breakfast/
+// lunch/olovrant).
+const FULL_DAY_CEILING_LABEL = 'fullDay';
+
 // Jedálniček items are stored under 4 categories (breakfast_snack/soup/
 // main_course/afternoon_snack); the order form groups by 3 meal keys
 // (breakfast/lunch/olovrant), with soup+main_course both counting toward
@@ -249,7 +255,15 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // autoritatívnou hodnotou hneď, ako odpovie.
         restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(newOrder);
         setFullDayOrderState(safeParse(scopedKey('fullDayOrder', selectedDate), false));
-        setFullDayData(safeParse(scopedKey('fullDayData', selectedDate), OrderService.createEmptyMeal()));
+        const loadedFullDayData = safeParse(scopedKey('fullDayData', selectedDate), OrderService.createEmptyMeal());
+        setFullDayData(loadedFullDayData);
+        // Celodenná objednávka nemá vlastný server fetch (ide pod 'breakfast' v
+        // payloade až pri submite) — localStorage je tu jediný zdroj "posledného
+        // potvrdeného" stavu, kým nepríde ďalší úspešný submit.
+        restrictedMenuCeilingsRef.current = {
+            ...restrictedMenuCeilingsRef.current,
+            ...OrderService.extractRestrictedMenuCountsForMeal(loadedFullDayData, FULL_DAY_CEILING_LABEL),
+        };
         setSpecialDietNote(safeParse(scopedKey('specialDietNote', selectedDate), ''));
     }, [selectedDate, activePrevadzkaId, scopedKey]);
 
@@ -595,12 +609,26 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     });
 
     const updateFullDayMenuCount = (category: string, menuType: string, count: number) => {
+        // Rovnaký zamknutý strop ako bežná objednávka (viď `updateMenuCount`) —
+        // celodenná objednávka má vlastný blob mimo DailyOrder, ale rovnaký
+        // Menu B/C/D termín (user 2.9.2026).
+        let clampedCount = count;
+        if (
+            OrderService.RESTRICTED_MENUS.includes(menuType)
+            && !OrderService.checkMenuBcDeadline(selectedDate, globalDeadlines)
+        ) {
+            const ceiling = restrictedMenuCeilingsRef.current[`${FULL_DAY_CEILING_LABEL}|${category}|${menuType}`] ?? 0;
+            if (clampedCount > ceiling) {
+                clampedCount = ceiling;
+            }
+        }
+
         notifyCategoryAdjustments(
             fullDayData[category],
-            OrderService.updateMenuCount(wrapFullDay(fullDayData), 'breakfast', category, menuType, count).breakfast[category]
+            OrderService.updateMenuCount(wrapFullDay(fullDayData), 'breakfast', category, menuType, clampedCount).breakfast[category]
         );
         setFullDayData(prev =>
-            OrderService.updateMenuCount(wrapFullDay(prev), 'breakfast', category, menuType, count).breakfast
+            OrderService.updateMenuCount(wrapFullDay(prev), 'breakfast', category, menuType, clampedCount).breakfast
         );
     };
 
@@ -749,6 +777,16 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             };
             setCurrentOrder(orderWithStatus);
             restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(orderWithStatus);
+            if (fullDayOrder) {
+                // Celodenná objednávka ide v payloade pod 'breakfast', ale jej
+                // vlastný strop žije pod FULL_DAY_CEILING_LABEL — extrakcia vyššie
+                // by ho inak omylom zapísala pod 'breakfast' a `updateFullDayMenuCount`
+                // by ho nikdy nenašla.
+                restrictedMenuCeilingsRef.current = {
+                    ...restrictedMenuCeilingsRef.current,
+                    ...OrderService.extractRestrictedMenuCountsForMeal(fullDayData, FULL_DAY_CEILING_LABEL),
+                };
+            }
 
             logger.debug('Order submitted to API');
             return true;

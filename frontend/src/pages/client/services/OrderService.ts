@@ -451,22 +451,32 @@ class OrderService {
     // menu majú prísnejší, samostatný termín na NOVÉ/vyššie objednávky.
     static readonly RESTRICTED_MENUS = ['B', 'C', 'D'];
 
+    /** {"label|category|menuType": count} pre jedno MealData — zdieľané medzi
+     * `extractRestrictedMenuCounts` (breakfast/lunch/olovrant) a celodenný strop
+     * (`fullDay` label), ktorý má vlastný, mimo `DailyOrder` uložený blob. */
+    static extractRestrictedMenuCountsForMeal(
+        mealData: MealData | undefined,
+        label: string
+    ): Record<string, number> {
+        const result: Record<string, number> = {};
+        Object.entries(mealData || {}).forEach(([category, categoryData]) => {
+            this.RESTRICTED_MENUS.forEach((menuType) => {
+                const count = categoryData?.menuCounts?.[menuType];
+                if (count) {
+                    result[`${label}|${category}|${menuType}`] = count;
+                }
+            });
+        });
+        return result;
+    }
+
     /** {"meal|category|menuType": count} snímka reštrikovaných menu z objednávky —
      * slúži ako "zamknutý" strop, nad ktorý sa po prísnom termíne už nedá ísť
      * (user 2.9.2026: nahlásiť/zvýšiť len do termínu, odhlásiť/znížiť aj po ňom). */
     static extractRestrictedMenuCounts(order: DailyOrder): Record<string, number> {
         const result: Record<string, number> = {};
         (['breakfast', 'lunch', 'olovrant'] as const).forEach((mealKey) => {
-            const meal = order[mealKey];
-            if (!meal) return;
-            Object.entries(meal).forEach(([category, categoryData]) => {
-                this.RESTRICTED_MENUS.forEach((menuType) => {
-                    const count = categoryData?.menuCounts?.[menuType];
-                    if (count) {
-                        result[`${mealKey}|${category}|${menuType}`] = count;
-                    }
-                });
-            });
+            Object.assign(result, this.extractRestrictedMenuCountsForMeal(order[mealKey], mealKey));
         });
         return result;
     }

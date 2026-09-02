@@ -449,6 +449,24 @@ describe('OrderService', () => {
         });
     });
 
+    describe('extractRestrictedMenuCountsForMeal', () => {
+        it('collects B/C/D counts under a custom label (celodenná objednávka)', () => {
+            const fullDayData = {
+                ...OrderService.createEmptyMeal(),
+                Škôlka: { menuCounts: { A: 5, B: 2, D: 1 }, diets: {} },
+            };
+
+            expect(OrderService.extractRestrictedMenuCountsForMeal(fullDayData, 'fullDay')).toEqual({
+                'fullDay|Škôlka|B': 2,
+                'fullDay|Škôlka|D': 1,
+            });
+        });
+
+        it('returns an empty map for undefined meal data', () => {
+            expect(OrderService.extractRestrictedMenuCountsForMeal(undefined, 'fullDay')).toEqual({});
+        });
+    });
+
     describe('getServerNow', () => {
         afterEach(() => {
             vi.useRealTimers();
