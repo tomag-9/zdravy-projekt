@@ -409,9 +409,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             ),
         )
 
-    # Menu B a C majú vlastný, prísnejší termín (napr. 7:30 dva dni vopred) —
+    # Menu B, C a D majú vlastný, prísnejší termín (napr. 7:30 dva dni vopred) —
     # nezávislý od bežného per-jedlo deadlinu, platí rovnako pre všetky jedlá.
-    _RESTRICTED_MENUS = frozenset({"B", "C"})
+    _RESTRICTED_MENUS = frozenset({"B", "C", "D"})
 
     @classmethod
     def _meal_menu_signature(

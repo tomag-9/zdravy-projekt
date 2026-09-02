@@ -1227,6 +1227,14 @@ select {
     color: var(--ink-3);
     text-decoration: line-through;
 }
+/* Menu B/C/D po vlastnej (prísnejšej) uzávierke — celý riadok sivý ako pri
+ * "zasednutá", ale bez preškrtnutia: menu nezmizlo, len sa už nedá meniť. */
+.zp-menurow--deadline-closed {
+    opacity: 0.5;
+}
+.zp-menurow--deadline-closed .name {
+    color: var(--ink-3);
+}
 .zp-menurow-occupied-label {
     font-family: var(--font-display);
     font-size: 11px;

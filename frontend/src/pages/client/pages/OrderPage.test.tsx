@@ -947,7 +947,7 @@ describe("OrderPage Logic & Triggers", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows a friendly message when submit fails after deadline", async () => {
+  it("shows the server's specific reason (which meal, which deadline) when submit fails after deadline", async () => {
     mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
       if (url.includes("/admin/global-settings/")) {
         return Promise.resolve(
@@ -974,7 +974,7 @@ describe("OrderPage Logic & Triggers", () => {
             {
               error: {
                 code: "order_deadline_passed",
-                message: "Technicky detail zo servera",
+                message: "Objednávku pre obed už nie je možné meniť. Termín: 13.03.2026 10:00",
                 details: {
                   deadline: "13.03.2026 10:00",
                   current_time: "13.03.2026 10:01",
@@ -993,14 +993,15 @@ describe("OrderPage Logic & Triggers", () => {
 
     fireEvent.click(screen.getByText("Odoslať objednávku"));
 
+    // Predtým appka toto zahodila a ukázala len všeobecnú hlášku — klient
+    // tak nemal ako zistiť, KTORÉ jedlo mu blokuje aj zvyšok objednávky
+    // (incident Vyšehradská, 2.9.2026). Server pošle presný dôvod, appka ho
+    // teraz musí ukázať namiesto prekrytia všeobecným textom.
     expect(
       await screen.findByText(
-        "Objednávku už nie je možné odoslať, termín uplynul.",
+        "Objednávku pre obed už nie je možné meniť. Termín: 13.03.2026 10:00",
       ),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Technicky detail zo servera"),
-    ).not.toBeInTheDocument();
   });
 
   // ── Celodenná objednávka (Full-day order) ───────────────────────────────────

@@ -199,8 +199,12 @@ const OrderPage = () => {
   }, [isTourActive, currentStep, tourSteps, visibleMealsList, selectedDate, globalDeadlines, activeMeals, toggleMeal]);
 
   const getFriendlyOrderErrorMessage = (error: unknown) => {
+    // Backend pošle presný dôvod (ktoré jedlo, aký termín) v `error.message` —
+    // predtým sa tu zahadzoval a nahrádzal všeobecnou hláškou, takže klient
+    // nemal ako zistiť, KTORÉ jedlo mu blokuje aj zvyšok objednávky (incident
+    // Vyšehradská, 2.9.2026).
     if (error instanceof OrderRequestError && error.code === "order_deadline_passed") {
-      return "Objednávku už nie je možné odoslať, termín uplynul.";
+      return error.message || "Objednávku už nie je možné odoslať, termín uplynul.";
     }
     if (error instanceof OrderRequestError && error.code === "prevadzka_closure") {
       return "Prevádzka má na tento deň nastavené voľno, objednávku zadať nemožno.";
@@ -476,7 +480,7 @@ const OrderPage = () => {
       onMenuCountChange={(meal, category, menuType, value) => updateMenuCount(meal, category, menuType, value)}
       onOpenDiets={(meal, category) => setActiveDietModal({ meal, category })}
       getVisibleMenusForMeal={getVisibleMenusForMeal}
-      disabledMenus={menuBcEditable ? [] : ["B", "C"]}
+      disabledMenus={menuBcEditable ? [] : ["B", "C", "D"]}
       getAvailableDiets={getAvailableDiets}
       getOccupiedMenus={getOccupiedMenus}
       mealActions={(meal) => handleCopyTrigger(meal)}
