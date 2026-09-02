@@ -19,7 +19,10 @@ from .overrides.britishschool import (
 )
 from .overrides.cmspezinok import cmspezinok_letter_hook
 from .overrides.cvernicka import cvernicka_letter_hook
-from .overrides.fantasticka import fantasticka_letter_hook
+from .overrides.fantasticka import (
+    fantasticka_letter_hook,
+    fantastickaskolka_letter_hook,
+)
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
 from .overrides.filipaneriho import filipaneriho_letter_hook
 from .overrides.ivanka import ivanka_letter_hook
@@ -103,9 +106,11 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         ucty=("Ďumbierska", "Lamač", "Malý", "Heyrovského"),
         olovrant_mode=_C,
         poznamka=(
-            "SŠV → VEGGIE. Split areálov Lamač/Mal./Hey. rieši krok 3. "
-            "dsbNMNE fuzzy-matchovalo len na NO EGG (#527) — letter_hook "
-            "opravuje na NO MILK/NO EGG (EduPage nazov='NoMilk/NoEgg')."
+            "SŠV → VEGGIE (letter_hook, user 2.9.2026). Split areálov "
+            "Lamač/Mal./Hey. rieši krok 3. dsbNMNE fuzzy-matchovalo len na "
+            "NO EGG (#527) — letter_hook opravuje na NO MILK/NO EGG "
+            "(EduPage nazov='NoMilk/NoEgg'). zšlaNM (bez ďalších "
+            "obmedzení) → NO MILK potvrdené rovnako."
         ),
         letter_hook=zdravebrusko_letter_hook,
     ),
@@ -172,7 +177,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="fantastickaskolka",
         ucty=("MŠ Fantastická",),
         olovrant_mode=_C,
-        poznamka="0 payerov, len menu A. Najjednoduchšia — smoke test configu.",
+        poznamka=(
+            "Skratka 'B' (riadok 'MŠ nM/nG') fuzzy-matchovala na "
+            "NO MILK/NO GLUTEN — letter_hook to potvrdzuje ako isté "
+            "(user 2.9.2026)."
+        ),
+        letter_hook=fantastickaskolka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="mslibellus",

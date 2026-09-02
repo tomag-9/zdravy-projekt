@@ -30,6 +30,10 @@ _RULES: dict[str, LetterRule] = {
     # "Iná NmNgNe" fuzzy-matchovala len na prvý sadnúci fragment (nmng) a stratila
     # vajcia — EduPage vlastný nazov ju vypisuje jednoznačne celú.
     "INÁ NMNGNE": LetterRule(diet="NO MILK – NO GLUTEN – NO EGG"),
+    # "Iná NmNg" (bez vajec) fuzzy-matchovala na NO MILK/NO GLUTEN — user
+    # 2.9.2026 potvrdil, že je to správne (na rozdiel od "Iná NmNgNe" vyššie,
+    # táto skratka vajcia naozaj neobsahuje).
+    "INÁ NMNG": LetterRule(diet="NO MILK/NO GLUTEN"),
 }
 
 

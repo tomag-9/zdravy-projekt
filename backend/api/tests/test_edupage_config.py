@@ -18,7 +18,10 @@ from api.edupage.overrides.britishschool import (
 )
 from api.edupage.overrides.cmspezinok import cmspezinok_letter_hook
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
-from api.edupage.overrides.fantasticka import fantasticka_letter_hook
+from api.edupage.overrides.fantasticka import (
+    fantasticka_letter_hook,
+    fantastickaskolka_letter_hook,
+)
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
 from api.edupage.overrides.filipaneriho import filipaneriho_letter_hook
 from api.edupage.overrides.ivanka import ivanka_letter_hook
@@ -128,6 +131,10 @@ class TestConfigPreUrl(unittest.TestCase):
         ms = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
         zs = config_pre_url("https://szsfan.edupage.org/menu?id=x")
         self.assertNotEqual(ms.ucty, zs.ucty)
+
+    def test_fantastickaskolka_has_its_own_letter_hook(self):
+        cfg = config_pre_url("https://fantastickaskolka.edupage.org/menu?id=x")
+        self.assertIsNotNone(cfg.letter_hook)
 
     def test_szsfan_has_letter_hook(self):
         cfg = config_pre_url("https://szsfan.edupage.org/menu/mealsGuest?id=x")
@@ -526,6 +533,16 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
         self.assertEqual(rule.diet, "NO MILK – NO EGG – NO ORECH – NO JABLKO")
         self.assertIsNone(rule.flag)
 
+    def test_zs_malokarpatska_milk_only_confirmed(self):
+        """'zšlaNM' (len mlieko, bez ďalších obmedzení) bol uncertain fuzzy
+        match — potvrdené na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("zšlaNM").diet, "NO MILK")
+
+    def test_ss_veterinarna_veggie_confirmed(self):
+        """'sšvV' (SŠ Veterinárna, piaty areál na tomto feede) bol uncertain
+        fuzzy match — potvrdené na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("sšvV").diet, "VEGGIE")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("something else entirely"))
 
@@ -546,6 +563,21 @@ class TestFantastickaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NM"))
+
+
+class TestFantastickaSkolkaLetterHook(unittest.TestCase):
+    """Samostatné EduPage pripojenie od Fantastickej Školy vyššie (iný
+    subdomain, iný feed) — 'B' (riadok 'MŠ nM/nG') bol uncertain fuzzy match,
+    potvrdené na isté (user 2.9.2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return fantastickaskolka_letter_hook("X", skratka, "")
+
+    def test_b_no_milk_no_gluten_confirmed(self):
+        self.assertEqual(self._rule("B").diet, "NO MILK/NO GLUTEN")
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("A"))
 
 
 class TestIvankaLetterHook(unittest.TestCase):
@@ -635,8 +667,14 @@ class TestMontessoriLetterHook(unittest.TestCase):
             self._rule(".Iná NmNgNe.").diet, "NO MILK – NO GLUTEN – NO EGG"
         )
 
+    def test_nmng_no_egg_confirmed_certain(self):
+        """'Iná NmNg' (bez vajec, na rozdiel od 'Iná..NmNgNe' vyššie) bol
+        uncertain fuzzy match (NO MILK/NO GLUTEN) — letter_hook to potvrdzuje
+        na isté (user 2.9.2026)."""
+        self.assertEqual(self._rule("Iná NmNg").diet, "NO MILK/NO GLUTEN")
+
     def test_unknown_skratka_falls_through_to_engine(self):
-        self.assertIsNone(self._rule("Iná NmNg"))
+        self.assertIsNone(self._rule("Iná ZZZ"))
 
     def test_non_ina_letters_are_skipped(self):
         """User 2.9.2026: appka má z EduPage rátať VÝHRADNE 'Iná' skupinu —
