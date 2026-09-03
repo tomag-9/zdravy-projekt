@@ -6,7 +6,7 @@ import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { PageHead, Button, Card, Badge, Empty, Modal, Toggle, Checkbox } from "./ui";
+import { PageHead, Button, Card, Badge, Empty, Modal, Toggle, Checkbox, SearchBox, Textarea } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
 import {
   prevWeekday,
@@ -187,6 +187,13 @@ const AdminDashboard: React.FC = () => {
   const [closing, setClosing] = useState(false);
   const [unlocking, setUnlocking] = useState(false);
   const closedRequestId = useRef(0);
+  // Vyhľadávanie prevádzky v tabuľke (#573) — kolega ho používa z telefónu,
+  // nech nemusí prehľadávať celý zoznam trás očami.
+  const [tableSearch, setTableSearch] = useState("");
+  // Poznámka prevádzky (#573) — editovateľná rovno z tabuľky namiesto obchádzky
+  // cez Nastavenia prevádzky, keď treba škôlke rýchlo niečo odkázať.
+  const [noteEdit, setNoteEdit] = useState<{ prevadzkaId: number; text: string } | null>(null);
+  const [savingNote, setSavingNote] = useState(false);
   const [sections, setSections] = useState<string[]>([]);
   // Prázdny výber = všetky výdajné body; inak môže byť vybratých aj viac
   // (napr. Cluster A + B naraz).
@@ -252,6 +259,35 @@ const AdminDashboard: React.FC = () => {
   }, [apiFetch, date, sectionQuery]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const handleOpenNoteEdit = useCallback(
+    (prevadzkaId: number) => {
+      const row = data?.rows.find((r) => r.prevadzka_id === prevadzkaId);
+      setNoteEdit({ prevadzkaId, text: row?.admin_order_note ?? "" });
+    },
+    [data],
+  );
+
+  const handleSaveNote = useCallback(async () => {
+    if (!noteEdit) return;
+    setSavingNote(true);
+    try {
+      const res = await apiFetch(`${API}/admin/facility-prevadzky/${noteEdit.prevadzkaId}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admin_order_note: noteEdit.text }),
+      });
+      if (!res.ok) throw new Error("save failed");
+      toastSuccess("Poznámka uložená.");
+      setNoteEdit(null);
+      await fetchData();
+    } catch (e) {
+      logger.error(e);
+      toastError("Poznámku sa nepodarilo uložiť.");
+    } finally {
+      setSavingNote(false);
+    }
+  }, [apiFetch, noteEdit, fetchData, toastError, toastSuccess]);
 
   const fetchClosedState = useCallback(async () => {
     const requestId = ++closedRequestId.current;
@@ -418,6 +454,12 @@ const AdminDashboard: React.FC = () => {
         desc={<span style={{ textTransform: "capitalize" }}>{formatDate(date)}</span>}
         actions={
           <>
+            <SearchBox
+              value={tableSearch}
+              onChange={setTableSearch}
+              placeholder="Hľadať prevádzku…"
+              className="zpa-gram-search"
+            />
             <Button variant="secondary" onClick={() => setSettingsOpen(true)} disabled={!hasData}>
               <SlidersHorizontal /> Nastavenia tabuľky
             </Button>
@@ -465,7 +507,13 @@ const AdminDashboard: React.FC = () => {
 
         {data && hasData && (
           <div className="zpa-gram-fill" style={loading ? { opacity: 0.55, transition: "opacity .15s" } : undefined}>
-            <GramageTable spec={data.spec} fill onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)} />
+            <GramageTable
+              spec={data.spec}
+              fill
+              onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)}
+              searchTerm={tableSearch}
+              onEditNote={handleOpenNoteEdit}
+            />
           </div>
         )}
         {!loading && data && !hasData && hasOrderCounts && orderReport && (
@@ -528,6 +576,29 @@ const AdminDashboard: React.FC = () => {
           }}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {noteEdit && (
+        <Modal
+          title="Poznámka pre prevádzku"
+          onClose={() => (savingNote ? undefined : setNoteEdit(null))}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setNoteEdit(null)} disabled={savingNote}>Zrušiť</Button>
+              <Button variant="primary" onClick={() => void handleSaveNote()} disabled={savingNote}>
+                {savingNote ? <Loader2 className="zpa-spin" /> : null} Uložiť
+              </Button>
+            </>
+          }
+        >
+          <Textarea
+            rows={4}
+            autoFocus
+            value={noteEdit.text}
+            placeholder="Interná poznámka k objednávkam prevádzky (vidno v tabuľke aj v PDF)."
+            onChange={(e) => setNoteEdit({ ...noteEdit, text: e.target.value })}
+          />
+        </Modal>
       )}
     </>
   );

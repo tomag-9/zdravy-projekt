@@ -504,6 +504,13 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
 .zpa-search { position: relative; }
 .zpa-search .zpa-input { padding-left: 42px; }
 .zpa-search svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--ink-mute); }
+/* Vyhľadávanie prevádzky v gramážnej tabuľke (#573) — v akciách vedľa
+ * "Nastavenia tabuľky", nemá zaberať celý riadok ako iné vyhľadávania. */
+.zpa-gram-search { width: 220px; flex: 0 0 auto; }
+.zpa-gram-search .zpa-input { padding-top: 8px; padding-bottom: 8px; }
+@media (max-width: 640px) {
+    .zpa-gram-search { width: 100%; order: -1; }
+}
 
 /* toggle switch */
 .zpa-switch {

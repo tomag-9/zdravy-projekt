@@ -6,10 +6,11 @@
  * komponent read-only zo svojej podstaty a kuchyňa cezeň nemá čo zmeniť.
  */
 
-import React, { useState } from 'react';
-import { ChevronRight } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { ChevronRight, Pencil } from 'lucide-react';
 import { DietColorSwatch } from './DietColorSwatch';
 import { Card } from './ui';
+import { normalizeForSearch } from '../../lib/searchNormalize';
 
 export interface SpecCell {
   text?: string;
@@ -108,9 +109,29 @@ interface GramageTableProps {
    * tak zostáva stále na očiach. Admin Prehľad ju posiela, kuchyňa nie (#548).
    */
   fill?: boolean;
+  /**
+   * Voliteľné vyhľadávanie podľa mena prevádzky (#573) — Admin Prehľad ho
+   * posiela z vlastného vyhľadávacieho poľa, kuchyňa nie. Bez neho sa
+   * nefiltruje vôbec (prázdny reťazec má rovnaký efekt).
+   */
+  searchTerm?: string;
+  /**
+   * Voliteľná ceruzka pri mene prevádzky na úpravu jej internej poznámky
+   * (#573) — otvorí editor v Admin Prehľade, samotný text nesie ClientRow z
+   * dashboardu, nie táto (read-only) tabuľka. Kuchyňa ju neposiela.
+   */
+  onEditNote?: (prevadzkaId: number) => void;
 }
 
-const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClientAction, onClientNameClick, fill }) => {
+const GramageTable: React.FC<GramageTableProps> = ({
+  spec,
+  className,
+  renderClientAction,
+  onClientNameClick,
+  fill,
+  searchTerm,
+  onEditNote,
+}) => {
   const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
   const toggleClient = (key: string) => {
@@ -174,6 +195,20 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
                 {cell.note && <span className="client-note-inline">{cell.note}</span>}
                 <span className="meta">{cell.meta_right}</span>
               </button>
+              {onEditNote && row.prevadzka_id != null && (
+                <button
+                  type="button"
+                  className="client-note-edit"
+                  title="Upraviť poznámku pre prevádzku"
+                  aria-label={`Upraviť poznámku pre ${cell.text}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditNote(row.prevadzka_id!);
+                  }}
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
               {action}
             </div>
           </td>
@@ -221,8 +256,41 @@ const GramageTable: React.FC<GramageTableProps> = ({ spec, className, renderClie
 
   const mealBands = spec.header.meals ?? [];
 
+  // Vyhľadávanie podľa mena prevádzky (#573) — filtruje klientske riadky a
+  // všetko, čo pod nimi visí (group_id), plus trasy, pod ktorými by inak
+  // nezostal ani jeden zhodný klient (prázdna trasa by pôsobila ako chyba).
+  const term = searchTerm ? normalizeForSearch(searchTerm) : "";
+  const searchedRows = useMemo(() => {
+    if (!term) return spec.rows;
+    const keptGroupIds = new Set(
+      spec.rows
+        .filter((row) => row.kind === "client" && normalizeForSearch(row.cells[0]?.text ?? "").includes(term))
+        .map((row) => row.group_id ?? ""),
+    );
+    const keepRow = (row: SpecRow): boolean => {
+      if (row.kind === "client") return keptGroupIds.has(row.group_id ?? "");
+      if (row.group_id) return keptGroupIds.has(row.group_id);
+      return row.kind !== "route";
+    };
+    const result: SpecRow[] = [];
+    let pendingRoute: SpecRow | null = null;
+    for (const row of spec.rows) {
+      if (row.kind === "route") {
+        pendingRoute = row;
+        continue;
+      }
+      if (!keepRow(row)) continue;
+      if (pendingRoute) {
+        result.push(pendingRoute);
+        pendingRoute = null;
+      }
+      result.push(row);
+    }
+    return result;
+  }, [spec.rows, term]);
+
   // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení.
-  const visibleRows = spec.rows.filter(
+  const visibleRows = searchedRows.filter(
     (row) => !row.collapsible || expandedClients.includes(row.group_id ?? ""),
   );
 
