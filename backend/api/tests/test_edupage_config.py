@@ -7,6 +7,7 @@ from datetime import date
 from api.edupage import (
     LetterRule,
     OlovrantMode,
+    PayerRule,
     PrevadzkaConfig,
     apply_config,
     config_pre_url,
@@ -18,8 +19,10 @@ from api.edupage.overrides.britishschool import (
 )
 from api.edupage.overrides.cmspezinok import cmspezinok_letter_hook
 from api.edupage.overrides.cvernicka import cvernicka_letter_hook
+from api.edupage.overrides.dobrodruzstvo import dobrodruzstvo_payer_hook
 from api.edupage.overrides.fantasticka import (
     fantasticka_letter_hook,
+    fantasticka_payer_hook,
     fantastickaskolka_letter_hook,
 )
 from api.edupage.overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -615,6 +618,58 @@ class TestFantastickaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NM"))
+
+
+class TestFantastickaPayerHook(unittest.TestCase):
+    """Payer skupina '2.stupeň DIABETI' (typ_platitela 16) má v EduPage
+    nastavení `porcia=1` napriek vlastnému názvu — potvrdené user 3.9.2026
+    (appka priradila diabetika do ZŠ 1.stupeň namiesto 2.stupňa)."""
+
+    def _rule(self, payer_name) -> PayerRule | None:
+        return fantasticka_payer_hook(payer_name)
+
+    def test_diabeti_payer_forced_to_2_stupen(self):
+        self.assertEqual(self._rule("2.stupeň DIABETI").portion, "ZŠ 2.stupeň")
+
+    def test_plain_2_stupen_untouched(self):
+        # Normálne 2.stupňové skupiny majú porcia kód správne — netreba zásah.
+        self.assertIsNone(self._rule("2.stupeň"))
+        self.assertIsNone(self._rule("2.stupeň NoMilk"))
+
+    def test_1_stupen_untouched(self):
+        self.assertIsNone(self._rule("1.stupeň"))
+
+    def test_unrelated_payer_untouched(self):
+        self.assertIsNone(self._rule("dospelý klasik"))
+
+
+class TestDobrodruzstvoPayerHook(unittest.TestCase):
+    """4 z 5 "1. stupeň" payer skupín majú v EduPage nastavení `porcia=2`
+    namiesto správnej `1` — appka väčšinu 1. stupňa počítala do ZŠ 2.stupeň
+    (user 3.9.2026: 'spojilo 1. a 2. stupeň'). Diéta 'bezlak' (bez laktózy)
+    tiež chýbala v generickom keyword mape (prázdna diéta)."""
+
+    def _rule(self, payer_name) -> PayerRule | None:
+        return dobrodruzstvo_payer_hook(payer_name)
+
+    def test_1_stupen_variants_forced_to_1_stupen(self):
+        for name in ("1.st.", "1.st. ŠD", "1.st. ŠD vege", "1. st. ŠD bezlak"):
+            with self.subTest(name=name):
+                self.assertEqual(self._rule(name).portion, "ZŠ 1.stupeň")
+
+    def test_2_stupen_variants_forced_to_2_stupen(self):
+        for name in ("2.st.", "2. st. ŠD", "2. st. bezlep", "2.st ŠD bezlak"):
+            with self.subTest(name=name):
+                self.assertEqual(self._rule(name).portion, "ZŠ 2.stupeň")
+
+    def test_bezlak_resolves_to_no_milk(self):
+        self.assertEqual(self._rule("1. st. ŠD bezlak").diet, "NO MILK")
+        self.assertEqual(self._rule("2.st ŠD bezlak").diet, "NO MILK")
+
+    def test_ms_and_dospely_untouched(self):
+        self.assertIsNone(self._rule("MŠ klasik"))
+        self.assertIsNone(self._rule("MŠ Vege"))
+        self.assertIsNone(self._rule("Dospelý"))
 
 
 class TestFantastickaSkolkaLetterHook(unittest.TestCase):

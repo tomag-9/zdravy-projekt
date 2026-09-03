@@ -19,8 +19,10 @@ from .overrides.britishschool import (
 )
 from .overrides.cmspezinok import cmspezinok_letter_hook
 from .overrides.cvernicka import cvernicka_letter_hook
+from .overrides.dobrodruzstvo import dobrodruzstvo_payer_hook
 from .overrides.fantasticka import (
     fantasticka_letter_hook,
+    fantasticka_payer_hook,
     fantastickaskolka_letter_hook,
 )
 from .overrides.felixkarloveska import felixkarloveska_letter_hook
@@ -95,9 +97,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         poznamka=(
             "ZŠ Fantastická — samostatná prevádzka od fantastickaskolka (MŠ). "
             "HITNMNGnSnKnFC fuzzy-matchovalo len na NO MILK/NO GLUTEN (#527) — "
-            "letter_hook opravuje na plnú 6-násobnú kombináciu."
+            "letter_hook opravuje na plnú 6-násobnú kombináciu. Payer skupina "
+            "'2.stupeň DIABETI' má v EduPage preklep v porcia kóde (user "
+            "3.9.2026) — payer_hook ju prepíše na ZŠ 2.stupeň podľa labelu."
         ),
         letter_hook=fantasticka_letter_hook,
+        payer_hook=fantasticka_payer_hook,
     ),
     PrevadzkaConfig(
         subdomena="edulienka",
@@ -152,7 +157,13 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="dobrodruzstvo",
         ucty=("Dobrodružstvo",),
         olovrant_mode=_C,
-        poznamka="bezlep→NO GLUTEN, bezlak→NO MILK (doplniť keyword mapu).",
+        poznamka=(
+            "bezlep→NO GLUTEN (generický engine, OK). bezlak→NO MILK a "
+            "1.stupeň porcia-kód (4 z 5 skupín majú v EduPage zle nastavené "
+            "porcia=2 namiesto 1, user 3.9.2026: 'spojilo 1. a 2. stupeň') "
+            "rieši payer_hook."
+        ),
+        payer_hook=dobrodruzstvo_payer_hook,
     ),
     PrevadzkaConfig(
         subdomena="msfilipaneriho",
