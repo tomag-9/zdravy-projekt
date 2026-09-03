@@ -551,6 +551,53 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
+  it("loads the special diet note saved on the server, not just the local draft", async () => {
+    const date = localDateStr();
+    // Iný prehliadač/zariadenie ako ten, čo poznámku pôvodne uložil — v
+    // localStorage nič nie je, jediný zdroj je server.
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+    (OrderService.getAvailableDiets as Mock).mockReturnValue(["Špeciálna"]);
+    (OrderService.getAvailableDietsWithSpecial as Mock).mockReturnValue(["Špeciálna"]);
+
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            id: 2279,
+            status: "submitted",
+            data: {
+              breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+              lunch: {
+                Škôlka: {
+                  menuCounts: { A: 15 },
+                  diets: { Špeciálna: 2 },
+                },
+              },
+              olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+              special_diet_note: "Alergia na orechy",
+            },
+          }),
+        );
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    const textarea = await screen.findByPlaceholderText(
+      "Popíšte vašu špeciálnu diétu",
+    );
+    await waitFor(() => {
+      expect((textarea as HTMLTextAreaElement).value).toBe("Alergia na orechy");
+    });
+  });
+
   it("typed diet input has no cap and adds on top of menu A", async () => {
     const date = localDateStr();
     localStorageMock.setItem(
