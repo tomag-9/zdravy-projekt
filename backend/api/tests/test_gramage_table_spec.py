@@ -611,6 +611,34 @@ def test_standard_rows_of_the_same_portion_merge_across_meals():
     assert [c["text"] for c in gram_cells] == ["1600", "2400", "1000"]
 
 
+def test_two_menu_variants_of_the_same_meal_add_up_in_the_merged_count():
+    """Klient objedná tú istú porciu na Menu B aj Menu C obeda plus olovrant —
+    zlúčenie nesmie druhý variant obeda prepísať cez prvý (3.9.2026: Little Big
+    Dospelý SŠ mal v tabuľke "Ob 6" namiesto "Ob 12" pri B:6 + C:6)."""
+    payload = _with_breakfast_and_snack_same_portion()
+    row = payload["rows"][0]
+    main_course_a = next(
+        sr for sr in row["sub_rows"] if sr["label"] == "Škôlka - Obed Menu A"
+    )
+    variant_b = dict(main_course_a)
+    variant_b["variant"] = "B"
+    variant_b["label"] = "Škôlka - Obed Menu B"
+    variant_b["count"] = 3
+    variant_b["_heads"] = 3
+    variant_b["_ms_recalc"] = Decimal("3")
+    # Rovnaká pozícia stĺpca ako main_course_a — v skutočných dátach majú
+    # Menu B/C vlastný stĺpec, na teste na tom nezáleží.
+    variant_b["col_grams"] = list(main_course_a["col_grams"])
+    row["sub_rows"].append(variant_b)
+
+    spec = build_table_spec(payload)
+    standard_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    )
+    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant.
+    assert standard_row["cells"][0]["count"] == "Ob 11 + Ol 8"
+
+
 def test_a_single_meal_portion_keeps_a_plain_count():
     """Bez druhého jedla ostáva count-odznak čistým číslom, nie „Ob 8"."""
     spec = build_table_spec(_payload())

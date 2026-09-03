@@ -330,7 +330,14 @@ def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
         existing["count"] = _as_decimal(existing["count"]) + _as_decimal(
             sub_row.get("count")
         )
-        existing["_meal_counts"][sub_row.get("meal")] = sub_row.get("count")
+        # Viac variantov toho istého jedla (Menu B + Menu C obeda) musí
+        # sčítať, nie prepísať — inak "Ob" v rozpise ukáže len posledný
+        # variant a stratí zvyšok (3.9.2026: Little Big Dospelý SŠ mal
+        # v tabuľke "Ob 6" namiesto "Ob 12" pri B:6 + C:6).
+        meal = sub_row.get("meal")
+        existing["_meal_counts"][meal] = _as_decimal(
+            existing["_meal_counts"].get(meal, 0)
+        ) + _as_decimal(sub_row.get("count"))
     return out
 
 
