@@ -393,6 +393,90 @@ def test_totals_row_uses_a_dash_for_empty_columns():
     assert totals_row["cells"][-1]["text"] == "—"
 
 
+def test_totals_row_shows_portion_count_in_the_first_cell_of_each_group():
+    """Kuchyňa v CELKOM riadku vidí len gramáž, nie koľko sa toho reálne varí
+    (#menu-bc-gramage-count) — počet ide do ľavej hornej bunky (prvej zložky)
+    každej skupiny (Polievka, Menu A, Menu B, ...), presne raz na skupinu, nech
+    sa dá pri viackomponentových jedlách rozlíšiť, ku ktorej hlavičke patrí."""
+    payload = _payload(
+        count_summary=[
+            {
+                "meal": "soup",
+                "variant": "",
+                "diet_name": None,
+                "label": "Polievka",
+                "standard": [{"name": "Škôlka", "count": 10}],
+                "diets": [],
+            },
+            {
+                "meal": "main_course",
+                "variant": "A",
+                "diet_name": None,
+                "label": "Menu A",
+                "standard": [{"name": "Škôlka", "count": 8}],
+                "diets": [],
+            },
+            {
+                "meal": "main_course",
+                "variant": "B",
+                "diet_name": None,
+                "label": "Menu B",
+                "standard": [],
+                "diets": [],
+            },
+        ]
+    )
+    spec = build_table_spec(payload)
+
+    totals_row = spec["footer"][-2]
+    # cells[0] = roh „CELKOM (g / ml)"; cells[1] = Polievka, cells[2] = Menu A,
+    # cells[3] = Menu B (každá skupina má tu presne 1 zložku).
+    assert "count" not in totals_row["cells"][0]
+    assert totals_row["cells"][1]["count"] == format_count(10)
+    assert totals_row["cells"][2]["count"] == format_count(8)
+    # Menu B bez objednávok — počet sa nezobrazí, nie "0" (rovnaká konvencia
+    # ako pri gramáži, viď `format_count`/`test_count_badge_shows_a_dash_at_zero`).
+    assert "count" not in totals_row["cells"][3]
+
+
+def test_totals_row_count_lands_only_on_the_first_component_of_a_group():
+    """Viackomponentové jedlo (napr. raňajky s výnimkou) dostane počet len raz
+    — do prvej bunky, ostatné zložky tej istej skupiny ho neopakujú."""
+    payload = _payload(
+        col_groups=[
+            {
+                "key": "breakfast_snack",
+                "meal": "breakfast_snack",
+                "variant": "",
+                "label": "Raňajky",
+                "template_name": "Chlieb",
+                "components": [
+                    {"label": "Pečivo", "base_grams": "80", "unit": "g"},
+                    {"label": "Nátierka", "base_grams": "30", "unit": "g"},
+                ],
+            }
+        ],
+        rows=[],
+        totals=[["800.00", "300.00"]],
+        count_summary=[
+            {
+                "meal": "breakfast_snack",
+                "variant": "",
+                "diet_name": None,
+                "label": "Raňajky",
+                "standard": [{"name": "Škôlka", "count": 10}],
+                "diets": [],
+            }
+        ],
+    )
+    spec = build_table_spec(payload)
+
+    totals_row = spec["footer"][-2]
+    # cells[0] = roh „CELKOM (g / ml)"; cells[1]/[2] = Pečivo/Nátierka (Raňajky).
+    assert totals_row["cells"][1]["count"] == format_count(10)
+    assert "count" not in totals_row["cells"][2]
+
+
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
 def _with_breakfast_and_snack():
     payload = _payload()
@@ -609,6 +693,34 @@ def test_standard_rows_of_the_same_portion_merge_across_meals():
     # zlúčenie nesmie nič sčítať do jedného čísla.
     gram_cells = [c for c in row["cells"][1:] if "cell-num" in c["css"]]
     assert [c["text"] for c in gram_cells] == ["1600", "2400", "1000"]
+
+
+def test_two_menu_variants_of_the_same_meal_add_up_in_the_merged_count():
+    """Klient objedná tú istú porciu na Menu B aj Menu C obeda plus olovrant —
+    zlúčenie nesmie druhý variant obeda prepísať cez prvý (3.9.2026: Little Big
+    Dospelý SŠ mal v tabuľke "Ob 6" namiesto "Ob 12" pri B:6 + C:6)."""
+    payload = _with_breakfast_and_snack_same_portion()
+    row = payload["rows"][0]
+    main_course_a = next(
+        sr for sr in row["sub_rows"] if sr["label"] == "Škôlka - Obed Menu A"
+    )
+    variant_b = dict(main_course_a)
+    variant_b["variant"] = "B"
+    variant_b["label"] = "Škôlka - Obed Menu B"
+    variant_b["count"] = 3
+    variant_b["_heads"] = 3
+    variant_b["_ms_recalc"] = Decimal("3")
+    # Rovnaká pozícia stĺpca ako main_course_a — v skutočných dátach majú
+    # Menu B/C vlastný stĺpec, na teste na tom nezáleží.
+    variant_b["col_grams"] = list(main_course_a["col_grams"])
+    row["sub_rows"].append(variant_b)
+
+    spec = build_table_spec(payload)
+    standard_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    )
+    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant.
+    assert standard_row["cells"][0]["count"] == "Ob 11 + Ol 8"
 
 
 def test_a_single_meal_portion_keeps_a_plain_count():

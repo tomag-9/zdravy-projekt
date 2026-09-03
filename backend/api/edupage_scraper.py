@@ -30,6 +30,7 @@ ALLOWED_DIET_NAMES = {
     "NO MILK",
     "NO GLUTEN",
     "NO MILK/NO GLUTEN",
+    "NO MILK/NO EGG",
     "VEGGIE",
     "HISTAMIN",
     "NONONO",
@@ -172,6 +173,15 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "nomno": "NO MILK/NO GLUTEN",
     "nmg": "NO MILK/NO GLUTEN",
     "nmn": "NO MILK/NO GLUTEN",
+    # MŠ Naša Škola Poznania, raňajky/olovrant: payer label "1.-3.ročník
+    # noMilk/noEgg" nemá vlastné menu-písmeno (tie majú len obed), diétu tu
+    # rieši len fragment-match na payer nazov. Bez zloženej zhody vyhral prvý
+    # (dlhší) samostatný fragment "nomilk" a "noEgg" sa ticho stratil (user
+    # 3.9.2026, "nečíta dobre") — na obede rovnaký payer ide cez skratku
+    # "nMnEgg" (`_SKRATKA_MAP`, opravené 2.9.2026) a je to tam OK, tak musí
+    # byť aj tu.
+    "nomilknoegg": "NO MILK/NO EGG",
+    "noeggnomilk": "NO MILK/NO EGG",
     "bezmliecnebezglutenove": "NO MILK/NO GLUTEN",
     "noegg": "NO EGG",
     "bezvajec": "NO EGG",

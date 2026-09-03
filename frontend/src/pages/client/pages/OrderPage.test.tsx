@@ -239,9 +239,9 @@ describe("OrderPage Logic & Triggers", () => {
     vi.restoreAllMocks();
   });
 
-  const renderPage = (showMealPlanAvailability = false) => {
+  const renderPage = (showMealPlanAvailability = false, initialEntries: string[] = ["/order"]) => {
     return render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <ToastProvider>
           <AppProvider>
             <OrderPage />
@@ -1049,6 +1049,68 @@ describe("OrderPage Logic & Triggers", () => {
         "Objednávku pre obed už nie je možné meniť. Termín: 13.03.2026 10:00",
       ),
     ).toBeInTheDocument();
+  });
+
+  // ── URL dátum → selectedDate (Emjoy, 3.9.2026) ──────────────────────────────
+  // `selectedDate` žije v AppProvider (jedna inštancia pre celú appku, prežíva
+  // navigáciu medzi stránkami) a `useOrder` ho defaultne inicializuje na
+  // "dnes" — bez ohľadu na to, na akom dátume URL reálne je. Tieto testy
+  // chránia LOGIKU synchronizácie (URL dátum sa naozaj uplatní; neskoršia
+  // legitímna zmena cez DaySelector sa naspäť neprepíše) — samotný race
+  // (efekt bežiaci PO vykreslení vs. klik v tom okne) sa v jsdom/RTL
+  // nedá autenticky reprodukovať, lebo `act()` efekty flushuje synchrónne
+  // skôr, než test stihne čokoľvek pozorovať medzi krokmi.
+
+  it("submits the order under the date from the URL, not the hook's 'today' default", async () => {
+    const today = localDateStr();
+    const tomorrow = localDateStr(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+    renderPage(false, [`/order?date=${tomorrow}`]);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.date).toBe(tomorrow);
+      expect(body.date).not.toBe(today);
+    });
+  });
+
+  it("does not re-apply a stale URL date after the user picks a different day via DaySelector", async () => {
+    const today = localDateStr();
+    const tomorrow = localDateStr(new Date(Date.now() + 24 * 60 * 60 * 1000));
+
+    // URL zostáva na `today` počas celého testu — DaySelector mení
+    // selectedDate priamo, bez navigácie (rovnaký mechanizmus ako v teste
+    // "keeps meal-plan availability..." vyššie).
+    renderPage(false, [`/order?date=${today}`]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Ďalší deň" }));
+
+    await waitFor(() => {
+      expect(
+        mockApiFetch.mock.calls.some(
+          (call) => call[0]?.includes(`/orders/by-date/${tomorrow}/`),
+        ),
+      ).toBe(true);
+    });
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      // Submit musí ísť na deň, ktorý si user reálne vybral cez DaySelector
+      // (zajtra) — nie sa vrátiť na pôvodný URL dátum (dnes).
+      expect(body.date).toBe(tomorrow);
+    });
   });
 
   // ── Celodenná objednávka (Full-day order) ───────────────────────────────────

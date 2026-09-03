@@ -35,6 +35,15 @@ interface OrderSummaryModalProps {
   predictedMealCount?: { breakfast: number; lunch: number; olovrant: number };
   /** Called when user chooses to zero out a predicted order */
   onZero?: () => void;
+  /**
+   * When set, this summary is a merge across these prevádzky (login bez
+   * zvolenej aktívnej prevádzky, napr. hneď po uložení objednávky — viď
+   * HomePage.openDayModal). Bez tohto zoznamu login s objednávkou vo
+   * viacerých prevádzkach naraz (Benjamíny) nevidel, za koho súhrn vlastne
+   * je (user 3.9.2026: "nahadzovaní objednávky neukazuje za ktorú
+   * prevádzku").
+   */
+  prevadzkaNames?: string[];
 }
 
 const OrderSummaryModal = ({
@@ -48,6 +57,7 @@ const OrderSummaryModal = ({
   isAuto = false,
   predictedMealCount,
   onZero,
+  prevadzkaNames,
 }: OrderSummaryModalProps) => {
   const navigate = useNavigate();
   const { setSelectedDate, deleteOrder } = useApp();
@@ -275,6 +285,11 @@ const OrderSummaryModal = ({
                 month: "long",
               })}
             </span>
+            {prevadzkaNames && prevadzkaNames.length > 1 && (
+              <span className="mt-1 text-xs text-slate-500 text-center">
+                Súhrn za viac prevádzok: {prevadzkaNames.join(", ")}
+              </span>
+            )}
           </div>
 
           {/* ── Predicted-mode body ── */}

@@ -268,6 +268,37 @@ class TestBuildAutoData:
             == NON_EMPTY_DATA_WITH_PACK_SEPARATELY["lunch"]["Dospelý"]["packSeparately"]
         )
 
+    def test_breakfast_source_lunch_copies_previous_lunch_into_breakfast(self):
+        """Keď má šablónová prevádzka `auto_order_breakfast_source='lunch'`, raňajky
+        v auto-objednávke sa naplnia obedom zo šablóny, nie raňajkami (Bystrá #TBD)."""
+        prevadzka = Prevadzka.objects.create(
+            celok=Celok.objects.create(nazov="Bystrá test celok"),
+            nazov="Bystrá test prevádzka",
+            auto_order_breakfast_source="lunch",
+        )
+        auto_data = _build_auto_data(
+            DailyOrder(data=NON_EMPTY_DATA, prevadzka=prevadzka),
+            visible_meals=[],
+        )
+
+        assert auto_data["breakfast"] == NON_EMPTY_DATA["lunch"]
+        assert auto_data["lunch"] == NON_EMPTY_DATA["lunch"]
+
+    def test_breakfast_source_default_keeps_breakfast_to_breakfast(self):
+        """Default (bez `auto_order_breakfast_source` override) sa nemení: raňajky
+        z raňajok, obed z obeda — existujúce správanie ostáva netknuté."""
+        prevadzka = Prevadzka.objects.create(
+            celok=Celok.objects.create(nazov="Default test celok"),
+            nazov="Default test prevádzka",
+        )
+        auto_data = _build_auto_data(
+            DailyOrder(data=NON_EMPTY_DATA, prevadzka=prevadzka),
+            visible_meals=[],
+        )
+
+        assert auto_data["breakfast"] == NON_EMPTY_DATA["breakfast"]
+        assert auto_data["lunch"] == NON_EMPTY_DATA["lunch"]
+
     def test_only_visible_portion_types_are_copied(self):
         data = {
             "breakfast": {
@@ -472,6 +503,23 @@ class TestApplyAutoOrders:
         result = apply_auto_orders(target_date=TUESDAY)
 
         assert user.email not in result["created"]
+
+    def test_breakfast_source_lunch_applies_end_to_end(self, user):
+        """apply_auto_orders naplní raňajky obedom predošlého dňa pre prevádzku
+        s `auto_order_breakfast_source='lunch'` (Bystrá scenár)."""
+        prevadzka = user.profile.dostupne_prevadzky().first()
+        prevadzka.auto_order_breakfast_source = "lunch"
+        prevadzka.save(update_fields=["auto_order_breakfast_source"])
+        DailyOrder.objects.create(
+            user=user, prevadzka=prevadzka, date=MONDAY, data=NON_EMPTY_DATA
+        )
+
+        result = apply_auto_orders(target_date=TUESDAY)
+
+        assert user.email in result["created"]
+        auto = DailyOrder.objects.get(user=user, prevadzka=prevadzka, date=TUESDAY)
+        assert auto.data["breakfast"] == NON_EMPTY_DATA["lunch"]
+        assert auto.data["lunch"] == NON_EMPTY_DATA["lunch"]
 
     def test_paused_prevadzka_gets_no_auto_order_despite_older_history(self, user):
         """`auto_order_paused=True` stops the copy chain even if an older non-empty

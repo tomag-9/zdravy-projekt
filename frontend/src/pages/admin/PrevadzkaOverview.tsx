@@ -4,7 +4,7 @@ import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
-import { PageHead, Card, Input } from "./ui";
+import { AdminDateNav, PageHead, Card } from "./ui";
 import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 
@@ -235,19 +235,7 @@ const PrevadzkaOverview: React.FC = () => {
         eyebrow="Prevádzky"
         title="Kontrola objednávok"
         desc="Prehľad, ktoré prevádzky za daný deň dodali objednávky."
-        actions={
-          <Input
-            type="date"
-            value={date}
-            max={maxDate}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (!val || val > maxDate) return;
-              setDate(val);
-            }}
-            style={{ width: "auto" }}
-          />
-        }
+        actions={<AdminDateNav date={date} onChange={setDate} maxDate={maxDate} compact />}
       />
 
       {loading ? (

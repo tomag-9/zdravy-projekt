@@ -1,22 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
+import { Check, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen, RefreshCw, Search, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
 import { useScrollToHashRow, scrollToRowAndHighlight } from "../../lib/scrollToHashRow";
 import { normalizeForSearch } from "../../lib/searchNormalize";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
-import { Button, Card, Badge, Empty, Modal, Toggle, Checkbox, Textarea } from "./ui";
+import { AdminDateNav, Button, Card, Empty, Modal, Toggle, Checkbox, Textarea } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
-import {
-  prevWeekday,
-  nextWeekday,
-  dashboardMaxDate,
-  dashboardDefaultDate,
-  toDateString,
-  isWeekday,
-} from "../../lib/businessDay";
+import { dashboardMaxDate, dashboardDefaultDate } from "../../lib/businessDay";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -204,7 +197,6 @@ const AdminDashboard: React.FC = () => {
   // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
   // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
   const maxDate = useMemo(() => dashboardMaxDate(), []);
-  const actualToday = useMemo(() => toDateString(new Date()), []);
   const [date, setDate] = useState(() => dashboardDefaultDate());
   const [data, setData] = useState<GramageDashboard | null>(null);
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
@@ -430,7 +422,6 @@ const AdminDashboard: React.FC = () => {
     [submitClosedDayAction],
   );
 
-  const isAtMax = date >= maxDate;
   // Tabuľka žije zo spec-u, takže sa aj jej prázdnosť posudzuje podľa neho.
   const hasData = Boolean(
     data && (data.spec.rows.length > 0 || data.spec.header.groups.length > 0),
@@ -461,49 +452,7 @@ const AdminDashboard: React.FC = () => {
           "Deň je uzavretý") neposkakuje nič okrem tejto pravej skupiny. */}
       <div className="zpa-toolbar">
         <div className="zpa-toolbar-left">
-          <Card className="zpa-datenav-card">
-            <div className="zpa-datenav zpa-datenav--compact">
-              <button
-                className="zpa-navchip"
-                onClick={() => setDate(prevWeekday(date))}
-                disabled={closing || unlocking}
-                aria-label="Predchádzajúci deň"
-                title="Predchádzajúci deň"
-              >
-                <ChevronLeft />
-              </button>
-              <div className="mid">
-                <input
-                  type="date" value={date} max={maxDate}
-                  disabled={closing || unlocking}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (!val) return;
-                    if (!isWeekday(new Date(val + "T12:00:00"))) return;
-                    if (val <= maxDate) setDate(val);
-                  }}
-                  className="zpa-input"
-                  style={{ width: "auto" }}
-                />
-                {date === actualToday && <Badge tone="orange">Dnes</Badge>}
-                {date === maxDate && date !== actualToday && date > actualToday && (
-                  <Badge tone="orange">Zajtra</Badge>
-                )}
-                {date === maxDate && date !== actualToday && date < actualToday && (
-                  <Badge tone="gray">Posledný pracovný deň</Badge>
-                )}
-              </div>
-              <button
-                className="zpa-navchip"
-                onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
-                disabled={isAtMax || closing || unlocking}
-                aria-label="Nasledujúci deň"
-                title="Nasledujúci deň"
-              >
-                <ChevronRight />
-              </button>
-            </div>
-          </Card>
+          <AdminDateNav date={date} onChange={setDate} maxDate={maxDate} disabled={closing || unlocking} compact />
 
           <div className={`zpa-search-toggle${searchOpen || tableSearch ? " zpa-search-toggle--open" : ""}`}>
             <button

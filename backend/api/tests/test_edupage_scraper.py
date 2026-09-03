@@ -236,6 +236,30 @@ class TestResolveDietName(unittest.TestCase):
                 self.assertEqual(self._r(skratka, nazov), expected)
 
 
+class TestResolvePayerDietName(unittest.TestCase):
+    """`resolve_payer_diet_name` — payer-label fragment match used for
+    meals (raňajky/olovrant) that don't have their own menu-letter split,
+    only payer-name text (e.g. "1.-3.ročník noMilk/noEgg")."""
+
+    def _r(self, nazov):
+        return EdupageScraper.resolve_payer_diet_name(nazov)
+
+    def test_compound_no_milk_no_egg_payer_label_keeps_both_parts(self):
+        """MŠ Naša Škola Poznania, raňajky/olovrant (žiadny letter_hook, len
+        payer text) — payer "1.-3.ročník noMilk/noEgg" bez zloženej zhody
+        padol na prvý nájdený (dlhší) fragment "nomilk" a stratil "noEgg"
+        (user 3.9.2026: "nečíta dobre"). Na obede rovnaký payer ide cez
+        menu-písmeno (skratka "nMnEgg", `_SKRATKA_MAP` už opravené 2.9.2026)
+        a správne dáva "NO MILK/NO EGG" — raňajky/olovrant musia sedieť."""
+        self.assertEqual(self._r("1.-3.ročník noMilk/noEgg"), "NO MILK/NO EGG")
+
+    def test_compound_no_egg_no_milk_order_reversed_also_works(self):
+        self.assertEqual(self._r("2.stupeň noEgg/noMilk"), "NO MILK/NO EGG")
+
+    def test_plain_no_milk_payer_label_unaffected(self):
+        self.assertEqual(self._r("1.-3.ročník noMilk"), "NO MILK")
+
+
 class TestResolveMenuVariant(unittest.TestCase):
     def _r(self, sk, naz):
         return EdupageScraper.resolve_menu_variant(sk, naz)

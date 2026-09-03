@@ -112,12 +112,30 @@ const OrderPage = () => {
     return () => document.removeEventListener("click", handleClick, true);
   }, [currentOrder.status]);
 
-  useEffect(() => {
-    const dateFromUrl = searchParams.get("date");
-    if (dateFromUrl) {
-      setSelectedDate(dateFromUrl);
-    }
-  }, [searchParams, setSelectedDate]);
+  // URL dátum → selectedDate musí sa uplatniť SYNCHRÓNNE počas renderu, nie cez
+  // useEffect (ten beží až po vykreslení/commite) — inak medzi navigáciou na
+  // nový dátum a tým, než sa efekt stihne spustiť, appka na chvíľu vykreslí a
+  // dovolí interakciu so STARÝM selectedDate, hoci URL už ukazuje nový dátum.
+  // Presne to spôsobilo, že submit tesne po navigácii zapísal objednávku pod
+  // iný (starý) dátum, než na akom bol user (Emjoy, 3.9.2026 — B/C
+  // predobjednané na zajtra sa vynulovalo pri editácii "dnešného" obeda;
+  // Loki log potvrdil POST s date z URL A, ale success redirect a refetch pre
+  // date B). Oficiálny React vzor "adjusting state during render" namiesto
+  // efektu — ak sa URL dátum líši od naposledy uplatneného, oprav
+  // selectedDate HNEĎ, v tom istom render-passe, predtým než React čokoľvek
+  // zacommitne. `lastSyncedUrlDate` (nie porovnanie priamo so `selectedDate`)
+  // zabezpečuje, že sa to spustí len raz na URL zmenu — neskoršia legitímna
+  // zmena cez DaySelector (mimo URL) sa tak neprepíše späť.
+  const dateFromUrl = searchParams.get("date");
+  // `null`, nie `dateFromUrl` — inak by sa na PRVOM vykreslení podmienka
+  // nižšie nikdy nesplnila (dateFromUrl === lastSyncedUrlDate by bolo vždy
+  // pravda) a mount-time nezhoda (selectedDate="dnes" z useOrder defaultu
+  // vs. URL na iný deň) by sa vôbec neopravila.
+  const [lastSyncedUrlDate, setLastSyncedUrlDate] = useState<string | null>(null);
+  if (dateFromUrl && dateFromUrl !== lastSyncedUrlDate) {
+    setLastSyncedUrlDate(dateFromUrl);
+    setSelectedDate(dateFromUrl);
+  }
 
   useEffect(() => {
     if (dateKeyRef.current !== selectedDate) {
