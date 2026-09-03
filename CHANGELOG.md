@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.4.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.3.0...v2.4.0) (2026-09-03)
+
+
+### Features
+
+* **admin:** kompaktná hlavička gramážnej tabuľky v jednom riadku ([cf67fdf](https://github.com/tomag-9/zdravy-projekt/commit/cf67fdf961e91e57e71f22e6f9d518f0033710df))
+* **admin:** zapamätanie Nastavení tabuľky, ukotvenie tlačidiel vpravo, search len scrolluje ([42a1719](https://github.com/tomag-9/zdravy-projekt/commit/42a1719484453cfa985058085792450cddd3e288))
+
+
+### Bug Fixes
+
+* **admin:** 'Zobraziť všetko rozbalené' reálne rozbaľuje, prepis na 'prevádzky' ([174ca8d](https://github.com/tomag-9/zdravy-projekt/commit/174ca8d3b994d1a409cecc98a9477f995396b30e))
+* **edupage:** opravené porcia kódy pre Fantastickú Školu a Dobrodružstvo ([8ed2a50](https://github.com/tomag-9/zdravy-projekt/commit/8ed2a5014eb208ff292c06cffdf0e626355a4514))
+* **edupage:** SŠ Veterinárna Vege je samostatné menu, nie diéta na Klasiku ([1c51778](https://github.com/tomag-9/zdravy-projekt/commit/1c51778ec29799c00b7d9bccfeedd697d1178239))
+
 ## [2.3.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.2.0...v2.3.0) (2026-09-03)
 
 
