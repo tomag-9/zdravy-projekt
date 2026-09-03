@@ -943,6 +943,31 @@ def on_prevadzka_saved_clear_gramage_cache(sender, instance, **kwargs):
         _capture_signal_failure(exc, "prevadzka_saved_clear_gramage_cache")
 
 
+@receiver(post_save, sender="api.DailyOrder")
+@receiver(post_delete, sender="api.DailyOrder")
+def on_daily_order_changed_refresh_gramage_cache(sender, instance, **kwargs):
+    """Asynchrónne prepočíta gramage dashboard cache pre deň objednávky.
+
+    Predtým sa "ad-hoc order edits" (úprava/vytvorenie/zmazanie objednávky)
+    do gramage dashboard cache vôbec nepremietali — bolo to úmyselné, TTL
+    5 minút mal staleness ohraničiť namiesto prepočtu pri každom zápise
+    (viď pôvodný komentár pri `GRAMAGE_DASHBOARD_TIMEOUT`). To ale reálne
+    znamenalo, že admin po úprave objednávky videl starý stav tabuľky až
+    5 minút. `schedule_gramage_dashboard_refresh` (api/cache_service.py) to
+    rieši bez toho, aby request musel čakať na prepočet: zahodí starú cache
+    a na pozadí (Celery, s debounce) ju rovno nahradí čerstvou.
+    """
+    if instance.date is None:
+        return
+    try:
+        from api.cache_service import schedule_gramage_dashboard_refresh
+
+        schedule_gramage_dashboard_refresh(instance.date.isoformat())
+    except Exception as exc:
+        logger.exception("Error scheduling gramage dashboard refresh: %s", exc)
+        _capture_signal_failure(exc, "daily_order_changed_refresh_gramage_cache")
+
+
 @receiver(post_save, sender="api.Diet")
 @receiver(post_delete, sender="api.Diet")
 def on_diet_changed(sender, instance, **kwargs):

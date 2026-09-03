@@ -1370,3 +1370,36 @@ def cache_closed_day_pdf_task(date_str: str) -> None:
             "pre uzavretý deň %s",
             date_str,
         )
+
+
+@shared_task
+def refresh_gramage_dashboard_cache_task(date_str: str) -> None:
+    """Prepočíta a znova nacachuje gramage dashboard pre daný deň.
+
+    Volané asynchrónne (`.delay()`) z `schedule_gramage_dashboard_refresh`
+    (`api/cache_service.py`) po každej zmene `DailyOrder`/`Prevadzka` — bez
+    toho admin po úprave objednávky/poznámky videl starý stav až
+    `GRAMAGE_DASHBOARD_TIMEOUT` (5 min). Zlyhanie tu nesmie nič zhodiť: pri
+    cache-miss sa dashboard aj tak domodeluje synchrónne na požiadanie
+    (`get_cached_gramage_dashboard_data`), takže si len zaloguje a skončí.
+    """
+    from api.cache_service import (
+        GRAMAGE_DASHBOARD_TIMEOUT,
+        get_gramage_dashboard_cache_key,
+        set_cached,
+    )
+    from api.services.meal_plan_service import MealPlanService
+
+    try:
+        data = MealPlanService.gramage_dashboard(date_str)
+        set_cached(
+            get_gramage_dashboard_cache_key(date_str),
+            data,
+            timeout=GRAMAGE_DASHBOARD_TIMEOUT,
+        )
+    except Exception:
+        logger.exception(
+            "refresh_gramage_dashboard_cache_task: nepodarilo sa prepočítať "
+            "gramage dashboard pre %s",
+            date_str,
+        )

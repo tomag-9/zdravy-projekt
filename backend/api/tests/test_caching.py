@@ -11,6 +11,7 @@ Tests cover:
 # flake8: noqa: F401
 import json
 from datetime import date, datetime, time
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
@@ -19,6 +20,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from api.cache_service import (
+    GRAMAGE_DASHBOARD_TIMEOUT,
     clear_diet_list_cache,
     clear_global_settings_cache,
     delete_cached,
@@ -27,6 +29,7 @@ from api.cache_service import (
     get_diet_list_cache_key,
     get_global_settings_cache_key,
     get_gramage_dashboard_cache_key,
+    schedule_gramage_dashboard_refresh,
     set_cached,
 )
 from api.cached_settings_service import get_global_settings
@@ -443,3 +446,82 @@ class TestGramageDashboardCacheInvalidationOnPrevadzkaSave:
 
         assert get_cached(key_today) is None
         assert get_cached(key_other_day) is None
+
+
+class TestGramageDashboardAsyncRefresh:
+    """Objednávkové edity majú namiesto pasívneho 5-min TTL asynchrónne
+    prepočítať a znova nacachovať dashboard (nie len zahodiť starú cache a
+    nechať to na ďalší request) — s debounce, nech séria rýchlych zápisov
+    (napr. jedna EduPage scrape dávka) nespustí prepočet za každý riadok."""
+
+    def setup_method(self):
+        cache.clear()
+
+    def test_schedule_acquires_lock_and_enqueues_task(self):
+        with patch(
+            "api.tasks.refresh_gramage_dashboard_cache_task.apply_async"
+        ) as mock_apply_async:
+            schedule_gramage_dashboard_refresh("2026-09-03")
+
+        mock_apply_async.assert_called_once()
+        assert mock_apply_async.call_args.kwargs["args"] == ["2026-09-03"]
+        assert mock_apply_async.call_args.kwargs["countdown"] > 0
+
+    def test_schedule_debounces_repeated_calls_for_same_date(self):
+        with patch(
+            "api.tasks.refresh_gramage_dashboard_cache_task.apply_async"
+        ) as mock_apply_async:
+            schedule_gramage_dashboard_refresh("2026-09-03")
+            schedule_gramage_dashboard_refresh("2026-09-03")
+            schedule_gramage_dashboard_refresh("2026-09-03")
+
+        mock_apply_async.assert_called_once()
+
+    def test_schedule_does_not_debounce_across_different_dates(self):
+        with patch(
+            "api.tasks.refresh_gramage_dashboard_cache_task.apply_async"
+        ) as mock_apply_async:
+            schedule_gramage_dashboard_refresh("2026-09-03")
+            schedule_gramage_dashboard_refresh("2026-09-04")
+
+        assert mock_apply_async.call_count == 2
+
+    def test_daily_order_save_schedules_gramage_refresh(self):
+        celok = Celok.objects.create(nazov="Test Celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Test Prevadzka")
+
+        with patch(
+            "api.cache_service.schedule_gramage_dashboard_refresh"
+        ) as mock_schedule:
+            DailyOrder.objects.create(
+                prevadzka=prevadzka, date=date(2026, 9, 3), data={}
+            )
+
+        mock_schedule.assert_called_once_with("2026-09-03")
+
+    def test_daily_order_delete_schedules_gramage_refresh(self):
+        celok = Celok.objects.create(nazov="Test Celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Test Prevadzka")
+        order = DailyOrder.objects.create(
+            prevadzka=prevadzka, date=date(2026, 9, 3), data={}
+        )
+
+        with patch(
+            "api.cache_service.schedule_gramage_dashboard_refresh"
+        ) as mock_schedule:
+            order.delete()
+
+        mock_schedule.assert_called_once_with("2026-09-03")
+
+    def test_refresh_task_repopulates_cache(self):
+        from api.tasks import refresh_gramage_dashboard_cache_task
+
+        key = get_gramage_dashboard_cache_key("2026-09-03")
+        fresh_data = {"rows": [], "meal_plan_id": None, "col_groups": []}
+        with patch(
+            "api.services.meal_plan_service.MealPlanService.gramage_dashboard",
+            return_value=fresh_data,
+        ):
+            refresh_gramage_dashboard_cache_task("2026-09-03")
+
+        assert get_cached(key) == fresh_data

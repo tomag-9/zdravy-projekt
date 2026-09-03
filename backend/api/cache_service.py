@@ -217,6 +217,47 @@ def clear_gramage_dashboard_cache(date_str: str) -> None:
     delete_cached(get_gramage_dashboard_cache_key(date_str))
 
 
+GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS = 3
+GRAMAGE_DASHBOARD_REFRESH_LOCK_PREFIX = "gramage_dashboard_refresh_lock"
+
+
+def schedule_gramage_dashboard_refresh(date_str: str) -> None:
+    """Asynchrónne prepočíta a nacachuje gramage dashboard pre daný deň.
+
+    Nahrádza čisté `clear_gramage_dashboard_cache` tam, kde vieme presne, ktorý
+    deň sa zmenil (`DailyOrder` save/delete) — namiesto toho, aby ďalší admin,
+    ktorý si tabuľku otvorí, čakal na synchrónny prepočet, ho spustí Celery
+    task (`refresh_gramage_dashboard_cache_task`) na pozadí a dashboard má
+    novú verziu už nacachovanú skôr, než si ju niekto vôbec vypýta.
+
+    Debounce cez `cache.add()` lock (TTL = `GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS`)
+    — séria rýchlych editov toho istého dňa (typicky viac riadkov v jednej
+    EduPage scrape dávke) tak spustí jeden prepočet namiesto jedného za každý
+    zápis, ktorý by inak zbytočne zaťažoval worker rovnakou drahou agregáciou.
+    """
+    lock_key = f"{GRAMAGE_DASHBOARD_REFRESH_LOCK_PREFIX}:{date_str}"
+    try:
+        lock_acquired = cache.add(
+            lock_key, 1, timeout=GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS
+        )
+    except Exception as exc:
+        logger.warning(
+            "Cache add failed for gramage refresh lock '%s': %s (%s)",
+            lock_key,
+            exc.__class__.__name__,
+            exc,
+        )
+        return
+    if not lock_acquired:
+        return  # Prepočet pre tento deň je už naplánovaný.
+
+    from api.tasks import refresh_gramage_dashboard_cache_task
+
+    refresh_gramage_dashboard_cache_task.apply_async(
+        args=[date_str], countdown=GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS
+    )
+
+
 def clear_gramage_dashboard_cache_all() -> None:
     """Clear cached gramage dashboard data for every date (wildcard).
 
