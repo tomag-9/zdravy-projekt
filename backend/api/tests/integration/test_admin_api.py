@@ -309,6 +309,56 @@ class MealTemplateCatalogApiTest(APITestCase):
             template.weight_label, "150g + Klobása (ks podľa vekovej skupiny)"
         )
 
+    def test_unit_exception_counts_normalize_decimal_comma(self):
+        # Slovak keyboards produce "0,5" for a half-piece count. Decimal()
+        # can't parse a comma — normalize it at the API edge instead of
+        # crashing the gramage dashboard later. Regression for the prod
+        # incident where "0,5 ks" / "1,5" reached the DB and broke
+        # /api/admin/meal-plans/gramage-dashboard/ for every day using it.
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "main_course",
+                "name": "Hlavný chod 9",
+                "components": [{"label": "Príloha", "grams": "150", "unit": "g"}],
+                "unit_exception": {
+                    "component_label": "Klobása",
+                    "unit": "ks",
+                    "counts_by_portion_type": {"Škôlka": "0,5", "Dospelý (SŠ)": "2"},
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        template = MealTemplate.objects.get(name="Hlavný chod 9")
+        self.assertEqual(
+            template.unit_exception["counts_by_portion_type"]["Škôlka"], "0.5"
+        )
+
+    def test_unit_exception_counts_reject_non_numeric_value(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post(
+            "/api/admin/meal-templates/",
+            {
+                "category": "main_course",
+                "name": "Hlavný chod 9",
+                "components": [{"label": "Príloha", "grams": "150", "unit": "g"}],
+                "unit_exception": {
+                    "component_label": "Klobása",
+                    "unit": "ks",
+                    "counts_by_portion_type": {"Škôlka": "0,5 ks"},
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(MealTemplate.objects.filter(name="Hlavný chod 9").exists())
+
     def test_admin_can_edit_an_existing_template(self):
         self.client.force_authenticate(user=self.admin)
         template = MealTemplate.objects.get(name="Olovrant 1")

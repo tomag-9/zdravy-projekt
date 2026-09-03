@@ -117,6 +117,34 @@ class MealTemplateSerializer(serializers.ModelSerializer):
     def get_diet_name(self, obj) -> str | None:
         return obj.diet.name if obj.diet_id else None
 
+    def validate_unit_exception(self, value: dict | None) -> dict | None:
+        # counts_by_portion_type feeds Decimal(str(...)) directly in
+        # MealPlanService's gramage calculation (no parsing there) — a stray
+        # decimal comma or unit suffix (e.g. "0,5 ks") crashes the gramage
+        # dashboard for every day that uses the template. Normalize "," to
+        # "." here and reject anything Decimal can't parse.
+        if not value:
+            return value
+        counts = value.get("counts_by_portion_type")
+        if isinstance(counts, dict):
+            normalized = {}
+            for portion_name, raw in counts.items():
+                text = str(raw).strip().replace(",", ".")
+                try:
+                    Decimal(text)
+                except InvalidOperation as exc:
+                    raise serializers.ValidationError(
+                        {
+                            "unit_exception": (
+                                f"Neplatný počet kusov pre '{portion_name}': "
+                                f"{raw!r}"
+                            )
+                        }
+                    ) from exc
+                normalized[portion_name] = text
+            value["counts_by_portion_type"] = normalized
+        return value
+
     def validate_name(self, value: str) -> str:
         # `name` has no DB unique constraint (prod already carries a duplicate
         # from before this check), but a duplicate breaks seed_meal_weight_catalog
