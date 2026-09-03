@@ -501,6 +501,32 @@ class OrderService {
         return result;
     }
 
+    /** Zastropuje Menu B/C/D v `mealData` na `ceilings[label|category|menuType]`
+     * (chýbajúci kľúč = strop 0) — rovnaké pravidlo ako `updateMenuCount`, len
+     * aplikované na celé skopírované jedlo naraz. Kopírovacie akcie ("Načítať z
+     * včerajška", "Kopírovať z obeda"...) menili `currentOrder` priamo mimo
+     * `updateMenuCount`, takže cudzie B/C/D z iného dňa/chodu (spred termínu)
+     * mohli obísť strop a appka to nechala prejsť až do zamietnutého submitu
+     * (nahlásené 3.9.2026, Little Big — ich celé menu je len A/B/C). Volať len
+     * keď je termín Menu B/C už zavretý — pred termínom netreba nič orezávať. */
+    static clampRestrictedMenusForMeal(
+        mealData: MealData,
+        ceilings: Record<string, number>,
+        label: string
+    ): MealData {
+        const clamped: MealData = {};
+        Object.entries(mealData).forEach(([category, categoryData]) => {
+            const menuCounts = { ...categoryData.menuCounts };
+            this.RESTRICTED_MENUS.forEach((menuType) => {
+                if (!(menuType in menuCounts)) return;
+                const ceiling = ceilings[`${label}|${category}|${menuType}`] ?? 0;
+                if (menuCounts[menuType] > ceiling) menuCounts[menuType] = ceiling;
+            });
+            clamped[category] = { ...categoryData, menuCounts };
+        });
+        return clamped;
+    }
+
     static fastCopy<T>(source: T): T {
         return JSON.parse(JSON.stringify(source));
     }
