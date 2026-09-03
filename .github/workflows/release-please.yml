@@ -50,10 +50,22 @@ jobs:
           # (title/body carry the changelog) contains quotes/parens/newlines
           # that break bash if spliced in with ${{ }} directly.
           RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
+        # Čistý curl + python3 (nie gh/jq) — runner opakovane chýbal jeden z
+        # nich (#577 jq, teraz gh), python3 tu je zaručene, beží naň backend.
         run: |
-          PR_NUMBER=$(echo "$RELEASE_PR_JSON" | jq -r .number)
+          PR_NUMBER=$(python3 -c "import json, os; print(json.loads(os.environ['RELEASE_PR_JSON'])['number'])")
           echo "Merging release-please PR #$PR_NUMBER"
-          gh pr merge "$PR_NUMBER" --squash --delete-branch=false --repo "$GITHUB_REPOSITORY"
+          http_code=$(curl -sS -o /tmp/merge_response.json -w "%{http_code}" -X PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/merge" \
+            -d '{"merge_method":"squash"}')
+          cat /tmp/merge_response.json
+          if [ "$http_code" -ge 300 ]; then
+            echo "Merge failed with HTTP $http_code"
+            exit 1
+          fi
 
       - name: Log cut release
         if: steps.release.outputs.release_created == 'true'
