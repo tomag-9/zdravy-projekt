@@ -238,6 +238,40 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         apply_config(res, _cfg(OlovrantMode.EDUPAGE))
         self.assertEqual(res.config_notes, [])
 
+    def test_olovrant_missing_ok_suppresses_the_note_for_named_prevadzka(self):
+        """ZŠ Malokarpatská (zdravebrusko) reálne nikdy nemá olovrant/raňajky
+        v tomto EduPage feede — starší žiaci si ich cez appku neobjednávajú,
+        na rozdiel od MŠ na tom istom feede. Živý raw scrape (3.9.2026)
+        potvrdzuje: žiadny payer s menom školy sa v blokoch raňajok/olovrantu
+        vôbec nevyskytuje — nie je to config drift, je to štrukturálny fakt.
+        `olovrant_missing_ok` musí notu pre TÚTO prevádzku umlčať, ale nie
+        pre ostatné na tej istej connection (napr. Deutsche Schule, ktorá
+        olovrant reálne má a mala by byť nahlásená, keby jej zrazu chýbal)."""
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "ZŠ Malokarpatská": {"lunch": LUNCH_DATA},
+                "Deutsche schule": {"lunch": LUNCH_DATA},
+            },
+        )
+
+        apply_config(
+            res,
+            _cfg(
+                OlovrantMode.EDUPAGE,
+                olovrant_missing_ok=frozenset({"ZŠ Malokarpatská"}),
+            ),
+        )
+
+        self.assertFalse(
+            any("ZŠ Malokarpatská" in n for n in res.config_notes),
+            res.config_notes,
+        )
+        self.assertTrue(
+            any("Deutsche schule" in n and "olovrant" in n for n in res.config_notes)
+        )
+
     def test_neznamy_does_not_guess(self):
         """Ivanka: kým nemáme dáta, radšej warning než tichý odhad."""
         res = _result({"lunch": LUNCH_DATA})
