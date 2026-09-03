@@ -542,10 +542,17 @@ class TestZdravebruskoLetterHook(unittest.TestCase):
         match — potvrdené na isté (user 2.9.2026)."""
         self.assertEqual(self._rule("zšlaNM").diet, "NO MILK")
 
-    def test_ss_veterinarna_veggie_confirmed(self):
-        """'sšvV' (SŠ Veterinárna, piaty areál na tomto feede) bol uncertain
-        fuzzy match — potvrdené na isté (user 2.9.2026)."""
-        self.assertEqual(self._rule("sšvV").diet, "VEGGIE")
+    def test_ss_veterinarna_vege_is_own_menu_not_a_diet(self):
+        """'sšvV' (SŠ Veterinárna Vege) bol pôvodne namapovaný ako diéta
+        VEGGIE (user 2.9.2026) — user 3.9.2026 opravil: je to pre SŠV
+        samostatný MENU výber (ako 'sšvA'/Klasik, 'sšvB'/Menu B), nie dietná
+        úprava Klasiku. Diéta by sa v `_parse` vždy sčítala aj do
+        menuCounts.A (bežne JE úpravou Klasiku) — pri SŠV to duplicitne
+        napočítalo vege objednávky aj do A (obed ukazoval A:20 namiesto
+        správnych 18)."""
+        rule = self._rule("sšvV")
+        self.assertEqual(rule.menu, "V")
+        self.assertIsNone(rule.diet)
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("something else entirely"))

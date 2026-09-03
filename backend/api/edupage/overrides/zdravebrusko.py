@@ -18,8 +18,14 @@ MŠ Malokarpatké nám. 6 "mšMal.", ZŠ Malokarpatská "zšla" — rozdelené c
   1.9.2026 potvrdil jablko, nie jahodu — flag odstránený, diéta je istá).
 
 User 2.9.2026 potvrdil ďalšie dve "uncertain" fuzzy matche:
-- `sšvV` = SŠ Veterinárna (piaty areál na tomto feede, ul. Veterinárna) →
-  VEGGIE, presne ako avizuje poznámka na `PrevadzkaConfig` v `registry.py`.
+- `sšvV` = SŠ Veterinárna Vege. PÔVODNE namapované ako diéta VEGGIE (poznámka
+  na `PrevadzkaConfig` v `registry.py`) — user 3.9.2026 opravil: Vege je pre
+  SŠV samostatný MENU výber (ako `sšvA`/Klasik, `sšvB`/Menu B), nie dietná
+  úprava Klasiku. `LetterRule(diet=...)` núti `effective_menu = "A"`
+  (`_parse`: diéta sa vždy sčíta aj do menuCounts.A, lebo bežne JE úpravou
+  Klasiku) — pri SŠV to duplicitne napočítalo 2 vege objednávky aj do A
+  (obed ukazoval A:20 namiesto správnych 18). `LetterRule(menu="V")` počíta
+  Vege do vlastného menuCounts.V, bez dotyku na A.
 - `zšlaNM` = ZŠ Malokarpatská, len mlieko (bez ďalších obmedzení, na rozdiel
   od `zšlaNMnEnOnJ` vyššie) → NO MILK.
 
@@ -51,7 +57,7 @@ _RULES: dict[str, LetterRule] = {
     "ZŠLANG": LetterRule(diet="NO GLUTEN"),
     "ZŠLANMNENONJ": LetterRule(diet="NO MILK – NO EGG – NO ORECH – NO JABLKO"),
     "ZŠLANM": LetterRule(diet="NO MILK"),
-    "SŠVV": LetterRule(diet="VEGGIE"),
+    "SŠVV": LetterRule(menu="V"),
 }
 
 
