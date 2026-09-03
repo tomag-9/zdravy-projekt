@@ -525,3 +525,40 @@ class TestGramageDashboardAsyncRefresh:
             refresh_gramage_dashboard_cache_task("2026-09-03")
 
         assert get_cached(key) == fresh_data
+
+
+class TestGramageDashboardManualRefreshEndpoint:
+    """Tlačidlo "Obnoviť" v hlavičke gramážnej tabuľky (`?refresh=1`) — obíde
+    cache okamžite, bez čakania na debounce okno async prepočtu."""
+
+    def setup_method(self):
+        cache.clear()
+        self.client = APIClient()
+        self.admin_user = User.objects.create_user(
+            username="admin_refresh", password="test", is_staff=True, is_superuser=True
+        )
+        self.client.force_authenticate(user=self.admin_user)
+
+    def test_refresh_param_clears_stale_cache_before_read(self):
+        key = get_gramage_dashboard_cache_key("2026-09-03")
+        set_cached(key, {"rows": [], "meal_plan_id": None, "col_groups": []})
+
+        with patch("api.cache_service.clear_gramage_dashboard_cache") as mock_clear:
+            response = self.client.get(
+                "/api/admin/meal-plans/gramage-dashboard/?date=2026-09-03&refresh=1"
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_clear.assert_called_once_with("2026-09-03")
+
+    def test_without_refresh_param_cache_is_left_untouched(self):
+        key = get_gramage_dashboard_cache_key("2026-09-03")
+        set_cached(key, {"rows": [], "meal_plan_id": None, "col_groups": []})
+
+        with patch("api.cache_service.clear_gramage_dashboard_cache") as mock_clear:
+            response = self.client.get(
+                "/api/admin/meal-plans/gramage-dashboard/?date=2026-09-03"
+            )
+
+        assert response.status_code == status.HTTP_200_OK
+        mock_clear.assert_not_called()

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen, SlidersHorizontal } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole, LockKeyholeOpen, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
@@ -228,7 +228,7 @@ const AdminDashboard: React.FC = () => {
     return parts.join("");
   }, [sections, selectedVydaje, dietClusters, showEmpty, clusterSummary, expanded]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (refresh = false) => {
     // Zámerne NEnulujeme `data`/`orderReport` pred fetchom — Nastavenia
     // tabuľky sú v samostatnom modáli podmienenom `data` (pozri nižšie), takže
     // vynulovanie by ho na chvíľu odmountovalo (bliknutie, strata scrollu).
@@ -236,7 +236,8 @@ const AdminDashboard: React.FC = () => {
     // nepríde nový — mení sa len ona, modál zostáva na mieste.
     setLoading(true);
     try {
-      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}${sectionQuery}`);
+      const refreshParam = refresh ? "&refresh=1" : "";
+      const res = await apiFetch(`${API}/admin/meal-plans/gramage-dashboard/?date=${date}${sectionQuery}${refreshParam}`);
       if (res.ok) {
         const gramage: GramageDashboard = await res.json();
         setData(gramage);
@@ -460,6 +461,14 @@ const AdminDashboard: React.FC = () => {
               placeholder="Hľadať prevádzku…"
               className="zpa-gram-search"
             />
+            <Button
+              variant="secondary"
+              onClick={() => void fetchData(true)}
+              disabled={loading}
+              title="Znova načítať tabuľku priamo z databázy, bez čakania na automatický prepočet"
+            >
+              <RefreshCw className={loading ? "zpa-spin" : undefined} /> Obnoviť
+            </Button>
             <Button variant="secondary" onClick={() => setSettingsOpen(true)} disabled={!hasData}>
               <SlidersHorizontal /> Nastavenia tabuľky
             </Button>
