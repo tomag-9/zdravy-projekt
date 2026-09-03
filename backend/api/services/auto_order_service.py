@@ -77,10 +77,23 @@ def _build_auto_data(
     If visible_meals is empty, all three meals are copied.
     """
     allowed = set(visible_meals) if visible_meals else set(MEAL_KEYS)
+    # Raňajky sa štandardne kopírujú z predošlých raňajok, ale niektoré
+    # prevádzky (napr. Bystrá škôlky) chcú raňajky napĺňať predošlým obedom —
+    # viď `Prevadzka.auto_order_breakfast_source`.
+    # `getattr(template, "prevadzka", None)` (nie priamy `template.prevadzka`),
+    # lebo prevadzka je povinný FK — na neuloženom `DailyOrder(data=...)` bez
+    # prevadzka_id (viď testy v TestBuildAutoData) by priamy prístup vyhodil
+    # `RelatedObjectDoesNotExist`.
+    prevadzka = getattr(template, "prevadzka", None)
+    breakfast_source = (
+        getattr(prevadzka, "auto_order_breakfast_source", "breakfast") or "breakfast"
+    )
+    meal_sources = {"breakfast": breakfast_source}
     data = {}
     for meal_key in MEAL_KEYS:
         if meal_key in allowed:
-            raw = (template.data or {}).get(meal_key, {})
+            source_key = meal_sources.get(meal_key, meal_key)
+            raw = (template.data or {}).get(source_key, {})
             normalised = _normalise_meal(raw)
             if visible_portion_types:
                 allowed_portion_types = set(visible_portion_types)

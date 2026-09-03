@@ -63,6 +63,7 @@ def test_seed_operations_calls_data_seeds_in_order(monkeypatch):
         call("seed_zdrave_brusko", verbosity=2),
         call("seed_real_delivery_layout", "--allow-prod", verbosity=2),
         call("seed_merge_celky", verbosity=2),
+        call("seed_bystra_breakfast_from_lunch", verbosity=2),
         call("seed_new_edupage_2026_08", verbosity=2),
         call("seed_british_school_2026_08", verbosity=2),
         call("seed_cms_pezinok_2026_08", verbosity=2),

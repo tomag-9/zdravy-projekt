@@ -42,6 +42,10 @@ class Command(BaseCommand):
                 "seed_merge_celky", verbosity=options.get("verbosity", 1)
             )
             management.call_command(
+                "seed_bystra_breakfast_from_lunch",
+                verbosity=options.get("verbosity", 1),
+            )
+            management.call_command(
                 "seed_new_edupage_2026_08", verbosity=options.get("verbosity", 1)
             )
             management.call_command(

@@ -649,6 +649,18 @@ class Prevadzka(models.Model):
             "opäť False pri najbližšej reálnej (neprázdnej) objednávke."
         ),
     )
+    auto_order_breakfast_source = models.CharField(
+        max_length=20,
+        choices=[("breakfast", "Raňajky"), ("lunch", "Obed")],
+        default="breakfast",
+        help_text=(
+            "Z ktorého chodu predošlého dňa apply_auto_orders naplní raňajky. "
+            "Default 'breakfast' = raňajky sa kopírujú z predošlých raňajok. "
+            "'lunch' = raňajky sa namiesto toho naplnia predošlým obedom "
+            "(napr. Bystrá škôlky, kde sa raňajky objednávajú ako obed z "
+            "predošlého dňa)."
+        ),
+    )
     olovrant_s_obedom = models.BooleanField(
         default=False,
         help_text=(
