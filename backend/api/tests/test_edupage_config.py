@@ -636,13 +636,21 @@ class TestZdravebruskoPayerHook(unittest.TestCase):
         rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoGluten")
         self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
 
-    def test_no_diet_fragment_still_forces_match(self):
-        """Neznáma prípona (napr. 'NoBanán') nemá rozpoznanú diétu, ale
-        prevádzka sa musí opraviť aj tak — diéta ostane None (engine ju
-        vyrieši inak, viď fallback na `payer_info.get('diet')`)."""
+    def test_no_banan_combo_keeps_both_restrictions(self):
+        """'MŠ Mal. NoMilk/NoBanán' (nový payer, 0 objednávok 3.9.2026, ale
+        potenciálna alergia) — starý kód poznal len milk/gluten fragmenty,
+        takže 'NoBanán' sa ticho stratilo a diéta vyšla len 'NO MILK' (rovnaký
+        vzor ako predtým opravené NO MILK/NO EGG pre Naša škola poznania).
+        Keďže `force_match=True` a diéta z hooku nie je None, `forced_diet`
+        prebije aj zdieľané písmeno — banán sa preto MUSÍ zachovať už tu."""
         rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoBanán")
         self.assertEqual(rule.match_name, "mšMal")
         self.assertTrue(rule.force_match)
+        self.assertEqual(rule.diet, "NO MILK/NO BANÁN")
+
+    def test_no_banan_alone_is_recognised(self):
+        rule = zdravebrusko_payer_hook("MŠ Hey. NoBanán")
+        self.assertEqual(rule.diet, "NO BANÁN")
 
     def test_deutsche_schule_payer_untouched(self):
         self.assertIsNone(zdravebrusko_payer_hook("MŠ Klasik"))
