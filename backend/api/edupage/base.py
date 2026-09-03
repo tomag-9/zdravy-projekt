@@ -102,6 +102,15 @@ class PrevadzkaConfig:
     # OlovrantMode.ODVODIT_Z_OBEDU, len pre raňajky — user 2.9.2026, Pramienok
     # a Montessori Borínska MŠ).
     ranajky_z_obedu: bool = False
+    # Mená prevádzok (per-prevádzka `label`, viď `_apply_olovrant_config`), pre
+    # ktoré je chýbajúci olovrant pri `OlovrantMode.EDUPAGE` ŠTRUKTURÁLNY fakt,
+    # nie config drift — napr. zdieľaná connection, kde len časť prevádzok
+    # (MŠ) olovrant reálne objednáva a iné (ZŠ, starší žiaci) nikdy nie (user
+    # 3.9.2026: ZŠ Malokarpatská, žiadny payer pre ňu sa v EduPage bloku
+    # raňajok/olovrantu vôbec nevyskytuje). Bez tejto výnimky by
+    # `olovrant_mode` musel platiť rovnako pre celú connection, hoci realita
+    # je per-prevádzka iná.
+    olovrant_missing_ok: frozenset[str] = frozenset()
 
 
 def _apply_olovrant_config(
@@ -143,7 +152,12 @@ def _apply_olovrant_config(
                 order_data.pop(OLOVRANT, None)
 
         case OlovrantMode.EDUPAGE:
-            if lunch and not has_olovrant and config_notes is not None:
+            if (
+                lunch
+                and not has_olovrant
+                and config_notes is not None
+                and label not in config.olovrant_missing_ok
+            ):
                 config_notes.append(
                     f"{kde}: očakávaný olovrant z EduPage chýba (obed prítomný)"
                 )
