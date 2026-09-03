@@ -24,6 +24,19 @@ from api.signals import (
 from api.tasks import scrape_edupage_orders_task
 
 
+def _freeze_local(monkeypatch, date_, time_=datetime.time(5, 0)):
+    """Mockne `timezone.localdate` aj `timezone.localtime` na konzistentný
+    (dátum, čas) — potrebné odkedy `days_ahead` beh porovnáva "teraz" oproti
+    per-jedlo scrape deadlinom (`_meal_scrape_deadline_passed`); samotný
+    `localdate` mock nestačí."""
+    monkeypatch.setattr(timezone, "localdate", lambda: date_)
+    monkeypatch.setattr(
+        timezone,
+        "localtime",
+        lambda: timezone.make_aware(datetime.datetime.combine(date_, time_)),
+    )
+
+
 def _scrape_result(order_data=None, **kwargs) -> ScrapeResult:
     """Reálny ScrapeResult, nie SimpleNamespace.
 
@@ -1012,7 +1025,7 @@ def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
         seen_dates.append(target_date)
         return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 3}}})
 
-    monkeypatch.setattr(timezone, "localdate", lambda: monday)
+    _freeze_local(monkeypatch, monday)
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
     result = scrape_edupage_orders_task.run(days_ahead=2)
@@ -1040,7 +1053,7 @@ def test_scrape_task_days_ahead_repeated_run_updates_not_accumulates(
     def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
         return _scrape_result(order_data={"lunch": {"menuCounts": {"A": next(counts)}}})
 
-    monkeypatch.setattr(timezone, "localdate", lambda: monday)
+    _freeze_local(monkeypatch, monday)
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
     scrape_edupage_orders_task.run(days_ahead=0)
@@ -1065,7 +1078,7 @@ def test_scrape_task_days_ahead_skips_weekend_dates_in_window(
         seen_dates.append(target_date)
         return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 1}}})
 
-    monkeypatch.setattr(timezone, "localdate", lambda: friday)
+    _freeze_local(monkeypatch, friday)
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
     result = scrape_edupage_orders_task.run(days_ahead=2)
@@ -1088,6 +1101,77 @@ def test_scrape_task_days_ahead_ignored_when_auto_scrape_disabled(
     result = scrape_edupage_orders_task.run(days_ahead=2)
 
     assert result.get("disabled") is True
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_skips_meal_past_its_authoritative_deadline(
+    edupage_user, monkeypatch
+):
+    """Preview beh nesmie znova scrapnúť jedlo na deň, ktorého autoritatívny
+    deadline scrape už prebehol — inak prepíše prípadnú ručnú admin opravu
+    spravenú medzitým (2026-09-03: presne to sa stalo o 8:00 dvom
+    objednávkam, hoci lunch/olovrant deadline scrape bol už o 7:35)."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(1, 35),
+        deadline_lunch=datetime.time(7, 35),
+        deadline_olovrant=datetime.time(7, 35),
+    )
+    today = datetime.date(2026, 6, 29)
+    seen_meals = []
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={
+                "breakfast": {"menuCounts": {"A": 1}},
+                "lunch": {"menuCounts": {"A": 2}},
+                "olovrant": {"menuCounts": {"A": 3}},
+            }
+        )
+
+    # 8:00 — breakfast (1:35) aj lunch/olovrant (7:35) deadline scrape už
+    # dávno prebehol pre dnešok, takže preview beh dnešok vôbec nescrapne.
+    _freeze_local(monkeypatch, today, datetime.time(8, 0))
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(days_ahead=0)
+
+    assert result["dates"] == []
+    assert not DailyOrder.objects.filter(user=edupage_user, date=today).exists()
+
+
+@pytest.mark.django_db
+def test_scrape_task_days_ahead_still_scrapes_meal_before_its_deadline(
+    edupage_user, monkeypatch
+):
+    """Pred 7:35 preview beh lunch/olovrant ešte scrapne normálne."""
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(1, 35),
+        deadline_lunch=datetime.time(7, 35),
+        deadline_olovrant=datetime.time(7, 35),
+    )
+    today = datetime.date(2026, 6, 29)
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={
+                "lunch": {"menuCounts": {"A": 2}},
+                "olovrant": {"menuCounts": {"A": 3}},
+            }
+        )
+
+    # 7:00 — breakfast (1:35) je už za deadlinom, lunch/olovrant (7:35) ešte nie.
+    _freeze_local(monkeypatch, today, datetime.time(7, 0))
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(days_ahead=0)
+
+    assert result["dates"] == [str(today)]
+    order = DailyOrder.objects.get(user=edupage_user, date=today)
+    assert "breakfast" not in order.data
+    assert order.data["lunch"]["Edupage school"]["menuCounts"]["A"] == 2
+    assert order.data["olovrant"]["Edupage school"]["menuCounts"]["A"] == 3
 
 
 EDUPAGE_PREVIEW_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}preview"
