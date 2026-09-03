@@ -13,6 +13,13 @@ nás pri agregácii NEZAUJÍMA — počty sa **sčítavajú** bez ohľadu na `B`
 (potvrdené userom). Preto ho pred priradením prevádzky odstrihneme, aby `B - Les`
 prefixovo sadlo na `edupage_match = "Les"`, a z `BM` odvodíme diétu NO MILK.
 
+Škola prefix medzičasom premenovala na strane EduPage — živý guest dump (3.9.2026)
+už posiela `nM - Lúka učiteľ`/`nM - Les`/`nM - Lúka sd`/`nM - Les sd` namiesto `BM -
+...` (identická sémantika, len iný token). Pôvodný regex `BM`-only ho nerozpoznal,
+takže sa NO MILK objednávka (raňajky, obed aj olovrant) ticho strácala — nahlásené
+userom 3.9.2026 ("Lúka na raňajky nenačítalo NM"). `nM` je teraz uznávaný rovnocenne
+s `BM`.
+
 `sd` (napr. „BM - Lúka sd") Stano explicitne nedodefinoval; keďže sa všetko sčítava,
 je pre agregáciu bezvýznamné a v `match_name` ho necháme (`"Lúka sd"` stále
 prefixovo sadne na `"Lúka"`).
@@ -49,8 +56,11 @@ import unicodedata
 
 from ..base import LetterRule, PayerRule
 
-# Vedúci token "B" alebo "BM" oddelený pomlčkou = dodávateľ.
-_SUPPLIER_PREFIX_RE = re.compile(r"^\s*(BM|B)\s*[-–]\s*(.+)$", re.IGNORECASE)
+# Vedúci token "B"/"BM" (pôvodné, potvrdené 7/13/2026) alebo "nM" (škola
+# dodávateľský prefix premenovala — živý guest dump 3.9.2026 už posiela
+# "nM - Lúka učiteľ"/"nM - Les" namiesto "BM - ...", pôvodný regex ho
+# nerozpoznal a NO MILK objednávka sa ticho strácala, viď modul docstring).
+_SUPPLIER_PREFIX_RE = re.compile(r"^\s*(BM|B|nM)\s*[-–]\s*(.+)$", re.IGNORECASE)
 # "ŠPECI - Lúka" — nenesie dodávateľa, ale rovno celú špeciálnu diétu.
 _SPECI_PREFIX_RE = re.compile(r"^\s*[SŠ]PECI\s*[-–]\s*(.+)$", re.IGNORECASE)
 _SPECI_DIET = (
@@ -89,7 +99,7 @@ def skolickams_payer_hook(payer_name: str) -> PayerRule | None:
     if match is None:
         return None
     supplier, zvysok = match.group(1).upper(), match.group(2).strip()
-    diet = "NO MILK" if supplier == "BM" else None
+    diet = "NO MILK" if supplier in ("BM", "NM") else None
     return PayerRule(match_name=zvysok, diet=diet)
 
 

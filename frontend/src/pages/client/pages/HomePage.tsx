@@ -89,6 +89,10 @@ const HomePage = () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [modalOrderData, setModalOrderData] = useState<any>(null);
   const [modalOrderId, setModalOrderId] = useState<number | null>(null);
+  // Prevádzky, ktoré prispeli do súhrnu vo `openDayModal` (bez zvolenej
+  // aktívnej prevádzky) — OrderSummaryModal to potrebuje ukázať, inak login
+  // s objednávkou vo viacerých prevádzkach nevidí, za koho súhrn je.
+  const [modalPrevadzkaNames, setModalPrevadzkaNames] = useState<string[]>([]);
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary>({
     total: 0,
     items: [],
@@ -278,6 +282,7 @@ const HomePage = () => {
       // prevádzkach naraz — rovnaký suffix ako v useOrder.
       if (activePrevadzka?.id) {
         const r = await apiFetch(`${API_URL}/orders/by-date/${date}/?prevadzka=${activePrevadzka.id}`);
+        setModalPrevadzkaNames([]);
         if (r.ok) {
           const rec = await r.json();
           setModalOrderData(rec.data || {});
@@ -300,15 +305,21 @@ const HomePage = () => {
               const r = await apiFetch(`${API_URL}/orders/by-date/${date}/?prevadzka=${p.id}`);
               if (!r.ok) return null;
               const rec = await r.json();
-              return rec.data && Object.keys(rec.data).length > 0 ? (rec.data as HistoryData) : null;
+              return rec.data && Object.keys(rec.data).length > 0
+                ? { name: p.nazov, data: rec.data as HistoryData }
+                : null;
             } catch {
               return null;
             }
           }),
         );
+        setModalPrevadzkaNames(
+          results.filter((r): r is { name: string; data: HistoryData } => r !== null).map((r) => r.name),
+        );
         const merged: HistoryData = {};
-        results.forEach((data) => {
-          if (!data) return;
+        results.forEach((entry) => {
+          if (!entry) return;
+          const data = entry.data;
           (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
             const mealObj = data[meal];
             if (!mealObj) return;
@@ -800,6 +811,7 @@ const HomePage = () => {
         globalDeadlines={globalDeadlines}
         isAuto={!!plannedDays.find((d) => d.date === selectedDate)?.is_auto}
         onZero={modalOrderId !== null ? handleZeroExisting : undefined}
+        prevadzkaNames={modalPrevadzkaNames}
         onDelete={() => {
           if (selectedDate) {
             setPlannedDays((prev) =>

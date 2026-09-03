@@ -365,12 +365,61 @@ class TestKrasnankoLetterHook(unittest.TestCase):
     def test_dia(self):
         self.assertEqual(self._rule("DIA").diet, "DIA")
 
-    def test_dnm_is_dospely_no_milk(self):
-        """'D' = Dospelý (zamestnanec, dospelá porcia) — vysvetlené Stanom
-        Šulcom 1.9.2026, predtým uncertain fuzzy match."""
+    def test_dnm_is_now_dieta_no_milk_not_dospely(self):
+        """Škola 3.9.2026 premenovala celú skratkovú schému na EduPage strane
+        (živý guest dump: nazovMenu už posiela DK/DNM/DNG pre deti, ZK/ZNM/ZNG
+        pre dospelých, PDK/PDNM/PDNG pre predškolákov, namiesto pôvodných
+        K/NM/NG a KZ/NMZ) — 'DNM' teraz znamená 'Dieťa no milk' (D = Dieťa),
+        NIE 'Dospelý' ako predtým (1.9.2026 vysvetlenie Stana Šulca už
+        neplatí, kolidovalo by to s dnešným 'D' = dieťa a ticho by zamiešalo
+        detské NO MILK do dospelej porcie). Nahlásené userom 3.9.2026 ('ZK
+        dospelý - 1 je 2' — dospelá porcia bola nesprávne napočítaná)."""
         rule = self._rule("DNM")
+        self.assertEqual(rule.portion, "Škôlka")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_dk_is_child_klasik(self):
+        rule = self._rule("DK")
+        self.assertEqual(rule.portion, "Škôlka")
+        self.assertEqual(rule.menu, "A")
+
+    def test_dng_is_child_no_gluten(self):
+        rule = self._rule("DNG")
+        self.assertEqual(rule.portion, "Škôlka")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+
+    def test_zk_is_adult_klasik(self):
+        """Nová skratka pre dospelého klasik (nahrádza pôvodné 'KZ')."""
+        rule = self._rule("ZK")
+        self.assertEqual(rule.portion, "Dospelý (SŠ)")
+        self.assertEqual(rule.menu, "A")
+
+    def test_znm_is_adult_no_milk(self):
+        """Nová skratka pre dospelého no milk (nahrádza pôvodné 'NMZ')."""
+        rule = self._rule("ZNM")
         self.assertEqual(rule.portion, "Dospelý (SŠ)")
         self.assertEqual(rule.diet, "NO MILK")
+
+    def test_zng_is_adult_no_gluten(self):
+        rule = self._rule("ZNG")
+        self.assertEqual(rule.portion, "Dospelý (SŠ)")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+
+    def test_pdk_is_predskolak_klasik(self):
+        rule = self._rule("PDK")
+        self.assertEqual(rule.portion, "Predškolák")
+        self.assertEqual(rule.menu, "A")
+
+    def test_pdng_is_predskolak_no_gluten(self):
+        rule = self._rule("PDNG")
+        self.assertEqual(rule.portion, "Predškolák")
+        self.assertEqual(rule.diet, "NO GLUTEN")
+
+    def test_z_half_k_is_child_portion_not_adult(self):
+        """'Z1/2K' — rovnaká výnimka ako 'Z1/2NM': porcia MŠ, hoci obsahuje 'Z'."""
+        rule = self._rule("Z1/2K")
+        self.assertEqual(rule.portion, "Škôlka")
+        self.assertEqual(rule.menu, "A")
 
     def test_pdnm_is_predskolak_no_milk(self):
         """'PD' = Predškolák."""
@@ -1135,6 +1184,22 @@ class TestSkolickamsPayerHook(unittest.TestCase):
         # diakritika/veľkosť nesmie rozhodnúť: "HOSŤ" / "host" tiež → Lúka
         for variant in ("HOSŤ", "host", " Hosť "):
             self.assertEqual(skolickams_payer_hook(variant).match_name, "Lúka")
+
+    def test_nm_prefix_is_also_no_milk(self):
+        """Škola premenovala dodávateľský prefix `BM`→`nM` (živý guest dump
+        3.9.2026: typ_platitela 5/6/10/12 = "nM - Lúka sd"/"nM - Les"/
+        "nM - Lúka učiteľ"/"nM - Les sd") — starý `BM`-only regex tento
+        payer vôbec nerozpoznal, takže NO MILK objednávka (raňajky, obed aj
+        olovrant, každý deň rovnaký 1 kus) sa ticho stratila (user 3.9.2026:
+        "Lúka na raňajky nenačítalo NM z Edupage")."""
+        rule = skolickams_payer_hook("nM - Lúka učiteľ")
+        self.assertEqual(rule.match_name, "Lúka učiteľ")
+        self.assertEqual(rule.diet, "NO MILK")
+
+    def test_nm_prefix_case_insensitive(self):
+        rule = skolickams_payer_hook("NM - Les")
+        self.assertEqual(rule.match_name, "Les")
+        self.assertEqual(rule.diet, "NO MILK")
 
     def test_label_without_supplier_prefix_falls_through(self):
         self.assertIsNone(skolickams_payer_hook("učiteľ Lúka"))

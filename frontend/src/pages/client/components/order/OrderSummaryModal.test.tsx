@@ -64,6 +64,42 @@ describe('OrderSummaryModal', () => {
     expect(screen.queryByRole('button', { name: /vymazať/i })).not.toBeInTheDocument();
   });
 
+  it('shows which prevádzky a merged multi-facility summary covers', () => {
+    // Login s objednávkou vo viacerých prevádzkach naraz (Benjamíny, 3.9.2026):
+    // "pri nahadzovaní objednávky neukazuje za ktorú prevádzku nahadzujú" — deň
+    // sa po uložení otvorí bez zvolenej prevádzky, HomePage spočíta dáta za
+    // všetky prevádzky do jedného súhrnu a doteraz ho ukázal bez akéhokoľvek
+    // označenia, za koho vlastne je.
+    vi.mocked(OrderService.checkDeadline).mockReturnValue(true);
+
+    render(
+      <MemoryRouter>
+        <OrderSummaryModal
+          isOpen
+          onClose={vi.fn()}
+          orderDate="2026-06-10"
+          globalDeadlines={{
+            breakfast: '10:00',
+            lunch: '10:00',
+            olovrant: '10:00',
+          }}
+          orderData={{
+            status: 'submitted',
+            breakfast: {},
+            lunch: {
+              'Škôlka': { menuCounts: { A: 1 }, diets: {} },
+            },
+            olovrant: {},
+          }}
+          prevadzkaNames={['Benjamín Pezinok', 'Benjamín Senec']}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/Benjamín Pezinok/)).toBeInTheDocument();
+    expect(screen.getByText(/Benjamín Senec/)).toBeInTheDocument();
+  });
+
   it('lets the nested confirmation dialog own Escape before closing the parent dialog', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
