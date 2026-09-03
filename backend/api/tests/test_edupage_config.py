@@ -691,6 +691,15 @@ class TestLibellusLetterHook(unittest.TestCase):
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NE"))
 
+    def test_sa_stromcek_skipped(self):
+        """`sA` (nazov "Stomček Klasik") patrí Stromčeku, nie Libellusu — obe
+        zdieľajú jeden EduPage feed, ale Stromček objednáva cez appku
+        (`zdroj_objednavok=app`). Bez skip by substring "klasik" v nazve
+        skratku tíško zlúčil do Libellusovho vlastného Klasik/A počtu
+        (nahlásené 3.9.2026, živý porovnávací scrape: Škôlka A o 4 vyššie
+        než uložená objednávka na obede aj raňajkách)."""
+        self.assertTrue(self._rule("sA").skip)
+
 
 class TestMontessoriLetterHook(unittest.TestCase):
     """#527: 'Iná..NmNgNe' sa fuzzy-matchovalo len na NO MILK/NO GLUTEN —
