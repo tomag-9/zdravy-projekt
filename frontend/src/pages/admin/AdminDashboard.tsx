@@ -4,7 +4,8 @@ import { Check, ChevronLeft, ChevronRight, FileText, Loader2, Inbox, LockKeyhole
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from '../../lib/logger';
-import { useScrollToHashRow } from "../../lib/scrollToHashRow";
+import { useScrollToHashRow, scrollToRowAndHighlight } from "../../lib/scrollToHashRow";
+import { normalizeForSearch } from "../../lib/searchNormalize";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { Button, Card, Badge, Empty, Modal, Toggle, Checkbox, Textarea } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
@@ -18,6 +19,36 @@ import {
 } from "../../lib/businessDay";
 
 const API = import.meta.env.VITE_API_URL || "/api";
+
+// "Nastavenia tabuľky" (2.9.2026) — uložené per prehliadač, nech admin po
+// kliknutí na škôlku (odchod z tejto stránky) a návrate späť nepríde o svoj
+// výber sekcií/výdajov/diétnych klastrov. Nie je to zdieľané nastavenie
+// prevádzky ani celku, len osobná preferencia toho, kto tabuľku pozerá —
+// preto localStorage, nie backend.
+const TABLE_PREFS_KEY = "zpa-gramage-table-prefs";
+interface TablePrefs {
+  sections: string[];
+  selectedVydaje: string[];
+  showEmpty: boolean;
+  clusterSummary: boolean;
+  dietClusters: string[];
+  expanded: boolean;
+}
+function loadTablePrefs(): Partial<TablePrefs> {
+  try {
+    const raw = localStorage.getItem(TABLE_PREFS_KEY);
+    return raw ? (JSON.parse(raw) as Partial<TablePrefs>) : {};
+  } catch {
+    return {};
+  }
+}
+function saveTablePrefs(prefs: TablePrefs): void {
+  try {
+    localStorage.setItem(TABLE_PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // Súkromné okno / plné úložisko — preferencia sa proste nezapamätá.
+  }
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -196,23 +227,29 @@ const AdminDashboard: React.FC = () => {
   // cez Nastavenia prevádzky, keď treba škôlke rýchlo niečo odkázať.
   const [noteEdit, setNoteEdit] = useState<{ prevadzkaId: number; text: string } | null>(null);
   const [savingNote, setSavingNote] = useState(false);
-  const [sections, setSections] = useState<string[]>([]);
+  const [sections, setSections] = useState<string[]>(() => loadTablePrefs().sections ?? []);
   // Prázdny výber = všetky výdajné body; inak môže byť vybratých aj viac
   // (napr. Cluster A + B naraz).
-  const [selectedVydaje, setSelectedVydaje] = useState<string[]>([]);
+  const [selectedVydaje, setSelectedVydaje] = useState<string[]>(() => loadTablePrefs().selectedVydaje ?? []);
   // "Nastavenia tabuľky" (2.9.2026) — predtým voľné filtre nad tabuľkou,
   // teraz v samostatnom modáli, nech tabuľka dostane celú výšku.
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Prázdne trasy (bez objednávok) sa defaultne UKAZUJÚ — inak to vyzerá,
   // akoby trasa vôbec neexistovala, nie že len nemá dáta.
-  const [showEmpty, setShowEmpty] = useState(true);
-  const [clusterSummary, setClusterSummary] = useState(true);
+  const [showEmpty, setShowEmpty] = useState(() => loadTablePrefs().showEmpty ?? true);
+  const [clusterSummary, setClusterSummary] = useState(() => loadTablePrefs().clusterSummary ?? true);
   // Prázdny výber = diéty vo všetkých zobrazených clustroch (rovnaký "prázdne
   // = všetko" princíp ako sections/selectedVydaje).
-  const [dietClusters, setDietClusters] = useState<string[]>([]);
+  const [dietClusters, setDietClusters] = useState<string[]>(() => loadTablePrefs().dietClusters ?? []);
   // "Rozbaliť všetko" — namiesto zbaleného per-klienta riadku ukáže rovno
   // rozbalený PDF-formát (bez opakovaného medzisúčtu) priamo na obrazovke.
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => loadTablePrefs().expanded ?? false);
+
+  // Zapamätanie "Nastavenia tabuľky" (viď loadTablePrefs vyššie) — uloží sa
+  // pri každej zmene, nech admin po návrate zo škôlky vidí presne to, čo mal.
+  useEffect(() => {
+    saveTablePrefs({ sections, selectedVydaje, showEmpty, clusterSummary, dietClusters, expanded });
+  }, [sections, selectedVydaje, showEmpty, clusterSummary, dietClusters, expanded]);
 
   // Ktoré sekcie (raňajky / polievka / menu / olovrant), výdajné body a
   // ostatné "Nastavenia tabuľky" sa zobrazujú. Prázdny výber = kompletná
@@ -402,127 +439,145 @@ const AdminDashboard: React.FC = () => {
 
   useScrollToHashRow(hasData);
 
+  // Enter v search poli (2.9.2026) — namiesto skrývania neshodujúcich sa
+  // riadkov (to zmenšovalo tabuľku a pôsobilo, akoby dáta chýbali) len
+  // odscrolluje na prvú zhodnú prevádzku, presne ako klik na jej meno.
+  const handleSearchSubmit = () => {
+    const term = normalizeForSearch(tableSearch);
+    if (!term || !data) return;
+    const match = data.rows.find(
+      (row) => row.prevadzka_id != null && normalizeForSearch(row.client).includes(term),
+    );
+    if (match?.prevadzka_id != null) scrollToRowAndHighlight(`prevadzka-row-${match.prevadzka_id}`);
+  };
+
   return (
     <>
       {/* Jeden kompaktný riadok namiesto PageHead s nadpisom/dátumovým popiskom
           (2.9.2026) — "Gramáž jedál" aj formátovaný dátum boli čistý text bez
-          informačnej hodnoty navyše oproti samotnému dátumovému prepínaču;
-          search je zbalený do ikony, PDF a zámok majú skrátené/ikonové popisky,
-          nech sa všetko zmestí vedľa seba aj s ovládaním tabuľky. */}
+          informačnej hodnoty navyše oproti samotnému dátumovému prepínaču.
+          Dátum a search sú vľavo, akčné tlačidlá pevne vpravo (zpa-toolbar
+          justify-content: space-between), nech pri zmene stavu (napr.
+          "Deň je uzavretý") neposkakuje nič okrem tejto pravej skupiny. */}
       <div className="zpa-toolbar">
-        <Card className="zpa-datenav-card">
-          <div className="zpa-datenav zpa-datenav--compact">
-            <button
-              className="zpa-navchip"
-              onClick={() => setDate(prevWeekday(date))}
-              disabled={closing || unlocking}
-              aria-label="Predchádzajúci deň"
-              title="Predchádzajúci deň"
-            >
-              <ChevronLeft />
-            </button>
-            <div className="mid">
-              <input
-                type="date" value={date} max={maxDate}
+        <div className="zpa-toolbar-left">
+          <Card className="zpa-datenav-card">
+            <div className="zpa-datenav zpa-datenav--compact">
+              <button
+                className="zpa-navchip"
+                onClick={() => setDate(prevWeekday(date))}
                 disabled={closing || unlocking}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (!val) return;
-                  if (!isWeekday(new Date(val + "T12:00:00"))) return;
-                  if (val <= maxDate) setDate(val);
-                }}
-                className="zpa-input"
-                style={{ width: "auto" }}
-              />
-              {date === actualToday && <Badge tone="orange">Dnes</Badge>}
-              {date === maxDate && date !== actualToday && date > actualToday && (
-                <Badge tone="orange">Zajtra</Badge>
-              )}
-              {date === maxDate && date !== actualToday && date < actualToday && (
-                <Badge tone="gray">Posledný pracovný deň</Badge>
-              )}
+                aria-label="Predchádzajúci deň"
+                title="Predchádzajúci deň"
+              >
+                <ChevronLeft />
+              </button>
+              <div className="mid">
+                <input
+                  type="date" value={date} max={maxDate}
+                  disabled={closing || unlocking}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (!val) return;
+                    if (!isWeekday(new Date(val + "T12:00:00"))) return;
+                    if (val <= maxDate) setDate(val);
+                  }}
+                  className="zpa-input"
+                  style={{ width: "auto" }}
+                />
+                {date === actualToday && <Badge tone="orange">Dnes</Badge>}
+                {date === maxDate && date !== actualToday && date > actualToday && (
+                  <Badge tone="orange">Zajtra</Badge>
+                )}
+                {date === maxDate && date !== actualToday && date < actualToday && (
+                  <Badge tone="gray">Posledný pracovný deň</Badge>
+                )}
+              </div>
+              <button
+                className="zpa-navchip"
+                onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
+                disabled={isAtMax || closing || unlocking}
+                aria-label="Nasledujúci deň"
+                title="Nasledujúci deň"
+              >
+                <ChevronRight />
+              </button>
             </div>
-            <button
-              className="zpa-navchip"
-              onClick={() => { const n = nextWeekday(date); if (n <= maxDate) setDate(n); }}
-              disabled={isAtMax || closing || unlocking}
-              aria-label="Nasledujúci deň"
-              title="Nasledujúci deň"
-            >
-              <ChevronRight />
-            </button>
-          </div>
-        </Card>
+          </Card>
 
-        <div className={`zpa-search-toggle${searchOpen || tableSearch ? " zpa-search-toggle--open" : ""}`}>
-          <button
-            type="button"
-            className="zpa-navchip"
-            onClick={() => setSearchOpen((v) => !v)}
-            aria-label="Hľadať prevádzku"
-            title="Hľadať prevádzku"
-          >
-            <Search size={16} />
-          </button>
-          <input
-            type="text"
-            value={tableSearch}
-            onChange={(e) => setTableSearch(e.target.value)}
-            onFocus={() => setSearchOpen(true)}
-            onBlur={() => { if (!tableSearch) setSearchOpen(false); }}
-            placeholder="Hľadať prevádzku…"
-            className="zpa-search-input"
-            aria-label="Hľadať prevádzku podľa mena"
-          />
+          <div className={`zpa-search-toggle${searchOpen || tableSearch ? " zpa-search-toggle--open" : ""}`}>
+            <button
+              type="button"
+              className="zpa-navchip"
+              onClick={() => setSearchOpen((v) => !v)}
+              aria-label="Hľadať prevádzku"
+              title="Hľadať prevádzku"
+            >
+              <Search size={16} />
+            </button>
+            <input
+              type="text"
+              value={tableSearch}
+              onChange={(e) => setTableSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleSearchSubmit(); } }}
+              onFocus={() => setSearchOpen(true)}
+              onBlur={() => { if (!tableSearch) setSearchOpen(false); }}
+              placeholder="Hľadať prevádzku… (Enter odscrolluje)"
+              className="zpa-search-input"
+              aria-label="Hľadať prevádzku podľa mena"
+            />
+          </div>
         </div>
 
-        <Button
-          variant="secondary"
-          onClick={() => void fetchData(true)}
-          disabled={loading}
-          title="Znova načítať tabuľku priamo z databázy, bez čakania na automatický prepočet"
-        >
-          <RefreshCw className={loading ? "zpa-spin" : undefined} /> Obnoviť
-        </Button>
-        <Button variant="secondary" onClick={() => setSettingsOpen(true)} disabled={!hasData}>
-          <SlidersHorizontal /> Nastavenia tabuľky
-        </Button>
-        <Button
-          variant="danger"
-          onClick={() => handleExport("pdf", setPdfLoading)}
-          disabled={pdfLoading || loading || !hasData}
-          title="Stiahnuť PDF"
-        >
-          {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} PDF
-        </Button>
-        {!closedLoading && !isClosed && (
+        <div className="zpa-toolbar-right">
           <Button
             variant="secondary"
-            onClick={() => setCloseConfirmOpen(true)}
-            disabled={closing}
-            title="Uzamknúť deň"
-            aria-label="Uzamknúť deň"
+            onClick={() => void fetchData(true)}
+            disabled={loading}
+            title="Znova načítať tabuľku priamo z databázy, bez čakania na automatický prepočet"
           >
-            {closing ? <Loader2 className="zpa-spin" /> : <LockKeyhole />}
+            <RefreshCw className={loading ? "zpa-spin" : undefined} /> Obnoviť
           </Button>
-        )}
-        {!closedLoading && isClosed && (
-          <>
-            <span role="status" style={{ color: "var(--green-700)", fontWeight: 700, whiteSpace: "nowrap" }}>
-              <Check style={{ width: 16, verticalAlign: "middle", marginRight: 5 }} />
-              Deň je uzavretý
-            </span>
+          <Button variant="secondary" onClick={() => setSettingsOpen(true)} disabled={!hasData}>
+            <SlidersHorizontal /> Nastavenia tabuľky
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => handleExport("pdf", setPdfLoading)}
+            disabled={pdfLoading || loading || !hasData}
+            title="Stiahnuť PDF"
+          >
+            {pdfLoading ? <Loader2 className="zpa-spin" /> : <FileText />} PDF
+          </Button>
+          {!closedLoading && !isClosed && (
             <Button
               variant="secondary"
-              onClick={() => setUnlockConfirmOpen(true)}
-              disabled={unlocking}
-              title="Odomknúť deň"
-              aria-label="Odomknúť deň"
+              onClick={() => setCloseConfirmOpen(true)}
+              disabled={closing}
+              title="Uzamknúť deň"
+              aria-label="Uzamknúť deň"
             >
-              {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />}
+              {closing ? <Loader2 className="zpa-spin" /> : <LockKeyhole />}
             </Button>
-          </>
-        )}
+          )}
+          {!closedLoading && isClosed && (
+            <>
+              <span role="status" style={{ color: "var(--green-700)", fontWeight: 700, whiteSpace: "nowrap" }}>
+                <Check style={{ width: 16, verticalAlign: "middle", marginRight: 5 }} />
+                Deň je uzavretý
+              </span>
+              <Button
+                variant="secondary"
+                onClick={() => setUnlockConfirmOpen(true)}
+                disabled={unlocking}
+                title="Odomknúť deň"
+                aria-label="Odomknúť deň"
+              >
+                {unlocking ? <Loader2 className="zpa-spin" /> : <LockKeyholeOpen />}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="zpa-stack">
@@ -550,7 +605,6 @@ const AdminDashboard: React.FC = () => {
               spec={data.spec}
               fill
               onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)}
-              searchTerm={tableSearch}
               onEditNote={handleOpenNoteEdit}
             />
           </div>
