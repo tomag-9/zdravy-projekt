@@ -1,5 +1,29 @@
 # Changelog
 
+## [2.3.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.2.0...v2.3.0) (2026-09-03)
+
+
+### Features
+
+* **admin:** vyhľadávanie a editácia poznámky v gramážnej tabuľke, jasnejšia B/C deadline hláška ([6543e94](https://github.com/tomag-9/zdravy-projekt/commit/6543e94d2a0697127ccc31d51639cf3ed0443f28))
+
+
+### Bug Fixes
+
+* **admin:** gramážna tabuľka padala na desatinnej čiarke v unit_exception ([f0a9d68](https://github.com/tomag-9/zdravy-projekt/commit/f0a9d683f633f75fe7b2184cef5e9ca3c22fce56))
+* **admin:** Nastavenia tabuľky modál sa neblikal pri zmene filtra ([1c27413](https://github.com/tomag-9/zdravy-projekt/commit/1c27413fb47e5fc6615117937eb8d8f287dc0509))
+* **ci:** quote the if: expression in production.yml (invalid YAML) ([568143b](https://github.com/tomag-9/zdravy-projekt/commit/568143bc01ea119c8d61b1925a4072de87329831))
+* **ci:** release-please auto-merge + skip deploy on version-bump ([#571](https://github.com/tomag-9/zdravy-projekt/issues/571)) ([6f645e0](https://github.com/tomag-9/zdravy-projekt/commit/6f645e0b427ecab5d99f812ebfd6e423d00b939d))
+* **ci:** skip production deploy for release-please version-bump commits ([8925569](https://github.com/tomag-9/zdravy-projekt/commit/89255695a6f3ee3f8a1dfeeb532f34df750c9eda))
+* **client:** deň so zdieľanou objednávkou vo viac prevádzkach nemá ukazovať "žiadna objednávka" ([b7f2b61](https://github.com/tomag-9/zdravy-projekt/commit/b7f2b61b567b5dcacf796a04d22c84f49e320709))
+* **client:** kopírovanie medzi chodmi obchádzalo strop Menu B/C/D po termíne ([78fdca3](https://github.com/tomag-9/zdravy-projekt/commit/78fdca361fe03cb18afc86bfaa445f924882e0b4))
+* **edupage:** hodinový preview scrape neprepisuje jedlo po jeho deadline scrape ([bd205f4](https://github.com/tomag-9/zdravy-projekt/commit/bd205f4817c1047e604bd246d0ed62cc068fe52f))
+* **edupage:** Libellus a Stromček zdieľajú feed — sA nemá počítať do Libellusovho Klasiku ([314e55f](https://github.com/tomag-9/zdravy-projekt/commit/314e55f2c1cbef5f942d3225b31abf0c8fe05be7))
+* **edupage:** NMNE/nMnEgg skratka strácala NO EGG časť diéty ([#574](https://github.com/tomag-9/zdravy-projekt/issues/574)) ([6b6944e](https://github.com/tomag-9/zdravy-projekt/commit/6b6944e6034fa5d7f4f5c746c01e8acb1c88a7d3))
+* **gramage:** diétny súhrn nesmie počítať dieťa 3x cez raňajky/obed/olovrant ([2e318b3](https://github.com/tomag-9/zdravy-projekt/commit/2e318b3793d84f5707930f963591b0b5be430b7d))
+* **gramage:** diétny súhrn nesmie počítať dieťa 3x cez raňajky/obed/olovrant ([#572](https://github.com/tomag-9/zdravy-projekt/issues/572)) ([48c602e](https://github.com/tomag-9/zdravy-projekt/commit/48c602eb5929b8b66cf2e21c37ba26a68ee6b535))
+* **gramage:** diétny súhrn nesmie počítať dieťa 3x cez raňajky/obed/olovrant ([#573](https://github.com/tomag-9/zdravy-projekt/issues/573)) ([364b059](https://github.com/tomag-9/zdravy-projekt/commit/364b0598bbed9b138f197e389405094b52c9d5e0))
+
 ## [2.2.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.1.0...v2.2.0) (2026-09-02)
 
 
