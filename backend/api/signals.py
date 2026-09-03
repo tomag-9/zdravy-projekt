@@ -925,6 +925,24 @@ def on_prevadzka_saved(sender, instance, created=False, **kwargs):
         _capture_signal_failure(exc, "prevadzka_saved")
 
 
+@receiver(post_save, sender="api.Prevadzka")
+def on_prevadzka_saved_clear_gramage_cache(sender, instance, **kwargs):
+    """Invalidate the gramage dashboard cache on any Prevádzka edit.
+
+    Bez toho by úprava `admin_order_note` (ceruzka v gramážnej tabuľke, #573)
+    alebo hociktorého iného poľa cez Nastavenia prevádzky visela v cache až
+    5 minút (`GRAMAGE_DASHBOARD_TIMEOUT`) — admin ju uloží, refreshne a nič
+    nevidí. Beží pri každom save vrátane vytvorenia, nielen update-u.
+    """
+    try:
+        from api.cache_service import clear_gramage_dashboard_cache_all
+
+        clear_gramage_dashboard_cache_all()
+    except Exception as exc:
+        logger.exception("Error clearing gramage dashboard cache: %s", exc)
+        _capture_signal_failure(exc, "prevadzka_saved_clear_gramage_cache")
+
+
 @receiver(post_save, sender="api.Diet")
 @receiver(post_delete, sender="api.Diet")
 def on_diet_changed(sender, instance, **kwargs):

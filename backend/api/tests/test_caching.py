@@ -26,10 +26,19 @@ from api.cache_service import (
     get_daily_stats_cache_key,
     get_diet_list_cache_key,
     get_global_settings_cache_key,
+    get_gramage_dashboard_cache_key,
     set_cached,
 )
 from api.cached_settings_service import get_global_settings
-from api.models import DailyOrder, Diet, GlobalSettings, User, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    Diet,
+    GlobalSettings,
+    Prevadzka,
+    User,
+    UserProfile,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -396,3 +405,41 @@ class TestCachePerformance:
             result3 = get_global_settings()
 
         assert result1.pk == result2.pk == result3.pk
+
+
+class TestGramageDashboardCacheInvalidationOnPrevadzkaSave:
+    """#573 regresia: ceruzka na poznámku v gramážnej tabuľke uložila novú
+    hodnotu, ale gramage dashboard endpoint ešte 5 minút (GRAMAGE_DASHBOARD_TIMEOUT)
+    vracal starú cache — admin poznámku nikde nevidel. `on_prevadzka_saved_clear_gramage_cache`
+    (api/signals.py) má cache zmazať okamžite pri hociktorom uložení Prevádzky."""
+
+    def setup_method(self):
+        cache.clear()
+
+    def test_prevadzka_save_clears_gramage_dashboard_cache(self):
+        celok = Celok.objects.create(nazov="Test Celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Test Prevadzka")
+
+        key = get_gramage_dashboard_cache_key("2026-09-03")
+        set_cached(key, {"stale": "data"})
+        assert get_cached(key) == {"stale": "data"}
+
+        prevadzka.admin_order_note = "Alergia na orechy"
+        prevadzka.save(update_fields=["admin_order_note"])
+
+        assert get_cached(key) is None
+
+    def test_prevadzka_save_clears_multiple_cached_dates(self):
+        celok = Celok.objects.create(nazov="Test Celok")
+        prevadzka = Prevadzka.objects.create(celok=celok, nazov="Test Prevadzka")
+
+        key_today = get_gramage_dashboard_cache_key("2026-09-03")
+        key_other_day = get_gramage_dashboard_cache_key("2026-09-10")
+        set_cached(key_today, {"stale": "today"})
+        set_cached(key_other_day, {"stale": "other"})
+
+        prevadzka.admin_order_note = "Nová poznámka"
+        prevadzka.save(update_fields=["admin_order_note"])
+
+        assert get_cached(key_today) is None
+        assert get_cached(key_other_day) is None

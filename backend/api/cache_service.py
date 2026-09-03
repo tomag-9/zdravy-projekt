@@ -217,6 +217,32 @@ def clear_gramage_dashboard_cache(date_str: str) -> None:
     delete_cached(get_gramage_dashboard_cache_key(date_str))
 
 
+def clear_gramage_dashboard_cache_all() -> None:
+    """Clear cached gramage dashboard data for every date (wildcard).
+
+    `clear_gramage_dashboard_cache()` needs to know which date to drop — fine
+    for the write points above, but a `Prevadzka` field edit (napr. pencil
+    poznámka alebo Nastavenia prevádzky, #573) affects whatever date the admin
+    has open, not one we know here. Rather than plumb a date through the whole
+    admin CRUD path, drop every cached date the same way `clear_diet_list_cache`
+    does — cheap (a handful of keys at most) and it's the only way the note
+    actually shows up immediately instead of within the 5-minute TTL.
+    """
+    try:
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern(f"{GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX}:*")
+            return
+    except Exception as exc:
+        logger.warning(
+            "Cache delete_pattern failed for key prefix '%s:*': %s (%s)",
+            GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX,
+            exc.__class__.__name__,
+            exc,
+        )
+    # Backend bez delete_pattern (napr. LocMemCache v testoch) — bez wildcard
+    # zmazania ostáva len 5-minútové TTL ako poistka, rovnako ako predtým.
+
+
 def clear_closed_day_pdf_cache(date_str: str) -> None:
     """Clear the pre-rendered PDF snapshot cached for a closed day.
 
