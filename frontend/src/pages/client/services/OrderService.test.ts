@@ -467,6 +467,33 @@ describe('OrderService', () => {
         });
     });
 
+    describe('clampRestrictedMenusForMeal', () => {
+        it('clamps B/C/D down to the target meal\'s ceiling, leaving Menu A untouched', () => {
+            // Little Big (3.9.2026): "Kopírovať z obeda" copied yesterday's lunch,
+            // which legitimately had Menu B, into today's olovrant — but today's
+            // olovrant never had Menu B before, so its ceiling is 0.
+            const copiedMeal = {
+                Škôlka: { menuCounts: { A: 5, B: 3, C: 1 }, diets: {} },
+            };
+            const ceilings = { 'olovrant|Škôlka|B': 1 };
+
+            const clamped = OrderService.clampRestrictedMenusForMeal(copiedMeal, ceilings, 'olovrant');
+
+            expect(clamped.Škôlka.menuCounts).toEqual({ A: 5, B: 1, C: 0 });
+        });
+
+        it('leaves counts already at or under the ceiling untouched', () => {
+            const copiedMeal = {
+                Škôlka: { menuCounts: { A: 5, B: 1 }, diets: {} },
+            };
+            const ceilings = { 'lunch|Škôlka|B': 1 };
+
+            const clamped = OrderService.clampRestrictedMenusForMeal(copiedMeal, ceilings, 'lunch');
+
+            expect(clamped.Škôlka.menuCounts).toEqual({ A: 5, B: 1 });
+        });
+    });
+
     describe('getServerNow', () => {
         afterEach(() => {
             vi.useRealTimers();

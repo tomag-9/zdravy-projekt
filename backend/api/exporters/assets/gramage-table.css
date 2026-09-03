@@ -228,6 +228,15 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
     color: var(--coral-600);
 }
 
+/* Ceruzka na úpravu poznámky prevádzky (#573) — mimo toggle-u, nech klik
+ * nezbaľuje/nerozbaľuje riadok. */
+.zpa-gram .client-note-edit {
+    flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; margin: 0 4px; border: 0; border-radius: var(--radius-pill);
+    background: transparent; color: var(--green-800); cursor: pointer;
+}
+.zpa-gram .client-note-edit:hover { background: rgba(26,77,46,0.12); }
+
 /* Farebná bodka pred názvom diéty. Na obrazovke ju kreslí DietColorSwatch,
  * v PDF gramage_table_html._swatch — obe len dosadia `background`. */
 .zpa-gram .diet-dot {

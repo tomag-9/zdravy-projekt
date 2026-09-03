@@ -277,8 +277,8 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 const suffix = activePrevadzkaId ? `?prevadzka=${activePrevadzkaId}` : '';
                 const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/${suffix}`);
                 if (response.ok) {
-                    // API returns { id, status, data: { breakfast... } }
-                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder };
+                    // API returns { id, status, data: { breakfast..., special_diet_note? } }
+                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder & { special_diet_note?: unknown } };
 
                     if (serverOrder && serverOrder.data && Object.keys(serverOrder.data).length > 0) {
                         // Server has data
@@ -288,6 +288,16 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                             merged.status = serverOrder.status; // Ensure status is synced
                             setCurrentOrder(merged);
                             restrictedMenuCeilingsRef.current = OrderService.extractRestrictedMenuCounts(merged);
+                            // `special_diet_note` nie je súčasť createEmptyOrder() schémy, takže ho
+                            // enforceStructure vyššie zahodí — bez tohto poznámka uložená na serveri
+                            // nikdy nedôjde do UI a zdrojom pravdy zostane len localStorage draftu
+                            // (ten je per-browser, takže na inom zariadení/po vyčistení je prázdny aj
+                            // keď server poznámku má). Server je tu autoritatívny rovnako ako pri counts.
+                            setSpecialDietNote(
+                                typeof serverOrder.data.special_diet_note === 'string'
+                                    ? serverOrder.data.special_diet_note
+                                    : ''
+                            );
 
                             // Update active meals based on content
                             setActiveMeals(prevActive => {
@@ -914,6 +924,15 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     };
 
     /** Immediately copy yesterday’s lunch into breakfast. Returns true if data was found. */
+    /** Menu B/C/D zo skopírovaného jedla zastropuje na strop CIEĽOVÉHO chodu, keď
+     * je termín Menu B/C už zavretý — inak by kopírovanie (z iného dňa/chodu,
+     * spred termínu) obišlo `updateMenuCount`-ov strop a appka by nechala
+     * cudzie B/C/D prejsť až do zamietnutého submitu (Little Big, 3.9.2026). */
+    const clampCopiedMealIfLocked = (meal: MealData, targetMealKey: string): MealData => {
+        if (OrderService.checkMenuBcDeadline(selectedDate, globalDeadlines)) return meal;
+        return OrderService.clampRestrictedMenusForMeal(meal, restrictedMenuCeilingsRef.current, targetMealKey);
+    };
+
     const loadBreakfastFromPrevLunch = (): boolean => {
         const prevDate = parseDate(selectedDate);
         prevDate.setDate(prevDate.getDate() - 1);
@@ -925,7 +944,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 if (prevOrder.lunch && !OrderService.isMealEmpty(prevOrder.lunch)) {
                     setCurrentOrder((prev) => ({
                         ...prev,
-                        breakfast: JSON.parse(JSON.stringify(prevOrder.lunch)),
+                        breakfast: clampCopiedMealIfLocked(JSON.parse(JSON.stringify(prevOrder.lunch)), 'breakfast'),
                         status: 'draft',
                     }));
                     setActiveMeals(prev => ({ ...prev, breakfast: true }));
@@ -942,7 +961,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         if (OrderService.isMealEmpty(currentOrder.breakfast)) return false;
         setCurrentOrder((prev) => ({
             ...prev,
-            lunch: JSON.parse(JSON.stringify(prev.breakfast)),
+            lunch: clampCopiedMealIfLocked(JSON.parse(JSON.stringify(prev.breakfast)), 'lunch'),
             status: 'draft',
         }));
         setActiveMeals(prev => ({ ...prev, lunch: true }));
@@ -955,7 +974,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         if (OrderService.isMealEmpty(currentOrder.lunch)) return false;
         setCurrentOrder((prev) => ({
             ...prev,
-            olovrant: JSON.parse(JSON.stringify(prev.lunch)),
+            olovrant: clampCopiedMealIfLocked(JSON.parse(JSON.stringify(prev.lunch)), 'olovrant'),
             status: 'draft',
         }));
         setActiveMeals(prev => ({ ...prev, olovrant: true }));

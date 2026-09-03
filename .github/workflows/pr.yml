@@ -8,6 +8,38 @@ permissions:
   contents: read
 
 jobs:
+  # Definovaný ako prvý a bez `needs` — je to zvyčajne najdlhší beh (image
+  # build), tak nech ho runner zoberie hneď, paralelne s lintom/testami,
+  # namiesto toho, aby na ne čakal a predĺžil celkový čas PR checkov.
+  docker-build:
+    name: Docker Build Test
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build backend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./backend
+          push: false
+          tags: zdravy-projekt-backend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./frontend
+          push: false
+          tags: zdravy-projekt-frontend:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   backend-lint:
     name: Backend Lint
     runs-on: self-hosted
@@ -188,33 +220,3 @@ jobs:
           flags: frontend
           name: frontend-coverage
           fail_ci_if_error: false
-
-  docker-build:
-    name: Docker Build Test
-    runs-on: self-hosted
-    needs: [backend-lint, frontend-lint, backend-tests, frontend-tests]
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build backend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./backend
-          push: false
-          tags: zdravy-projekt-backend:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build frontend image
-        uses: docker/build-push-action@v7
-        with:
-          context: ./frontend
-          push: false
-          tags: zdravy-projekt-frontend:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max

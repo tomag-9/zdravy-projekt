@@ -494,6 +494,28 @@ PARTIAL_LUNCH_MENU_LETTERS = ("B", "C")
 PARTIAL_LUNCH_DAYS_AHEAD = (1, 2)
 
 
+def _meal_scrape_deadline_passed(gs, meal_type: str, target_date, now_local) -> bool:
+    """True keď už prebehol (alebo mal prebehnúť) autoritatívny EduPage scrape
+    pre ``meal_type`` na ``target_date``.
+
+    Používa hodinový preview beh (``days_ahead``), aby po autoritatívnom
+    scrape dané jedlo/deň znova neprepísal — inak by zmazal prípadnú ručnú
+    admin opravu spravenú medzitým (2026-09-03: 08:00 preview beh takto
+    prepísal 2 admin zásahy spravené po 7:35 lunch/olovrant deadline scrape,
+    keď admin považoval 7:35 za posledný beh dňa).
+    """
+    import datetime
+
+    sched_time, is_day_before = gs.edupage_scrape_schedule_for(meal_type)
+    schedule_date = (
+        target_date - datetime.timedelta(days=1) if is_day_before else target_date
+    )
+    deadline_dt = timezone.make_aware(
+        datetime.datetime.combine(schedule_date, sched_time)
+    )
+    return now_local >= deadline_dt
+
+
 def _apply_scrape(existing_data, imported_data, requested_meals):
     """Vlož výsledok scrapu s UPDATE sémantikou (nie ADD).
 
@@ -705,13 +727,20 @@ def scrape_edupage_orders_task(
     to read that flag from.
 
     ``days_ahead`` runs an hourly "preview" scrape instead of the deadline-driven
-    one (2.9.2026): scrapes today through today + `days_ahead` (all three meals,
-    full `_apply_scrape` — same UPDATE-not-ADD semantics as the deadline run, so
-    re-scraping the same day every hour is safe/idempotent), independent of any
-    `GlobalSettings` deadline. Day-off dates in that window are dropped rather
-    than shifted — this is a rolling preview, not "the next N business days".
-    Mutually exclusive with `meal_types`-driven deadline resolution; ignored
-    when `date_str` is given (an explicit single-date run, e.g. manual trigger).
+    one (2.9.2026): scrapes today through today + `days_ahead`, full `_apply_scrape`
+    — same UPDATE-not-ADD semantics as the deadline run, so re-scraping the same
+    day every hour is safe/idempotent. Per (date, meal_type) it only scrapes while
+    that meal's own authoritative deadline scrape hasn't fired yet for that date
+    (`_meal_scrape_deadline_passed`, read from `GlobalSettings` the same way the
+    deadline-driven run resolves its targets) — once it has, the preview stays
+    off that (date, meal_type) for the rest of the day, so it can no longer
+    clobber a manual admin correction made after the authoritative scrape
+    (2026-09-03: it did exactly that to two orders). A date with every meal past
+    its deadline drops out of the window entirely. Day-off dates in the window
+    are dropped rather than shifted — this is a rolling preview, not "the next N
+    business days". Mutually exclusive with `meal_types`-driven deadline
+    resolution; ignored when `date_str` is given (an explicit single-date run,
+    e.g. manual trigger).
     """
     try:
         import datetime
@@ -780,18 +809,30 @@ def scrape_edupage_orders_task(
 
             today = timezone.localdate()
             if days_ahead is not None:
-                # Hodinový "preview" beh: dnes .. dnes+days_ahead, všetky jedlá
-                # naraz (`None` = `_ALL_MEALS` v `_apply_scrape`/`_filter_order_
-                # data_by_meals`). Voľné dni sa v okne len vynechajú, nie
-                # posunú — je to priebežný náhľad, nie "najbližšie N pracovných
-                # dní". Prázdne okno (napr. dlhšie prázdniny) nie je chyba.
-                date_to_meals = {
-                    candidate: None
-                    for offset in range(days_ahead + 1)
-                    if not is_day_off(
-                        candidate := today + datetime.timedelta(days=offset)
-                    )
-                }
+                # Hodinový "preview" beh: dnes .. dnes+days_ahead, ale len tie
+                # jedlá, ktorých autoritatívny (deadline) scrape pre daný
+                # dátum ešte neprebehol (#_meal_scrape_deadline_passed) — po
+                # ňom je preview beh zbytočný a navyše by prepísal prípadnú
+                # ručnú admin opravu spravenú medzitým. Voľné dni sa v okne
+                # len vynechajú, nie posunú — je to priebežný náhľad, nie
+                # "najbližšie N pracovných dní". Deň, ktorému už všetky jedlá
+                # "vydeadlinovali" (typicky dnešok večer po olovrantovom
+                # scrape), sa z okna celkom vynechá. Prázdne okno nie je chyba.
+                now_local = timezone.localtime()
+                date_to_meals = {}
+                for offset in range(days_ahead + 1):
+                    candidate = today + datetime.timedelta(days=offset)
+                    if is_day_off(candidate):
+                        continue
+                    pending_meals = [
+                        meal_type
+                        for meal_type in _ALL_MEALS
+                        if not _meal_scrape_deadline_passed(
+                            gs, meal_type, candidate, now_local
+                        )
+                    ]
+                    if pending_meals:
+                        date_to_meals[candidate] = pending_meals
             elif meal_types is None:
                 target_date = _next_workday(today) if target_next_workday else today
                 date_to_meals = {target_date: None}

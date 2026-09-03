@@ -440,6 +440,105 @@ describe("GramageTable renders straight from the spec", () => {
   });
 });
 
+// ── Vyhľadávanie a poznámka prevádzky priamo z tabuľky (#573) ───────────────
+
+const GRAMAGE_TWO_CLIENTS = {
+  ...GRAMAGE_WITH_ROWS,
+  spec: {
+    ...GRAMAGE_WITH_ROWS.spec,
+    rows: [
+      ...GRAMAGE_WITH_ROWS.spec.rows,
+      {
+        kind: "client",
+        css: "client-row",
+        group_id: "k2",
+        cells: [{ text: "MŠ Iná", meta: "štandard 3", meta_right: "spolu porcií 3", colspan: 2 }],
+      },
+    ],
+  },
+};
+
+describe("Vyhľadávanie prevádzky v tabuľke (#573)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("skryje prevádzky, ktoré nezodpovedajú hľadanému menu", async () => {
+    mockDashboardRequests(GRAMAGE_TWO_CLIENTS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    expect(await screen.findByText("MŠ Testovacia")).toBeInTheDocument();
+    expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("Hľadať prevádzku…"), { target: { value: "iná" } });
+
+    expect(screen.queryByText("MŠ Testovacia")).not.toBeInTheDocument();
+    expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
+  });
+
+  it("hľadanie ignoruje diakritiku a veľkosť písmen", async () => {
+    mockDashboardRequests(GRAMAGE_TWO_CLIENTS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    fireEvent.change(screen.getByPlaceholderText("Hľadať prevádzku…"), { target: { value: "INA" } });
+
+    expect(screen.queryByText("MŠ Testovacia")).not.toBeInTheDocument();
+    expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
+  });
+});
+
+describe("Poznámka prevádzky priamo z tabuľky (#573)", () => {
+  const GRAMAGE_WITH_NOTE = {
+    ...GRAMAGE_WITH_ROWS,
+    rows: [{ prevadzka_id: 1, admin_order_note: "Pôvodná poznámka" }],
+    spec: {
+      ...GRAMAGE_WITH_ROWS.spec,
+      rows: [
+        { ...GRAMAGE_WITH_ROWS.spec.rows[0], prevadzka_id: 1 },
+        ...GRAMAGE_WITH_ROWS.spec.rows.slice(1),
+      ],
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/closed-days/")) {
+        return Promise.resolve(makeMockResponse({ date: "2026-07-03", is_closed: false }));
+      }
+      if (url.includes("/admin/meal-plans/gramage-dashboard/")) {
+        return Promise.resolve(makeMockResponse(GRAMAGE_WITH_NOTE));
+      }
+      if (url.includes("/admin/facility-prevadzky/1/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      throw new Error(`Unexpected URL ${url}`);
+    });
+  });
+
+  it("otvorí editor s existujúcou poznámkou a uloží zmenu cez PATCH", async () => {
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    fireEvent.click(screen.getByRole("button", { name: "Upraviť poznámku pre MŠ Testovacia" }));
+
+    const textarea = await screen.findByDisplayValue("Pôvodná poznámka");
+    fireEvent.change(textarea, { target: { value: "Nová poznámka" } });
+    fireEvent.click(screen.getByRole("button", { name: /uložiť/i }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining("/admin/facility-prevadzky/1/"),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ admin_order_note: "Nová poznámka" }),
+        }),
+      ),
+    );
+    await waitFor(() => expect(mockToastSuccess).toHaveBeenCalledWith("Poznámka uložená."));
+  });
+});
 
 describe("Filter sekcií", () => {
   beforeEach(() => {

@@ -276,14 +276,60 @@ const HomePage = () => {
     try {
       // Bez prevádzky vráti backend 400, keď má login objednávku vo viac
       // prevádzkach naraz — rovnaký suffix ako v useOrder.
-      const suffix = activePrevadzka?.id ? `?prevadzka=${activePrevadzka.id}` : "";
-      const r = await apiFetch(`${API_URL}/orders/by-date/${date}/${suffix}`);
-      if (r.ok) {
-        const rec = await r.json();
-        setModalOrderData(rec.data || {});
-        setModalOrderId(rec.id ?? null);
+      if (activePrevadzka?.id) {
+        const r = await apiFetch(`${API_URL}/orders/by-date/${date}/?prevadzka=${activePrevadzka.id}`);
+        if (r.ok) {
+          const rec = await r.json();
+          setModalOrderData(rec.data || {});
+          setModalOrderId(rec.id ?? null);
+        } else {
+          setModalOrderData({});
+          setModalOrderId(null);
+        }
       } else {
-        setModalOrderData({});
+        // Žiadna vybraná prevádzka (napr. hneď po odoslaní objednávky — OrderPage
+        // úmyselne reštartuje výber pre ĎALŠIU objednávku, viď handleSubmit).
+        // Bez toho by sa tu poslal request bez `?prevadzka=` a login s
+        // objednávkou vo viacerých prevádzkach dostal 400 "MultipleObjectsReturned",
+        // ktoré predošlá verzia tíško vyhodnotila ako "žiadna objednávka" — hoci
+        // bola uložená (Benjamíny, 2.9.2026). Namiesto toho spýtame KAŽDÚ
+        // prevádzku loginu a spočítame, čo naozaj existuje.
+        const results = await Promise.all(
+          prevadzky.map(async (p) => {
+            try {
+              const r = await apiFetch(`${API_URL}/orders/by-date/${date}/?prevadzka=${p.id}`);
+              if (!r.ok) return null;
+              const rec = await r.json();
+              return rec.data && Object.keys(rec.data).length > 0 ? (rec.data as HistoryData) : null;
+            } catch {
+              return null;
+            }
+          }),
+        );
+        const merged: HistoryData = {};
+        results.forEach((data) => {
+          if (!data) return;
+          (["breakfast", "lunch", "olovrant"] as const).forEach((meal) => {
+            const mealObj = data[meal];
+            if (!mealObj) return;
+            merged[meal] = merged[meal] || {};
+            Object.entries(mealObj).forEach(([category, catData]) => {
+              const target = merged[meal][category] || { menuCounts: {}, diets: {} };
+              const menuCounts = { ...target.menuCounts };
+              Object.entries(catData.menuCounts || {}).forEach(([menu, count]) => {
+                menuCounts[menu] = (menuCounts[menu] || 0) + count;
+              });
+              const diets = { ...target.diets };
+              Object.entries(catData.diets || {}).forEach(([diet, count]) => {
+                diets[diet] = (diets[diet] || 0) + count;
+              });
+              merged[meal][category] = { menuCounts, diets };
+            });
+          });
+        });
+        setModalOrderData(merged);
+        // Súhrn za viac prevádzok nemá jedno ID na editáciu/vynulovanie —
+        // OrderSummaryModal to už rieši (onZero je len keď modalOrderId !== null).
         setModalOrderId(null);
       }
     } catch {

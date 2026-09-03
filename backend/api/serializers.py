@@ -557,7 +557,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 deadline_date = target_date - datetime.timedelta(
                     days=settings.deadline_menu_bc_days_before
                 )
-                detail = "Menu B a C už nie je možné objednať ani zmeniť."
+                # Explicitne pomenovať "prečo" (#573) — bez tohto rodičia/riaditelia
+                # čítali toto hlásenie ako "appka je rozbitá" alebo "nastavenie
+                # menu B nefunguje", hoci menu B bolo v nastaveniach v poriadku
+                # zapnuté a šlo len o zmeškaný termín navýšenia.
+                detail = (
+                    "Menu B a C treba nahlásiť/navýšiť najneskôr "
+                    f"{settings.deadline_menu_bc_days_before} dni vopred (kuchyňa ich "
+                    "dokupuje) — tento termín už uplynul, nejde o chybu nastavenia."
+                )
             else:
                 deadline_date = target_date
                 detail = "Menu B a C už nie je možné odhlásiť ani znížiť."
