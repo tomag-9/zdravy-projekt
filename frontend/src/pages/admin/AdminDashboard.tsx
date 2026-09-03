@@ -606,6 +606,7 @@ const AdminDashboard: React.FC = () => {
               fill
               onClientNameClick={(id) => navigate(`/admin/facilities/${id}`)}
               onEditNote={handleOpenNoteEdit}
+              alwaysExpanded={expanded}
             />
           </div>
         )}
@@ -916,10 +917,10 @@ const TableSettingsModal: React.FC<{
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť prázdne trasy</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Trasy bez objednávok sa ukážu, nie skryjú.</div>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť prázdne prevádzky</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Prevádzky bez objednávok sa ukážu, nie skryjú.</div>
           </div>
-          <Toggle on={showEmpty} onChange={onShowEmptyChange} ariaLabel="Zobraziť prázdne trasy" />
+          <Toggle on={showEmpty} onChange={onShowEmptyChange} ariaLabel="Zobraziť prázdne prevádzky" />
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>

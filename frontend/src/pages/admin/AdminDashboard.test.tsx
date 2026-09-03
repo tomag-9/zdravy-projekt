@@ -669,7 +669,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await openTableSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
@@ -704,9 +704,13 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     expect(screen.queryByText("Diéty v sumári klastra")).not.toBeInTheDocument();
   });
 
-  it("'Zobraziť všetko rozbalené' sends expanded=1", async () => {
+  it("'Zobraziť všetko rozbalené' sends expanded=1 a skutočne rozbalí každého klienta bez klikania", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    // Predvolene zbalené — sub-riadok nie je vidno, kým naň admin neklikne.
+    expect(screen.queryByText("Škôlka - Obed Menu A")).not.toBeInTheDocument();
 
     await openTableSettings();
     fireEvent.click(await screen.findByRole("button", { name: "Zobraziť všetko rozbalené" }));
@@ -716,6 +720,8 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&expanded=1$/),
       );
     });
+    // Bez klikania na žiadneho klienta — všetci sú rovno rozbalení (#format ako v PDF).
+    expect(await screen.findByText("Škôlka - Obed Menu A")).toBeInTheDocument();
   });
 
   it("pamätá si nastavenie tabuľky aj po odmountovaní (napr. návrat z detailu prevádzky)", async () => {
@@ -723,7 +729,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     const first = render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await openTableSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
@@ -744,7 +750,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
       );
     });
     await openTableSettings();
-    expect(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" })).toHaveAttribute(
+    expect(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
@@ -755,7 +761,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await openTableSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
