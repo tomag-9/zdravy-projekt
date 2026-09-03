@@ -217,6 +217,73 @@ def clear_gramage_dashboard_cache(date_str: str) -> None:
     delete_cached(get_gramage_dashboard_cache_key(date_str))
 
 
+GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS = 3
+GRAMAGE_DASHBOARD_REFRESH_LOCK_PREFIX = "gramage_dashboard_refresh_lock"
+
+
+def schedule_gramage_dashboard_refresh(date_str: str) -> None:
+    """Asynchrónne prepočíta a nacachuje gramage dashboard pre daný deň.
+
+    Nahrádza čisté `clear_gramage_dashboard_cache` tam, kde vieme presne, ktorý
+    deň sa zmenil (`DailyOrder` save/delete) — namiesto toho, aby ďalší admin,
+    ktorý si tabuľku otvorí, čakal na synchrónny prepočet, ho spustí Celery
+    task (`refresh_gramage_dashboard_cache_task`) na pozadí a dashboard má
+    novú verziu už nacachovanú skôr, než si ju niekto vôbec vypýta.
+
+    Debounce cez `cache.add()` lock (TTL = `GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS`)
+    — séria rýchlych editov toho istého dňa (typicky viac riadkov v jednej
+    EduPage scrape dávke) tak spustí jeden prepočet namiesto jedného za každý
+    zápis, ktorý by inak zbytočne zaťažoval worker rovnakou drahou agregáciou.
+    """
+    lock_key = f"{GRAMAGE_DASHBOARD_REFRESH_LOCK_PREFIX}:{date_str}"
+    try:
+        lock_acquired = cache.add(
+            lock_key, 1, timeout=GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS
+        )
+    except Exception as exc:
+        logger.warning(
+            "Cache add failed for gramage refresh lock '%s': %s (%s)",
+            lock_key,
+            exc.__class__.__name__,
+            exc,
+        )
+        return
+    if not lock_acquired:
+        return  # Prepočet pre tento deň je už naplánovaný.
+
+    from api.tasks import refresh_gramage_dashboard_cache_task
+
+    refresh_gramage_dashboard_cache_task.apply_async(
+        args=[date_str], countdown=GRAMAGE_DASHBOARD_REFRESH_DEBOUNCE_SECONDS
+    )
+
+
+def clear_gramage_dashboard_cache_all() -> None:
+    """Clear cached gramage dashboard data for every date (wildcard).
+
+    `clear_gramage_dashboard_cache()` needs to know which date to drop — fine
+    for the write points above, but a `Prevadzka` field edit (napr. pencil
+    poznámka alebo Nastavenia prevádzky, #573) affects whatever date the admin
+    has open, not one we know here. Rather than plumb a date through the whole
+    admin CRUD path, drop every cached date the same way `clear_diet_list_cache`
+    does — cheap (a handful of keys at most) and it's the only way the note
+    actually shows up immediately instead of within the 5-minute TTL.
+    """
+    try:
+        if hasattr(cache, "delete_pattern"):
+            cache.delete_pattern(f"{GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX}:*")
+            return
+    except Exception as exc:
+        logger.warning(
+            "Cache delete_pattern failed for key prefix '%s:*': %s (%s)",
+            GRAMAGE_DASHBOARD_CACHE_KEY_PREFIX,
+            exc.__class__.__name__,
+            exc,
+        )
+    # Backend bez delete_pattern (napr. LocMemCache v testoch) — bez wildcard
+    # zmazania ostáva len 5-minútové TTL ako poistka, rovnako ako predtým.
+
+
 def clear_closed_day_pdf_cache(date_str: str) -> None:
     """Clear the pre-rendered PDF snapshot cached for a closed day.
 

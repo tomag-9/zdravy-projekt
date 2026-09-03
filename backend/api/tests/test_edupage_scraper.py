@@ -5,6 +5,8 @@ import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+from api.edupage.base import OlovrantMode, PrevadzkaConfig
+from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
 from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
 
 
@@ -510,9 +512,11 @@ class TestParse(unittest.TestCase):
     TARGET_DATE = date(2026, 6, 17)
     DATE_STR = "2026-06-17"
 
-    def _scrape_html(self, html: str, allowed_diets=None):
+    def _scrape_html(self, html: str, allowed_diets=None, config=None):
         scraper = EdupageScraper()
-        return scraper._parse(html, self.TARGET_DATE, allowed_diets=allowed_diets)
+        return scraper._parse(
+            html, self.TARGET_DATE, config=config, allowed_diets=allowed_diets
+        )
 
     def _typy(self, items):
         return [
@@ -686,6 +690,71 @@ class TestParse(unittest.TestCase):
         self.assertEqual(result.order_data["lunch"]["Škôlka"]["diets"], {})
         self.assertEqual(result.order_data["olovrant"]["Škôlka"]["diets"], {})
 
+    def test_parse_uses_per_jid_nazov_menu_override(self):
+        """Regression test (zdravebrusko feed, 3.9.2026): EduPage môže tú istú
+        písmenovú skratku na rôznych jidoch (raňajky/obed/olovrant) použiť pre
+        úplne iný výber — `nazovMenu[letter]` nesie sploštený (skratka, nazov)
+        pár PLUS voliteľný `jids` slovník s per-jid výnimkami. Písmeno "B" tu
+        je na jid 1 (raňajky) "sšvA"/"Klasik" (SŠ Veterinárna klasik), ale na
+        jid 2 (obed) "dsbNM"/"NoMilk" (Deutsche Schule diéta) — sploštený
+        fallback vždy vrátil obedovú verziu, takže SŠ Veterinárna raňajky sa
+        tíško vyhodnotili ako Deutsche Schule diéta a zmizli z prehľadu."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "1": {"B": {"typ_platitela": {"1": {"o": 8}}}},
+                    "2": {"B": {"typ_platitela": {"1": {"o": 3}}}},
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {
+            "B": {
+                # Sploštený fallback — reálne dáta ho nechávajú na poslednom
+                # spracovanom jide (tu obed).
+                "skratka": "dsbNM",
+                "nazov": "NoMilk",
+                "jids": {
+                    "1": {"skratka": "sšvA", "nazov": "Klasik"},
+                    "2": {"skratka": "dsbNM", "nazov": "NoMilk"},
+                },
+            }
+        }
+        nastavenia = [
+            {
+                "setting": "vydaj_normal",
+                "hodnota": json.dumps(
+                    {
+                        "1": {
+                            "1": {"vydaj_od": "07:30", "vydaj_do": "09:00"},
+                            "2": {"vydaj_od": "11:30", "vydaj_do": "14:00"},
+                        }
+                    }
+                ),
+            }
+        ]
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            nastavenia,
+            self._typy([(1, "MŠ Klasik", 0)]),
+            self.DATE_STR,
+        )
+        result = self._scrape_html(html, allowed_diets={"NO MILK"})
+
+        # Raňajky: písmeno B je na jid 1 "Klasik" (menu, nie diéta) — musí
+        # pristáť v menuCounts, nie v diets, a nesmie byť unmapped.
+        self.assertEqual(
+            result.order_data["breakfast"]["Škôlka"]["menuCounts"].get("A"), 8
+        )
+        self.assertEqual(result.order_data["breakfast"]["Škôlka"]["diets"], {})
+        # Obed: to isté písmeno B je na jid 2 skutočne "NoMilk" diéta.
+        self.assertEqual(
+            result.order_data["lunch"]["Škôlka"]["diets"].get("NO MILK"), 3
+        )
+        self.assertEqual(result.unmapped_letters, [])
+
     def test_parse_late_olovrant_window_does_not_double_count_lunch(self):
         """Regression test for a real production discrepancy: an olovrant
         window starting at 14:30 has vydaj_od hour=14, same as an hour=14
@@ -807,19 +876,31 @@ class TestParse(unittest.TestCase):
             {"Dospelý (SŠ)": {"menuCounts": {"A": 4}, "diets": {}}},
         )
 
-    def test_parse_ssv_vege_letter_still_resolves_to_veggie(self):
-        """The Vege letter itself (skratka "sšvV") must still resolve to VEGGIE —
-        only the payer-group-level default was wrong, not letter-level matching."""
+    def test_parse_ssv_vege_letter_is_its_own_menu_not_a_diet_on_klasik(self):
+        """ "sšvV" (Vege) je pre SŠ Veterinárnu samostatný MENU výber — ako
+        "sšvA"/Klasik, "sšvB"/Menu B — nie dietná úprava Klasiku.
+
+        Pôvodne namapované ako `LetterRule(diet="VEGGIE")` (#557) — keďže
+        `_parse` diétu vždy sčíta aj do menuCounts.A (bežne JE úpravou
+        Klasiku), toto duplicitne napočítalo vege objednávky aj do A (user
+        3.9.2026: reálny obed mal byť A:18/B:4/V:2, appka ukazovala A:20).
+        `LetterRule(menu="V")` počíta Vege do vlastného menuCounts.V."""
         prehlad = {
             "prehlad": {
                 self.DATE_STR: {
-                    "2": {"I": {"typ_platitela": {"12": {"o": 2}}}},
+                    "2": {
+                        "A": {"typ_platitela": {"12": {"o": 18}}},
+                        "I": {"typ_platitela": {"12": {"o": 2}}},
+                    },
                 }
             },
             "mamUnknown": False,
             "unknownTypyIDS": [],
         }
-        nazov_menu = {"I": {"nazov": "Vege", "skratka": "sšvV"}}
+        nazov_menu = {
+            "A": {"nazov": "Klasik", "skratka": "sšvA"},
+            "I": {"nazov": "Vege", "skratka": "sšvV"},
+        }
         nastavenia = [
             {
                 "setting": "vydaj_normal",
@@ -835,11 +916,22 @@ class TestParse(unittest.TestCase):
             self._typy([(12, "SŠV žiak", 4)]),
             self.DATE_STR,
         )
-        result = self._scrape_html(html)
+        config = PrevadzkaConfig(
+            subdomena="zdravebrusko",
+            ucty=("Ďumbierska", "Lamač", "Malý", "Heyrovského"),
+            olovrant_mode=OlovrantMode.EDUPAGE,
+            letter_hook=zdravebrusko_letter_hook,
+        )
+        result = self._scrape_html(html, config=config)
 
         self.assertEqual(
             result.order_data["lunch"],
-            {"Dospelý (SŠ)": {"menuCounts": {"A": 2}, "diets": {"VEGGIE": 2}}},
+            {
+                "Dospelý (SŠ)": {
+                    "menuCounts": {"A": 18, "V": 2},
+                    "diets": {},
+                }
+            },
         )
 
     def test_nest_order_data_by_category_wraps_flat_meals(self):

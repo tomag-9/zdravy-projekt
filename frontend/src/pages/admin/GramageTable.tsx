@@ -121,6 +121,16 @@ interface GramageTableProps {
    * dashboardu, nie táto (read-only) tabuľka. Kuchyňa ju neposiela.
    */
   onEditNote?: (prevadzkaId: number) => void;
+  /**
+   * "Zobraziť všetko rozbalené" (Nastavenia tabuľky, 2.9.2026) — vynúti
+   * zobrazenie sub-riadkov/medzisúčtov pre KAŽDÉHO klienta, nezávisle od
+   * lokálneho stavu rozbaleného/zbaleného (ktorý inak defaultne zbaľuje
+   * úplne všetkých). Bez tohto by `include_summary_rows=false` poslané
+   * backendu zmenilo len spec (zmizli by "Súčet bez diét" riadky), ale
+   * sub-riadky by ostali skryté, kým ich admin sám nerozklikne — presne
+   * opak "formátu ako v PDF" sľúbeného v popisku prepínača.
+   */
+  alwaysExpanded?: boolean;
 }
 
 const GramageTable: React.FC<GramageTableProps> = ({
@@ -131,6 +141,7 @@ const GramageTable: React.FC<GramageTableProps> = ({
   fill,
   searchTerm,
   onEditNote,
+  alwaysExpanded,
 }) => {
   const [expandedClients, setExpandedClients] = useState<string[]>([]);
 
@@ -155,7 +166,7 @@ const GramageTable: React.FC<GramageTableProps> = ({
       // #513 — poznámka prevádzky (ak je nastavená) ide rovno za názov na
       // tomto (vždy viditeľnom) riadku, nie len do collapsible note-admin
       // sub-riadku nižšie.
-      const isExpanded = expandedClients.includes(row.group_id ?? "");
+      const isExpanded = alwaysExpanded || expandedClients.includes(row.group_id ?? "");
       const action =
         renderClientAction && row.prevadzka_id != null
           ? renderClientAction(row.prevadzka_id)
@@ -165,7 +176,11 @@ const GramageTable: React.FC<GramageTableProps> = ({
         <tr key={index} id={row.prevadzka_id != null ? `prevadzka-row-${row.prevadzka_id}` : undefined} className={row.css}>
           <td colSpan={cell.colspan}>
             <div className="client-line">
-              <button type="button" className="client-toggle" onClick={() => toggleClient(row.group_id ?? "")}>
+              <button
+                type="button"
+                className="client-toggle"
+                onClick={() => { if (!alwaysExpanded) toggleClient(row.group_id ?? ""); }}
+              >
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                   <span className={`chev${isExpanded ? " open" : ""}`}><ChevronRight size={15} /></span>
                   {nameClickable ? (
@@ -289,9 +304,10 @@ const GramageTable: React.FC<GramageTableProps> = ({
     return result;
   }, [spec.rows, term]);
 
-  // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení.
+  // Podriadky, poznámky a medzisúčty klienta sa ukazujú až po rozbalení —
+  // `alwaysExpanded` ("Zobraziť všetko rozbalené") to obchádza pre všetkých.
   const visibleRows = searchedRows.filter(
-    (row) => !row.collapsible || expandedClients.includes(row.group_id ?? ""),
+    (row) => !row.collapsible || alwaysExpanded || expandedClients.includes(row.group_id ?? ""),
   );
 
   return (

@@ -763,9 +763,12 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
     dňa ho jednoducho prepíše finálnymi číslami.
 
     Beží každý deň (aj cez víkend — deň, na ktorý sa dátum v okne padne ako
-    voľno, task sám vynechá), 6:00–21:00, každú celú hodinu. Vypína sa
-    rovnakým prepínačom ako ostatný automatický scrape
-    (`edupage_auto_scrape_enabled`).
+    voľno, task sám vynechá), 24/7 každú celú hodinu (3.9.2026: pôvodne len
+    6:00–21:00, ale keďže `days_ahead` beh už per (dátum, jedlo) rešpektuje
+    `_meal_scrape_deadline_passed` — po deadline scrape sa danému jedlu/dňu
+    sám vyhne — nočné hodiny už nehrozia prepísaním ručnej admin opravy a
+    obmedzenie na deň nemá dôvod). Vypína sa rovnakým prepínačom ako ostatný
+    automatický scrape (`edupage_auto_scrape_enabled`).
     """
     try:
         from django.conf import settings
@@ -789,7 +792,7 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
 
         schedule, _ = CrontabSchedule.objects.get_or_create(
             minute="0",
-            hour="6-21",
+            hour="0-23",
             day_of_week="*",
             day_of_month="*",
             month_of_year="*",
@@ -804,15 +807,16 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"days_ahead": EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD}),
                 "enabled": True,
                 "description": (
-                    f"EduPage priebežný náhľad: každú hodinu (6:00–21:00) "
+                    f"EduPage priebežný náhľad: každú hodinu, 24/7, "
                     f"dočíta objednávky na dnes až +{EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD} "
-                    f"dni dopredu, všetky jedlá. Doplnok k „Poslednému EduPage "
+                    f"dni dopredu — len jedlá/dni, ktorých autoritatívny deadline "
+                    f"scrape ešte neprebehol. Doplnok k „Poslednému EduPage "
                     f"scrapu“ — ten zostáva autoritatívny pre uzávierku."
                 ),
             },
         )
         logger.info(
-            "Edupage preview scrape task synced: %s → hodinovo 6-21 (tz: %s)",
+            "Edupage preview scrape task synced: %s → hodinovo 24/7 (tz: %s)",
             EDUPAGE_PREVIEW_SCRAPE_TASK_NAME,
             settings.TIME_ZONE,
         )
@@ -919,6 +923,49 @@ def on_prevadzka_saved(sender, instance, created=False, **kwargs):
     except Exception as exc:
         logger.exception("Error initializing Prevadzka: %s", exc)
         _capture_signal_failure(exc, "prevadzka_saved")
+
+
+@receiver(post_save, sender="api.Prevadzka")
+def on_prevadzka_saved_clear_gramage_cache(sender, instance, **kwargs):
+    """Invalidate the gramage dashboard cache on any Prevádzka edit.
+
+    Bez toho by úprava `admin_order_note` (ceruzka v gramážnej tabuľke, #573)
+    alebo hociktorého iného poľa cez Nastavenia prevádzky visela v cache až
+    5 minút (`GRAMAGE_DASHBOARD_TIMEOUT`) — admin ju uloží, refreshne a nič
+    nevidí. Beží pri každom save vrátane vytvorenia, nielen update-u.
+    """
+    try:
+        from api.cache_service import clear_gramage_dashboard_cache_all
+
+        clear_gramage_dashboard_cache_all()
+    except Exception as exc:
+        logger.exception("Error clearing gramage dashboard cache: %s", exc)
+        _capture_signal_failure(exc, "prevadzka_saved_clear_gramage_cache")
+
+
+@receiver(post_save, sender="api.DailyOrder")
+@receiver(post_delete, sender="api.DailyOrder")
+def on_daily_order_changed_refresh_gramage_cache(sender, instance, **kwargs):
+    """Asynchrónne prepočíta gramage dashboard cache pre deň objednávky.
+
+    Predtým sa "ad-hoc order edits" (úprava/vytvorenie/zmazanie objednávky)
+    do gramage dashboard cache vôbec nepremietali — bolo to úmyselné, TTL
+    5 minút mal staleness ohraničiť namiesto prepočtu pri každom zápise
+    (viď pôvodný komentár pri `GRAMAGE_DASHBOARD_TIMEOUT`). To ale reálne
+    znamenalo, že admin po úprave objednávky videl starý stav tabuľky až
+    5 minút. `schedule_gramage_dashboard_refresh` (api/cache_service.py) to
+    rieši bez toho, aby request musel čakať na prepočet: zahodí starú cache
+    a na pozadí (Celery, s debounce) ju rovno nahradí čerstvou.
+    """
+    if instance.date is None:
+        return
+    try:
+        from api.cache_service import schedule_gramage_dashboard_refresh
+
+        schedule_gramage_dashboard_refresh(instance.date.isoformat())
+    except Exception as exc:
+        logger.exception("Error scheduling gramage dashboard refresh: %s", exc)
+        _capture_signal_failure(exc, "daily_order_changed_refresh_gramage_cache")
 
 
 @receiver(post_save, sender="api.Diet")

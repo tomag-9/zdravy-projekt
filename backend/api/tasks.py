@@ -516,6 +516,52 @@ def _meal_scrape_deadline_passed(gs, meal_type: str, target_date, now_local) -> 
     return now_local >= deadline_dt
 
 
+def _log_scrape_order_event(order, previous_data: dict, is_new: bool) -> None:
+    """Zaloguj zápis scrapu do Udalostí — rovnaký formát ako admin/klient
+    úprava objednávky (`OrderViewSet._log_order_audit`), len s
+    `actor_label="EduPage"` namiesto mena osoby (user 3.9.2026: nech je v
+    Udalostiach vidno školu po škole, čo scrape reálne zmenil, nie len
+    súhrnný `cron_run`). Bez reálnej zmeny dát sa nezaloguje nič — inak by
+    hodinový 24/7 preview beh zaplavil Udalosti no-op zápismi z každej
+    školy, každú hodinu.
+    """
+    from api.models import EventLog
+    from api.services.event_log_service import build_nested_dict_diff, log_event
+
+    new_data = order.data or {}
+    if previous_data == new_data:
+        return
+    changed_meals = [
+        meal_type
+        for meal_type in _ALL_MEALS
+        if previous_data.get(meal_type, {}) != new_data.get(meal_type, {})
+    ]
+    event_type = (
+        EventLog.EventType.ORDER_ADMIN_CREATE
+        if is_new
+        else EventLog.EventType.ORDER_ADMIN_UPDATE
+    )
+    verb = "zadal(a)" if is_new else "upravil(a)"
+    log_event(
+        event_type,
+        actor=None,
+        actor_label="EduPage",
+        prevadzka=order.prevadzka,
+        summary=f"EduPage {verb} objednávku (prevádzka: {order.prevadzka}) na {order.date}.",
+        payload={
+            "order_id": order.pk,
+            "date": str(order.date),
+            "prevadzka_id": order.prevadzka_id,
+            "prevadzka_nazov": str(order.prevadzka) if order.prevadzka else None,
+            "changed_meals": changed_meals,
+            "changes": build_nested_dict_diff(previous_data, new_data),
+            "meals": {
+                meal_type: new_data.get(meal_type, {}) for meal_type in changed_meals
+            },
+        },
+    )
+
+
 def _apply_scrape(existing_data, imported_data, requested_meals):
     """Vlož výsledok scrapu s UPDATE sémantikou (nie ADD).
 
@@ -744,6 +790,7 @@ def scrape_edupage_orders_task(
     """
     try:
         import datetime
+        from copy import deepcopy
 
         from django.db import transaction
         from django.utils import timezone
@@ -1043,11 +1090,15 @@ def scrape_edupage_orders_task(
                     # výnimka: zapíše len Menu B/C, ostatné jedlá/porcie na tento
                     # deň ostávajú netknuté (deň samotný to neskôr prepíše plne).
                     with transaction.atomic():
-                        order, _ = DailyOrder.objects.select_for_update().get_or_create(
+                        (
+                            order,
+                            created,
+                        ) = DailyOrder.objects.select_for_update().get_or_create(
                             prevadzka=prevadzka,
                             date=target_date,
                             defaults={"user": operation["user"], "data": {}},
                         )
+                        previous_data = deepcopy(order.data or {})
                         if target_date in partial_dates:
                             order.data = _apply_partial_menu_scrape(
                                 order.data, imported_data
@@ -1066,6 +1117,7 @@ def scrape_edupage_orders_task(
                             "uncertain_diets": list(uncertain_for_prevadzka),
                         }
                         order.save(update_fields=["data", "scrape_flags", "updated_at"])
+                        _log_scrape_order_event(order, previous_data, created)
                     scraped += 1
 
         # Scrape prepísal DailyOrder.data pre tieto dni — gramage dashboard by
@@ -1316,5 +1368,38 @@ def cache_closed_day_pdf_task(date_str: str) -> None:
         logger.exception(
             "cache_closed_day_pdf_task: nepodarilo sa predgenerovať PDF gramáže "
             "pre uzavretý deň %s",
+            date_str,
+        )
+
+
+@shared_task
+def refresh_gramage_dashboard_cache_task(date_str: str) -> None:
+    """Prepočíta a znova nacachuje gramage dashboard pre daný deň.
+
+    Volané asynchrónne (`.delay()`) z `schedule_gramage_dashboard_refresh`
+    (`api/cache_service.py`) po každej zmene `DailyOrder`/`Prevadzka` — bez
+    toho admin po úprave objednávky/poznámky videl starý stav až
+    `GRAMAGE_DASHBOARD_TIMEOUT` (5 min). Zlyhanie tu nesmie nič zhodiť: pri
+    cache-miss sa dashboard aj tak domodeluje synchrónne na požiadanie
+    (`get_cached_gramage_dashboard_data`), takže si len zaloguje a skončí.
+    """
+    from api.cache_service import (
+        GRAMAGE_DASHBOARD_TIMEOUT,
+        get_gramage_dashboard_cache_key,
+        set_cached,
+    )
+    from api.services.meal_plan_service import MealPlanService
+
+    try:
+        data = MealPlanService.gramage_dashboard(date_str)
+        set_cached(
+            get_gramage_dashboard_cache_key(date_str),
+            data,
+            timeout=GRAMAGE_DASHBOARD_TIMEOUT,
+        )
+    except Exception:
+        logger.exception(
+            "refresh_gramage_dashboard_cache_task: nepodarilo sa prepočítať "
+            "gramage dashboard pre %s",
             date_str,
         )

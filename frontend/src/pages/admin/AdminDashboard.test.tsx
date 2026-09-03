@@ -32,6 +32,12 @@ const makeMockResponse = (payload: unknown, ok = true) => ({
   },
 });
 
+// "Nastavenia tabuľky" sa pamätajú v localStorage (2.9.2026) — globálny hook,
+// nech medzi sebou nepresiaknu ani testy v iných `describe` blokoch nižšie.
+beforeEach(() => {
+  localStorage.clear();
+});
+
 const mockDashboardRequests = (
   gramage: unknown,
   orderReport?: unknown,
@@ -261,7 +267,7 @@ describe("AdminDashboard", () => {
       );
       expect(screen.getByRole("status")).toHaveTextContent("Deň je uzavretý");
     });
-    expect(screen.getByRole("button", { name: /stiahnuť pdf/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^pdf$/i })).toBeInTheDocument();
     expect(mockToastSuccess).toHaveBeenCalledWith("Deň bol uzavretý.");
   });
 
@@ -444,47 +450,72 @@ describe("GramageTable renders straight from the spec", () => {
 
 const GRAMAGE_TWO_CLIENTS = {
   ...GRAMAGE_WITH_ROWS,
+  // Top-level `rows` (nie `spec.rows`) nesie `client`/`prevadzka_id` — z neho
+  // si search hľadá zhodu (rovnaký zdroj ako editácia poznámky, #573).
+  rows: [
+    { prevadzka_id: 1, client: "MŠ Testovacia" },
+    { prevadzka_id: 2, client: "MŠ Iná" },
+  ],
   spec: {
     ...GRAMAGE_WITH_ROWS.spec,
-    rows: [
-      ...GRAMAGE_WITH_ROWS.spec.rows,
-      {
-        kind: "client",
-        css: "client-row",
-        group_id: "k2",
-        cells: [{ text: "MŠ Iná", meta: "štandard 3", meta_right: "spolu porcií 3", colspan: 2 }],
-      },
-    ],
+    rows: GRAMAGE_WITH_ROWS.spec.rows.map((row, i) => (i === 0 ? { ...row, prevadzka_id: 1 } : row)).concat({
+      kind: "client",
+      css: "client-row",
+      group_id: "k2",
+      prevadzka_id: 2,
+      cells: [{ text: "MŠ Iná", meta: "štandard 3", meta_right: "spolu porcií 3", colspan: 2 }],
+    }),
   },
 };
 
 describe("Vyhľadávanie prevádzky v tabuľke (#573)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it("skryje prevádzky, ktoré nezodpovedajú hľadanému menu", async () => {
+  it("nezobrazuje ani neskrýva žiadne riadky počas písania", async () => {
     mockDashboardRequests(GRAMAGE_TWO_CLIENTS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     expect(await screen.findByText("MŠ Testovacia")).toBeInTheDocument();
     expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("Hľadať prevádzku…"), { target: { value: "iná" } });
+    fireEvent.change(screen.getByPlaceholderText(/Hľadať prevádzku/), { target: { value: "iná" } });
 
-    expect(screen.queryByText("MŠ Testovacia")).not.toBeInTheDocument();
+    // Tabuľka sa nezmenšuje počas písania — obe prevádzky ostávajú vidno.
+    expect(screen.getByText("MŠ Testovacia")).toBeInTheDocument();
     expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
   });
 
-  it("hľadanie ignoruje diakritiku a veľkosť písmen", async () => {
+  it("po Enteri odscrolluje na prvú zhodnú prevádzku (ignoruje diakritiku a veľkosť písmen)", async () => {
     mockDashboardRequests(GRAMAGE_TWO_CLIENTS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await screen.findByText("MŠ Testovacia");
-    fireEvent.change(screen.getByPlaceholderText("Hľadať prevádzku…"), { target: { value: "INA" } });
+    const input = screen.getByPlaceholderText(/Hľadať prevádzku/);
+    fireEvent.change(input, { target: { value: "INA" } });
+    fireEvent.keyDown(input, { key: "Enter" });
 
-    expect(screen.queryByText("MŠ Testovacia")).not.toBeInTheDocument();
-    expect(screen.getByText("MŠ Iná")).toBeInTheDocument();
+    // `scrollIntoView` je na `Element.prototype`, zdieľaný všetkými riadkami —
+    // overuje sa preto count + ktorý konkrétny riadok dostal zvýraznenie.
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(document.getElementById("prevadzka-row-2")).toHaveClass("zpa-row-highlight");
+    // Nezhodná prevádzka zostáva v tabuľke a nescrolluje sa k nej.
+    expect(document.getElementById("prevadzka-row-1")).not.toHaveClass("zpa-row-highlight");
+  });
+
+  it("prázdne alebo nezhodné hľadanie nič neodscrolluje", async () => {
+    mockDashboardRequests(GRAMAGE_TWO_CLIENTS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    const input = await screen.findByPlaceholderText(/Hľadať prevádzku/);
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.change(input, { target: { value: "neexistuje" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(document.getElementById("prevadzka-row-1")!.scrollIntoView).not.toHaveBeenCalled();
+    expect(document.getElementById("prevadzka-row-2")!.scrollIntoView).not.toHaveBeenCalled();
   });
 });
 
@@ -562,7 +593,12 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    // PDF tlačidlo je počas refetchu (`loading`) disabled — bez čakania na
+    // jeho znovu-povolenie je klik hneď po predošlom `waitFor` občas no-op
+    // (React ešte nestihol vyrenderovať `loading: false`), čo v CI flakuje.
+    const pdfButton = screen.getByRole("button", { name: /^pdf$/i });
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    fireEvent.click(pdfButton);
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(
@@ -600,7 +636,9 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    const pdfButton = screen.getByRole("button", { name: /^pdf$/i });
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    fireEvent.click(pdfButton);
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard-pdf\/\?date=[\d-]+&vydaj=B$/),
@@ -638,7 +676,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await openTableSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
 
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
@@ -673,9 +711,13 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     expect(screen.queryByText("Diéty v sumári klastra")).not.toBeInTheDocument();
   });
 
-  it("'Zobraziť všetko rozbalené' sends expanded=1", async () => {
+  it("'Zobraziť všetko rozbalené' sends expanded=1 a skutočne rozbalí každého klienta bez klikania", async () => {
     mockDashboardRequests(GRAMAGE_WITH_ROWS);
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    // Predvolene zbalené — sub-riadok nie je vidno, kým naň admin neklikne.
+    expect(screen.queryByText("Škôlka - Obed Menu A")).not.toBeInTheDocument();
 
     await openTableSettings();
     fireEvent.click(await screen.findByRole("button", { name: "Zobraziť všetko rozbalené" }));
@@ -685,6 +727,40 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&expanded=1$/),
       );
     });
+    // Bez klikania na žiadneho klienta — všetci sú rovno rozbalení (#format ako v PDF).
+    expect(await screen.findByText("Škôlka - Obed Menu A")).toBeInTheDocument();
+  });
+
+  it("pamätá si nastavenie tabuľky aj po odmountovaní (napr. návrat z detailu prevádzky)", async () => {
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    const first = render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await openTableSettings();
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
+      );
+    });
+
+    // Klik na škôlku odnavigoval preč (AdminDashboard sa odmountuje) a admin
+    // sa neskôr vráti späť — nová inštancia sa má správať tak, akoby nikdy
+    // neodišiel.
+    first.unmount();
+    mockApiFetch.mockClear();
+    mockDashboardRequests(GRAMAGE_WITH_ROWS);
+    render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
+
+    await waitFor(() => {
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),
+      );
+    });
+    await openTableSettings();
+    expect(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("'Obnoviť predvolené' resets every toggle back to default", async () => {
@@ -692,7 +768,7 @@ describe("Nastavenia tabuľky (2.9.2026)", () => {
     render(<MemoryRouter><AdminDashboard /></MemoryRouter>);
 
     await openTableSettings();
-    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne trasy" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Zobraziť prázdne prevádzky" }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard\/\?date=[\d-]+&show_empty=0$/),

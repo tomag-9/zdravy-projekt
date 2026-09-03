@@ -3,6 +3,14 @@ name: Pull Request Checks
 on:
   pull_request:
     branches: [main, develop]
+    # release-please PR mení len tieto — žiadny reálny kód, ktorý by ešte
+    # neprešiel CI na develop -> main PR. Vynecháme ich, nech sa checky
+    # nespúšťajú znova zbytočne.
+    paths-ignore:
+      - VERSION
+      - frontend/package.json
+      - CHANGELOG.md
+      - .release-please-manifest.json
 
 permissions:
   contents: read

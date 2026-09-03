@@ -504,12 +504,35 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
 .zpa-search { position: relative; }
 .zpa-search .zpa-input { padding-left: 42px; }
 .zpa-search svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); width: 17px; height: 17px; color: var(--ink-mute); }
-/* Vyhľadávanie prevádzky v gramážnej tabuľke (#573) — v akciách vedľa
- * "Nastavenia tabuľky", nemá zaberať celý riadok ako iné vyhľadávania. */
-.zpa-gram-search { width: 220px; flex: 0 0 auto; }
-.zpa-gram-search .zpa-input { padding-top: 8px; padding-bottom: 8px; }
+/* Hlavička gramážnej tabuľky (2.9.2026) — dátumový prepínač, vyhľadávanie a
+ * všetky akcie v jednom riadku namiesto PageHead s nadpisom/dátumovým
+ * textom, ktorý oproti samotnému prepínaču nenesie žiadnu novú informáciu.
+ * Dátum+search vľavo, akčné tlačidlá pevne vpravo (`justify-content:
+ * space-between` medzi dvoma skupinami) — keď sa zmení stav (napr. "Deň je
+ * uzavretý" nahradí Uzamknúť), poskočí len pravá skupina, nie search/dátum. */
+.zpa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+.zpa-toolbar-left, .zpa-toolbar-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.zpa-toolbar-right { margin-left: auto; }
+
+/* Vyhľadávanie prevádzky (#573) zbalené do ikony — rozbaľuje sa na hover
+ * alebo klik (`.zpa-search-toggle--open`, drží ho otvorené aj počas písania
+ * a keď je vyplnené), nech nezaberá miesto, kým ho nikto nepoužíva. */
+.zpa-search-toggle { display: inline-flex; align-items: center; position: relative; }
+.zpa-search-input {
+    width: 0; min-width: 0; padding: 0; margin-left: 0; border: 1px solid transparent;
+    opacity: 0; overflow: hidden; pointer-events: none;
+    transition: width 0.18s ease, opacity 0.18s ease, margin-left 0.18s ease, padding 0.18s ease;
+    height: 38px; border-radius: 10px; background: var(--bg-cream-warm); font-size: 14px;
+}
+.zpa-search-toggle:hover .zpa-search-input,
+.zpa-search-toggle--open .zpa-search-input {
+    width: 200px; opacity: 1; pointer-events: auto; margin-left: 8px; padding: 0 12px;
+    border-color: var(--line-soft);
+}
+.zpa-search-input:focus { outline: none; border-color: var(--green-600); }
 @media (max-width: 640px) {
-    .zpa-gram-search { width: 100%; order: -1; }
+    .zpa-toolbar { width: 100%; }
+    .zpa-search-toggle--open .zpa-search-input, .zpa-search-toggle:hover .zpa-search-input { width: 160px; }
 }
 
 /* toggle switch */

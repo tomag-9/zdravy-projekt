@@ -309,6 +309,14 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
         date = parse_date_param(date_str)
+        # Manuálne "Obnoviť" v hlavičke (#573 nadväzne) — cache sa inak
+        # prepočíta async na pozadí po každej zmene objednávky (debounce,
+        # viď schedule_gramage_dashboard_refresh), ale admin chce vedieť
+        # naisto, teraz, bez čakania na debounce okno.
+        if _parse_bool_param(request, "refresh", False):
+            from ..cache_service import clear_gramage_dashboard_cache
+
+            clear_gramage_dashboard_cache(date.isoformat())
         data = _cached_gramage_dashboard_data(date.isoformat())
         # Hotový popis tabuľky — obrazovka aj PDF ho renderujú z rovnakého spec-u,
         # aby sa nemali ako rozísť (viď gramage_table_spec).
