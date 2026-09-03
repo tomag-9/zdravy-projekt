@@ -261,7 +261,7 @@ describe("AdminDashboard", () => {
       );
       expect(screen.getByRole("status")).toHaveTextContent("Deň je uzavretý");
     });
-    expect(screen.getByRole("button", { name: /stiahnuť pdf/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^pdf$/i })).toBeInTheDocument();
     expect(mockToastSuccess).toHaveBeenCalledWith("Deň bol uzavretý.");
   });
 
@@ -562,7 +562,7 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^pdf$/i }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(
@@ -600,7 +600,7 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /stiahnuť pdf/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^pdf$/i }));
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard-pdf\/\?date=[\d-]+&vydaj=B$/),
