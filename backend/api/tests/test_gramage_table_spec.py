@@ -430,13 +430,15 @@ def test_totals_row_shows_portion_count_in_the_first_cell_of_each_group():
 
     totals_row = spec["footer"][-2]
     # cells[0] = roh „CELKOM (g / ml)"; cells[1] = Polievka, cells[2] = Menu A,
-    # cells[3] = Menu B (každá skupina má tu presne 1 zložku).
-    assert "count" not in totals_row["cells"][0]
-    assert totals_row["cells"][1]["count"] == format_count(10)
-    assert totals_row["cells"][2]["count"] == format_count(8)
+    # cells[3] = Menu B (každá skupina má tu presne 1 zložku). Vľavo hore v
+    # bunke (`corner_count`), nie v labeli (`count` je vyhradený pre bunku s
+    # menom/porciou v prvom stĺpci — tam by dva odznaky vedľa seba mýlili).
+    assert "corner_count" not in totals_row["cells"][0]
+    assert totals_row["cells"][1]["corner_count"] == format_count(10)
+    assert totals_row["cells"][2]["corner_count"] == format_count(8)
     # Menu B bez objednávok — počet sa nezobrazí, nie "0" (rovnaká konvencia
     # ako pri gramáži, viď `format_count`/`test_count_badge_shows_a_dash_at_zero`).
-    assert "count" not in totals_row["cells"][3]
+    assert "corner_count" not in totals_row["cells"][3]
 
 
 def test_totals_row_count_lands_only_on_the_first_component_of_a_group():
@@ -473,8 +475,110 @@ def test_totals_row_count_lands_only_on_the_first_component_of_a_group():
 
     totals_row = spec["footer"][-2]
     # cells[0] = roh „CELKOM (g / ml)"; cells[1]/[2] = Pečivo/Nátierka (Raňajky).
-    assert totals_row["cells"][1]["count"] == format_count(10)
-    assert "count" not in totals_row["cells"][2]
+    assert totals_row["cells"][1]["corner_count"] == format_count(10)
+    assert "corner_count" not in totals_row["cells"][2]
+
+
+# ── Počet vľavo hore aj v riadkoch jedného klienta ───────────────────────────
+# Predchádzajúca verzia to dala len do „Súčet bez diét" a ako odznak VEDĽA
+# gramáže (v strede/vpravo bunky) — kuchyňa chcela vidieť "koľko sa toho varí"
+# priamo pri každej prevádzke aj bez rozbaľovania, na KAŽDOM riadku s
+# gramážou (sub-riadok, súčty aj CELKOM), a číslo malé, v ľavom hornom rohu
+# bunky (rovnaká pozícia ako v CELKOM riadku vyššie), nie v strede/vedľa textu.
+
+
+def test_sub_row_shows_its_own_count_in_the_corner_of_each_group_it_touches():
+    """Jeden riadok = jedna homogénna skupina ľudí — rovnaký počet platí
+    vo všetkých skupinách, do ktorých táto porcia zasahuje (tu zlúčená
+    polievka + Menu A, viď fixture `_payload`)."""
+    spec = build_table_spec(_payload())
+    sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    )
+    # cells[0] = label „Škôlka" (obyčajný `count` odznak); cells[1] = Polievka,
+    # cells[2] = Menu A (obe majú gramáž v tomto riadku → obe 8), cells[3] =
+    # Menu B (bez gramáže v tomto riadku → bez rohového počtu).
+    assert "corner_count" not in sub_row["cells"][0]
+    assert sub_row["cells"][1]["corner_count"] == format_count(8)
+    assert sub_row["cells"][2]["corner_count"] == format_count(8)
+    assert "corner_count" not in sub_row["cells"][3]
+
+
+def test_summary_std_row_shows_count_per_group_in_the_corner():
+    """„Súčet bez diét" (vždy viditeľný, aj keď je klient zbalený) dostáva
+    rohový počet za KAŽDÚ skupinu — plochý súčet v labeli ("8") by inak
+    skryl, že len časť z toho mala aj polievku/olovrant."""
+    spec = build_table_spec(_payload())
+
+    summary_row = next(r for r in spec["rows"] if r["kind"] == "summary-std")
+    assert summary_row["cells"][1]["corner_count"] == format_count(8)
+    assert summary_row["cells"][2]["corner_count"] == format_count(8)
+    assert "corner_count" not in summary_row["cells"][3]
+
+
+def test_summary_diet_row_shows_count_per_group_in_the_corner():
+    """Diétny súhrn klienta (`No Milk`) dostáva rovnaký rohový rozpad ako
+    „Súčet bez diét", len za svoju diétu."""
+    spec = build_table_spec(_payload())
+
+    diet_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_row["cells"][1]["corner_count"] == format_count(2)
+    assert diet_row["cells"][2]["corner_count"] == format_count(2)
+    assert "corner_count" not in diet_row["cells"][3]
+
+
+def test_corner_count_never_appears_on_an_actually_empty_cell():
+    """3.9.2026 Jolly 3 — diétny riadok niesol `col_grams[0] = ["0.00"]` (list
+    NIE je prázdny, ale hodnota v ňom je nula), takže bunka Raňajok vykreslila
+    „—" a napriek tomu dostala rohový počet. Bunka bez gramáže (nula alebo
+    naozaj prázdna) nemá dostať odznak, nech je zdrojový zoznam akýkoľvek."""
+    payload = _payload()
+    payload["rows"][0]["diet_summary_rows"][0]["col_grams"] = [
+        ["0.00"],
+        ["400.00"],
+        ["600.00"],
+    ]
+    spec = build_table_spec(payload)
+
+    diet_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_row["cells"][1]["text"] == "—"
+    assert "corner_count" not in diet_row["cells"][1]
+    assert diet_row["cells"][2]["corner_count"] == format_count(2)
+
+
+def test_corner_count_uses_the_per_meal_breakdown_not_the_flat_sum():
+    """Riadok zlúčený naprieč jedlami (obed 11 + olovrant 8, #527) nesmie do
+    oboch skupín vpísať plochý súčet 19 — každá skupina dostane len svoj
+    podiel, presne ako v labeli (`_composite_meal_count_text`)."""
+    payload = _with_breakfast_and_snack_same_portion()
+    row = payload["rows"][0]
+    main_course_a = next(
+        sr for sr in row["sub_rows"] if sr["label"] == "Škôlka - Obed Menu A"
+    )
+    variant_b = dict(main_course_a)
+    variant_b["variant"] = "B"
+    variant_b["label"] = "Škôlka - Obed Menu B"
+    variant_b["count"] = 3
+    variant_b["_heads"] = 3
+    variant_b["_ms_recalc"] = Decimal("3")
+    variant_b["col_grams"] = list(main_course_a["col_grams"])
+    row["sub_rows"].append(variant_b)
+
+    spec = build_table_spec(payload)
+    standard_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    )
+    # Tabuľka má 3 pásy (Raňajky/Obed/Olovrant); tento riadok raňajky
+    # neobjednal → "0", bez R/Ob/Ol skratky pred číslom.
+    assert standard_row["cells"][0]["count"] == "0 + 11 + 8"
+    # Polievka+Menu A zdieľajú stĺpec "Obed" (11), Olovrant má svoj (8) —
+    # nie plochých 19 v oboch.
+    gram_cells = [c for c in standard_row["cells"][1:] if "cell-num" in c["css"]]
+    assert [c.get("corner_count") for c in gram_cells] == [
+        format_count(11),
+        format_count(11),
+        format_count(8),
+    ]
 
 
 # ── Filter sekcií (verzie tlače aj prehľadu) ─────────────────────────────────
@@ -613,8 +717,8 @@ def test_subtotals_count_only_the_visible_sections():
 
     complete = build_table_spec(payload)
     std = next(r for r in complete["rows"] if r["kind"] == "summary-std")
-    # 8 obedov (Menu A) + 8 olovrantov.
-    assert std["cells"][0]["count"] == "16"
+    # 8 obedov (Menu A) + 8 olovrantov, 0 raňajok — tabuľka má všetky 3 pásy.
+    assert std["cells"][0]["count"] == "0 + 8 + 8"
     assert (
         next(r for r in complete["rows"] if r["kind"] == "client")["cells"][0]["meta"]
         == "štandard 16, diéty 2"
@@ -687,8 +791,9 @@ def test_standard_rows_of_the_same_portion_merge_across_meals():
     row = standard_rows[0]
     # Meno jedla mizne z labelu — nesie ho count-odznak nižšie.
     assert row["cells"][0]["text"] == "Škôlka"
-    # Obed (8) + Olovrant (8) — R/Ob/Ol skratky, len jedlá, ktoré riadok má.
-    assert row["cells"][0]["count"] == "Ob 8 + Ol 8"
+    # Obed (8) + Olovrant (8), Raňajky 0 — všetky 3 pásy tabuľky, bez
+    # R/Ob/Ol skratky pred číslom.
+    assert row["cells"][0]["count"] == "0 + 8 + 8"
     # Gramáž zostáva rozpísaná do svojich (disjunktných) stĺpcov jedla —
     # zlúčenie nesmie nič sčítať do jedného čísla.
     gram_cells = [c for c in row["cells"][1:] if "cell-num" in c["css"]]
@@ -719,8 +824,8 @@ def test_two_menu_variants_of_the_same_meal_add_up_in_the_merged_count():
     standard_row = next(
         r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
     )
-    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant.
-    assert standard_row["cells"][0]["count"] == "Ob 11 + Ol 8"
+    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant; Raňajky 0.
+    assert standard_row["cells"][0]["count"] == "0 + 11 + 8"
 
 
 def test_a_single_meal_portion_keeps_a_plain_count():
