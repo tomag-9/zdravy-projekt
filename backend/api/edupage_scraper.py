@@ -827,8 +827,19 @@ class EdupageScraper:
                     continue
 
                 nm_entry = nazov_menu.get(letter, {})
-                skratka = nm_entry.get("skratka", letter)
-                nazov = nm_entry.get("nazov", letter)
+                # `nazovMenu[letter]` je sploštená na jeden (skratka, nazov) pár,
+                # ale EduPage vie tú istú písmenovú skratku na rôznych jidoch
+                # (raňajky/obed/olovrant) použiť pre úplne iný výber — potvrdené
+                # na zdravebrusko feede (3.9.2026): písmeno "B" je na jid 1/3
+                # (raňajky/olovrant) "sšvA"/"Klasik" (SŠ Veterinárna), ale na
+                # jid 2 (obed) "dsbNM"/"NoMilk" (Deutsche Schule diéta). Sploštený
+                # fallback vždy vrátil ten istý (posledný spracovaný) jid — SŠV
+                # raňajky/olovrant sa tak tíško vyhodnotili ako Deutsche Schule
+                # No Milk diéta namiesto Klasik menu, a zmizli z prehľadu úplne.
+                # `jids[jid]`, keď existuje, je autoritatívny pre tento konkrétny jid.
+                jid_entry = nm_entry.get("jids", {}).get(jid, nm_entry)
+                skratka = jid_entry.get("skratka", letter)
+                nazov = jid_entry.get("nazov", letter)
 
                 rule = letter_hook(letter, skratka, nazov) if letter_hook else None
                 if rule is not None and rule.skip:
