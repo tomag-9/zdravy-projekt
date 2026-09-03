@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.5.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.4.0...v2.5.0) (2026-09-03)
+
+
+### Features
+
+* **admin:** počet porcií do prvej bunky každej skupiny v CELKOM riadku gramáže ([2145e6a](https://github.com/tomag-9/zdravy-projekt/commit/2145e6a02c2d7d71b02c197134df8b4fa70efa46))
+* **admin:** zjednotiť dátumový prepínač na Kontrole objednávok s Gramážou ([b483dd1](https://github.com/tomag-9/zdravy-projekt/commit/b483dd17fe397bd06b18bd5972f1e7dcce6c7e13))
+* **auto-order:** Bystrá škôlky - raňajky z predošlého obeda ([46f36fe](https://github.com/tomag-9/zdravy-projekt/commit/46f36fea0196100b36768af25a0929c44a8b6f9a))
+
+
+### Bug Fixes
+
+* **client:** URL dátum sa do objednávkového formulára uplatňoval s oneskorením ([806bd8c](https://github.com/tomag-9/zdravy-projekt/commit/806bd8c3a9b7a79d4de40319824001cbe7c86b7c))
+* **edupage:** Krásňanko/Školička/Naša škola poznania skratky + Benjamíny multi-prevádzka súhrn ([dd38037](https://github.com/tomag-9/zdravy-projekt/commit/dd38037e3d54f83a17d09be8a6438683def5d34b))
+* **gramage:** počet Menu B/C variantov sa v zlúčenom riadku prepisoval, nie sčítaval ([634dd17](https://github.com/tomag-9/zdravy-projekt/commit/634dd17816add863c11bb9cace0cbce06d195adc))
+
 ## [2.4.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.3.0...v2.4.0) (2026-09-03)
 
 
