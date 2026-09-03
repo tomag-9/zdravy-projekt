@@ -593,7 +593,12 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^pdf$/i }));
+    // PDF tlačidlo je počas refetchu (`loading`) disabled — bez čakania na
+    // jeho znovu-povolenie je klik hneď po predošlom `waitFor` občas no-op
+    // (React ešte nestihol vyrenderovať `loading: false`), čo v CI flakuje.
+    const pdfButton = screen.getByRole("button", { name: /^pdf$/i });
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    fireEvent.click(pdfButton);
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(
@@ -631,7 +636,9 @@ describe("Filter sekcií", () => {
       );
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^pdf$/i }));
+    const pdfButton = screen.getByRole("button", { name: /^pdf$/i });
+    await waitFor(() => expect(pdfButton).toBeEnabled());
+    fireEvent.click(pdfButton);
     await waitFor(() => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         expect.stringMatching(/gramage-dashboard-pdf\/\?date=[\d-]+&vydaj=B$/),
