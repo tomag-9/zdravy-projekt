@@ -763,9 +763,12 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
     dňa ho jednoducho prepíše finálnymi číslami.
 
     Beží každý deň (aj cez víkend — deň, na ktorý sa dátum v okne padne ako
-    voľno, task sám vynechá), 6:00–21:00, každú celú hodinu. Vypína sa
-    rovnakým prepínačom ako ostatný automatický scrape
-    (`edupage_auto_scrape_enabled`).
+    voľno, task sám vynechá), 24/7 každú celú hodinu (3.9.2026: pôvodne len
+    6:00–21:00, ale keďže `days_ahead` beh už per (dátum, jedlo) rešpektuje
+    `_meal_scrape_deadline_passed` — po deadline scrape sa danému jedlu/dňu
+    sám vyhne — nočné hodiny už nehrozia prepísaním ručnej admin opravy a
+    obmedzenie na deň nemá dôvod). Vypína sa rovnakým prepínačom ako ostatný
+    automatický scrape (`edupage_auto_scrape_enabled`).
     """
     try:
         from django.conf import settings
@@ -789,7 +792,7 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
 
         schedule, _ = CrontabSchedule.objects.get_or_create(
             minute="0",
-            hour="6-21",
+            hour="0-23",
             day_of_week="*",
             day_of_month="*",
             month_of_year="*",
@@ -804,15 +807,16 @@ def _sync_edupage_preview_scrape_schedule(settings_instance) -> None:
                 "kwargs": json.dumps({"days_ahead": EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD}),
                 "enabled": True,
                 "description": (
-                    f"EduPage priebežný náhľad: každú hodinu (6:00–21:00) "
+                    f"EduPage priebežný náhľad: každú hodinu, 24/7, "
                     f"dočíta objednávky na dnes až +{EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD} "
-                    f"dni dopredu, všetky jedlá. Doplnok k „Poslednému EduPage "
+                    f"dni dopredu — len jedlá/dni, ktorých autoritatívny deadline "
+                    f"scrape ešte neprebehol. Doplnok k „Poslednému EduPage "
                     f"scrapu“ — ten zostáva autoritatívny pre uzávierku."
                 ),
             },
         )
         logger.info(
-            "Edupage preview scrape task synced: %s → hodinovo 6-21 (tz: %s)",
+            "Edupage preview scrape task synced: %s → hodinovo 24/7 (tz: %s)",
             EDUPAGE_PREVIEW_SCRAPE_TASK_NAME,
             settings.TIME_ZONE,
         )

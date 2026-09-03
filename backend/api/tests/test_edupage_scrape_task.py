@@ -12,6 +12,7 @@ from api.models import (
     Celok,
     DailyOrder,
     EdupageConnection,
+    EventLog,
     GlobalSettings,
     ProfileCelokAccess,
     UserProfile,
@@ -1174,6 +1175,83 @@ def test_scrape_task_days_ahead_still_scrapes_meal_before_its_deadline(
     assert order.data["olovrant"]["Edupage school"]["menuCounts"]["A"] == 3
 
 
+# ── EventLog zo scrapu — viditeľnosť školu po škole v Udalostiach (3.9.2026) ─
+
+
+@pytest.mark.django_db
+def test_scrape_logs_event_per_order_with_edupage_actor_label(
+    edupage_user, monkeypatch
+):
+    """Prvý scrape na prázdny deň založí objednávku — Udalosti majú vidieť
+    'EduPage zadal(a) objednávku', nie tichý zápis viditeľný len cez cron_run
+    súhrn."""
+    GlobalSettings.objects.create(pk=1)
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 5}}})
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    event = EventLog.objects.get(event_type=EventLog.EventType.ORDER_ADMIN_CREATE)
+    assert event.actor is None
+    assert event.actor_label == "EduPage"
+    assert "EduPage zadal(a) objednávku" in event.summary
+    assert "Edupage school" in event.summary
+    assert event.payload["changed_meals"] == ["lunch"]
+    assert event.payload["meals"]["lunch"]["Edupage school"]["menuCounts"]["A"] == 5
+
+
+@pytest.mark.django_db
+def test_scrape_logs_update_event_when_counts_change(edupage_user, monkeypatch):
+    """Zmena existujúcich počtov sa loguje ako update, s diffom v `changes`."""
+    GlobalSettings.objects.create(pk=1)
+    target_date = datetime.date(2026, 6, 30)
+    counts = iter([5, 8])
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": next(counts)}}})
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+    EventLog.objects.all().delete()  # len druhý beh nás zaujíma
+
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    event = EventLog.objects.get(event_type=EventLog.EventType.ORDER_ADMIN_UPDATE)
+    assert event.actor_label == "EduPage"
+    assert event.payload["changes"]["lunch.Edupage school.menuCounts.A"] == {
+        "from": 5,
+        "to": 8,
+    }
+
+
+@pytest.mark.django_db
+def test_scrape_logs_nothing_when_rerun_is_a_noop(edupage_user, monkeypatch):
+    """Opakovaný beh s rovnakými počtami (typicky hodinový 24/7 preview) do
+    Udalostí nič nepridá — inak by ich zaplavil no-op zápismi z každej
+    školy, každú hodinu."""
+    GlobalSettings.objects.create(pk=1)
+    target_date = datetime.date(2026, 6, 30)
+
+    def fake_scrape(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 5}}})
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+    EventLog.objects.all().delete()
+
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    assert not EventLog.objects.filter(
+        event_type__in=[
+            EventLog.EventType.ORDER_ADMIN_CREATE,
+            EventLog.EventType.ORDER_ADMIN_UPDATE,
+        ]
+    ).exists()
+
+
 EDUPAGE_PREVIEW_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}preview"
 
 
@@ -1187,7 +1265,7 @@ def test_preview_scrape_schedule_creates_hourly_task():
 
     task = PeriodicTask.objects.get(name=EDUPAGE_PREVIEW_TASK_NAME)
     assert task.crontab.minute == "0"
-    assert task.crontab.hour == "6-21"
+    assert task.crontab.hour == "0-23"
     assert task.crontab.day_of_week == "*"
     assert json.loads(task.kwargs) == {"days_ahead": 2}
 
