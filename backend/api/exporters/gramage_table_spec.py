@@ -607,11 +607,17 @@ def build_table_spec(
             for route in vydaj.get("routes") or []
             for row in route.get("rows") or []
         ]
-        footer_totals = _totals_from_summary(portion_summary(data, visible_rows))
+        totals_summary = portion_summary(data, visible_rows)
+        footer_totals = _totals_from_summary(totals_summary)
         footer_rows = visible_rows
     else:
+        totals_summary = portion_summary(data)
         footer_totals = data.get("totals") or []
         footer_rows = data.get("rows") or []
+    # Počty na CELKOM riadok (#totals-row-count) — vždy z `portion_summary`,
+    # aj v nefiltrovanej vetve, kde sa gramáž berie priamo z `data["totals"]`
+    # (rovnaký denný súhrn, len sa preň netreba znova prechádzať cez rows).
+    footer_counts = [item.get("count") or 0 for item in totals_summary]
 
     footer_names = [v.get("name") or "" for v in shown_vydaje]
     footer_keys = [str(v.get("key") or "") for v in shown_vydaje]
@@ -628,7 +634,7 @@ def build_table_spec(
         if show_cluster_summary
         else []
     )
-    footer.append(_totals_row(footer_totals, keep, groups, hues))
+    footer.append(_totals_row(footer_totals, footer_counts, keep, groups, hues))
     # Posledný riadok pätky: súčet OBEDA (polievka + hlavné jedlo) na MŠ
     # porcie naprieč VŠETKÝMI zobrazenými klastrami (Cluster A+B+C) —
     # rovnaký prepočet cez katalógový `PortionType.coefficient`, aký má
@@ -1124,16 +1130,25 @@ def _cluster_summary_rows(
 
 
 def _totals_row(
-    totals: list, keep: list[int], groups: list[dict], hues: list[str]
+    totals: list, counts: list, keep: list[int], groups: list[dict], hues: list[str]
 ) -> dict:
     cells = []
     for position, (group_index, group) in enumerate(groups):
         values = totals[group_index] if group_index < len(totals) else []
+        group_count = counts[group_index] if group_index < len(counts) else None
         for component_index, component in enumerate(group.get("components") or []):
             raw = values[component_index] if component_index < len(values) else None
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
-            cells.append({"text": text or EMPTY, "css": separator.strip()})
+            cell = {"text": text or EMPTY, "css": separator.strip()}
+            # Počet porcií patrí len do prvej (ľavej) bunky zložky danej
+            # skupiny — kuchyňa tak hneď vidí "koľko sa toho varí" pri vstupe
+            # do stĺpcov daného jedla/menu, nemusí si to prepočítavať naspäť
+            # z gramáže. Opakovať ho na každej zložke by len duplikovalo
+            # rovnaké číslo naprieč riadkom.
+            if component_index == 0 and group_count:
+                cell["count"] = format_count(group_count)
+            cells.append(cell)
     return {
         "kind": "total",
         "css": "total",
