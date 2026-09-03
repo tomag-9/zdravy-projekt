@@ -4,8 +4,9 @@
  * mirroring the design kit (.claude/design/ui_kits/admin_app).
  * ============================================================= */
 import React from 'react';
-import { Search, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useDisabled } from '../../lib/editAccessContext';
+import { fromDateKey, isWeekday, nextWeekday, prevWeekday, toDateString } from '../../lib/businessDay';
 
 type Div = React.HTMLAttributes<HTMLDivElement>;
 
@@ -96,6 +97,106 @@ export const Badge: React.FC<React.HTMLAttributes<HTMLSpanElement> & { tone?: Ba
         {children}
     </span>
 );
+
+/* ── Date navigator ──
+ * Zdieľaný dátumový prepínač (Gramáž jedál, Kontrola objednávok) — šípky na
+ * predchádzajúci/nasledujúci pracovný deň, štýlovaný popisok "deň + dátum"
+ * (napr. "piatok 4. sep", klik naň otvorí natívny date picker cez skrytý
+ * input) a badge Dnes/Zajtra/Posledný pracovný deň. Jeden komponent namiesto
+ * kopírovania medzi obrazovkami, nech vizuálne aj funkčne nedivergujú. */
+export const AdminDateNav: React.FC<{
+    date: string;
+    onChange: (date: string) => void;
+    maxDate: string;
+    disabled?: boolean;
+    compact?: boolean;
+    className?: string;
+}> = ({ date, onChange, maxDate, disabled, compact, className = '' }) => {
+    const inputRef = React.useRef<HTMLInputElement>(null);
+    const actualToday = React.useMemo(() => toDateString(new Date()), []);
+    // Zložené ručne z troch samostatných formátovačov — spojený skeleton
+    // (weekday+day+month:'short') si ICU pre sk-SK prekladá na numerický
+    // mesiac ("piatok 4. 9."), samostatný `month: 'short'` formátovač ale
+    // správne vráti skratku ("sep"), preto "piatok 4. sep".
+    const label = React.useMemo(() => {
+        const d = fromDateKey(date);
+        const weekday = new Intl.DateTimeFormat('sk-SK', { weekday: 'long' }).format(d);
+        const month = new Intl.DateTimeFormat('sk-SK', { month: 'short' }).format(d).replace('.', '');
+        return `${weekday} ${d.getDate()}. ${month}`;
+    }, [date]);
+
+    const openPicker = () => {
+        const input = inputRef.current;
+        if (!input || disabled) return;
+        if (typeof input.showPicker === 'function') input.showPicker();
+        else input.focus();
+    };
+
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        if (!val || !isWeekday(fromDateKey(val))) return;
+        if (val <= maxDate) onChange(val);
+    };
+
+    return (
+        <Card className={`zpa-datenav-card ${className}`.trim()}>
+            <div className={`zpa-datenav${compact ? ' zpa-datenav--compact' : ''}`}>
+                <button
+                    type="button"
+                    className="zpa-navchip"
+                    onClick={() => onChange(prevWeekday(date))}
+                    disabled={disabled}
+                    aria-label="Predchádzajúci deň"
+                    title="Predchádzajúci deň"
+                >
+                    <ChevronLeft />
+                </button>
+                <div className="mid">
+                    <button
+                        type="button"
+                        className="curr zpa-datenav-currbtn"
+                        onClick={openPicker}
+                        disabled={disabled}
+                        title="Vybrať dátum"
+                    >
+                        {label}
+                    </button>
+                    <input
+                        ref={inputRef}
+                        type="date"
+                        value={date}
+                        max={maxDate}
+                        disabled={disabled}
+                        onChange={handleInputChange}
+                        className="zpa-datenav-hidden-input"
+                        aria-label="Vybrať dátum"
+                        tabIndex={-1}
+                    />
+                    {date === actualToday && <Badge tone="orange">Dnes</Badge>}
+                    {date === maxDate && date !== actualToday && date > actualToday && (
+                        <Badge tone="orange">Zajtra</Badge>
+                    )}
+                    {date === maxDate && date !== actualToday && date < actualToday && (
+                        <Badge tone="gray">Posledný pracovný deň</Badge>
+                    )}
+                </div>
+                <button
+                    type="button"
+                    className="zpa-navchip"
+                    onClick={() => {
+                        const n = nextWeekday(date);
+                        if (n <= maxDate) onChange(n);
+                    }}
+                    disabled={disabled || date >= maxDate}
+                    aria-label="Nasledujúci deň"
+                    title="Nasledujúci deň"
+                >
+                    <ChevronRight />
+                </button>
+            </div>
+        </Card>
+    );
+};
 
 /* ── Form controls ── */
 export const Field: React.FC<{

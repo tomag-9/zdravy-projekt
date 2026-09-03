@@ -712,6 +712,15 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
  * šírku a bez textu na šípkach, nech sa zmestí do jedného riadku s title. */
 .zpa-datenav--compact { justify-content: flex-start; padding: 10px 14px; }
 .zpa-datenav--compact .zpa-navchip { padding: 8px 10px; }
+/* Popisok dňa ("piatok 4. sep") je klikateľné tlačidlo, ktoré cez skrytý
+ * date input otvorí natívny picker — reálny font/štýl namiesto holého
+ * prehliadačového date inputu, zdieľané medzi Gramážou jedál a Kontrolou
+ * objednávok (`AdminDateNav` v ui.tsx). */
+.zpa-datenav-currbtn { background: none; border: 0; padding: 6px 10px; margin: 0; border-radius: var(--radius-sm); cursor: pointer; transition: background 150ms; }
+.zpa-datenav-currbtn:hover:not(:disabled) { background: var(--peach-300); }
+.zpa-datenav-currbtn:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+.zpa-datenav-currbtn:disabled { cursor: not-allowed; opacity: 0.6; }
+.zpa-datenav-hidden-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 /* ========================================================== *
  * Calendar
