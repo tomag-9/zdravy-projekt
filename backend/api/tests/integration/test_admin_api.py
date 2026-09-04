@@ -18,6 +18,7 @@ from api.models import (
     MealTemplate,
     PortionType,
     Prevadzka,
+    PrevadzkaDiet,
 )
 
 pytestmark = pytest.mark.integration
@@ -976,6 +977,39 @@ class AdminMealPlanApiTest(APITestCase):
             dashboard_payload["rows"][0]["admin_order_note"],
             "Bez cibule v pondelok",
         )
+
+    def test_gramage_dashboard_carries_prevadzka_diet_note(self):
+        """Poznámka k dvojici (prevádzka, diéta), nastavená v detaile
+        prevádzky (tab Diéty), sa dostane do `diet_summary_rows` aj do
+        zodpovedajúceho `sub_rows` záznamu — odtiaľ ju už len spec (#gramage
+        table spec testy) dopíše do textu riadku."""
+        self._create_plan()
+        gluten_free = Diet.objects.create(name="Bez lepku", color="#315BD8")
+        prevadzka = self.client_user.profile.dostupne_prevadzky().first()
+        PrevadzkaDiet.objects.create(
+            prevadzka=prevadzka, diet=gluten_free, note="Alergik, hlásiť rodičom"
+        )
+        DailyOrder.objects.create(
+            user=self.client_user,
+            date="2026-03-16",
+            status="submitted",
+            data={
+                "lunch": {
+                    "Škôlka": {"menuCounts": {"A": 4}, "diets": {"Bez lepku": 2}}
+                },
+            },
+        )
+
+        dashboard = self.client.get(
+            "/api/admin/meal-plans/gramage-dashboard/?date=2026-03-16"
+        )
+        self.assertEqual(dashboard.status_code, status.HTTP_200_OK)
+        row = dashboard.json()["rows"][0]
+        self.assertEqual(row["diet_summary_rows"][0]["note"], "Alergik, hlásiť rodičom")
+        diet_sub_row = next(
+            sr for sr in row["sub_rows"] if sr.get("diet_name") == "Bez lepku"
+        )
+        self.assertEqual(diet_sub_row["diet_note"], "Alergik, hlásiť rodičom")
 
     def test_gramage_dashboard_diet_count_exceeding_first_variant_is_not_double_counted(
         self,

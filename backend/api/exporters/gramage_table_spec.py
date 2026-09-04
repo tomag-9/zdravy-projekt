@@ -951,8 +951,15 @@ def _client_rows(
         else:
             base_label = sub_row.get("label") or ""
         label = _abbreviate_label(base_label)
+        # Interná poznámka k dvojici (prevádzka, diéta) — nastavená v detaile
+        # prevádzky (tab Diéty) — ide rovno za názov diéty, nech ju kuchyňa
+        # vidí aj v statickom PDF (tam sú tieto sub-riadky vždy rozbalené).
+        diet_note = str(sub_row.get("diet_note") or "").strip() if is_diet else ""
+        display_label = f"↳ {label}" if is_diet else label
+        if diet_note:
+            display_label = f"{display_label} — {diet_note}"
         cell = _label_cell(
-            f"↳ {label}" if is_diet else label,
+            display_label,
             sub_row.get("count"),
         )
         # "zvlast"/"zvlast_gn" riadky sa naprieč jedlami nikdy nezlučujú (viď
@@ -1035,8 +1042,11 @@ def _client_rows(
             continue
         hex_color = diet_color(data, diet)
         text_hex, background_hex = _diet_text_and_background(data, diet)
+        # Interná poznámka k dvojici (prevádzka, diéta) — pozri komentár pri
+        # sub-riadku vyššie; tu ide na medzisúčtový riadok tej istej diéty.
+        diet_note = str(diet.get("note") or "").strip()
         label_cell = _label_cell(
-            name,
+            f"{name} — {diet_note}" if diet_note else name,
             diet_counts[name],
             swatch={
                 "color": f"#{hex_color}",

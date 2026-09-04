@@ -272,6 +272,46 @@ def test_diet_description_is_never_shown_in_the_table():
     assert diet_summary_row["cells"][0].get("note") is None
 
 
+def test_prevadzka_diet_note_shows_in_the_summary_diet_row():
+    """Poznámka k dvojici (prevádzka, diéta) — na rozdiel od globálneho popisu
+    diéty (#528, test vyššie) je táto per prevádzka a kuchyňa/rozvoz ju v
+    tejto tabuľke potrebuje — ide rovno za názov diéty na medzisúčtovom
+    riadku."""
+    payload = _payload()
+    payload["rows"][0]["diet_summary_rows"][0]["note"] = "Alergik, hlásiť rodičom"
+    spec = build_table_spec(payload)
+
+    diet_summary_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_summary_row["cells"][0]["text"] == "No Milk — Alergik, hlásiť rodičom"
+
+
+def test_prevadzka_diet_note_shows_in_the_diet_sub_row():
+    """Rovnaká poznámka aj na per-jedlo sub-riadku diéty — v statickom PDF
+    (#510) sú tieto sub-riadky vždy rozbalené, medzisúčtový riadok tam nie je."""
+    payload = _payload()
+    payload["rows"][0]["sub_rows"][1]["diet_note"] = "Alergik, hlásiť rodičom"
+    spec = build_table_spec(payload)
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0]["text"] == "↳ No Milk — Alergik, hlásiť rodičom"
+
+
+def test_prevadzka_diet_note_is_absent_without_one():
+    """Bez poznámky ostáva label diéty presne ako predtým (žiadny osamelý
+    ` — `)."""
+    spec = build_table_spec(_payload())
+
+    diet_summary_row = next(r for r in spec["rows"] if r["kind"] == "summary-diet")
+    assert diet_summary_row["cells"][0]["text"] == "No Milk"
+
+    diet_sub_row = next(
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" in r["css"]
+    )
+    assert diet_sub_row["cells"][0]["text"] == "↳ No Milk"
+
+
 def test_empty_routes_are_skipped():
     payload = _payload(
         vydaje=[
