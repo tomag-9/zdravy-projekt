@@ -1189,6 +1189,66 @@ describe("OrderPage Logic & Triggers", () => {
       expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(7);
       expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(7);
       expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(7);
+      // A a server-persisted flag (not just localStorage) lets the next
+      // load restore Celodenná on ANY device/browser — see the next test.
+      expect(body.data.full_day_order).toBe(true);
+    });
+  });
+
+  // ── Celodenná príznak musí prežiť aj bez localStorage (Veselý Úľ, 4.9.2026) ─
+  //
+  // Predtým `fullDayOrder` žil len vo frontend localStorage, per-browser.
+  // Klient v móde "celý deň naraz" na jednom zariadení, na inom appka bez
+  // varovania editovala jedlá nezávisle — časť dňa sa tak dala nechtiac
+  // odoslať bez zvyšku (raňajky ostali na starom počte, keď sa obed aj
+  // olovrant znížili). Server teraz vracia príznak ako súčasť `data`, takže
+  // ho appka na ĽUBOVOĽNOM zariadení/prehliadači vie obnoviť.
+  it("Celodenná: restores the toggle from the server on a fresh browser with no local draft", async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            id: 1,
+            status: "submitted",
+            data: {
+              full_day_order: true,
+              breakfast: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+              lunch: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+              olovrant: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    // Zámerne nič v localStorage — presne "iné zariadenie/prehliadač", ktoré
+    // Celodennú ešte nikdy lokálne nezapínalo.
+    renderPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Celodenná objednávka je aktívna").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    // Ďalší submit musí ísť s celodennými dátami za všetky 3 jedlá — nesmie
+    // potichu spadnúť späť do per-jedlového módu.
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data.full_day_order).toBe(true);
+      expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(7);
     });
   });
 

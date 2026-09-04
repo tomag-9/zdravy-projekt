@@ -283,7 +283,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                 const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/${suffix}`);
                 if (response.ok) {
                     // API returns { id, status, data: { breakfast..., special_diet_note? } }
-                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder & { special_diet_note?: unknown } };
+                    const serverOrder = await response.json() as { id: number, status: 'draft' | 'submitted', data: DailyOrder & { special_diet_note?: unknown, full_day_order?: unknown } };
 
                     if (serverOrder && serverOrder.data && Object.keys(serverOrder.data).length > 0) {
                         // Server has data
@@ -303,6 +303,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                                     ? serverOrder.data.special_diet_note
                                     : ''
                             );
+
+                            // `full_day_order` bol predtým len vo frontend localStorage,
+                            // per-browser — na inom zariadení appka o Celodennej "nevedela"
+                            // a editovala jedlá nezávisle, takže sa dala nechtiac odoslať
+                            // len časť dňa (Veselý Úľ, 4.9.2026). Server je tu autoritatívny
+                            // rovnako ako pri counts a poznámke vyššie; keď je zapnutý, jeho
+                            // tri jedlá sú vždy identické (tak ich posiela `submitOrder`
+                            // nižšie), takže dáta pre prepínač stačí zobrať z ktoréhokoľvek.
+                            const isFullDayOrder = serverOrder.data.full_day_order === true;
+                            setFullDayOrderState(isFullDayOrder);
+                            if (isFullDayOrder) {
+                                setFullDayData(merged.breakfast);
+                            }
 
                             // Update active meals based on content
                             setActiveMeals(prevActive => {
@@ -796,7 +809,14 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                     date,
                     status: 'submitted',
                     ...(prevadzkaId ? { prevadzka: prevadzkaId } : {}),
-                    data: { ...payload, special_diet_note: specialDietNote || undefined }
+                    data: {
+                        ...payload,
+                        special_diet_note: specialDietNote || undefined,
+                        // Server-persistovaný príznak (Veselý Úľ, 4.9.2026 — viď
+                        // komentár vyššie) — appka ho pri ďalšom načítaní vie obnoviť
+                        // na ktoromkoľvek zariadení, nielen tam, kde bol zapnutý.
+                        full_day_order: fullDayOrder,
+                    }
                 })
             });
 

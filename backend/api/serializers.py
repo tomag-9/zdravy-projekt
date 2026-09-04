@@ -84,7 +84,18 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     # nie ako zdieľaný enum.
     _SPECIAL_DIET_NAME = "Špeciálna"
     _SPECIAL_DIET_NOTE_KEY = "special_diet_note"
-    _ALLOWED_DATA_KEYS = _ALLOWED_MEAL_KEYS | {_SPECIAL_DIET_NOTE_KEY}
+    # Príznak "Celodenná objednávka" sedí v `data` vedľa jedál z rovnakého
+    # dôvodu ako `special_diet_note` vyššie — predtým žil len vo frontend
+    # localStorage, takže sa medzi zariadeniami/prehliadačmi potichu strácal
+    # (klient si na jednom zariadení myslel, že objednáva "na celý deň naraz",
+    # na inom appka editovala jedlá nezávisle a časť dňa sa tak nechtiac
+    # nezmenila — Veselý Úľ, 4.9.2026). Server ho teraz vracia ako
+    # autoritatívny pri ďalšom načítaní, rovnako ako počty jedál.
+    _FULL_DAY_ORDER_KEY = "full_day_order"
+    _ALLOWED_DATA_KEYS = _ALLOWED_MEAL_KEYS | {
+        _SPECIAL_DIET_NOTE_KEY,
+        _FULL_DAY_ORDER_KEY,
+    }
     _MAX_NOTE_CHARS = 1000
     _MAX_DATA_BYTES = 10 * 1024  # 10 KB
     _MAX_COUNT = 9999
@@ -129,6 +140,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         if self._SPECIAL_DIET_NOTE_KEY in data:
             self._validate_special_diet_note(data[self._SPECIAL_DIET_NOTE_KEY])
 
+        if self._FULL_DAY_ORDER_KEY in data:
+            self._validate_full_day_order(data[self._FULL_DAY_ORDER_KEY])
+
         # Frontend (OrderPage aj AdminOrderEditorModal) blokuje odoslanie bez
         # poznámky, keď je objednaná diéta "Špeciálna" — jej názov kuchyni nič
         # nehovorí, kuchyňa potrebuje vedieť čo dieťaťu naložiť (viď gramážová
@@ -150,7 +164,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         for meal_key, meal in data.items():
-            if meal_key == self._SPECIAL_DIET_NOTE_KEY:
+            if meal_key in (self._SPECIAL_DIET_NOTE_KEY, self._FULL_DAY_ORDER_KEY):
                 continue
             if not isinstance(meal, dict):
                 raise serializers.ValidationError(f"'{meal_key}' must be an object.")
@@ -189,6 +203,15 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 f"'{cls._SPECIAL_DIET_NOTE_KEY}' môže mať najviac "
                 f"{cls._MAX_NOTE_CHARS} znakov."
+            )
+
+    @classmethod
+    def _validate_full_day_order(cls, value: Any) -> None:
+        if value is None:
+            return
+        if not isinstance(value, bool):
+            raise serializers.ValidationError(
+                f"'{cls._FULL_DAY_ORDER_KEY}' musí byť true/false."
             )
 
     # Dva vzájomne sa vylučujúce spôsoby balenia zvlášť pre tú istú porciu -
