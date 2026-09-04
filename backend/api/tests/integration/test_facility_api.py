@@ -43,6 +43,24 @@ def test_delete_prevadzka_with_orders_returns_protected_error(admin_client, admi
 
 
 @pytest.mark.django_db
+def test_delete_prevadzka_with_diet_note_succeeds(admin_client):
+    """Regresný test: 0095 previedla `visible_diets` na explicitný `through`
+    model (`PrevadzkaDiet`), ale ponechala starú implicitnú M2M tabuľku so
+    živým FK constraintom na `api_prevadzka` — mazanie prevádzky s aspoň
+    jednou priradenou diétou tak padalo na `ForeignKeyViolation` (zistené
+    pri seed_merge_celky). Opravené v 0096 (dropne starú tabuľku)."""
+    celok = Celok.objects.create(nazov="Mazanie s diétou")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka s diétou")
+    diet = Diet.objects.create(name="Testovacia diéta")
+    PrevadzkaDiet.objects.create(prevadzka=prevadzka, diet=diet, note="poznámka")
+
+    response = admin_client.delete(f"/api/admin/facility-prevadzky/{prevadzka.pk}/")
+
+    assert response.status_code == 204
+    assert not Prevadzka.objects.filter(pk=prevadzka.pk).exists()
+
+
+@pytest.mark.django_db
 def test_delete_celok_without_prevadzky_succeeds(admin_client):
     celok = Celok.objects.create(nazov="Prázdny celok")
 
