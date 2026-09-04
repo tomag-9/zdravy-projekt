@@ -1,5 +1,24 @@
 # Changelog
 
+## [2.7.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.6.0...v2.7.0) (2026-09-04)
+
+
+### Features
+
+* **admin:** kusovo/MŠ počet a rozpis Menu A/B/C v klastrovom súhrne ([37c18f6](https://github.com/tomag-9/zdravy-projekt/commit/37c18f67ea1dbeb800bfe2b4ff9c800f721503e0))
+* **admin:** vráť rozpis po jedlách bez R/Ob/Ol skratky (bez rohových odznakov) ([77383ce](https://github.com/tomag-9/zdravy-projekt/commit/77383ce1a8ba66e04d714e6ae43c9b3e3b8ec759))
+* **edupage:** nastavenie „dospelí zvlášť" na prevádzke ([2dc2ea4](https://github.com/tomag-9/zdravy-projekt/commit/2dc2ea460f6b34de942f5740b6904c750538e114))
+* **edupage:** scrape log ukazuje jedlá per deň (meals_by_date) ([a4cd8b3](https://github.com/tomag-9/zdravy-projekt/commit/a4cd8b3c8a81aeb65e346f44898fe248766cefe2))
+
+
+### Bug Fixes
+
+* **docs:** clarify production access rules in CLAUDE.md ([ba14697](https://github.com/tomag-9/zdravy-projekt/commit/ba1469738cbfa9c2b20e6427924d7df12dc4f460))
+* **gramage:** "zvlast" riadok stráca počet v composite formáte (0 + 0) ([baac4cc](https://github.com/tomag-9/zdravy-projekt/commit/baac4cca14b7b01d633723b5498c8c9e04d08d89))
+* **gramage:** Dospelý (SŠ) na vlastnom riadku pre každé menu ([6ebbc93](https://github.com/tomag-9/zdravy-projekt/commit/6ebbc93f557c3322ddf25f02721b3aabacdba11c))
+* **order:** Celodenná objednávka prežije aj bez localStorage draftu ([f09a021](https://github.com/tomag-9/zdravy-projekt/commit/f09a021d31db2e6e2e7681fdc9b07da948ec05ca))
+* **order:** submit nesmie prepísať nedotknuté jedlo starým draftom ([fc779c1](https://github.com/tomag-9/zdravy-projekt/commit/fc779c15820c246a81ab0866e8559d6271d3507d))
+
 ## [2.6.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.5.0...v2.6.0) (2026-09-04)
 
 
