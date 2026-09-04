@@ -16,6 +16,7 @@ import OrderService from "../services/OrderService";
 import { ReactNode } from "react";
 import { ToastProvider } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/auth";
+import { stepBusinessDay, fromDateKey, toDateKey } from "../../../lib/businessDay";
 
 const mockApiFetch = vi.fn();
 const mockUser = { id: 1, email: "client@example.com" };
@@ -1082,7 +1083,14 @@ describe("OrderPage Logic & Triggers", () => {
 
   it("does not re-apply a stale URL date after the user picks a different day via DaySelector", async () => {
     const today = localDateStr();
-    const tomorrow = localDateStr(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    // DaySelector's "Ďalší deň" calls `stepBusinessDay`, ktorý víkend
+    // preskočí (napr. z piatka rovno na pondelok) — naivné "+1 deň" tu bolo
+    // vždy zle mimo Po-Št a test tak padal, kedykoľvek bežal v piatok
+    // (spadol by na sobotu, ktorú appka preskočí na pondelok). Rovnaká
+    // funkcia ako v `DaySelector.tsx`, nech test sedí s appkou v ktorýkoľvek deň.
+    const nextBusinessDay = stepBusinessDay(fromDateKey(today), 1);
+    if (!nextBusinessDay) throw new Error("stepBusinessDay returned null");
+    const tomorrow = toDateKey(nextBusinessDay);
 
     // URL zostáva na `today` počas celého testu — DaySelector mení
     // selectedDate priamo, bez navigácie (rovnaký mechanizmus ako v teste
