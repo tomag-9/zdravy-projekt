@@ -141,6 +141,16 @@
     font-size: 13px;
 }
 .zpa-gram .cluster-ms-row strong { color: var(--mustard-700); }
+/* Rozpis Obedu po menu variantoch (Menu A/B/C…) — odsadený, tenší a bez
+ * vlastného horného orámovania, nech je jasné, že patrí pod riadok Obed
+ * vyššie, nie je to ďalšia samostatná položka súhrnu. */
+.zpa-gram .cluster-ms-menu-row td {
+    border-top: none;
+    padding: 4px 20px 4px 36px;
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.85;
+}
 /* Začiatok novej škôlky (prevádzky) — výrazný žltý pás cez celý riadok. */
 .zpa-gram .client-row td {
     background: rgba(255,201,92,0.42);
