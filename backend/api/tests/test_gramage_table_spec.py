@@ -613,8 +613,8 @@ def test_subtotals_count_only_the_visible_sections():
 
     complete = build_table_spec(payload)
     std = next(r for r in complete["rows"] if r["kind"] == "summary-std")
-    # 8 obedov (Menu A) + 8 olovrantov.
-    assert std["cells"][0]["count"] == "16"
+    # 8 obedov (Menu A) + 8 olovrantov, 0 raňajok — tabuľka má všetky 3 pásy.
+    assert std["cells"][0]["count"] == "0 + 8 + 8"
     assert (
         next(r for r in complete["rows"] if r["kind"] == "client")["cells"][0]["meta"]
         == "štandard 16, diéty 2"
@@ -687,8 +687,9 @@ def test_standard_rows_of_the_same_portion_merge_across_meals():
     row = standard_rows[0]
     # Meno jedla mizne z labelu — nesie ho count-odznak nižšie.
     assert row["cells"][0]["text"] == "Škôlka"
-    # Obed (8) + Olovrant (8) — R/Ob/Ol skratky, len jedlá, ktoré riadok má.
-    assert row["cells"][0]["count"] == "Ob 8 + Ol 8"
+    # Obed (8) + Olovrant (8), Raňajky 0 — všetky 3 pásy tabuľky, bez
+    # R/Ob/Ol skratky pred číslom.
+    assert row["cells"][0]["count"] == "0 + 8 + 8"
     # Gramáž zostáva rozpísaná do svojich (disjunktných) stĺpcov jedla —
     # zlúčenie nesmie nič sčítať do jedného čísla.
     gram_cells = [c for c in row["cells"][1:] if "cell-num" in c["css"]]
@@ -719,8 +720,8 @@ def test_two_menu_variants_of_the_same_meal_add_up_in_the_merged_count():
     standard_row = next(
         r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
     )
-    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant.
-    assert standard_row["cells"][0]["count"] == "Ob 11 + Ol 8"
+    # Obed = Menu A (8) + Menu B (3) = 11, nie len posledný variant; Raňajky 0.
+    assert standard_row["cells"][0]["count"] == "0 + 11 + 8"
 
 
 def test_adult_portion_keeps_a_separate_row_per_menu_variant():
@@ -767,7 +768,7 @@ def test_adult_portion_without_a_menu_variant_still_merges_across_meals():
     ]
     assert len(standard_rows) == 1
     assert standard_rows[0]["cells"][0]["text"] == "Dospelý (SŠ)"
-    assert standard_rows[0]["cells"][0]["count"] == "Ob 8 + Ol 8"
+    assert standard_rows[0]["cells"][0]["count"] == "0 + 8 + 8"
 
 
 def test_a_single_meal_portion_keeps_a_plain_count():

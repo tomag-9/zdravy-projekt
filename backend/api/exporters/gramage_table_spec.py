@@ -49,19 +49,6 @@ _MEAL_BAND_CSS: dict[str, str] = {
     "Olovrant": "mb-snack",
 }
 
-# Skratky jedla pre zlúčený riadok porcie/diéty (#527/#528) — "R 12 + Ob 12 +
-# Ol 10" namiesto troch samostatných riadkov na tú istú porciu. Polievka
-# skoro vždy splynie do "main_course" (viď `_merge_soup_into_main_course` v
-# MealPlanService); ostáva tu len ako poistka pre výnimočný prípad polievky
-# bez hlavného jedla, ktorá tak zostane samostatným riadkom.
-_MEAL_ABBR: dict[str, str] = {
-    "breakfast_snack": "R",
-    "soup": "Ob",
-    "main_course": "Ob",
-    "afternoon_snack": "Ol",
-}
-_MEAL_ABBR_ORDER = ("breakfast_snack", "soup", "main_course", "afternoon_snack")
-
 # Skratky dlhých názvov porcií (#528) — v úzkom stĺpci na papieri "ZŠ
 # 1.stupeň" naťahovalo riadok, kuchyňa aj tak porcii hovorí skratkou. Mení sa
 # len text v tejto tabuľke (obrazovka aj PDF), nie `PortionType.name` v DB —
@@ -279,17 +266,32 @@ def _sum_col_grams(left: list, right: list) -> list:
     return result
 
 
-def _composite_meal_count_text(meal_counts: dict[str, object]) -> str:
-    """„R 12 + Ob 12 + Ol 10" — len jedlá, ktoré riadok naozaj má."""
+def _composite_meal_count_text(
+    meal_counts: dict[str, object], visible_bands: tuple[tuple[str, ...], ...]
+) -> str:
+    """„0 + 11 + 8" — jedno číslo za KAŽDÝ pás jedla, ktorý má tabuľka ako
+    stĺpec (`visible_bands`), nie len tie, čo tento riadok reálne má —
+    chýbajúci pás dostane „0", nie medzeru, nech je vidno, že tabuľka
+    raňajky/olovrant má, len ich tento riadok neobjednal. Bez R/Ob/Ol
+    skratky pred číslom — len duplikovala stĺpec, pod ktorým číslo aj tak
+    stálo.
+    """
     parts = []
-    for meal in _MEAL_ABBR_ORDER:
-        if meal not in meal_counts:
-            continue
-        text = format_count(meal_counts[meal])
-        if text == EMPTY:
-            continue
-        parts.append(f"{_MEAL_ABBR[meal]} {text}")
+    for keys in visible_bands:
+        total = sum((_as_decimal(meal_counts.get(key)) for key in keys), Decimal("0"))
+        parts.append(_decimal_text(total))
     return " + ".join(parts) if parts else EMPTY
+
+
+def _visible_meal_bands(groups: list) -> tuple[tuple[str, ...], ...]:
+    """Ktoré z troch pásiem jedla (`_CLUSTER_SUMMARY_MEAL_BANDS`) má TÁTO
+    tabuľka reálne ako stĺpce — po filtri sekcií (`sections`), nie fixne
+    všetky tri. `_composite_meal_count_text` chýbajúci pás nemá vypisovať
+    ako „0", lebo by fabrikoval jedlo, ktoré tabuľka vôbec nezobrazuje
+    (napr. tlač len obeda).
+    """
+    present = {str(group.get("meal") or "") for _, group in groups}
+    return tuple(keys for keys, _ in _CLUSTER_SUMMARY_MEAL_BANDS if present & set(keys))
 
 
 def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
@@ -408,6 +410,7 @@ def _diet_name_rows(
     sčítané naprieč všetkými klientmi v danej skupine — admin/kuchyňa vidí
     diétny rozpad aj na úrovni celého klastra/dňa, nielen jedného klienta.
     """
+    visible_bands = _visible_meal_bands(groups)
     diet_rows: list[dict] = []
     for diet in _aggregate_diet_summary(rows_for_summary):
         if not diet["count"]:
@@ -421,12 +424,13 @@ def _diet_name_rows(
                 "base_colors": diet.get("base_colors") or [],
             },
         )
-        # Viac ako jedno jedlo prispieva do súčtu (#560) — plochý `count` by
-        # rátal to isté dieťa na raňajkách/obede/olovrante viackrát, rozpis
-        # "R x + Ob y + Ol z" ukáže reálny počet za každé jedlo zvlášť.
+        # Viac ako jeden pás jedla v tabuľke (#560) — plochý `count` by rátal
+        # to isté dieťa na raňajkách/obede/olovrante viackrát, rozpis
+        # "0 + x + y" ukáže reálny počet za každý pás zvlášť (aj nulový,
+        # keď ho tabuľka má, len táto diéta ho neobjednala).
         meal_counts = diet.get("meal_counts") or {}
-        if len(meal_counts) > 1:
-            label_cell["count"] = _composite_meal_count_text(meal_counts)
+        if len(visible_bands) > 1:
+            label_cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         diet_rows.append(
             {
                 "kind": "summary-diet",
@@ -803,6 +807,10 @@ def _client_rows(
     """
     key = str(row.get("row_key") or row.get("client_id") or row.get("client") or "")
     snack_with_lunch = bool(row.get("snack_with_lunch"))
+    # Pásy jedla (Raňajky/Obed/Olovrant), ktoré má TÁTO tabuľka ako stĺpce —
+    # `_composite_meal_count_text` nižšie ním zaplní aj pásy, ktoré tento
+    # riadok/klient nemá, nulou (nie medzerou), presne raz na klienta.
+    visible_bands = _visible_meal_bands(groups)
 
     # Zlúčenie musí ísť pred filtrom viditeľnosti — potrebuje plné pole
     # `col_grams` (všetky jedlá), nie len tie, čo prežili výber sekcií nižšie.
@@ -827,6 +835,22 @@ def _client_rows(
     standard_count = _sum_counts(
         sub_row for sub_row, _ in visible if not sub_row.get("diet_name")
     )
+    # Rozpis štandardného počtu podľa jedla — rovnaký princíp ako
+    # `diet_meal_counts` nižšie, len bez diét. „Súčet bez diét" ho použije
+    # namiesto plochého čísla, nech je hneď vidno "0 + 12 + 8", nie len "20".
+    standard_meal_counts: dict[str, Decimal] = {}
+    for sub_row, _ in visible:
+        if sub_row.get("diet_name"):
+            continue
+        meal_counts = sub_row.get("_meal_counts") or {
+            sub_row.get("meal"): sub_row.get("count")
+        }
+        for meal, count in meal_counts.items():
+            if not meal:
+                continue
+            standard_meal_counts[meal] = standard_meal_counts.get(
+                meal, Decimal("0")
+            ) + _as_decimal(count)
     diet_counts: dict[str, Decimal] = {}
     # Rozpis diétneho počtu podľa jedla (#560) — `_meal_counts` na zlúčenom
     # sub-riadku (viď `_merge_sub_rows_across_meals`) drží, koľko z tejto
@@ -932,8 +956,8 @@ def _client_rows(
             sub_row.get("count"),
         )
         meal_counts = sub_row.get("_meal_counts") or {}
-        if len(meal_counts) > 1:
-            cell["count"] = _composite_meal_count_text(meal_counts)
+        if len(visible_bands) > 1:
+            cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         text_hex = background_hex = None
         if is_diet:
             text_hex, background_hex = _diet_text_and_background(data, sub_row)
@@ -977,11 +1001,19 @@ def _client_rows(
             )
 
     if include_summary_rows and standard_count:
+        std_label_cell = _label_cell("Súčet bez diét", standard_count)
+        # "0 + 12 + 8" namiesto plochých "20" — kuchyňa vidí rozpad po pásoch
+        # jedla hneď na tomto (vždy viditeľnom, aj zbalenom) riadku klienta,
+        # rovnaký princíp ako composite count nižšie na sub-riadkoch/diétach.
+        if len(visible_bands) > 1:
+            std_label_cell["count"] = _composite_meal_count_text(
+                standard_meal_counts, visible_bands
+            )
         out.append(
             {
                 "kind": "summary-std",
                 "css": "summ-std",
-                "cells": [_label_cell("Súčet bez diét", standard_count)]
+                "cells": [std_label_cell]
                 + _gram_cells(
                     row.get("standard_col_grams") or [], groups, hues, snack_with_lunch
                 ),
@@ -1005,12 +1037,12 @@ def _client_rows(
                 "base_colors": diet.get("base_colors") or [],
             },
         )
-        # Viac ako jedno jedlo prispieva k tejto diéte (#560) — plochý súčet
-        # by rátal to isté dieťa na raňajkách/obede/olovrante viackrát,
-        # rozpis "R x + Ob y + Ol z" ukáže reálny počet za jedlo zvlášť.
+        # Viac ako jeden pás jedla v tabuľke (#560) — plochý súčet by rátal
+        # to isté dieťa na raňajkách/obede/olovrante viackrát, rozpis
+        # "0 + x + y" ukáže reálny počet za každý pás zvlášť.
         meal_counts = diet_meal_counts.get(name) or {}
-        if len(meal_counts) > 1:
-            label_cell["count"] = _composite_meal_count_text(meal_counts)
+        if len(visible_bands) > 1:
+            label_cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         out.append(
             {
                 "kind": "summary-diet",
