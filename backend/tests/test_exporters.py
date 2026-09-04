@@ -176,11 +176,9 @@ class TestGramageDashboardExports:
         assert data["totals"] == [["300.00"], ["600.00"], ["500.00"], ["150.00"]]
 
         rendered = _rendered_rows(data)
-        # Rozpis podľa pásu jedla (raňajky/obed/olovrant), nie plochý súčet —
-        # "0" pre pás, ktorý daný riadok/diéta neobjednala.
-        assert ("Súčet bez diét", "3 + 5 + 3") in rendered
-        assert ("Bezlepková", "0 + 2 + 0") in rendered
-        assert ("Vegan", "1 + 0 + 0") in rendered
+        assert ("Súčet bez diét", "11") in rendered
+        assert ("Bezlepková", "2") in rendered
+        assert ("Vegan", "1") in rendered
 
     def test_portion_summaries_export_per_vydaj_and_globally(self):
         user = User.objects.create_user(

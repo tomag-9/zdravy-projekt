@@ -94,14 +94,6 @@ def _cell(cell: dict) -> str:
     attrs = _attrs(**{"class": cell.get("css"), "colspan": cell.get("colspan")})
     text = escape(str(cell.get("text") or ""))
 
-    # Počet porcií skupiny (gramážová bunka) — vľavo hore, mimo `body`
-    # (rovnaké pole ako GramageTable.tsx, iné než `count` na label bunke).
-    corner = ""
-    if cell.get("corner_count") is not None:
-        corner = (
-            f'<span class="corner-count">{escape(str(cell["corner_count"]))}</span>'
-        )
-
     if cell.get("count") is not None:
         inner = text
         if cell.get("swatch"):
@@ -113,7 +105,7 @@ def _cell(cell: dict) -> str:
         )
     else:
         body = text
-    return f"<td{attrs}>{corner}{body}</td>"
+    return f"<td{attrs}>{body}</td>"
 
 
 def _row(row: dict) -> str:

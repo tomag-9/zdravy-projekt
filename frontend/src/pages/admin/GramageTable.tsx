@@ -17,13 +17,6 @@ export interface SpecCell {
   css?: string;
   colspan?: number;
   count?: string;
-  /**
-   * Počet porcií danej stĺpcovej skupiny (gramážová bunka, nie meno v prvom
-   * stĺpci) — ide vľavo hore ako malý rohový odznak, nezávisle od `text`
-   * (gramáž) v tej istej bunke. Iné pole než `count`, aby sa nemiešali dva
-   * rôzne typy odznaku v jednej bunke.
-   */
-  corner_count?: string;
   sub?: string;
   meta?: string;
   meta_right?: string;
@@ -77,11 +70,6 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
   <>
     {cells.map((cell, index) => (
       <td key={index} className={cell.css || undefined} colSpan={cell.colspan}>
-        {/* Počet porcií skupiny (gramážová bunka) — vľavo hore, mimo toku
-            gramáže/textu v strede/vpravo bunky (#gramaz-corner-count). */}
-        {cell.corner_count !== undefined && (
-          <span className="corner-count">{cell.corner_count}</span>
-        )}
         {cell.count !== undefined ? (
           <span className="lbl-line">
             <span title={cell.text}>

@@ -1409,7 +1409,7 @@ class AdminMealPlanApiTest(APITestCase):
         ]
         self.assertEqual(len(summary_diet_cells), 1)
         # Zobrazený počet je rozpis podľa jedla, nie plochý súčet "6".
-        self.assertEqual(summary_diet_cells[0]["count"], "2 + 2 + 2")
+        self.assertEqual(summary_diet_cells[0]["count"], "R 2 + Ob 2 + Ol 2")
 
     def test_meal_plan_endpoints_require_admin(self):
         self.client.force_authenticate(user=self.client_user)
