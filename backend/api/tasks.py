@@ -804,7 +804,7 @@ def scrape_edupage_orders_task(
             prevadzky_without_match,
         )
         from api.models import DailyOrder, GlobalSettings
-        from api.scheduling import closed_dates_for_prevadzky, is_day_off
+        from api.scheduling import business_days, closed_dates_for_prevadzky, is_day_off
         from api.services import _next_workday
         from api.services.edupage_connection_service import edupage_operations
         from api.signals import _meal_types_label_sk
@@ -857,21 +857,21 @@ def scrape_edupage_orders_task(
 
             today = timezone.localdate()
             if days_ahead is not None:
-                # Hodinový "preview" beh: dnes .. dnes+days_ahead, ale len tie
-                # jedlá, ktorých autoritatívny (deadline) scrape pre daný
-                # dátum ešte neprebehol (#_meal_scrape_deadline_passed) — po
-                # ňom je preview beh zbytočný a navyše by prepísal prípadnú
-                # ručnú admin opravu spravenú medzitým. Voľné dni sa v okne
-                # len vynechajú, nie posunú — je to priebežný náhľad, nie
-                # "najbližšie N pracovných dní". Deň, ktorému už všetky jedlá
+                # Hodinový "preview" beh: nasledujúcich `days_ahead + 1`
+                # PRACOVNÝCH dní od dnes (#588), ale len tie jedlá, ktorých
+                # autoritatívny (deadline) scrape pre daný dátum ešte
+                # neprebehol (#_meal_scrape_deadline_passed) — po ňom je
+                # preview beh zbytočný a navyše by prepísal prípadnú ručnú
+                # admin opravu spravenú medzitým. Voľné dni sa vynechajú a
+                # okno sa o ne predĺži (nie len zmenší) — inak by piatkový beh
+                # (kalendárne piatok+sobota+nedeľa) nevidel žiadny nadchádzajúci
+                # pracovný deň okrem piatku, hoci pondelok/utorok už majú
+                # jedálny lístok pripravený. Deň, ktorému už všetky jedlá
                 # "vydeadlinovali" (typicky dnešok večer po olovrantovom
                 # scrape), sa z okna celkom vynechá. Prázdne okno nie je chyba.
                 now_local = timezone.localtime()
                 date_to_meals = {}
-                for offset in range(days_ahead + 1):
-                    candidate = today + datetime.timedelta(days=offset)
-                    if is_day_off(candidate):
-                        continue
+                for candidate in business_days(today, count=days_ahead + 1):
                     pending_meals = [
                         meal_type
                         for meal_type in _ALL_MEALS
