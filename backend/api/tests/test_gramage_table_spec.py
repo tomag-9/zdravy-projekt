@@ -818,6 +818,40 @@ def test_pack_separately_rows_are_not_merged_across_meals():
     assert zvlast_labels == ["Škôlka - Raňajky - zvlášť", "Škôlka - Olovrant - zvlášť"]
 
 
+def test_pack_separately_row_count_survives_the_multi_band_composite_format():
+    """4.9.2026 (Rozmanitá ZŠ, "Dospelý (SŠ) - Menu X - zvlášť") — "zvlast"
+    riadky sa nikdy nezlučujú naprieč jedlami (viď test vyššie), takže nikdy
+    nedostanú `_meal_counts`. Composite formátovanie (`_composite_meal_count_text`,
+    aktívne pri >1 viditeľnom páse jedla v tabuľke) preto počítalo z prázdneho
+    slovníka a reálny počet nahradilo samými nulami ("0 + 0 + 0") — dieťa/
+    dospelý v tabuľke akoby vôbec neobjednal. Rovnaký fallback ako pri
+    `diet_meal_counts` (jeden pás = vlastné jedlo riadku) musí platiť aj tu."""
+    payload = _with_breakfast_and_snack_same_portion()
+    for row in payload["rows"]:
+        row["sub_rows"].append(
+            {
+                "type": "zvlast",
+                "meal": "breakfast_snack",
+                "variant": "",
+                "portion_name": "Škôlka",
+                "label": "Škôlka - Raňajky - zvlášť",
+                "count": 1,
+                "col_grams": [[], [], [], ["100.00"], []],
+            }
+        )
+
+    spec = build_table_spec(payload)
+    zvlast_row = next(
+        r
+        for r in spec["rows"]
+        if r["kind"] == "sub-row"
+        and r["cells"][0]["text"] == "Škôlka - Raňajky - zvlášť"
+    )
+    # Tabuľka má 3 pásy (Raňajky/Obed/Olovrant); tento riadok patrí len k
+    # raňajkám — "1 + 0 + 0", nie "0 + 0 + 0".
+    assert zvlast_row["cells"][0]["count"] == "1 + 0 + 0"
+
+
 def test_long_portion_names_are_abbreviated():
     """#528 — "ZŠ 1.stupeň"/"ZŠ 2.stupeň" sa v tabuľke skracujú na "1.st"/"2.st"."""
     payload = _payload()

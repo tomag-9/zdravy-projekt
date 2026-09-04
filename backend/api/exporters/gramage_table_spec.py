@@ -955,7 +955,13 @@ def _client_rows(
             f"↳ {label}" if is_diet else label,
             sub_row.get("count"),
         )
-        meal_counts = sub_row.get("_meal_counts") or {}
+        # "zvlast"/"zvlast_gn" riadky sa naprieč jedlami nikdy nezlučujú (viď
+        # `_merge_sub_rows_across_meals`) — nemajú preto `_meal_counts`, len
+        # svoje vlastné (jedno) jedlo. Bez tohto fallbacku by composite text
+        # počítal z prázdneho slovníka a reálny počet nahradil samými nulami.
+        meal_counts = sub_row.get("_meal_counts") or {
+            sub_row.get("meal"): sub_row.get("count")
+        }
         if len(visible_bands) > 1:
             cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         text_hex = background_hex = None
