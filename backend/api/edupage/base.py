@@ -118,6 +118,18 @@ class PrevadzkaConfig:
     # `olovrant_mode` musel platiť rovnako pre celú connection, hoci realita
     # je per-prevádzka iná.
     olovrant_missing_ok: frozenset[str] = frozenset()
+    # Nahradí generický `_MEAL_BY_HOUR` (breakfast<10, lunch<15, inak olovrant)
+    # pre túto prevádzku — školy s vlastnou dedikovanou EduPage connection (jedna
+    # HTML stránka = jeden subjekt) môžu mať iný počet/usporiadanie denných okien.
+    # British School (#British Cluster C) má 4: raňajky, desiata (nový meal_key
+    # "desiata" — NIE "snack", ten string je už obsadený ako legacy alias pre
+    # Olovrant, viď `_EXTRA_MEAL_KEYS` v `tasks.py`; počíta sa kusovo, rovnaká
+    # pre všetkých), obed, olovrant — bez vlastných prahov by desiata
+    # (hodina 10, generický prah "breakfast" je < 10) spadla do rovnakého
+    # naivného košíka ako obed/olovrant a zlúčila sa pod "breakfast" (potvrdené
+    # na živom mealsGuest 2026-09-07, viď `TestBuildJidMap`). `None` = použi
+    # `_MEAL_BY_HOUR` (nezmenené správanie pre všetky ostatné školy).
+    meal_hour_thresholds: tuple[tuple[int, str], ...] | None = None
 
 
 def _apply_olovrant_config(

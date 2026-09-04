@@ -1342,3 +1342,124 @@ def test_diet_clusters_combined_summary_shown_if_either_half_is_enabled():
     assert _has_diet_band("CLUSTER B DIÉTY") is True
     assert _has_diet_band("CLUSTER A + B DIÉTY") is True
     assert _has_diet_band("CLUSTER C DIÉTY") is False
+
+
+# ── summary_only klaster (British School, Cluster C, #531) — kusový sumár,
+# žiadna gramáž, žiadne per-klientske riadky ──────────────────────────────
+
+
+def _summary_only_vydaj():
+    return {
+        "key": "C",
+        "name": "Cluster C",
+        "summary_only": True,
+        "british_summary": [
+            {"label": "Raňajky", "heads": Decimal("10"), "total": Decimal("10")},
+            {"label": "Desiata", "heads": Decimal("5"), "total": Decimal("5")},
+            {
+                "label": "Obed",
+                "heads": Decimal("23"),
+                "total": Decimal("26"),
+                "menus": [
+                    {"label": "Menu A", "heads": Decimal("20"), "total": Decimal("20")},
+                    {"label": "Menu D", "heads": Decimal("3"), "total": Decimal("6")},
+                ],
+            },
+            {"label": "Olovrant", "heads": Decimal("9"), "total": Decimal("9")},
+        ],
+        "routes": [
+            {"id": None, "name": "British School", "rows": []},
+        ],
+    }
+
+
+def _payload_with_summary_only_cluster():
+    payload = _payload()
+    payload["vydaje"] = [
+        {
+            "key": "A",
+            "name": "Cluster A",
+            "routes": [{"id": 1, "name": "Trasa 1", "rows": payload["rows"]}],
+        },
+        _summary_only_vydaj(),
+    ]
+    payload["rows"] = []
+    payload["unassigned_rows"] = []
+    return payload
+
+
+def test_summary_only_cluster_renders_kusy_ms_rows_not_grid():
+    spec = build_table_spec(_payload_with_summary_only_cluster())
+
+    band_index = next(
+        i
+        for i, row in enumerate(spec["rows"])
+        if row["kind"] == "portion-band"
+        and row["cells"][0]["text"] == "SUMÁR CLUSTER C S DIÉTAMI MŠ"
+    )
+    summary_rows = []
+    for row in spec["rows"][band_index + 1 :]:
+        if row["kind"] != "cluster-ms-row":
+            break
+        summary_rows.append(row)
+
+    assert [r["cells"][0]["label"] for r in summary_rows] == [
+        "Raňajky:",
+        "Desiata:",
+        "Obed:",
+        "Menu A:",
+        "Menu D:",
+        "Olovrant:",
+    ]
+    assert summary_rows[2]["cells"][0]["text"] == "23 ks / 26 MŠ"
+    assert summary_rows[4]["cells"][0]["text"] == "3 ks / 6 MŠ"
+
+
+def test_summary_only_cluster_has_no_route_or_client_rows():
+    """Cluster A si svoju trasu/klienta necháva (bežná mriežka) — British
+    (Cluster C, summary_only) nedostane ani jedno z toho, len sumár."""
+    spec = build_table_spec(_payload_with_summary_only_cluster())
+
+    assert not any(
+        row["kind"] == "route" and row["cells"][0]["text"] == "British School"
+        for row in spec["rows"]
+    )
+    assert any(row["kind"] == "client" for row in spec["rows"])  # Cluster A ho má
+
+
+def test_summary_only_cluster_excluded_from_combined_footer_title():
+    spec = build_table_spec(_payload_with_summary_only_cluster())
+
+    assert spec["footer"][0]["cells"][0]["text"] == "SUMÁR CLUSTER A S DIÉTAMI MŠ"
+
+
+def test_summary_only_cluster_excluded_from_first_two_combination():
+    """British ako 2. (position 1) klaster nesmie skončiť v kombinovanom
+    "Cluster A + B" medzisúčte — ten číta gram-plánové sub_rows, ktoré
+    British nemá."""
+    payload = _payload()
+    payload["vydaje"] = [
+        {
+            "key": "A",
+            "name": "Cluster A",
+            "routes": [{"id": 1, "name": "Trasa 1", "rows": payload["rows"]}],
+        },
+        _summary_only_vydaj(),
+        {
+            "key": "B",
+            "name": "Cluster B",
+            "routes": [{"id": 2, "name": "Trasa 2", "rows": payload["rows"]}],
+        },
+    ]
+    payload["rows"] = []
+    payload["unassigned_rows"] = []
+
+    spec = build_table_spec(payload)
+
+    titles = [
+        row["cells"][0]["text"]
+        for row in spec["rows"]
+        if "portion-summary-band" in row["css"]
+        and row["cells"][0]["text"].startswith("SUMÁR")
+    ]
+    assert "SUMÁR CLUSTER A + C S DIÉTAMI MŠ" not in titles

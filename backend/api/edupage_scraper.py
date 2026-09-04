@@ -472,8 +472,18 @@ class EdupageScraper:
         return True
 
     @staticmethod
-    def _build_jid_map(nastavenia: list[dict], target_date: date) -> dict[str, str]:
+    def _build_jid_map(
+        nastavenia: list[dict],
+        target_date: date,
+        config: PrevadzkaConfig | None = None,
+    ) -> dict[str, str]:
         """Return {jid_str: meal_key} using vydaj_od times from nastavenia.
+
+        `config.meal_hour_thresholds`, keď je nastavený, nahradí generický
+        `_MEAL_BY_HOUR` (viď `PrevadzkaConfig.meal_hour_thresholds` docstring) —
+        celý zvyšok algoritmu (naivný košík podľa hodiny, "výherca" podľa
+        `druhov_jedal`, posun kolidujúcich okien na najbližší voľný slot) ostáva
+        nezmenený, len beží nad iným zoznamom prahov/meal_sequence.
 
         A school's olovrant (afternoon snack) window can start as early as
         14:30, which falls on the same side of the fixed hour thresholds as a
@@ -510,9 +520,14 @@ class EdupageScraper:
         wrong (stale or not-yet-active) times to that day.
         """
         jid_map: dict[str, str] = {}
+        meal_hour_thresholds = (
+            config.meal_hour_thresholds
+            if config is not None and config.meal_hour_thresholds is not None
+            else _MEAL_BY_HOUR
+        )
         # Single source of truth for meal ordering, shared with the hour
         # thresholds below - avoids a second, independently-maintained list.
-        meal_sequence = [label for _, label in _MEAL_BY_HOUR] + [_DEFAULT_MEAL]
+        meal_sequence = [label for _, label in meal_hour_thresholds] + [_DEFAULT_MEAL]
 
         for row in nastavenia:
             if row.get("setting") != "vydaj_normal":
@@ -555,7 +570,7 @@ class EdupageScraper:
                 for jid, times in unseen:
                     hour = EdupageScraper._parse_hm(times.get("vydaj_od", "12:00"))[0]
                     meal = _DEFAULT_MEAL
-                    for threshold, label in _MEAL_BY_HOUR:
+                    for threshold, label in meal_hour_thresholds:
                         if hour < threshold:
                             meal = label
                             break
@@ -805,7 +820,7 @@ class EdupageScraper:
         nastavenia: list = nastavenia_raw or []
         typy_platitelov: list = typy_platitelov_raw or []
 
-        jid_map = self._build_jid_map(nastavenia, target_date)
+        jid_map = self._build_jid_map(nastavenia, target_date, config=config)
         payer_map = self._build_payer_map(typy_platitelov, target_date)
 
         # prevádzka ("" = nerozdelené) -> meal -> porcia -> menu/diet counts.

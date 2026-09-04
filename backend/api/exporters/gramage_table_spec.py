@@ -555,6 +555,20 @@ def build_table_spec(
             ]
             cluster_name = vydaj.get("name") or ""
             cluster_key = str(vydaj.get("key") or "")
+            # `summary_only` klastre (British School, Cluster C, #531) nemajú
+            # per-klientske riadky (žiadne menu-šablóny, žiadna gramáž) — ich
+            # kusový/MŠ sumár je postavený inak (`british_cluster_summary`) a
+            # nesmie sa miešať do "Cluster A + B" medzisúčtu, ten počíta s
+            # rovnakým (gram-plánovým) zdrojom dát ako jeho zložky.
+            if vydaj.get("summary_only"):
+                rows.extend(
+                    _british_summary_rows(
+                        [cluster_name],
+                        vydaj.get("british_summary") or [],
+                        total_columns,
+                    )
+                )
+                continue
             if position < 2:
                 first_two_rows.extend(vydaj_rows)
                 first_two_names.append(cluster_name)
@@ -635,8 +649,12 @@ def build_table_spec(
     # (rovnaký denný súhrn, len sa preň netreba znova prechádzať cez rows).
     footer_counts = [item.get("count") or 0 for item in totals_summary]
 
-    footer_names = [v.get("name") or "" for v in shown_vydaje]
-    footer_keys = [str(v.get("key") or "") for v in shown_vydaje]
+    # `summary_only` klastre (British School) nemajú čo prispieť do tohto
+    # gram-plánového kombinovaného súčtu (žiadne sub_rows/col_grams) — ich
+    # meno by tam len klamlivo viselo bez zodpovedajúcich čísel.
+    _footer_vydaje = [v for v in shown_vydaje if not v.get("summary_only")]
+    footer_names = [v.get("name") or "" for v in _footer_vydaje]
+    footer_keys = [str(v.get("key") or "") for v in _footer_vydaje]
     footer: list[dict] = (
         _cluster_summary_rows(
             footer_names,
@@ -1186,6 +1204,63 @@ def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list
             ]
         out.append(item)
     return out
+
+
+def _british_summary_rows(
+    names: list[str], meal_items: list[dict], total_columns: int
+) -> list[dict]:
+    """Kusový sumár pre `summary_only` klastre (British School, Cluster C,
+    #531) — rovnaký vizuálny formát ako `_cluster_summary_rows`
+    ("Obed: N ks / N MŠ" + rozpis Menu variantov), len `meal_items` prichádza
+    už hotové z `british_cluster_summary.build_gramage_summary_only_clusters`
+    (priamo z `DailyOrder.data`), nie z `_cluster_ms_totals` (ktorá číta
+    `col_groups`/`sub_rows` — British nemá menu-šablóny, takže by boli
+    prázdne). Žiadny diétny rozpis — ten pre Cluster C nateraz nie je
+    súčasťou zadania.
+    """
+    rows: list[dict] = [
+        _band(
+            "portion-band",
+            _cluster_summary_title(names),
+            total_columns,
+            css="portion-summary-band",
+        )
+    ]
+    for item in meal_items:
+        rows.append(
+            {
+                "kind": "cluster-ms-row",
+                "css": "cluster-ms-row",
+                "cells": [
+                    {
+                        "label": f"{item['label']}:",
+                        "text": (
+                            f"{format_count(item['heads'])} ks / "
+                            f"{format_count(item['total'])} MŠ"
+                        ),
+                        "colspan": total_columns,
+                    }
+                ],
+            }
+        )
+        for menu in item.get("menus") or []:
+            rows.append(
+                {
+                    "kind": "cluster-ms-row",
+                    "css": "cluster-ms-row cluster-ms-menu-row",
+                    "cells": [
+                        {
+                            "label": f"{menu['label']}:",
+                            "text": (
+                                f"{format_count(menu['heads'])} ks / "
+                                f"{format_count(menu['total'])} MŠ"
+                            ),
+                            "colspan": total_columns,
+                        }
+                    ],
+                }
+            )
+    return rows
 
 
 def _cluster_summary_rows(

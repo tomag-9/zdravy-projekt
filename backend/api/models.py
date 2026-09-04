@@ -209,7 +209,12 @@ def _default_all_meals() -> List[str]:
 
 
 def _default_visible_menus() -> List[str]:
-    return ["A", "B", "C", "D", "V"]
+    # "D" a "VEGE1" nie sú v defaulte — sú British School špecifiká (Cluster C,
+    # kusový sumár, žiadna gramáž), viditeľné len tej prevádzke cez explicitný
+    # `visible_menus` v jej seed-e, nie ako všeobecná voľba (`DEFAULT_VISIBLE_MENUS`
+    # v `api/default_visibility.py` musí zostať zosynchronizovaný — viď
+    # `TestDefaultVisibleMenus.test_model_field_default_matches_canonical_default`).
+    return ["A", "B", "C", "V"]
 
 
 class GlobalSettings(models.Model):
@@ -674,6 +679,16 @@ class Prevadzka(models.Model):
             "Olovrant tejto prevádzky ide s obedovým, nie popoludňajším "
             "rozvozom — v gramážnej tabuľke (aj v PDF) sa preto zvýrazní žlto, "
             "aby si ho kuchyňa naložila spolu s obedom."
+        ),
+    )
+    gramage_summary_only = models.BooleanField(
+        default=False,
+        help_text=(
+            "Prevádzka nemá gramážové menu-šablóny (British School, Cluster C, "
+            "#531) — objednávky sa v gramážnej tabuľke/PDF vôbec nevykazujú "
+            "cez bežnú per-klientsku mriežku s gramami, len ako samostatný "
+            "kusový sumár (+ prepočet na MŠ porcie) v `MealPlanService."
+            "_build_gramage_summary_only_cluster`."
         ),
     )
 

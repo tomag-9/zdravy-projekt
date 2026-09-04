@@ -863,6 +863,12 @@ class MealPlanService:
         rows = []
         orders = (
             DailyOrder.objects.filter(date=date_str)
+            # `gramage_summary_only` prevádzky (British School, Cluster C,
+            # #531) nemajú menu-šablóny — gramáž/D/VEGE1/desiata cez bežnú
+            # per-klientskú mriežku by boli prázdne alebo neúplné. Vynechané
+            # tu úplne, sumár sa im postaví samostatne nižšie
+            # (`build_gramage_summary_only_clusters`) priamo z `DailyOrder.data`.
+            .exclude(prevadzka__gramage_summary_only=True)
             .select_related(
                 "user",
                 "user__profile",
@@ -1522,6 +1528,10 @@ class MealPlanService:
         missing_prevadzky = (
             Prevadzka.objects.filter(is_active=True)
             .exclude(id__in=prevadzky_with_rows)
+            # Rovnaké vynechanie ako vyššie — `gramage_summary_only`
+            # prevádzka nedostáva "bez objednávky" placeholder v bežnej
+            # mriežke, má vlastný summary_only vydaj blok.
+            .exclude(gramage_summary_only=True)
             .select_related("celok", "delivery_route__block")
         )
         for prevadzka in missing_prevadzky:
@@ -1743,6 +1753,44 @@ class MealPlanService:
             )
 
         vydaje, unassigned_rows = _vydaje_payload(rows)
+
+        # `gramage_summary_only` prevádzky (British School, Cluster C, #531) —
+        # vlastný vydaj blok, kusový sumár priamo z `DailyOrder.data`, mimo
+        # bežnej mriežky (vylúčené vyššie z `orders`/`missing_prevadzky`).
+        from .british_cluster_summary import build_gramage_summary_only_clusters
+
+        summary_clusters = build_gramage_summary_only_clusters(date_str)
+        if summary_clusters:
+            vydaj_order = [value for value, _ in Vydaj.choices]
+            vydaj_labels = dict(Vydaj.choices)
+            for cluster in summary_clusters:
+                vydaje.append(
+                    {
+                        "key": cluster["vydaj_key"],
+                        "name": vydaj_labels.get(
+                            cluster["vydaj_key"], cluster["vydaj_key"]
+                        ),
+                        "summary_only": True,
+                        "british_summary": cluster["meals"],
+                        "routes": [
+                            {
+                                "id": None,
+                                "name": cluster["route_name"],
+                                "driver": "",
+                                "departure_time": None,
+                                "note": "",
+                                "sort_order": 0,
+                                "block_name": "",
+                                "rows": [],
+                            }
+                        ],
+                    }
+                )
+            vydaje.sort(
+                key=lambda v: (
+                    vydaj_order.index(v["key"]) if v["key"] in vydaj_order else 99
+                )
+            )
 
         return {
             "date": date_str,
