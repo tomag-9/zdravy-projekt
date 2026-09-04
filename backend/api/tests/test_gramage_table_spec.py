@@ -723,6 +723,53 @@ def test_two_menu_variants_of_the_same_meal_add_up_in_the_merged_count():
     assert standard_row["cells"][0]["count"] == "Ob 11 + Ol 8"
 
 
+def test_adult_portion_keeps_a_separate_row_per_menu_variant():
+    """ "Dospelý (SŠ)" má na rozdiel od ostatných porcií viac menu variantov
+    (klasik/vege...) - kuchyňa ich chce vidieť každý na vlastnom riadku
+    ("Dospelý (SŠ) - Menu A", "... Menu B"), nie zlúčené do jedného súčtu ako
+    #527 robí pre ostatné porcie."""
+    payload = _payload()
+    row = payload["rows"][0]
+    row["sub_rows"][0]["portion_name"] = "Dospelý (SŠ)"
+    row["sub_rows"][0]["label"] = "Dospelý (SŠ) - Obed Menu A"
+    variant_b = dict(row["sub_rows"][0])
+    variant_b["variant"] = "B"
+    variant_b["label"] = "Dospelý (SŠ) - Obed Menu B"
+    variant_b["count"] = 3
+    variant_b["_heads"] = 3
+    variant_b["_ms_recalc"] = Decimal("3")
+    row["sub_rows"].append(variant_b)
+
+    spec = build_table_spec(payload)
+    standard_rows = [
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    ]
+    labels = [r["cells"][0]["text"] for r in standard_rows]
+    counts = [r["cells"][0]["count"] for r in standard_rows]
+    # Menu A (8) a Menu B (3) ostávajú oddelené - Menu B sa nesmie sčítať do
+    # riadku Menu A ako by sa to stalo iným porciám (#527).
+    assert labels == ["Dospelý (SŠ) - Menu A", "Dospelý (SŠ) - Menu B"]
+    assert counts == ["8", "3"]
+
+
+def test_adult_portion_without_a_menu_variant_still_merges_across_meals():
+    """Prevádzka, kde dospelí menu nevolia (jedno "" menu na obede aj
+    olovrante) - #527 zlúčenie naprieč jedlami platí pre "Dospelý (SŠ)" ďalej
+    normálne, výnimka sa týka len rôznych menu variantov."""
+    payload = _with_breakfast_and_snack_same_portion()
+    for sub_row in payload["rows"][0]["sub_rows"]:
+        sub_row["portion_name"] = "Dospelý (SŠ)"
+        sub_row["variant"] = ""
+
+    spec = build_table_spec(payload)
+    standard_rows = [
+        r for r in spec["rows"] if r["kind"] == "sub-row" and "diet" not in r["css"]
+    ]
+    assert len(standard_rows) == 1
+    assert standard_rows[0]["cells"][0]["text"] == "Dospelý (SŠ)"
+    assert standard_rows[0]["cells"][0]["count"] == "Ob 8 + Ol 8"
+
+
 def test_a_single_meal_portion_keeps_a_plain_count():
     """Bez druhého jedla ostáva count-odznak čistým číslom, nie „Ob 8"."""
     spec = build_table_spec(_payload())

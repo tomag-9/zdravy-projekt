@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from ..utils import ADULT_PORTION_TYPE_NAME
 from .gramage_dashboard_export import (
     blend_with_white,
     component_subtitle,
@@ -305,6 +306,11 @@ def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
     na konkrétne jedlo ("... - zvlášť") a zlúčenie by muselo prepisovať aj
     text, nie len počet — ostávajú preto nezlúčené, jeden riadok na jedlo,
     presne ako doteraz.
+
+    "Dospelý (SŠ)" má na rozdiel od ostatných porcií viac menu variantov,
+    ktoré kuchyňa chce vidieť oddelene (klasik/vege...) — pre túto porciu sa
+    preto zlučuje len naprieč jedlami (rovnaký variant), nie naprieč
+    variantmi (viď `variant` v kľúči nižšie a `base_label` v `_client_rows`).
     """
     merged: dict[tuple, dict] = {}
     out: list[dict] = []
@@ -312,10 +318,16 @@ def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
         if sub_row.get("type") not in ("standard", "diet"):
             out.append(sub_row)
             continue
+        portion_name = sub_row.get("portion_name", "")
         key = (
             sub_row["type"],
-            sub_row.get("portion_name", ""),
+            portion_name,
             sub_row.get("diet_name", ""),
+            (
+                sub_row.get("variant", "")
+                if portion_name == ADULT_PORTION_TYPE_NAME
+                else ""
+            ),
         )
         existing = merged.get(key)
         if existing is None:
@@ -897,11 +909,23 @@ def _client_rows(
         # jedla z pôvodného labelu ("Dospelý - Obed") nahrádza čisté meno
         # porcie, rozpis na jedlá nesie počet nižšie. "zvlast"/"zvlast_gn" sa
         # nezlučujú, ich label si drží meno jedla ako doteraz.
-        base_label = (
-            sub_row.get("portion_name") or sub_row.get("label") or ""
-            if row_type == "standard"
-            else sub_row.get("label") or ""
-        )
+        #
+        # "Dospelý (SŠ)" je výnimka — zlučuje sa len naprieč jedlami, nie
+        # naprieč menu variantmi (viď `_merge_sub_rows_across_meals`), takže
+        # si variant musí niesť ďalej v labeli, inak by "Menu A" a "Menu B"
+        # riadky vyzerali identicky.
+        portion_name = sub_row.get("portion_name") or ""
+        variant = sub_row.get("variant") or ""
+        if (
+            row_type == "standard"
+            and portion_name == ADULT_PORTION_TYPE_NAME
+            and variant
+        ):
+            base_label = f"{portion_name} - Menu {variant}"
+        elif row_type == "standard":
+            base_label = portion_name or sub_row.get("label") or ""
+        else:
+            base_label = sub_row.get("label") or ""
         label = _abbreviate_label(base_label)
         cell = _label_cell(
             f"↳ {label}" if is_diet else label,
