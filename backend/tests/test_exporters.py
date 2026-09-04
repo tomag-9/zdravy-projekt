@@ -278,17 +278,18 @@ class TestGramageDashboardExports:
         # Škôlka má PortionType.coefficient 1.0000, žiadne diéty — MŠ prepočet
         # (#532) sa tu preto rovná surovému počtu hláv z objednávky (1/2/3).
         assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER A S DIÉTAMI MŠ") == {
-            "Obed:": "1 MŠ"
+            "Obed:": "1 ks / 1 MŠ"
         }
         assert _cluster_ms_rows_after_band(data, "SUMÁR CLUSTER B S DIÉTAMI MŠ") == {
-            "Obed:": "2 MŠ"
+            "Obed:": "2 ks / 2 MŠ"
         }
         # Presne 2 zobrazené výdaje → žiadny kombinovaný medzisúčet (bol by
         # identický s celkovým); ten sa objaví až od 3 klastrov (#531).
         # Celkový súčet ide cez VŠETKY prevádzky vrátane nepriradenej (1+2+3).
+        # Jediný menu variant (A) — žiadny rozpis, len duplikoval "Obed:".
         assert _cluster_ms_rows_after_band(
             data, "SUMÁR CLUSTER A + B S DIÉTAMI MŠ"
-        ) == {"Obed:": "6 MŠ"}
+        ) == {"Obed:": "6 ks / 6 MŠ"}
 
     def test_admin_order_and_delivery_notes_export_to_xlsx_and_pdf(self):
         user = User.objects.create_user(

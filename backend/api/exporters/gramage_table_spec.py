@@ -955,7 +955,13 @@ def _client_rows(
             f"↳ {label}" if is_diet else label,
             sub_row.get("count"),
         )
-        meal_counts = sub_row.get("_meal_counts") or {}
+        # "zvlast"/"zvlast_gn" riadky sa naprieč jedlami nikdy nezlučujú (viď
+        # `_merge_sub_rows_across_meals`) — nemajú preto `_meal_counts`, len
+        # svoje vlastné (jedno) jedlo. Bez tohto fallbacku by composite text
+        # počítal z prázdneho slovníka a reálny počet nahradil samými nulami.
+        meal_counts = sub_row.get("_meal_counts") or {
+            sub_row.get("meal"): sub_row.get("count")
+        }
         if len(visible_bands) > 1:
             cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         text_hex = background_hex = None
@@ -1104,13 +1110,37 @@ def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list
     `billing_portion_coefficients` (#532: „ak mám porciu MŠ tak +1, ak
     dospelý +2, ak 1.st +1,25 — presne podľa toho, ako to je v katalógu
     jedál"). Sčítava štandard, diétu aj „zvlášť"/„zvlášť do GN" — tie sú
-    komplementárnou podmnožinou toho istého jedla, nie navyše."""
+    komplementárnou podmnožinou toho istého jedla, nie navyše.
+
+    Popri prepočítanom `total` (MŠ) nesie každý riadok aj surové `heads"
+    (kusovo — koľko sa reálne objednávok/hláv za tým skrýva, pred
+    prepočtom cez koeficient) — kuchyňa chcela vidieť oboje, nielen
+    prepočítané číslo. Riadok „Obed" navyše dostáva rozpis `menus` po
+    stĺpcových skupinách main_course s vyplneným variantom (Menu A/B/C…),
+    v poradí, v akom sú v tabuľke — polievka aj menu bez variantu (žiadne
+    triedenie) idú len do súčtu, nie do vlastného menu riadku.
+    """
     present_meals = {group.get("meal") for _, group in groups}
+    # Poradie menu variantov podľa stĺpcov tabuľky, bez duplicít — len
+    # main_course skupiny s vyplneným variantom.
+    menu_variants: list[str] = []
+    seen_variants: set[str] = set()
+    for _, group in groups:
+        if group.get("meal") != "main_course":
+            continue
+        variant = str(group.get("variant") or "")
+        if not variant or variant in seen_variants:
+            continue
+        seen_variants.add(variant)
+        menu_variants.append(variant)
+
     out: list[dict] = []
     for meal_keys, label in _CLUSTER_SUMMARY_MEAL_BANDS:
         if not present_meals & set(meal_keys):
             continue
         total = Decimal("0")
+        heads = Decimal("0")
+        menu_totals: dict[str, tuple[Decimal, Decimal]] = {}
         for row in rows_for_summary:
             for sub_row in row.get("sub_rows") or []:
                 if sub_row.get("meal") not in meal_keys:
@@ -1122,8 +1152,29 @@ def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list
                     "zvlast_gn",
                 ):
                     continue
-                total += _as_decimal(sub_row.get("_ms_recalc"))
-        out.append({"label": label, "total": total})
+                sub_heads = _as_decimal(sub_row.get("_heads"))
+                sub_ms = _as_decimal(sub_row.get("_ms_recalc"))
+                heads += sub_heads
+                total += sub_ms
+                variant = str(sub_row.get("variant") or "")
+                if sub_row.get("meal") == "main_course" and variant in seen_variants:
+                    prev_heads, prev_ms = menu_totals.get(
+                        variant, (Decimal("0"), Decimal("0"))
+                    )
+                    menu_totals[variant] = (prev_heads + sub_heads, prev_ms + sub_ms)
+        item = {"label": label, "heads": heads, "total": total}
+        # Jediný variant by len duplikoval riadok "Obed:" priamo nad sebou —
+        # rozpis má zmysel až od dvoch variantov vyššie.
+        if len(menu_variants) > 1 and "main_course" in meal_keys:
+            item["menus"] = [
+                {
+                    "label": f"Menu {variant.upper()}",
+                    "heads": menu_totals.get(variant, (Decimal("0"), Decimal("0")))[0],
+                    "total": menu_totals.get(variant, (Decimal("0"), Decimal("0")))[1],
+                }
+                for variant in menu_variants
+            ]
+        out.append(item)
     return out
 
 
@@ -1163,12 +1214,35 @@ def _cluster_summary_rows(
                 "cells": [
                     {
                         "label": f"{item['label']}:",
-                        "text": f"{format_count(item['total'])} MŠ",
+                        "text": (
+                            f"{format_count(item['heads'])} ks / "
+                            f"{format_count(item['total'])} MŠ"
+                        ),
                         "colspan": total_columns,
                     }
                 ],
             }
         )
+        # Rozpis Obedu po menu variantoch (Menu A/B/C…), odsadený pod ním —
+        # kuchyňa chcela vidieť, koľko z celkového obedu pripadá na ktorý
+        # variant, rovnaký kusovo/MŠ formát ako riadok vyššie.
+        for menu in item.get("menus") or []:
+            rows.append(
+                {
+                    "kind": "cluster-ms-row",
+                    "css": "cluster-ms-row cluster-ms-menu-row",
+                    "cells": [
+                        {
+                            "label": f"{menu['label']}:",
+                            "text": (
+                                f"{format_count(menu['heads'])} ks / "
+                                f"{format_count(menu['total'])} MŠ"
+                            ),
+                            "colspan": total_columns,
+                        }
+                    ],
+                }
+            )
     diet_rows = (
         _diet_name_rows(rows_for_summary, data, groups, hues) if include_diets else []
     )
