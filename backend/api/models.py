@@ -635,6 +635,12 @@ class Prevadzka(models.Model):
         help_text="Veľkosti porcií dostupné pre objednávky tejto prevádzky.",
     )
     pack_separately_enabled = models.BooleanField(default=False)
+    adults_pack_separately_enabled = models.BooleanField(
+        default=False,
+        help_text="Keď je zapnuté, všetky porcie „Dospelý (SŠ)“ sa v gramážnej "
+        "tabuľke automaticky vykazujú ako zabalené zvlášť — bez toho, aby ich "
+        "klient musel manuálne označiť cez „Zabaliť zvlášť“.",
+    )
     admin_order_note = models.TextField(
         blank=True,
         default="",

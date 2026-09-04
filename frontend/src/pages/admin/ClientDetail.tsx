@@ -66,6 +66,7 @@ interface FacilityDetail {
   admin_order_note: string;
   client_user_id: number | null;
   pack_separately_enabled: boolean;
+  adults_pack_separately_enabled: boolean;
   olovrant_s_obedom: boolean;
   orders_count: number | null;
 }
@@ -145,6 +146,7 @@ const ClientDetail: React.FC = () => {
   const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
   const [adminOrderNote, setAdminOrderNote] = useState("");
   const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
+  const [adultsPackSeparatelyEnabled, setAdultsPackSeparatelyEnabled] = useState(false);
   const [olovrantSObedom, setOlovrantSObedom] = useState(false);
   const [prevadzkaForm, setPrevadzkaForm] = useState<PrevadzkaForm>({
     nazov: "",
@@ -220,6 +222,7 @@ const ClientDetail: React.FC = () => {
     );
     setAdminOrderNote(data.admin_order_note || "");
     setPackSeparatelyEnabled(!!data.pack_separately_enabled);
+    setAdultsPackSeparatelyEnabled(!!data.adults_pack_separately_enabled);
     setOlovrantSObedom(!!data.olovrant_s_obedom);
     setPrevadzkaForm({
       nazov: data.nazov,
@@ -547,6 +550,7 @@ const ClientDetail: React.FC = () => {
           : Array.from(visiblePortionTypes),
         admin_order_note: adminOrderNote,
         pack_separately_enabled: packSeparatelyEnabled,
+        adults_pack_separately_enabled: adultsPackSeparatelyEnabled,
         olovrant_s_obedom: olovrantSObedom,
       };
 
@@ -1079,6 +1083,25 @@ const ClientDetail: React.FC = () => {
                   />
                 </div>
               </Card>
+
+              {isEdupageClient && (
+                <Card pad>
+                  <CardHead
+                    title="Dospelí zvlášť"
+                    desc="V gramážnej tabuľke (aj v PDF) sa všetky porcie „Dospelý (SŠ)“ automaticky vykážu ako zabalené zvlášť — bez toho, aby to klient musel ručne označiť v objednávke."
+                  />
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
+                    <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
+                      Automaticky baliť porcie „Dospelý (SŠ)“ zvlášť.
+                    </div>
+                    <Toggle
+                      on={adultsPackSeparatelyEnabled}
+                      onChange={setAdultsPackSeparatelyEnabled}
+                      ariaLabel="Automaticky baliť dospelých zvlášť"
+                    />
+                  </div>
+                </Card>
+              )}
 
               <Card pad>
                 <CardHead title="Olovrant ide s obedom" desc="V gramážnej tabuľke (aj v PDF) sa olovrant tejto prevádzky zvýrazní žlto — ide s obedovým rozvozom, nie s popoludňajším spolu s ostatnými olovrantami." />

@@ -32,6 +32,10 @@ SNACK_MIRRORS_LUNCH_PREVADZKY = {"filipa neriho"}
 # appke 1:1 bez úpravy — dvojnásobok sa týka výhradne olovrantu.
 SNACK_DOUBLE_BILLING_PORTIONS = {"krasnanko": {"Dospelý (SŠ)"}}
 
+# `Prevadzka.adults_pack_separately_enabled` (admin nastavenie) vykazuje túto
+# porciu automaticky ako "zabalené zvlášť" v gramage_dashboard — viď použitie.
+ADULT_PORTION_TYPE_NAME = "Dospelý (SŠ)"
+
 
 def _meal_rule_key(value: object) -> str:
     normalized = unicodedata.normalize("NFKD", str(value or "").casefold())

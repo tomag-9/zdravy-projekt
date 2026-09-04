@@ -20,6 +20,7 @@ from ..models import (
 )
 from ..order_data import OrderData
 from ..utils import (
+    ADULT_PORTION_TYPE_NAME,
     SNACK_DOUBLE_BILLING_PORTIONS,
     SNACK_MIRRORS_LUNCH_PREVADZKY,
     _meal_rule_key,
@@ -888,6 +889,9 @@ class MealPlanService:
             snack_double_billing_portions: set[str] = SNACK_DOUBLE_BILLING_PORTIONS.get(
                 prevadzka_key, set()
             )
+            adults_pack_separately = bool(
+                getattr(prevadzka, "adults_pack_separately_enabled", False)
+            )
             sub_rows: list[dict] = []
             # Decimal len tam, kde prevádzka účtuje zlomkovú porciu
             # (Edulienka: predškolák 1,25); inde ostáva int.
@@ -994,6 +998,36 @@ class MealPlanService:
                                 pack_separately_gn.get("diets")
                             ),
                         }
+                        # "Dospelí zvlášť" (Prevadzka.adults_pack_separately_enabled):
+                        # namiesto čítania uloženého "packSeparately" (klient by ho
+                        # musel zaškrtnúť ručne v appke) sa pre túto porciu vynúti
+                        # CELÝ objednaný počet do cieľa "zvlast" - okrem toho, čo je
+                        # už manuálne v "zvlast_gn" (vzájomne sa vylučujúce ciele,
+                        # súčet nesmie prekročiť objednávku).
+                        if (
+                            adults_pack_separately
+                            and portion_name == ADULT_PORTION_TYPE_NAME
+                        ):
+                            gn_menu_counts = pack_menu_counts_by_target["zvlast_gn"]
+                            gn_diet_counts = pack_diet_counts_by_target["zvlast_gn"]
+                            pack_menu_counts_by_target["zvlast"] = {
+                                key: max(
+                                    0,
+                                    _safe_nonneg_int(count)
+                                    - gn_menu_counts.get(key, 0),
+                                )
+                                for key, count in menu_counts.items()
+                                if _safe_nonneg_int(count) > 0
+                            }
+                            pack_diet_counts_by_target["zvlast"] = {
+                                key: max(
+                                    0,
+                                    _safe_nonneg_int(count)
+                                    - gn_diet_counts.get(key, 0),
+                                )
+                                for key, count in diets.items()
+                                if _safe_nonneg_int(count) > 0
+                            }
 
                         total_diet_count = sum(
                             _safe_nonneg_int(raw_count) for raw_count in diets.values()
