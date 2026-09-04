@@ -155,6 +155,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // (user 2.9.2026). Aktualizuje sa pri načítaní objednávky zo servera a po
     // úspešnom submite; medzitýmové lokálne úpravy ho nemenia.
     const restrictedMenuCeilingsRef = useRef<Record<string, number>>({});
+    // Promise pre aktuálne prebiehajúci (alebo posledný dobehnutý) GET
+    // objednávky pre (selectedDate, activePrevadzkaId) — `submitOrder` naň
+    // čaká, aby nedotknuté jedlo neposlal so starým localStorage draftom
+    // skôr, než príde serverová odpoveď (Emjoy, 3.9.2026).
+    const orderLoadRef = useRef<Promise<DailyOrder | null>>(Promise.resolve(null));
     const [prevDayLunches, setPrevDayLunches] = useState(0);
 
     const [activeMeals, setActiveMeals] = useState<Record<string, boolean>>(() => safeParse(scopedKey('activeMeals', selectedDate), { breakfast: false, lunch: true, olovrant: false }));
@@ -271,9 +276,9 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     useEffect(() => {
         let isMounted = true;
 
-        const loadOrder = async () => {
+        const loadOrder = async (): Promise<DailyOrder | null> => {
             try {
-                if (waitForPrevadzkaChoice && !activePrevadzkaId) return;
+                if (waitForPrevadzkaChoice && !activePrevadzkaId) return null;
                 const suffix = activePrevadzkaId ? `?prevadzka=${activePrevadzkaId}` : '';
                 const response = await apiFetch(`${API_URL}/orders/by-date/${selectedDate}/${suffix}`);
                 if (response.ok) {
@@ -307,17 +312,21 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                                 if (!OrderService.isMealEmpty(merged.olovrant)) newActive.olovrant = true;
                                 return newActive;
                             });
+                            return merged;
                         }
                     }
                 }
             } catch (e) {
                 logger.error("Failed to fetch order", e);
             }
+            return null;
         };
 
-        if (user) {
-            loadOrder();
-        }
+        // `submitOrder` na tento promise čaká, aby pre jedlá, ktorých sa klient
+        // v tejto session nedotkol, mohol použiť čerstvú serverovú hodnotu
+        // namiesto prípadne zastaraného localStorage draftu (Emjoy, 3.9.2026 —
+        // viď komentár pri `submitOrder`).
+        orderLoadRef.current = user ? loadOrder() : Promise.resolve(null);
 
         return () => { isMounted = false; };
     }, [selectedDate, apiFetch, user, activePrevadzkaId, waitForPrevadzkaChoice]); // Depend on selectedDate
@@ -749,11 +758,27 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
 
     const submitOrder = async (date: string, prevadzkaId = activePrevadzkaId) => {
+        // Backend ukladá `data` ako celok, žiadny merge (`instance.data = new_data`
+        // v serializeri) — submit tak musí poslať kompletnú a AKTUÁLNU objednávku
+        // za všetky jedlá naraz, nielen to, čo klient práve upravil. Počkáme na
+        // počiatočný GET pre (date, prevadzkaId): kým nedobehne, `currentOrder`
+        // môže byť ešte starý localStorage draft z inej session/zariadenia.
+        // Pre jedlo, ktoré klient v TEJTO session vôbec nezmenil (`touchedMeals`),
+        // uprednostníme čerstvú serverovú hodnotu pred týmto draftom — inak by
+        // sa nedotknuté jedlo (napr. obed) potichu prepísalo starými/nulovými
+        // počtami a vynulovalo tak reálne objednané Menu B/C (Emjoy, 3.9.2026:
+        // škola upravila len raňajky, appka poslala aj nedotknutý obed so
+        // starým draftom a vymazala tak objednané Menu B/C).
+        const freshOrder = await orderLoadRef.current;
+
         const isMealActive = (key: 'breakfast' | 'lunch' | 'olovrant') =>
             fullDayOrder ? adminVisibleMeals.includes(key) : activeMeals[key];
 
-        const mealData = (key: 'breakfast' | 'lunch' | 'olovrant') =>
-            fullDayOrder ? fullDayData : currentOrder[key];
+        const mealData = (key: 'breakfast' | 'lunch' | 'olovrant') => {
+            if (fullDayOrder) return fullDayData;
+            if (freshOrder && !touchedMeals.has(key)) return freshOrder[key];
+            return currentOrder[key];
+        };
 
         const payload = {
             breakfast: isMealActive('breakfast') ? mealData('breakfast') : OrderService.createEmptyMeal(),

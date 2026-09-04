@@ -1220,4 +1220,114 @@ describe("OrderPage Logic & Triggers", () => {
       expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(1);
     });
   });
+
+  // ── Submit nesmie prepísať nedotknuté jedlo starým draftom (Emjoy, 3.9.2026) ─
+  //
+  // Škola upravila len raňajky; appka poslala CELÚ objednávku (backend robí
+  // `instance.data = new_data`, žiadny merge) vrátane obeda, ktorého lokálny
+  // stav bol ešte starý localStorage draft z inej session — s Menu B/C = 0,
+  // hoci server mal reálne objednané B=1, C=2. Submit tak potichu vynuloval
+  // objednané Menu B/C na jedle, ktorého sa klient v danej session vôbec
+  // nedotkol. Fix: submit počká na počiatočný GET pre (dátum, prevádzka) a
+  // pre nedotknuté jedlá uprednostní čerstvú serverovú hodnotu pred lokálnym
+  // draftom; dotknuté jedlá (klient ich v tejto session reálne menil) idú
+  // tak, ako sú.
+  it("waits for the server order and uses it for an untouched meal, not a stale local draft", async () => {
+    const date = localDateStr();
+
+    // Starý localStorage draft: obed má Dospelý (SŠ) Menu B/C už na nule.
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "submitted",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: {
+          Škôlka: { menuCounts: { A: 23 }, diets: {} },
+          "Dospelý (SŠ)": { menuCounts: { A: 0, B: 0, C: 0 }, diets: {} },
+        },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    let resolveOrderFetch!: (value: unknown) => void;
+    const pendingOrderFetch = new Promise((resolve) => {
+      resolveOrderFetch = resolve;
+    });
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        // Server GET visí — ešte neodpovedal, presne ako pri pomalej sieti.
+        return pendingOrderFetch as Promise<Response>;
+      }
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    // Klient upraví LEN raňajky — obed (a jeho Dospelý B/C) nechá netknutý.
+    const breakfastCard = getMealCard("Raňajky");
+    const skolkaRow = getCategoryRow(breakfastCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText(
+      "Počet porcií pre menu A",
+    );
+    fireEvent.change(input, { target: { value: "23" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(getOrderData(date).breakfast["Škôlka"].menuCounts.A).toBe(23);
+    });
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    // GET ešte visí — submit nesmie odísť so starým draftom skôr, než príde
+    // odpoveď servera.
+    expect(
+      mockApiFetch.mock.calls.some((call) => call[1]?.method === "POST"),
+    ).toBe(false);
+
+    // Server odpovie: obed má v skutočnosti Dospelý (SŠ) B=1, C=2.
+    await act(async () => {
+      resolveOrderFetch(
+        makeMockResponse({
+          id: 1793,
+          status: "submitted",
+          data: {
+            breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+            lunch: {
+              Škôlka: { menuCounts: { A: 23 }, diets: {} },
+              "Dospelý (SŠ)": {
+                menuCounts: { A: 0, B: 1, C: 2 },
+                diets: {},
+              },
+            },
+            olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      // Raňajky boli v tejto session reálne upravené — ide lokálna hodnota.
+      expect(body.data.breakfast["Škôlka"].menuCounts.A).toBe(23);
+      // Obed sa nedotkol — musí ísť čerstvá serverová hodnota, nie 0 zo
+      // starého draftu.
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
+    });
+  });
 });
