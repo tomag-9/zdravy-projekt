@@ -44,6 +44,7 @@ const facility = {
   admin_order_note: "",
   client_user_id: null,
   pack_separately_enabled: false,
+  adults_pack_separately_enabled: false,
   orders_count: 0,
 };
 
@@ -139,6 +140,72 @@ describe("ClientDetail portion type visibility", () => {
       expect(patchCall).toBeDefined();
       expect(JSON.parse(String(patchCall?.[1]?.body)).visible_portion_types).toEqual([2]);
     });
+  });
+});
+
+describe("ClientDetail adults pack separately (EduPage)", () => {
+  const edupageFacility = { ...facility, celok_zdroj_objednavok: "edupage" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response([]));
+      if (url.includes("/orders/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/") && init?.method === "PATCH") {
+        return Promise.resolve(response({ ...edupageFacility, ...JSON.parse(String(init.body)) }));
+      }
+      if (url.includes("/admin/facility-prevadzky/7/")) {
+        return Promise.resolve(response(edupageFacility));
+      }
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("shows the toggle for an EduPage facility and saves it on", async () => {
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={["/admin/facilities/7"]}>
+        <Routes>
+          <Route path="/admin/facilities/:id" element={<ClientDetail />} />
+          <Route path="/admin/facilities" element={<div>Facilities</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    expect(screen.getByText("Dospelí zvlášť")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Automaticky baliť dospelých zvlášť" }));
+    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      expect(JSON.parse(String(patchCall?.[1]?.body)).adults_pack_separately_enabled).toBe(true);
+    });
+  });
+
+  it("hides the toggle for a non-EduPage facility", async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+      return Promise.resolve(response([]));
+    });
+    render(
+      <MemoryRouter initialEntries={["/admin/facilities/7"]}>
+        <Routes>
+          <Route path="/admin/facilities/:id" element={<ClientDetail />} />
+          <Route path="/admin/facilities" element={<div>Facilities</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: "Nastavenia" });
+    expect(screen.queryByText("Dospelí zvlášť")).not.toBeInTheDocument();
   });
 });
 

@@ -142,6 +142,44 @@ class TestOrderDataValidation:
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+    # ------------------------------------------------------------------ #
+    # full_day_order (Celodenná objednávka) — príznak žil doteraz len
+    # v localStorage frontendu, takže sa medzi zariadeniami/prehliadačmi
+    # potichu strácal: klient v móde "celý deň naraz" na jednom zariadení
+    # si na inom myslel to isté, appka ale editovala jedlá nezávisle a
+    # klient omylom odoslal len časť dňa (Veselý Úľ, 4.9.2026 — raňajky
+    # ostali na starom počte, keď sa obed aj olovrant znížili). Príznak
+    # teraz ide v `data` vedľa jedál (rovnaký vzor ako `special_diet_note`),
+    # aby ho server vedel vrátiť ako autoritatívny pri ďalšom načítaní.
+    # ------------------------------------------------------------------ #
+
+    def test_full_day_order_flag_accepted(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {**VALID_DATA, "full_day_order": True},
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data["data"]["full_day_order"] is True
+
+    def test_full_day_order_flag_alone_accepted(self, authenticated_client):
+        response = self._post(authenticated_client, {"full_day_order": False})
+        assert response.status_code == status.HTTP_201_CREATED
+
+    def test_full_day_order_flag_must_be_boolean(self, authenticated_client):
+        response = self._post(
+            authenticated_client,
+            {**VALID_DATA, "full_day_order": "yes"},
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_full_day_order_flag_is_not_a_meal_change(self):
+        """Zmena samotného príznaku nesmie znovu spustiť deadline pre jedlá."""
+        from api.serializers import DailyOrderSerializer
+
+        previous = {**VALID_DATA, "full_day_order": False}
+        current = {**VALID_DATA, "full_day_order": True}
+        assert DailyOrderSerializer._changed_meals(current, previous) == []
+
     def test_special_diet_ordered_without_note_rejected(self, authenticated_client):
         """Kuchyňa nevie čo dieťaťu naložiť, ak 'Špeciálna' nemá poznámku."""
         data = {

@@ -16,6 +16,7 @@ import OrderService from "../services/OrderService";
 import { ReactNode } from "react";
 import { ToastProvider } from "../../../context/ToastContext";
 import { useAuth } from "../../../context/auth";
+import { stepBusinessDay, fromDateKey, toDateKey } from "../../../lib/businessDay";
 
 const mockApiFetch = vi.fn();
 const mockUser = { id: 1, email: "client@example.com" };
@@ -1082,7 +1083,14 @@ describe("OrderPage Logic & Triggers", () => {
 
   it("does not re-apply a stale URL date after the user picks a different day via DaySelector", async () => {
     const today = localDateStr();
-    const tomorrow = localDateStr(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    // DaySelector's "Ďalší deň" calls `stepBusinessDay`, ktorý víkend
+    // preskočí (napr. z piatka rovno na pondelok) — naivné "+1 deň" tu bolo
+    // vždy zle mimo Po-Št a test tak padal, kedykoľvek bežal v piatok
+    // (spadol by na sobotu, ktorú appka preskočí na pondelok). Rovnaká
+    // funkcia ako v `DaySelector.tsx`, nech test sedí s appkou v ktorýkoľvek deň.
+    const nextBusinessDay = stepBusinessDay(fromDateKey(today), 1);
+    if (!nextBusinessDay) throw new Error("stepBusinessDay returned null");
+    const tomorrow = toDateKey(nextBusinessDay);
 
     // URL zostáva na `today` počas celého testu — DaySelector mení
     // selectedDate priamo, bez navigácie (rovnaký mechanizmus ako v teste
@@ -1181,6 +1189,66 @@ describe("OrderPage Logic & Triggers", () => {
       expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(7);
       expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(7);
       expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(7);
+      // A a server-persisted flag (not just localStorage) lets the next
+      // load restore Celodenná on ANY device/browser — see the next test.
+      expect(body.data.full_day_order).toBe(true);
+    });
+  });
+
+  // ── Celodenná príznak musí prežiť aj bez localStorage (Veselý Úľ, 4.9.2026) ─
+  //
+  // Predtým `fullDayOrder` žil len vo frontend localStorage, per-browser.
+  // Klient v móde "celý deň naraz" na jednom zariadení, na inom appka bez
+  // varovania editovala jedlá nezávisle — časť dňa sa tak dala nechtiac
+  // odoslať bez zvyšku (raňajky ostali na starom počte, keď sa obed aj
+  // olovrant znížili). Server teraz vracia príznak ako súčasť `data`, takže
+  // ho appka na ĽUBOVOĽNOM zariadení/prehliadači vie obnoviť.
+  it("Celodenná: restores the toggle from the server on a fresh browser with no local draft", async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            id: 1,
+            status: "submitted",
+            data: {
+              full_day_order: true,
+              breakfast: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+              lunch: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+              olovrant: { Škôlka: { menuCounts: { A: 7 }, diets: {} } },
+            },
+          }),
+        );
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    // Zámerne nič v localStorage — presne "iné zariadenie/prehliadač", ktoré
+    // Celodennú ešte nikdy lokálne nezapínalo.
+    renderPage();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Celodenná objednávka je aktívna").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+
+    // Ďalší submit musí ísť s celodennými dátami za všetky 3 jedlá — nesmie
+    // potichu spadnúť späť do per-jedlového módu.
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data.full_day_order).toBe(true);
+      expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(7);
+      expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(7);
     });
   });
 
@@ -1218,6 +1286,116 @@ describe("OrderPage Logic & Triggers", () => {
       expect(body.data.breakfast["Škôlka"].menuCounts["A"]).toBe(2);
       expect(body.data.lunch["Škôlka"].menuCounts["A"]).toBe(5);
       expect(body.data.olovrant["Škôlka"].menuCounts["A"]).toBe(1);
+    });
+  });
+
+  // ── Submit nesmie prepísať nedotknuté jedlo starým draftom (Emjoy, 3.9.2026) ─
+  //
+  // Škola upravila len raňajky; appka poslala CELÚ objednávku (backend robí
+  // `instance.data = new_data`, žiadny merge) vrátane obeda, ktorého lokálny
+  // stav bol ešte starý localStorage draft z inej session — s Menu B/C = 0,
+  // hoci server mal reálne objednané B=1, C=2. Submit tak potichu vynuloval
+  // objednané Menu B/C na jedle, ktorého sa klient v danej session vôbec
+  // nedotkol. Fix: submit počká na počiatočný GET pre (dátum, prevádzka) a
+  // pre nedotknuté jedlá uprednostní čerstvú serverovú hodnotu pred lokálnym
+  // draftom; dotknuté jedlá (klient ich v tejto session reálne menil) idú
+  // tak, ako sú.
+  it("waits for the server order and uses it for an untouched meal, not a stale local draft", async () => {
+    const date = localDateStr();
+
+    // Starý localStorage draft: obed má Dospelý (SŠ) Menu B/C už na nule.
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "submitted",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: {
+          Škôlka: { menuCounts: { A: 23 }, diets: {} },
+          "Dospelý (SŠ)": { menuCounts: { A: 0, B: 0, C: 0 }, diets: {} },
+        },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    let resolveOrderFetch!: (value: unknown) => void;
+    const pendingOrderFetch = new Promise((resolve) => {
+      resolveOrderFetch = resolve;
+    });
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        // Server GET visí — ešte neodpovedal, presne ako pri pomalej sieti.
+        return pendingOrderFetch as Promise<Response>;
+      }
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    // Klient upraví LEN raňajky — obed (a jeho Dospelý B/C) nechá netknutý.
+    const breakfastCard = getMealCard("Raňajky");
+    const skolkaRow = getCategoryRow(breakfastCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText(
+      "Počet porcií pre menu A",
+    );
+    fireEvent.change(input, { target: { value: "23" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(getOrderData(date).breakfast["Škôlka"].menuCounts.A).toBe(23);
+    });
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    // GET ešte visí — submit nesmie odísť so starým draftom skôr, než príde
+    // odpoveď servera.
+    expect(
+      mockApiFetch.mock.calls.some((call) => call[1]?.method === "POST"),
+    ).toBe(false);
+
+    // Server odpovie: obed má v skutočnosti Dospelý (SŠ) B=1, C=2.
+    await act(async () => {
+      resolveOrderFetch(
+        makeMockResponse({
+          id: 1793,
+          status: "submitted",
+          data: {
+            breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+            lunch: {
+              Škôlka: { menuCounts: { A: 23 }, diets: {} },
+              "Dospelý (SŠ)": {
+                menuCounts: { A: 0, B: 1, C: 2 },
+                diets: {},
+              },
+            },
+            olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      // Raňajky boli v tejto session reálne upravené — ide lokálna hodnota.
+      expect(body.data.breakfast["Škôlka"].menuCounts.A).toBe(23);
+      // Obed sa nedotkol — musí ísť čerstvá serverová hodnota, nie 0 zo
+      // starého draftu.
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
     });
   });
 });

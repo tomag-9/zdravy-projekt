@@ -807,6 +807,7 @@ def scrape_edupage_orders_task(
         from api.scheduling import closed_dates_for_prevadzky, is_day_off
         from api.services import _next_workday
         from api.services.edupage_connection_service import edupage_operations
+        from api.signals import _meal_types_label_sk
         from api.utils import filter_order_data_for_prevadzka
 
         # Dátumy pridané nižšie ako predbežný Menu B/C scrape (1-2 dni vopred) —
@@ -1125,12 +1126,26 @@ def scrape_edupage_orders_task(
         for target_date in date_to_meals:
             clear_gramage_dashboard_cache(str(target_date))
 
+        # Skutočne stiahnuté jedlá per deň — `meal_types` nižšie je len surový
+        # task kwarg (často `null` pri `days_ahead` behu) a nehovorí, ktoré
+        # jedlá po (2026-09-03/04) deadline-per-jedlo filtri v `date_to_meals`
+        # reálne zostali. `None` = beh bez filtra (plný denný scrape),
+        # zobrazené ako všetky tri jedlá.
+        meals_by_date: dict[str, list[str]] = {
+            str(target_date): (
+                [meal for meal in _ALL_MEALS if meal in target_meals]
+                if target_meals is not None
+                else list(_ALL_MEALS)
+            )
+            for target_date, target_meals in date_to_meals.items()
+        }
         summary = {
             "scraped": scraped,
             "errors": errors,
             "skipped": skipped,
             "dates": [str(target_date) for target_date in date_to_meals],
             "meal_types": meal_types,
+            "meals_by_date": meals_by_date,
         }
         # Predbežné dátumy (partial_dates) dostali len Menu B/C odhad, nie plný
         # scrape — chained report na ne nesmie ísť, poslal by kuchyni neúplné
@@ -1148,7 +1163,13 @@ def scrape_edupage_orders_task(
         if dispatched:
             summary["chained_reports_dispatched"] = dispatched
         logger.info("scrape_edupage_orders_task result: %s", summary)
-        scraped_dates = ", ".join(str(target_date) for target_date in date_to_meals)
+        # "2026-09-04: obed/olovrant" per deň — nech je z logu priamo vidno,
+        # ktoré jedlá sa reálne stiahli (napr. že raňajky po 1:35 deadline-e
+        # už chýbajú), nie len súhrnný počet prevádzok.
+        scraped_dates = ", ".join(
+            f"{date_str}: {_meal_types_label_sk(meals)}"
+            for date_str, meals in meals_by_date.items()
+        )
         run_label = (
             f"Predbežný náhľad (+{days_ahead} dni)"
             if days_ahead is not None

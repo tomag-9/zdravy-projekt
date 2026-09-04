@@ -1175,6 +1175,71 @@ def test_scrape_task_days_ahead_still_scrapes_meal_before_its_deadline(
     assert order.data["olovrant"]["Edupage school"]["menuCounts"]["A"] == 3
 
 
+# ── `meals_by_date` v summary — čo presne scrape stiahol (4.9.2026) ─────────
+#
+# Predtým `meal_types` v summary ukazoval len samotný task kwarg (často `null`
+# pri `days_ahead` behu), nie skutočne stiahnuté jedlá po jednotlivých dňoch —
+# z logu sa tak nedalo overiť, že napr. o 2:00 preview beh raňajky pre dnešok
+# (deadline 1:35) už správne vynechal. `meals_by_date` to robí explicitné.
+
+
+@pytest.mark.django_db
+def test_scrape_summary_meals_by_date_excludes_meal_past_its_deadline(
+    edupage_user, monkeypatch
+):
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(1, 35),
+        deadline_lunch=datetime.time(7, 35),
+        deadline_olovrant=datetime.time(7, 35),
+    )
+    today = datetime.date(2026, 6, 29)
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={
+                "lunch": {"menuCounts": {"A": 2}},
+                "olovrant": {"menuCounts": {"A": 3}},
+            }
+        )
+
+    # 2:00 — raňajkový deadline (1:35) je už za nami, obed/olovrant (7:35) ešte nie.
+    _freeze_local(monkeypatch, today, datetime.time(2, 0))
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run(days_ahead=0)
+
+    assert result["meals_by_date"] == {str(today): ["lunch", "olovrant"]}
+
+    log = EventLog.objects.get(
+        event_type=EventLog.EventType.CRON_RUN,
+        payload__task="scrape_edupage_orders_task",
+    )
+    assert "raňajky" not in log.summary
+    assert "obed/olovrant" in log.summary
+    assert str(today) in log.summary
+
+
+@pytest.mark.django_db
+def test_scrape_summary_meals_by_date_full_run_lists_all_meals(
+    edupage_user, monkeypatch
+):
+    """Beh bez `meal_types`/`days_ahead` (plný denný scrape) nefiltruje po
+    jedlách vôbec — `meals_by_date` to zobrazí ako všetky tri jedlá."""
+    GlobalSettings.objects.create(pk=1)
+    monday = datetime.date(2026, 6, 29)
+
+    def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(order_data={"lunch": {"menuCounts": {"A": 1}}})
+
+    _freeze_local(monkeypatch, monday)
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
+
+    result = scrape_edupage_orders_task.run()
+
+    assert result["meals_by_date"] == {str(monday): ["breakfast", "lunch", "olovrant"]}
+
+
 # ── EventLog zo scrapu — viditeľnosť školu po škole v Udalostiach (3.9.2026) ─
 
 

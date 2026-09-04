@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
+from ..utils import ADULT_PORTION_TYPE_NAME
 from .gramage_dashboard_export import (
     blend_with_white,
     component_subtitle,
@@ -134,7 +135,6 @@ def _gram_cells(
     groups: list[dict],
     hues: list[str],
     snack_with_lunch: bool = False,
-    counts: dict[int, object] | None = None,
 ) -> list[dict]:
     """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami.
 
@@ -142,20 +142,12 @@ def _gram_cells(
     klienta — olovrant tejto prevádzky nejde s popoludňajším rozvozom ako
     ostatné, takže namiesto bežného tónovania „Olovrant" dostane vlastnú
     (žltú) farbu, nech ho kuchyňa naloží spolu s obedom.
-
-    `counts` (voliteľné, kľúčované `group_index` rovnako ako `col_grams`) —
-    počet porcií danej skupiny. Ide vľavo hore do prvej (ľavej) bunky prvej
-    zložky skupiny ako malý rohový odznak (`corner_count`, iné pole než
-    `count` z `_label_cell` — ten je pre bunku s menom v prvom stĺpci, tu ide
-    o gramážovú mriežku), nech kuchyňa vidí "koľko sa toho varí" priamo pri
-    danom stĺpci, bez hľadania naspäť v mene riadku.
     """
     cells = []
     for position, (group_index, group) in enumerate(groups):
         grams = []
         if group_index < len(col_grams):
             grams = col_grams[group_index] or []
-        group_count = counts.get(group_index) if counts else None
         hue = hues[position]
         if snack_with_lunch and group.get("meal") == "afternoon_snack":
             hue = "snacklunch"
@@ -164,57 +156,15 @@ def _gram_cells(
             text = format_gram(raw)
             separator = " meal-sep" if position > 0 and component_index == 0 else ""
             if text is None:
-                cell = {"text": EMPTY, "css": f"cell-empty{separator}"}
+                cells.append({"text": EMPTY, "css": f"cell-empty{separator}"})
             else:
-                cell = {
-                    "text": text,
-                    "css": f"cell-num mh-{hue}-cell{separator}",
-                }
-            # `text is None` (bunka je „—") musí odznak vynechať, aj keď
-            # `group_count` je nenulový — `col_grams[group_index]` vie byť
-            # neprázdny zoznam so samými nulami (napr. `["0.00"]`), ktorý by
-            # inak prešiel ako "skupina, ktorej sa to týka" (3.9.2026, Jolly 3:
-            # diétny riadok mal Raňajky "0.00", zobrazovalo "—" a napriek tomu
-            # dostalo počet).
-            if component_index == 0 and group_count and text is not None:
-                cell["corner_count"] = format_count(group_count)
-            cells.append(cell)
+                cells.append(
+                    {
+                        "text": text,
+                        "css": f"cell-num mh-{hue}-cell{separator}",
+                    }
+                )
     return cells
-
-
-def _row_component_counts(
-    col_grams: list,
-    count: object,
-    full_groups: list[dict],
-    meal_counts: dict[str, object] | None = None,
-) -> dict[int, object]:
-    """Počet porcií pre KAŽDÚ skupinu, do ktorej tento (jeden) riadok reálne
-    zasahuje — pozná sa podľa toho, kde má gramáž (`col_grams[group_index]`
-    neprázdne; rovnaké indexovanie ako `col_grams`/`totals` v module, teda do
-    PLNÉHO `data["col_groups"]`, nie do zúženého `groups` po filtri sekcií).
-
-    Riadok zlúčený naprieč jedlami (raňajky+obed+olovrant, viď
-    `_merge_sub_rows_across_meals`) môže mať v rôznych skupinách iný počet
-    (napr. obed 11 + olovrant 8) — `meal_counts` (rozpis podľa jedla, rovnaký
-    zdroj ako `_composite_meal_count_text`) sa použije prednostne, plochý
-    `count` je záloha pre riadok, ktorý sa naprieč jedlami nezlučoval.
-
-    Polievka v `meal_counts` vlastný kľúč nemá — splynula pod "main_course"
-    už v `MealPlanService` (`_merge_soup_into_main_course`), takže skupina s
-    `meal == "soup"` bez zápisu si počet požičia odtiaľ.
-    """
-    counts: dict[int, object] = {}
-    for index, grams in enumerate(col_grams):
-        if not grams:
-            continue
-        meal = full_groups[index].get("meal") if index < len(full_groups) else None
-        if meal_counts and meal in meal_counts:
-            counts[index] = meal_counts[meal]
-        elif meal_counts and meal == "soup" and "main_course" in meal_counts:
-            counts[index] = meal_counts["main_course"]
-        else:
-            counts[index] = count
-    return counts
 
 
 def _as_decimal(value: object) -> Decimal:
@@ -358,6 +308,11 @@ def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
     na konkrétne jedlo ("... - zvlášť") a zlúčenie by muselo prepisovať aj
     text, nie len počet — ostávajú preto nezlúčené, jeden riadok na jedlo,
     presne ako doteraz.
+
+    "Dospelý (SŠ)" má na rozdiel od ostatných porcií viac menu variantov,
+    ktoré kuchyňa chce vidieť oddelene (klasik/vege...) — pre túto porciu sa
+    preto zlučuje len naprieč jedlami (rovnaký variant), nie naprieč
+    variantmi (viď `variant` v kľúči nižšie a `base_label` v `_client_rows`).
     """
     merged: dict[tuple, dict] = {}
     out: list[dict] = []
@@ -365,10 +320,16 @@ def _merge_sub_rows_across_meals(sub_rows: list[dict]) -> list[dict]:
         if sub_row.get("type") not in ("standard", "diet"):
             out.append(sub_row)
             continue
+        portion_name = sub_row.get("portion_name", "")
         key = (
             sub_row["type"],
-            sub_row.get("portion_name", ""),
+            portion_name,
             sub_row.get("diet_name", ""),
+            (
+                sub_row.get("variant", "")
+                if portion_name == ADULT_PORTION_TYPE_NAME
+                else ""
+            ),
         )
         existing = merged.get(key)
         if existing is None:
@@ -449,7 +410,6 @@ def _diet_name_rows(
     sčítané naprieč všetkými klientmi v danej skupine — admin/kuchyňa vidí
     diétny rozpad aj na úrovni celého klastra/dňa, nielen jedného klienta.
     """
-    full_groups = data.get("col_groups") or []
     visible_bands = _visible_meal_bands(groups)
     diet_rows: list[dict] = []
     for diet in _aggregate_diet_summary(rows_for_summary):
@@ -478,17 +438,7 @@ def _diet_name_rows(
                 "color": f"#{readable_text_color(text_hex)}",
                 "background": f"#{blend_with_white(background_hex)}",
                 "cells": [label_cell]
-                + _gram_cells(
-                    diet.get("col_grams") or [],
-                    groups,
-                    hues,
-                    counts=_row_component_counts(
-                        diet.get("col_grams") or [],
-                        diet["count"],
-                        full_groups,
-                        diet.get("meal_counts"),
-                    ),
-                ),
+                + _gram_cells(diet.get("col_grams") or [], groups, hues),
             }
         )
     return diet_rows
@@ -857,23 +807,10 @@ def _client_rows(
     """
     key = str(row.get("row_key") or row.get("client_id") or row.get("client") or "")
     snack_with_lunch = bool(row.get("snack_with_lunch"))
-    # Plný (nefiltrovaný) zoznam skupín — `col_grams`/`_meal_counts` sú doň
-    # indexované rovnako ako `data["totals"]`, na rozdiel od `groups` nižšie,
-    # ktorý je už zúžený filtrom sekcií.
-    full_groups = data.get("col_groups") or []
     # Pásy jedla (Raňajky/Obed/Olovrant), ktoré má TÁTO tabuľka ako stĺpce —
     # `_composite_meal_count_text` nižšie ním zaplní aj pásy, ktoré tento
     # riadok/klient nemá, nulou (nie medzerou), presne raz na klienta.
     visible_bands = _visible_meal_bands(groups)
-    # Počet porcií za tohto klienta, po skupinách (Polievka/Menu A/Menu B/...)
-    # — pre „Súčet bez diét" nižšie, kde jeden riadok agreguje VIACERO
-    # sub-riadkov (rôzne porcie/jedlá) naraz, takže `_row_component_counts`
-    # (počítajúci z JEDNÉHO riadku) by nestačil. Rovnaký princíp ako denný
-    # CELKOM (`footer_counts` v `build_table_spec`), len za jedného klienta.
-    client_group_counts = {
-        index: item.get("count") or 0
-        for index, item in enumerate(portion_summary(data, [row]))
-    }
 
     # Zlúčenie musí ísť pred filtrom viditeľnosti — potrebuje plné pole
     # `col_grams` (všetky jedlá), nie len tie, čo prežili výber sekcií nižšie.
@@ -883,18 +820,8 @@ def _client_rows(
     # obedovom hárku svietil súčet vrátane raňajok a olovrantu.
     visible: list[tuple[dict, list[dict]]] = []
     for sub_row in merged_sub_rows:
-        sub_row_col_grams = sub_row.get("col_grams") or []
         gram_cells = _gram_cells(
-            sub_row_col_grams,
-            groups,
-            hues,
-            snack_with_lunch,
-            counts=_row_component_counts(
-                sub_row_col_grams,
-                sub_row.get("count"),
-                full_groups,
-                sub_row.get("_meal_counts"),
-            ),
+            sub_row.get("col_grams") or [], groups, hues, snack_with_lunch
         )
         # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať.
         if any("cell-num" in cell["css"] for cell in gram_cells):
@@ -1006,17 +933,35 @@ def _client_rows(
         # jedla z pôvodného labelu ("Dospelý - Obed") nahrádza čisté meno
         # porcie, rozpis na jedlá nesie počet nižšie. "zvlast"/"zvlast_gn" sa
         # nezlučujú, ich label si drží meno jedla ako doteraz.
-        base_label = (
-            sub_row.get("portion_name") or sub_row.get("label") or ""
-            if row_type == "standard"
-            else sub_row.get("label") or ""
-        )
+        #
+        # "Dospelý (SŠ)" je výnimka — zlučuje sa len naprieč jedlami, nie
+        # naprieč menu variantmi (viď `_merge_sub_rows_across_meals`), takže
+        # si variant musí niesť ďalej v labeli, inak by "Menu A" a "Menu B"
+        # riadky vyzerali identicky.
+        portion_name = sub_row.get("portion_name") or ""
+        variant = sub_row.get("variant") or ""
+        if (
+            row_type == "standard"
+            and portion_name == ADULT_PORTION_TYPE_NAME
+            and variant
+        ):
+            base_label = f"{portion_name} - Menu {variant}"
+        elif row_type == "standard":
+            base_label = portion_name or sub_row.get("label") or ""
+        else:
+            base_label = sub_row.get("label") or ""
         label = _abbreviate_label(base_label)
         cell = _label_cell(
             f"↳ {label}" if is_diet else label,
             sub_row.get("count"),
         )
-        meal_counts = sub_row.get("_meal_counts") or {}
+        # "zvlast"/"zvlast_gn" riadky sa naprieč jedlami nikdy nezlučujú (viď
+        # `_merge_sub_rows_across_meals`) — nemajú preto `_meal_counts`, len
+        # svoje vlastné (jedno) jedlo. Bez tohto fallbacku by composite text
+        # počítal z prázdneho slovníka a reálny počet nahradil samými nulami.
+        meal_counts = sub_row.get("_meal_counts") or {
+            sub_row.get("meal"): sub_row.get("count")
+        }
         if len(visible_bands) > 1:
             cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         text_hex = background_hex = None
@@ -1076,11 +1021,7 @@ def _client_rows(
                 "css": "summ-std",
                 "cells": [std_label_cell]
                 + _gram_cells(
-                    row.get("standard_col_grams") or [],
-                    groups,
-                    hues,
-                    snack_with_lunch,
-                    counts=client_group_counts,
+                    row.get("standard_col_grams") or [], groups, hues, snack_with_lunch
                 ),
             }
         )
@@ -1116,16 +1057,7 @@ def _client_rows(
                 "background": f"#{blend_with_white(background_hex)}",
                 "cells": [label_cell]
                 + _gram_cells(
-                    diet.get("col_grams") or [],
-                    groups,
-                    hues,
-                    snack_with_lunch,
-                    counts=_row_component_counts(
-                        diet.get("col_grams") or [],
-                        diet_counts[name],
-                        full_groups,
-                        diet_meal_counts.get(name),
-                    ),
+                    diet.get("col_grams") or [], groups, hues, snack_with_lunch
                 ),
             }
         )
@@ -1178,13 +1110,37 @@ def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list
     `billing_portion_coefficients` (#532: „ak mám porciu MŠ tak +1, ak
     dospelý +2, ak 1.st +1,25 — presne podľa toho, ako to je v katalógu
     jedál"). Sčítava štandard, diétu aj „zvlášť"/„zvlášť do GN" — tie sú
-    komplementárnou podmnožinou toho istého jedla, nie navyše."""
+    komplementárnou podmnožinou toho istého jedla, nie navyše.
+
+    Popri prepočítanom `total` (MŠ) nesie každý riadok aj surové `heads"
+    (kusovo — koľko sa reálne objednávok/hláv za tým skrýva, pred
+    prepočtom cez koeficient) — kuchyňa chcela vidieť oboje, nielen
+    prepočítané číslo. Riadok „Obed" navyše dostáva rozpis `menus` po
+    stĺpcových skupinách main_course s vyplneným variantom (Menu A/B/C…),
+    v poradí, v akom sú v tabuľke — polievka aj menu bez variantu (žiadne
+    triedenie) idú len do súčtu, nie do vlastného menu riadku.
+    """
     present_meals = {group.get("meal") for _, group in groups}
+    # Poradie menu variantov podľa stĺpcov tabuľky, bez duplicít — len
+    # main_course skupiny s vyplneným variantom.
+    menu_variants: list[str] = []
+    seen_variants: set[str] = set()
+    for _, group in groups:
+        if group.get("meal") != "main_course":
+            continue
+        variant = str(group.get("variant") or "")
+        if not variant or variant in seen_variants:
+            continue
+        seen_variants.add(variant)
+        menu_variants.append(variant)
+
     out: list[dict] = []
     for meal_keys, label in _CLUSTER_SUMMARY_MEAL_BANDS:
         if not present_meals & set(meal_keys):
             continue
         total = Decimal("0")
+        heads = Decimal("0")
+        menu_totals: dict[str, tuple[Decimal, Decimal]] = {}
         for row in rows_for_summary:
             for sub_row in row.get("sub_rows") or []:
                 if sub_row.get("meal") not in meal_keys:
@@ -1196,8 +1152,29 @@ def _cluster_ms_totals(rows_for_summary: list[dict], groups: list[dict]) -> list
                     "zvlast_gn",
                 ):
                     continue
-                total += _as_decimal(sub_row.get("_ms_recalc"))
-        out.append({"label": label, "total": total})
+                sub_heads = _as_decimal(sub_row.get("_heads"))
+                sub_ms = _as_decimal(sub_row.get("_ms_recalc"))
+                heads += sub_heads
+                total += sub_ms
+                variant = str(sub_row.get("variant") or "")
+                if sub_row.get("meal") == "main_course" and variant in seen_variants:
+                    prev_heads, prev_ms = menu_totals.get(
+                        variant, (Decimal("0"), Decimal("0"))
+                    )
+                    menu_totals[variant] = (prev_heads + sub_heads, prev_ms + sub_ms)
+        item = {"label": label, "heads": heads, "total": total}
+        # Jediný variant by len duplikoval riadok "Obed:" priamo nad sebou —
+        # rozpis má zmysel až od dvoch variantov vyššie.
+        if len(menu_variants) > 1 and "main_course" in meal_keys:
+            item["menus"] = [
+                {
+                    "label": f"Menu {variant.upper()}",
+                    "heads": menu_totals.get(variant, (Decimal("0"), Decimal("0")))[0],
+                    "total": menu_totals.get(variant, (Decimal("0"), Decimal("0")))[1],
+                }
+                for variant in menu_variants
+            ]
+        out.append(item)
     return out
 
 
@@ -1237,12 +1214,35 @@ def _cluster_summary_rows(
                 "cells": [
                     {
                         "label": f"{item['label']}:",
-                        "text": f"{format_count(item['total'])} MŠ",
+                        "text": (
+                            f"{format_count(item['heads'])} ks / "
+                            f"{format_count(item['total'])} MŠ"
+                        ),
                         "colspan": total_columns,
                     }
                 ],
             }
         )
+        # Rozpis Obedu po menu variantoch (Menu A/B/C…), odsadený pod ním —
+        # kuchyňa chcela vidieť, koľko z celkového obedu pripadá na ktorý
+        # variant, rovnaký kusovo/MŠ formát ako riadok vyššie.
+        for menu in item.get("menus") or []:
+            rows.append(
+                {
+                    "kind": "cluster-ms-row",
+                    "css": "cluster-ms-row cluster-ms-menu-row",
+                    "cells": [
+                        {
+                            "label": f"{menu['label']}:",
+                            "text": (
+                                f"{format_count(menu['heads'])} ks / "
+                                f"{format_count(menu['total'])} MŠ"
+                            ),
+                            "colspan": total_columns,
+                        }
+                    ],
+                }
+            )
     diet_rows = (
         _diet_name_rows(rows_for_summary, data, groups, hues) if include_diets else []
     )
@@ -1275,13 +1275,9 @@ def _totals_row(
             # skupiny — kuchyňa tak hneď vidí "koľko sa toho varí" pri vstupe
             # do stĺpcov daného jedla/menu, nemusí si to prepočítavať naspäť
             # z gramáže. Opakovať ho na každej zložke by len duplikovalo
-            # rovnaké číslo naprieč riadkom. Rovnaký rohový odznak ako v
-            # ostatných riadkoch tabuľky (`_gram_cells`), nie label-style
-            # `count` — v CELKOM riadku niet mena, do ktorého by patril.
-            # `text is None` (bunka je „—") musí odznak vynechať rovnako ako
-            # v `_gram_cells` — pozri komentár tam.
-            if component_index == 0 and group_count and text is not None:
-                cell["corner_count"] = format_count(group_count)
+            # rovnaké číslo naprieč riadkom.
+            if component_index == 0 and group_count:
+                cell["count"] = format_count(group_count)
             cells.append(cell)
     return {
         "kind": "total",
