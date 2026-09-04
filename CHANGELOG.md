@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.8.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.7.0...v2.8.0) (2026-09-04)
+
+
+### Features
+
+* **admin:** diéty bez ručného poradia, zoskupené podľa počtu zložiek ([c3c9f9b](https://github.com/tomag-9/zdravy-projekt/commit/c3c9f9b2a275fe8c6eaaf11e53bc2a93df8f31aa))
+* **admin:** prerob detail prevádzky na Údaje/Objednávanie/Diéty + poznámka k diéte ([fbe2fdc](https://github.com/tomag-9/zdravy-projekt/commit/fbe2fdced218510d0dec1f9777dee34242ac9206))
+* **admin:** zobraz poznámku k diéte v gramážnej tabuľke a PDF ([245e1dd](https://github.com/tomag-9/zdravy-projekt/commit/245e1dd70c0ca1d6725603f6ee32e9eb16e36b6c))
+
+
+### Bug Fixes
+
+* **admin:** dropni osirelú starú visible_diets tabuľku, blokovala mazanie prevádzky ([625c567](https://github.com/tomag-9/zdravy-projekt/commit/625c5677341d218aafcc875d37e89dc3b88e7750))
+* **admin:** sprav 0096 (drop starej visible_diets tabuľky) plne reverzibilnú ([67f5b4b](https://github.com/tomag-9/zdravy-projekt/commit/67f5b4bc5689dde86e8c7044519246501b560df3))
+* **edupage:** hodinový preview scrape berie N pracovných dní, nie kalendárnych ([e74f47d](https://github.com/tomag-9/zdravy-projekt/commit/e74f47df38e7c3f2decb2afb73fe59875766ee3e))
+
 ## [2.7.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.6.0...v2.7.0) (2026-09-04)
 
 
