@@ -624,6 +624,7 @@ class Prevadzka(models.Model):
     )
     visible_diets = models.ManyToManyField(
         Diet,
+        through="PrevadzkaDiet",
         blank=True,
         related_name="visible_for_prevadzky",
         help_text="Diéty dostupné pre objednávky tejto prevádzky.",
@@ -702,6 +703,32 @@ class Prevadzka(models.Model):
 
     def __str__(self) -> str:
         return self.nazov
+
+
+class PrevadzkaDiet(models.Model):
+    """`through` model pre `Prevadzka.visible_diets` — nesie internú
+    poznámku k danej dvojici (prevádzka, diéta), napr. "len na objednávku
+    vopred" alebo kontakt na rodiča alergika. Poznámka je viazaná na
+    dvojicu, nie na diétu samotnú, lebo tá istá diéta môže mať v rôznych
+    prevádzkach inú poznámku."""
+
+    prevadzka = models.ForeignKey(
+        Prevadzka, on_delete=models.CASCADE, related_name="prevadzka_diets"
+    )
+    diet = models.ForeignKey(
+        Diet, on_delete=models.CASCADE, related_name="prevadzka_diets"
+    )
+    note = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prevadzka", "diet"], name="unique_prevadzka_diet"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.prevadzka} — {self.diet}"
 
 
 class ProfileCelokAccess(models.Model):

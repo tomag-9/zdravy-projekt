@@ -7,7 +7,7 @@ from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, extend_schema_view
-from rest_framework import permissions, status, viewsets
+from rest_framework import pagination, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
@@ -22,6 +22,16 @@ from ..services import OrderService
 from ..services.event_log_service import build_nested_dict_diff, log_event
 from ..services.prevadzka_service import dostupne_prevadzky
 from ..throttles import OrderSubmitRateThrottle
+
+
+class DailyOrderPagination(pagination.PageNumberPagination):
+    """Rovnaké defaulty ako globálne (`PAGE_SIZE=20`), len navyše dovolí
+    volajúcemu vypýtať si menšiu stránku cez `?page_size=` — ClientDetail
+    dashboard tak môže natiahnuť len pár posledných objednávok bez
+    zbytočného payloadu celej histórie."""
+
+    page_size_query_param = "page_size"
+    max_page_size = 100
 
 
 @extend_schema_view(
@@ -39,6 +49,7 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
     """
 
     serializer_class = DailyOrderSerializer
+    pagination_class = DailyOrderPagination
     # Authenticated users only
     permission_classes = [permissions.IsAuthenticated]
 

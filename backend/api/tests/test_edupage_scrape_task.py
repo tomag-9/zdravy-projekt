@@ -1066,13 +1066,18 @@ def test_scrape_task_days_ahead_repeated_run_updates_not_accumulates(
 
 
 @pytest.mark.django_db
-def test_scrape_task_days_ahead_skips_weekend_dates_in_window(
+def test_scrape_task_days_ahead_skips_weekend_dates_and_extends_window(
     edupage_user, monkeypatch
 ):
-    """Víkendové dátumy v okne sa vynechajú (nie posunú) — priebežný náhľad,
-    nie 'najbližšie N pracovných dní'."""
+    """Víkendové dátumy sa vynechajú, ALE okno sa predĺži tak, aby vždy
+    pokrývalo `days_ahead + 1` pracovných dní (#588) — bez toho by piatkový
+    beh (okno piatok+sobota+nedeľa, kalendárne) nevidel žiadny nadchádzajúci
+    pracovný deň okrem piatku samého, hoci pondelok/utorok už majú jedálny
+    lístok pripravený."""
     GlobalSettings.objects.create(pk=1)
     friday = datetime.date(2026, 6, 26)
+    monday = datetime.date(2026, 6, 29)
+    tuesday = datetime.date(2026, 6, 30)
     seen_dates = []
 
     def fake_scrape(self, url, target_date, prevadzka_matches=None, allowed_diets=None):
@@ -1084,9 +1089,10 @@ def test_scrape_task_days_ahead_skips_weekend_dates_in_window(
 
     result = scrape_edupage_orders_task.run(days_ahead=2)
 
-    # Friday + Sat + Sun window → only Friday itself is a business day.
-    assert seen_dates == [friday]
-    assert result["dates"] == [str(friday)]
+    # Piatok + 2 ďalšie pracovné dni → sobota/nedeľa sa preskočia, okno
+    # sa predĺži na pondelok a utorok namiesto toho, aby sa len zmenšilo.
+    assert seen_dates == [friday, monday, tuesday]
+    assert result["dates"] == [str(friday), str(monday), str(tuesday)]
 
 
 @pytest.mark.django_db

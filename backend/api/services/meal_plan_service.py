@@ -486,6 +486,7 @@ class MealPlanService:
             Diet,
             PortionType,
             Prevadzka,
+            PrevadzkaDiet,
         )
 
         MEAL_ORDER = ["breakfast_snack", "soup", "main_course", "afternoon_snack"]
@@ -537,6 +538,15 @@ class MealPlanService:
             diet.name: diet.description.strip()
             for diet in active_diets
             if (diet.description or "").strip()
+        }
+        # Interná poznámka k dvojici (prevádzka, diéta) — nastavená v detaile
+        # prevádzky (tab Diéty). Na rozdiel od `diet_description_map` (globálny
+        # popis diéty, #528 ho v tejto tabuľke zámerne nezobrazuje) je táto
+        # poznámka per prevádzka, takže kuchyňa/rozvoz ju v tejto tabuľke
+        # potrebuje — ide rovno do riadku diéty danej prevádzky.
+        prevadzka_diet_notes: dict[tuple[int | None, str], str] = {
+            (pd.prevadzka_id, pd.diet.name): pd.note.strip()
+            for pd in PrevadzkaDiet.objects.exclude(note="").select_related("diet")
         }
 
         def _normalize_variant(value: object) -> str:
@@ -1188,6 +1198,17 @@ class MealPlanService:
                                     "diet_base_colors": diet_base_color_map.get(
                                         diet_name, []
                                     ),
+                                    "diet_note": prevadzka_diet_notes.get(
+                                        (
+                                            (
+                                                prevadzka.id
+                                                if prevadzka is not None
+                                                else None
+                                            ),
+                                            diet_name,
+                                        ),
+                                        "",
+                                    ),
                                     "count": billed_diet_count,
                                     "_heads": diet_count,
                                     "_ms_recalc": Decimal(diet_count) * coeff,
@@ -1417,6 +1438,10 @@ class MealPlanService:
                                 diet_summary_meal_counts.get(name) or {}
                             ).items()
                         },
+                        "note": prevadzka_diet_notes.get(
+                            (prevadzka.id if prevadzka is not None else None, name),
+                            "",
+                        ),
                     }
                     for name in sorted(diet_summary_counts)
                 ]

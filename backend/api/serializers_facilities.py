@@ -13,7 +13,14 @@ from __future__ import annotations
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Celok, Diet, PasswordResetToken, PortionType, Prevadzka
+from .models import (
+    Celok,
+    Diet,
+    PasswordResetToken,
+    PortionType,
+    Prevadzka,
+    PrevadzkaDiet,
+)
 
 
 class AdminPrevadzkaSerializer(serializers.ModelSerializer):
@@ -38,6 +45,34 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     visible_portion_types = serializers.PrimaryKeyRelatedField(
         queryset=PortionType.objects.all(), many=True, required=False
     )
+    # Priradené diéty s poznámkou per (prevádzka, diéta) — pozri PrevadzkaDiet.
+    # Samostatné pole od `visible_diets` (to zostáva plochý zoznam id kvôli
+    # spätnej kompatibilite so zápisom): toto je len na čítanie pre nový UI.
+    diet_assignments = serializers.SerializerMethodField()
+    # Zápis poznámok: {diet_id (ako string kľúč): poznámka}. Nastavuje sa
+    # samostatne od `visible_diets`, aby PATCH mohol meniť len poznámku bez
+    # dotknutia sa priradenia.
+    diet_notes = serializers.DictField(
+        child=serializers.CharField(allow_blank=True, max_length=255),
+        required=False,
+        write_only=True,
+    )
+
+    def get_diet_assignments(self, obj):
+        assignments = getattr(obj, "_prefetched_diet_assignments", None)
+        if assignments is None:
+            assignments = obj.prevadzka_diets.select_related("diet").order_by(
+                "diet__sort_order", "diet__name"
+            )
+        return [
+            {
+                "diet": assignment.diet_id,
+                "name": assignment.diet.name,
+                "color": assignment.diet.color,
+                "note": assignment.note,
+            }
+            for assignment in assignments
+        ]
 
     def _detail_profile(self, obj):
         scoped_accesses = getattr(obj, "_admin_profile_accesses", None)
@@ -89,6 +124,8 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "menu_day_restrictions",
             "visible_meals",
             "visible_diets",
+            "diet_assignments",
+            "diet_notes",
             "visible_portion_types",
             "pack_separately_enabled",
             "adults_pack_separately_enabled",
@@ -112,10 +149,31 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
                 )
         return attrs
 
+    def _apply_diet_notes(self, instance, diet_notes):
+        for diet_id, note in diet_notes.items():
+            try:
+                diet_id_int = int(diet_id)
+            except (TypeError, ValueError):
+                continue
+            PrevadzkaDiet.objects.filter(
+                prevadzka=instance, diet_id=diet_id_int
+            ).update(note=note)
+
+    def create(self, validated_data):
+        diet_notes = validated_data.pop("diet_notes", None)
+        instance = super().create(validated_data)
+        if diet_notes:
+            self._apply_diet_notes(instance, diet_notes)
+        return instance
+
     def update(self, instance, validated_data):
         # Celok je po vytvorení nemenný — prípadnú zmenu ticho ignorujeme.
         validated_data.pop("celok", None)
-        return super().update(instance, validated_data)
+        diet_notes = validated_data.pop("diet_notes", None)
+        instance = super().update(instance, validated_data)
+        if diet_notes:
+            self._apply_diet_notes(instance, diet_notes)
+        return instance
 
 
 class AdminCelokSerializer(serializers.ModelSerializer):
