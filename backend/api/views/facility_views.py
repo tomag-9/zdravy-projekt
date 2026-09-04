@@ -40,6 +40,7 @@ from ..models import (
     EventLog,
     PasswordResetToken,
     Prevadzka,
+    PrevadzkaDiet,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
     UserProfile,
@@ -220,6 +221,9 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
             .prefetch_related(active_reset_tokens_prefetch)
             .order_by("pk")
         )
+        diet_assignments = PrevadzkaDiet.objects.select_related("diet").order_by(
+            "diet__sort_order", "diet__name"
+        )
         prevadzky = (
             Prevadzka.objects.select_related("celok", "edupage_connection")
             .annotate(orders_count=Count("orders", distinct=True))
@@ -230,6 +234,11 @@ class AdminCelokViewSet(viewsets.ModelViewSet):
                     "profile_accesses",
                     queryset=prevadzka_accesses,
                     to_attr="_admin_profile_accesses",
+                ),
+                Prefetch(
+                    "prevadzka_diets",
+                    queryset=diet_assignments,
+                    to_attr="_prefetched_diet_assignments",
                 ),
             )
             .order_by("sort_order", "nazov")
@@ -319,6 +328,9 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
             )
 
     def get_queryset(self) -> QuerySet:
+        diet_assignments = PrevadzkaDiet.objects.select_related("diet").order_by(
+            "diet__sort_order", "diet__name"
+        )
         return (
             Prevadzka.objects.select_related("celok", "edupage_connection")
             .prefetch_related(
@@ -326,6 +338,11 @@ class AdminFacilityPrevadzkaViewSet(viewsets.ModelViewSet):
                 "visible_portion_types",
                 "profile_accesses__profile__user",
                 "celok__profile_accesses__profile__user",
+                Prefetch(
+                    "prevadzka_diets",
+                    queryset=diet_assignments,
+                    to_attr="_prefetched_diet_assignments",
+                ),
             )
             .annotate(orders_count=Count("orders", distinct=True))
             .order_by("celok__nazov", "sort_order", "nazov")

@@ -127,7 +127,7 @@ describe("ClientDetail portion type visibility", () => {
       </MemoryRouter>,
     );
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.getByText("Viditeľné veľkosti porcií")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Jasle" }));
     await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
@@ -174,7 +174,7 @@ describe("ClientDetail adults pack separately (EduPage)", () => {
       </MemoryRouter>,
     );
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.getByText("Dospelí zvlášť")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Automaticky baliť dospelých zvlášť" }));
     await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
@@ -195,6 +195,7 @@ describe("ClientDetail adults pack separately (EduPage)", () => {
       if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
       return Promise.resolve(response([]));
     });
+    const user = userEvent.setup();
     render(
       <MemoryRouter initialEntries={["/admin/facilities/7"]}>
         <Routes>
@@ -204,7 +205,7 @@ describe("ClientDetail adults pack separately (EduPage)", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole("button", { name: "Nastavenia" });
+    await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.queryByText("Dospelí zvlášť")).not.toBeInTheDocument();
   });
 });
@@ -318,7 +319,7 @@ describe("ClientDetail facility & login management", () => {
     const user = userEvent.setup();
     renderClientDetail();
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Údaje" }));
     const nameInput = screen.getByLabelText("Názov prevádzky *");
     expect(nameInput).toHaveValue("Test prevádzka");
 
@@ -343,7 +344,7 @@ describe("ClientDetail facility & login management", () => {
     const user = userEvent.setup();
     renderClientDetail();
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     await user.click(screen.getByRole("button", { name: "Menu B - Pi" }));
     await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
@@ -365,7 +366,7 @@ describe("ClientDetail facility & login management", () => {
     const user = userEvent.setup();
     renderClientDetail();
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Údaje" }));
     await user.click(screen.getByRole("button", { name: "Odstrániť prevádzku" }));
 
     const confirmation = screen.getByText("Odstrániť prevádzku", { selector: "h3" }).closest<HTMLElement>(".zpa-modal")!;
@@ -397,7 +398,7 @@ describe("ClientDetail facility & login management", () => {
     const user = userEvent.setup();
     renderClientDetail();
 
-    await user.click(await screen.findByRole("button", { name: "Nastavenia" }));
+    await user.click(await screen.findByRole("button", { name: "Údaje" }));
     await user.click(screen.getByRole("button", { name: "Odstrániť prevádzku" }));
 
     const confirmation = screen.getByText("Odstrániť prevádzku", { selector: "h3" }).closest<HTMLElement>(".zpa-modal")!;
@@ -512,5 +513,172 @@ describe("ClientDetail order history menu bez rozpisu", () => {
 
     expect(await screen.findByText(/4x Dospelý/)).toBeInTheDocument();
     expect(screen.queryByText(/Menu B/)).not.toBeInTheDocument();
+  });
+});
+
+describe("ClientDetail diéty tab", () => {
+  const diets = [
+    { id: 1, name: "Bez lepku", color: "#F59E0B", base_colors: [] },
+    { id: 2, name: "Vegetariánske", color: "#10B981", base_colors: [] },
+  ];
+  const facilityWithOneDiet = {
+    ...facility,
+    visible_diets: [1],
+    diet_assignments: [
+      { diet: 1, name: "Bez lepku", color: "#F59E0B", note: "" },
+    ],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response(diets));
+      if (url.includes("/orders/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/") && init?.method === "PATCH") {
+        return Promise.resolve(response({ ...facilityWithOneDiet, ...JSON.parse(String(init.body)) }));
+      }
+      if (url.includes("/admin/facility-prevadzky/7/")) {
+        return Promise.resolve(response(facilityWithOneDiet));
+      }
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("priradí diétu cez vyhľadávanie a uloží ju", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Diéty" }));
+    expect(screen.getByText("Bez lepku")).toBeInTheDocument();
+    expect(screen.queryByText("Vegetariánske")).not.toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Hľadať diétu…"), "Vege");
+    await user.click(await screen.findByRole("button", { name: /Vegetariánske/ }));
+
+    expect(screen.getAllByText("Vegetariánske").length).toBeGreaterThan(0);
+    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.visible_diets.sort()).toEqual([1, 2]);
+    });
+  });
+
+  it("odoberie diétu zo zoznamu a uloží zmenu", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Diéty" }));
+    await user.click(screen.getByRole("button", { name: "Odobrať diétu Bez lepku" }));
+    expect(screen.queryByText("Bez lepku")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.visible_diets).toEqual([]);
+    });
+  });
+
+  it("uloží poznámku k diéte cez popover", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await user.click(await screen.findByRole("button", { name: "Diéty" }));
+    await user.click(screen.getByRole("button", { name: "Poznámka k diéte Bez lepku" }));
+
+    const noteModal = screen.getByText("Poznámka — Bez lepku").closest<HTMLElement>(".zpa-modal")!;
+    await user.type(within(noteModal).getByRole("textbox"), "Alergik, nahlásiť kuchyni");
+    await user.click(within(noteModal).getByRole("button", { name: "Uložiť poznámku" }));
+
+    expect(screen.getByText("Alergik, nahlásiť kuchyni")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
+
+    await waitFor(() => {
+      const patchCall = mockApiFetch.mock.calls.find(
+        ([url, init]) => String(url).includes("/admin/facility-prevadzky/7/")
+          && init?.method === "PATCH",
+      );
+      expect(patchCall).toBeDefined();
+      const body = JSON.parse(String(patchCall?.[1]?.body));
+      expect(body.diet_notes).toEqual({ "1": "Alergik, nahlásiť kuchyni" });
+    });
+  });
+});
+
+describe("ClientDetail dashboard history limit", () => {
+  const allOrders = [5, 4, 3, 2, 1].map((n) => ({
+    id: n,
+    date: `2026-08-0${n}`,
+    status: "submitted",
+    data: {},
+  }));
+
+  function ordersResponse(url: string) {
+    const parsed = new URL(url, "http://localhost");
+    const pageSize = Number(parsed.searchParams.get("page_size")) || 20;
+    const page = Number(parsed.searchParams.get("page")) || 1;
+    const start = (page - 1) * pageSize;
+    const results = allOrders.slice(start, start + pageSize);
+    const hasNext = start + pageSize < allOrders.length;
+    return response({
+      count: allOrders.length,
+      next: hasNext ? "next" : null,
+      previous: page > 1 ? "prev" : null,
+      results,
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response([]));
+      if (url.includes("/orders/")) return Promise.resolve(ordersResponse(url));
+      if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("zobrazí len 3 najnovšie objednávky s tlačidlom na rozbalenie celej histórie", async () => {
+    renderClientDetail();
+
+    await screen.findByText("2026-08-05");
+    expect(screen.getByText("2026-08-04")).toBeInTheDocument();
+    expect(screen.getByText("2026-08-03")).toBeInTheDocument();
+    expect(screen.queryByText("2026-08-02")).not.toBeInTheDocument();
+
+    const ordersCall = mockApiFetch.mock.calls.find(([url]) => String(url).includes("/orders/"));
+    expect(String(ordersCall?.[0])).toContain("page_size=3");
+
+    expect(screen.getByRole("button", { name: "Zobraziť celú históriu" })).toBeInTheDocument();
+  });
+
+  it("po rozbalení histórie natiahne plnú stránkovanú históriu", async () => {
+    const user = userEvent.setup();
+    renderClientDetail();
+
+    await screen.findByText("2026-08-05");
+    await user.click(screen.getByRole("button", { name: "Zobraziť celú históriu" }));
+
+    await screen.findByText("2026-08-02");
+    expect(screen.getByText("2026-08-01")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Zobraziť celú históriu" })).not.toBeInTheDocument();
   });
 });

@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck, Download } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck, Download, StickyNote } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { logger } from '../../lib/logger';
-import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle } from "./ui";
+import { Card, CardHead, Button, IconButton, Badge, Checkbox, Textarea, Modal, Empty, Toggle, SearchBox } from "./ui";
 import { LoginFields, type Login, type LoginForm } from "./facility/LoginFields";
 import { LoginPasswordStatusBadge } from "./facility/LoginPasswordStatus";
 import { resendLoginInvite } from "./facility/loginInvite";
@@ -69,6 +69,10 @@ interface FacilityDetail {
   adults_pack_separately_enabled: boolean;
   olovrant_s_obedom: boolean;
   orders_count: number | null;
+  // Priradené diéty s poznámkou per (prevádzka, diéta) — pozri PrevadzkaDiet
+  // na backende. Zdroj pre `dietNotes` pri načítaní; samotné priradenie
+  // (ktoré diéty sú povolené) ostáva vo `visible_diets`.
+  diet_assignments?: { diet: number; name: string; color?: string; note: string }[];
 }
 
 interface CelokDetail {
@@ -107,6 +111,9 @@ interface ScrapeResult {
 
 const ALL_MENUS = ["A", "B", "C", "D", "V"];
 const ALL_MEALS = ["breakfast", "lunch", "olovrant"];
+// Dashboard zobrazí len pár posledných objednávok, kým admin nerozbalí celú
+// históriu — ušetrí request/payload pre prevádzky s dlhou históriou.
+const RECENT_ORDERS_LIMIT = 3;
 // ISO deň v týždni: 1=pondelok..5=piatok (objednávky idú len na pracovné dni).
 const WEEKDAYS: { day: number; label: string }[] = [
   { day: 1, label: "Po" },
@@ -136,13 +143,19 @@ const ClientDetail: React.FC = () => {
   const [celok, setCelok] = useState<CelokDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "settings" | "closures" | "logins" | "order_note">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "udaje" | "objednavanie" | "diety" | "closures" | "logins" | "order_note">("dashboard");
 
   // Settings State
   const [menus, setMenus] = useState<Set<string>>(new Set());
   const [menuDayRestrictions, setMenuDayRestrictions] = useState<Record<string, number[]>>({});
   const [meals, setMeals] = useState<Set<string>>(new Set());
   const [userDiets, setUserDiets] = useState<Set<number>>(new Set());
+  // Poznámka per (prevádzka, diéta) — kľúč je Diet.id. Edituje sa cez
+  // popover na tabe Diéty, ukladá sa spolu s ostatnými nastaveniami.
+  const [dietNotes, setDietNotes] = useState<Record<number, string>>({});
+  const [dietSearch, setDietSearch] = useState("");
+  const [dietNoteTarget, setDietNoteTarget] = useState<Diet | null>(null);
+  const [dietNoteDraft, setDietNoteDraft] = useState("");
   const [visiblePortionTypes, setVisiblePortionTypes] = useState<Set<number> | null>(null);
   const [adminOrderNote, setAdminOrderNote] = useState("");
   const [packSeparatelyEnabled, setPackSeparatelyEnabled] = useState(false);
@@ -179,6 +192,9 @@ const ClientDetail: React.FC = () => {
   // históriou `fetchAllPages` (všetko naraz) trvalo neúnosne dlho.
   const [ordersPage, setOrdersPage] = useState(1);
   const [ordersHasNext, setOrdersHasNext] = useState(false);
+  // Kým admin nerozbalí celú históriu, dashboard ťahá len posledné
+  // `RECENT_ORDERS_LIMIT` objednávky (menej requestov/payloadu).
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   // Order actions
   const [deleteOrderTarget, setDeleteOrderTarget] = useState<DailyOrder | null>(null);
@@ -215,6 +231,9 @@ const ClientDetail: React.FC = () => {
     setMenuDayRestrictions(data.menu_day_restrictions || {});
     setMeals(new Set(data.visible_meals?.length ? data.visible_meals : ALL_MEALS));
     setUserDiets(new Set(data.visible_diets || []));
+    setDietNotes(
+      Object.fromEntries((data.diet_assignments || []).map((a) => [a.diet, a.note])),
+    );
     setVisiblePortionTypes(
       data.visible_portion_types == null
         ? null
@@ -338,8 +357,9 @@ const ClientDetail: React.FC = () => {
     if (!facilityId) return;
     setOrdersLoading(true);
     try {
+      const pageSizeQuery = historyExpanded ? "" : `&page_size=${RECENT_ORDERS_LIMIT}`;
       const res = await apiFetch(
-        `${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}&page=${ordersPage}`,
+        `${import.meta.env.VITE_API_URL || "/api"}/orders/?prevadzka=${facilityId}&page=${ordersPage}${pageSizeQuery}`,
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -357,7 +377,7 @@ const ClientDetail: React.FC = () => {
     } finally {
       setOrdersLoading(false);
     }
-  }, [apiFetch, facilityId, ordersPage]);
+  }, [apiFetch, facilityId, ordersPage, historyExpanded]);
 
   const handleSendPasswordReset = async () => {
     if (!user) return;
@@ -518,6 +538,8 @@ const ClientDetail: React.FC = () => {
     setExpandedOrderId(null);
     setActiveTab("dashboard");
     setCelok(null);
+    setHistoryExpanded(false);
+    setOrdersPage(1);
     Promise.all([fetchFacility(), fetchDiets(), fetchPortionTypes(), fetchConnections()]).finally(() => setLoading(false));
   }, [fetchFacility, fetchDiets, fetchPortionTypes, fetchConnections]);
 
@@ -545,6 +567,11 @@ const ClientDetail: React.FC = () => {
         menu_day_restrictions: cleanedMenuDayRestrictions,
         visible_meals: Array.from(meals),
         visible_diets: Array.from(userDiets),
+        diet_notes: Object.fromEntries(
+          Array.from(userDiets)
+            .filter((id) => dietNotes[id])
+            .map((id) => [String(id), dietNotes[id]]),
+        ),
         visible_portion_types: visiblePortionTypes == null
           ? portionTypes.map((item) => item.id)
           : Array.from(visiblePortionTypes),
@@ -684,6 +711,17 @@ const ClientDetail: React.FC = () => {
     setter(newSet);
   };
 
+  const openDietNote = (diet: Diet) => {
+    setDietNoteTarget(diet);
+    setDietNoteDraft(dietNotes[diet.id] || "");
+  };
+
+  const saveDietNoteDraft = () => {
+    if (!dietNoteTarget) return;
+    setDietNotes((prev) => ({ ...prev, [dietNoteTarget.id]: dietNoteDraft }));
+    setDietNoteTarget(null);
+  };
+
   if (loading) return <div className="zpa-empty">Načítavam…</div>;
   if (!facility) return <div className="zpa-empty" style={{ color: "var(--coral-600)" }}>Prevádzka nenájdená</div>;
 
@@ -696,6 +734,11 @@ const ClientDetail: React.FC = () => {
   const orderEditorMeals = Array.from(meals);
   const orderEditorDiets = Array.from(userDiets);
   const facilityLogins = (celok?.logins ?? []).filter((login) => login.prevadzka_ids.includes(facility.id));
+  const assignedDiets = allDiets.filter((diet) => userDiets.has(diet.id));
+  const dietSearchQuery = dietSearch.trim().toLowerCase();
+  const dietSearchResults = dietSearchQuery
+    ? allDiets.filter((diet) => !userDiets.has(diet.id) && diet.name.toLowerCase().includes(dietSearchQuery))
+    : [];
 
   const mealCount = (data: unknown): number => {
     let count = 0;
@@ -714,7 +757,9 @@ const ClientDetail: React.FC = () => {
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: "dashboard", label: "Prehľad objednávok" },
-    { key: "settings", label: "Nastavenia" },
+    { key: "udaje", label: "Údaje" },
+    { key: "objednavanie", label: "Objednávanie" },
+    { key: "diety", label: "Diéty" },
     { key: "closures", label: "Voľno" },
     { key: "logins", label: "Loginy" },
     { key: "order_note", label: "Poznámka k objednávke" },
@@ -940,7 +985,18 @@ const ClientDetail: React.FC = () => {
                 </table>
               </div>
             )}
-            {!ordersLoading && (recentOrders.length > 0 || ordersPage > 1) && (
+            {!ordersLoading && !historyExpanded && ordersHasNext && (
+              <div style={{ display: "flex", justifyContent: "center", padding: "14px 20px", borderTop: "1px solid var(--line-soft)" }}>
+                <Button
+                  variant="secondary"
+                  sm
+                  onClick={() => { setExpandedOrderId(null); setHistoryExpanded(true); }}
+                >
+                  Zobraziť celú históriu
+                </Button>
+              </div>
+            )}
+            {!ordersLoading && historyExpanded && (recentOrders.length > 0 || ordersPage > 1) && (
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", borderTop: "1px solid var(--line-soft)" }}>
                 <Button
                   variant="secondary"
@@ -964,10 +1020,10 @@ const ClientDetail: React.FC = () => {
           </Card>
         )}
 
-        {activeTab === "settings" && (
+        {activeTab === "udaje" && (
           <div className="zpa-stack">
             <Card pad>
-              <CardHead title="Údaje prevádzky" desc="Upravte základné údaje a nastavenia prevádzky." />
+              <CardHead title="Údaje prevádzky" desc="Základné údaje prevádzky — identita, adresa a EduPage napojenie." />
               <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
                 <PrevadzkaFields
                   form={prevadzkaForm}
@@ -978,6 +1034,33 @@ const ClientDetail: React.FC = () => {
               </div>
             </Card>
 
+            <Card pad style={{ borderColor: "var(--coral-300)" }}>
+              <CardHead
+                title="Nebezpečná zóna"
+                desc="Odstránenie prevádzky je nevratné a je možné iba vtedy, ak nemá žiadne objednávky."
+                actions={
+                  <Button
+                    variant="danger"
+                    sm
+                    onClick={() => {
+                      setFacilityDeleteError("");
+                      setShowDeleteFacility(true);
+                    }}
+                  >
+                    <Trash2 /> Odstrániť prevádzku
+                  </Button>
+                }
+              />
+            </Card>
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "objednavanie" && (
+          <div className="zpa-stack">
             <div className="zpa-grid-2">
               <Card pad>
                 <CardHead title="Viditeľné menu" desc="Vyberte, ktoré typy menu sa zobrazia pre obed. Raňajky a olovrant majú vždy len menu A." />
@@ -1071,98 +1154,132 @@ const ClientDetail: React.FC = () => {
               </Card>
 
               <Card pad>
-                <CardHead title="Zabaliť zvlášť" desc="Keď je vypnuté, klient v objednávke neuvidí blok pre balenie zvlášť." />
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
-                  <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
-                    Povoliť klientovi označiť vybrané položky na balenie zvlášť.
-                  </div>
-                  <Toggle
-                    on={packSeparatelyEnabled}
-                    onChange={setPackSeparatelyEnabled}
-                    ariaLabel="Povoliť zabaliť zvlášť"
-                  />
-                </div>
-              </Card>
-
-              {isEdupageClient && (
-                <Card pad>
-                  <CardHead
-                    title="Dospelí zvlášť"
-                    desc="V gramážnej tabuľke (aj v PDF) sa všetky porcie „Dospelý (SŠ)“ automaticky vykážu ako zabalené zvlášť — bez toho, aby to klient musel ručne označiť v objednávke."
-                  />
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
-                    <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
-                      Automaticky baliť porcie „Dospelý (SŠ)“ zvlášť.
+                <CardHead title="Balenie a výdaj" desc="Nastavenia súvisiace s balením a výdajom jedla — signály pre kuchyňu a gramážnu tabuľku." />
+                <div style={{ display: "flex", flexDirection: "column", gap: 16, marginTop: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "var(--ink-1)", fontSize: 14 }}>Zabaliť zvlášť</div>
+                      <div style={{ color: "var(--ink-3)", fontSize: 13 }}>
+                        Povoliť klientovi označiť vybrané položky na balenie zvlášť.
+                      </div>
                     </div>
                     <Toggle
-                      on={adultsPackSeparatelyEnabled}
-                      onChange={setAdultsPackSeparatelyEnabled}
-                      ariaLabel="Automaticky baliť dospelých zvlášť"
+                      on={packSeparatelyEnabled}
+                      onChange={setPackSeparatelyEnabled}
+                      ariaLabel="Povoliť zabaliť zvlášť"
                     />
                   </div>
-                </Card>
-              )}
 
-              <Card pad>
-                <CardHead title="Olovrant ide s obedom" desc="V gramážnej tabuľke (aj v PDF) sa olovrant tejto prevádzky zvýrazní žlto — ide s obedovým rozvozom, nie s popoludňajším spolu s ostatnými olovrantami." />
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginTop: 8 }}>
-                  <div style={{ color: "var(--ink-2)", fontSize: 14 }}>
-                    Zvýrazniť olovrant žlto ako signál pre kuchyňu, že ide s obedom.
+                  {isEdupageClient && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                      <div>
+                        <div style={{ fontWeight: 600, color: "var(--ink-1)", fontSize: 14 }}>Dospelí zvlášť</div>
+                        <div style={{ color: "var(--ink-3)", fontSize: 13 }}>
+                          V gramážnej tabuľke (aj v PDF) sa všetky porcie „Dospelý (SŠ)“ automaticky vykážu ako zabalené zvlášť.
+                        </div>
+                      </div>
+                      <Toggle
+                        on={adultsPackSeparatelyEnabled}
+                        onChange={setAdultsPackSeparatelyEnabled}
+                        ariaLabel="Automaticky baliť dospelých zvlášť"
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "var(--ink-1)", fontSize: 14 }}>Olovrant ide s obedom</div>
+                      <div style={{ color: "var(--ink-3)", fontSize: 13 }}>
+                        V gramážnej tabuľke (aj v PDF) sa olovrant tejto prevádzky zvýrazní žlto — ide s obedovým rozvozom.
+                      </div>
+                    </div>
+                    <Toggle
+                      on={olovrantSObedom}
+                      onChange={setOlovrantSObedom}
+                      ariaLabel="Olovrant ide s obedom"
+                    />
                   </div>
-                  <Toggle
-                    on={olovrantSObedom}
-                    onChange={setOlovrantSObedom}
-                    ariaLabel="Olovrant ide s obedom"
-                  />
                 </div>
               </Card>
             </div>
 
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "diety" && (
+          <div className="zpa-stack">
             <Card pad>
               <CardHead
                 title="Povolené diéty"
-                desc="Obmedzte, ktoré špeciálne diéty si prevádzka môže vybrať."
+                desc="Diéty, ktoré si prevádzka môže vybrať v objednávke. Ku každej môžete pridať internú poznámku."
                 actions={<Button variant="ghost" sm onClick={() => navigate("/admin/diets")}><Plus /> Pridať novú diétu</Button>}
               />
-              {allDiets.length === 0 ? (
-                <Empty>
-                  V systéme nie sú definované žiadne diéty.
-                  <div style={{ marginTop: 8 }}>
-                    <button className="zpa-btn zpa-btn--ghost zpa-btn--sm" onClick={() => navigate("/admin/diets")}>Prejsť na správu diét →</button>
-                  </div>
-                </Empty>
+              {assignedDiets.length === 0 ? (
+                <Empty>Prevádzka zatiaľ nemá priradenú žiadnu diétu.</Empty>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 10, marginTop: 8 }}>
-                  {allDiets.map((diet) => (
-                    <Checkbox key={diet.id} on={userDiets.has(diet.id)} onChange={() => toggleSet(userDiets, diet.id, setUserDiets)}>
-                      {diet.name}
-                    </Checkbox>
+                <div style={{ marginTop: 8 }}>
+                  {assignedDiets.map((diet) => (
+                    <div key={diet.id} className="zpa-listrow" style={{ paddingInline: 0 }}>
+                      <DietColorSwatch color={diet.color} baseColors={diet.base_colors} size={12} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="lr-ttl" style={{ textTransform: "none" }}>{diet.name}</div>
+                        {dietNotes[diet.id] && <div className="lr-sub">{dietNotes[diet.id]}</div>}
+                      </div>
+                      <IconButton
+                        onClick={() => openDietNote(diet)}
+                        title="Poznámka k diéte"
+                        aria-label={`Poznámka k diéte ${diet.name}`}
+                      >
+                        <StickyNote />
+                      </IconButton>
+                      <IconButton
+                        onClick={() => toggleSet(userDiets, diet.id, setUserDiets)}
+                        title="Odobrať diétu"
+                        aria-label={`Odobrať diétu ${diet.name}`}
+                      >
+                        <Trash2 />
+                      </IconButton>
+                    </div>
                   ))}
                 </div>
               )}
             </Card>
 
-            <Card pad style={{ borderColor: "var(--coral-300)" }}>
-              <CardHead
-                title="Nebezpečná zóna"
-                desc="Odstránenie prevádzky je nevratné a je možné iba vtedy, ak nemá žiadne objednávky."
-                actions={
-                  <Button
-                    variant="danger"
-                    sm
-                    onClick={() => {
-                      setFacilityDeleteError("");
-                      setShowDeleteFacility(true);
-                    }}
-                  >
-                    <Trash2 /> Odstrániť prevádzku
-                  </Button>
-                }
-              />
+            <Card pad>
+              <CardHead title="Priradiť diétu" desc="Vyhľadajte diétu podľa názvu a priraďte ju prevádzke." />
+              <div style={{ marginTop: 8 }}>
+                <SearchBox value={dietSearch} onChange={setDietSearch} placeholder="Hľadať diétu…" />
+                {dietSearchQuery && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                    {dietSearchResults.length === 0 ? (
+                      <div style={{ color: "var(--ink-mute)", fontSize: 13, padding: "6px 4px" }}>Žiadna diéta nenájdená.</div>
+                    ) : (
+                      dietSearchResults.map((diet) => (
+                        <button
+                          key={diet.id}
+                          type="button"
+                          className="zpa-btn zpa-btn--ghost zpa-btn--sm"
+                          style={{ justifyContent: "flex-start", gap: 8 }}
+                          onClick={() => {
+                            toggleSet(userDiets, diet.id, setUserDiets);
+                            setDietSearch("");
+                          }}
+                        >
+                          <DietColorSwatch color={diet.color} baseColors={diet.base_colors} size={10} />
+                          {diet.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </Card>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
+              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť diéty"}</Button>
             </div>
           </div>
         )}
@@ -1289,6 +1406,27 @@ const ClientDetail: React.FC = () => {
           <p style={{ margin: 0, color: "var(--ink-2)", lineHeight: 1.6 }}>
             Naozaj odstrániť login <strong style={{ color: "var(--green-900)" }}>{loginDeleteTarget.email}</strong>?
           </p>
+        </Modal>
+      )}
+
+      {/* ── Poznámka k diéte (popover) ── */}
+      {dietNoteTarget && (
+        <Modal
+          title={`Poznámka — ${dietNoteTarget.name}`}
+          onClose={() => setDietNoteTarget(null)}
+          foot={
+            <>
+              <Button variant="ghost" onClick={() => setDietNoteTarget(null)}>Zrušiť</Button>
+              <Button onClick={saveDietNoteDraft}>Uložiť poznámku</Button>
+            </>
+          }
+        >
+          <Textarea
+            value={dietNoteDraft}
+            onChange={(e) => setDietNoteDraft(e.target.value)}
+            rows={3}
+            placeholder="Napr. alergik, nahlásiť kuchyni…"
+          />
         </Modal>
       )}
 

@@ -6,7 +6,9 @@ from django.contrib.auth.models import User
 from api.models import (
     Celok,
     DailyOrder,
+    Diet,
     Prevadzka,
+    PrevadzkaDiet,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
     UserProfile,
@@ -261,3 +263,91 @@ def test_onboard_new_celok_with_prevadzka_and_login(admin_client):
     celok = Celok.objects.get(pk=celok_id)
     assert celok.prevadzky.count() == 1
     assert ProfilePrevadzkaAccess.objects.filter(prevadzka_id=prevadzka_id).exists()
+
+
+@pytest.mark.django_db
+def test_diet_assignments_include_notes_per_prevadzka(admin_client):
+    """Poznámka k diéte je viazaná na dvojicu (prevádzka, diéta), nie na
+    diétu samu — dve prevádzky s tou istou diétou majú vlastnú poznámku."""
+    celok = Celok.objects.create(nazov="Poznámky k diétam")
+    prevadzka_a = Prevadzka.objects.create(celok=celok, nazov="A")
+    prevadzka_b = Prevadzka.objects.create(celok=celok, nazov="B")
+    diet = Diet.objects.create(name="Bezlepková", color="#F59E0B")
+    PrevadzkaDiet.objects.create(
+        prevadzka=prevadzka_a, diet=diet, note="Alergik, nahlásiť kuchyni"
+    )
+    PrevadzkaDiet.objects.create(prevadzka=prevadzka_b, diet=diet, note="")
+
+    response_a = admin_client.get(f"/api/admin/facility-prevadzky/{prevadzka_a.pk}/")
+    response_b = admin_client.get(f"/api/admin/facility-prevadzky/{prevadzka_b.pk}/")
+
+    assert response_a.status_code == 200
+    assignments_a = response_a.json()["diet_assignments"]
+    assert assignments_a == [
+        {
+            "diet": diet.id,
+            "name": "Bezlepková",
+            "color": "#F59E0B",
+            "note": "Alergik, nahlásiť kuchyni",
+        }
+    ]
+    assignments_b = response_b.json()["diet_assignments"]
+    assert assignments_b[0]["note"] == ""
+
+
+@pytest.mark.django_db
+def test_patch_diet_notes_updates_only_matching_assignment(admin_client):
+    celok = Celok.objects.create(nazov="Update poznámok")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
+    diet_1 = Diet.objects.create(name="Diéta 1")
+    diet_2 = Diet.objects.create(name="Diéta 2")
+    PrevadzkaDiet.objects.create(prevadzka=prevadzka, diet=diet_1, note="stará")
+    PrevadzkaDiet.objects.create(prevadzka=prevadzka, diet=diet_2, note="")
+
+    response = admin_client.patch(
+        f"/api/admin/facility-prevadzky/{prevadzka.pk}/",
+        {"diet_notes": {str(diet_1.id): "nová poznámka"}},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    diet_1_assignment = PrevadzkaDiet.objects.get(prevadzka=prevadzka, diet=diet_1)
+    diet_2_assignment = PrevadzkaDiet.objects.get(prevadzka=prevadzka, diet=diet_2)
+    assert diet_1_assignment.note == "nová poznámka"
+    assert diet_2_assignment.note == ""
+
+
+@pytest.mark.django_db
+def test_patch_visible_diets_assigns_diet_with_empty_note(admin_client):
+    """Priradenie novej diéty (bez poznámky) cez visible_diets založí through
+    riadok s prázdnou poznámkou, nie chybu z `.set()` na through modeli."""
+    celok = Celok.objects.create(nazov="Nové priradenie")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
+    diet = Diet.objects.create(name="Vegánska")
+
+    response = admin_client.patch(
+        f"/api/admin/facility-prevadzky/{prevadzka.pk}/",
+        {"visible_diets": [diet.id]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assignment = PrevadzkaDiet.objects.get(prevadzka=prevadzka, diet=diet)
+    assert assignment.note == ""
+
+
+@pytest.mark.django_db
+def test_removing_diet_from_visible_diets_deletes_its_note(admin_client):
+    celok = Celok.objects.create(nazov="Odobratie diéty")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
+    diet = Diet.objects.create(name="Diabetická")
+    PrevadzkaDiet.objects.create(prevadzka=prevadzka, diet=diet, note="poznámka")
+
+    response = admin_client.patch(
+        f"/api/admin/facility-prevadzky/{prevadzka.pk}/",
+        {"visible_diets": []},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert not PrevadzkaDiet.objects.filter(prevadzka=prevadzka, diet=diet).exists()

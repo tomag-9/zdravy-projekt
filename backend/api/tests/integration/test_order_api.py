@@ -226,6 +226,25 @@ class TestOrderRetrieval:
         assert response.data["count"] == 1
         assert response.data["results"][0]["id"] == user_order.id
 
+    def test_list_orders_honours_page_size_param(self, authenticated_client, user):
+        """ClientDetail dashboard chce natiahnuť len pár posledných objednávok
+        (`?page_size=3`) bez toho, aby si musela ťahať celú stránkovanú
+        históriu — pozri `DailyOrderPagination`."""
+        for offset in range(5):
+            DailyOrder.objects.create(
+                user=user,
+                date=MONDAY + datetime.timedelta(days=offset),
+                data=NON_EMPTY_DATA,
+            )
+
+        url = reverse("dailyorder-list")
+        response = authenticated_client.get(url, {"page_size": 3})
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["count"] == 5
+        assert len(response.data["results"]) == 3
+        assert response.data["next"] is not None
+
 
 @pytest.mark.django_db
 class TestOrderValidation:
