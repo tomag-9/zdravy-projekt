@@ -90,15 +90,18 @@ def zdravebrusko_payer_hook(payer_name: str) -> PayerRule | None:
     else:
         return None
 
-    has_milk = "NOMILK" in key
-    has_gluten = "NOGLUTEN" in key
-    if has_milk and has_gluten:
-        diet = "NO MILK/NO GLUTEN"
-    elif has_milk:
-        diet = "NO MILK"
-    elif has_gluten:
-        diet = "NO GLUTEN"
-    else:
-        diet = None
+    parts = []
+    if "NOMILK" in key:
+        parts.append("NO MILK")
+    if "NOGLUTEN" in key:
+        parts.append("NO GLUTEN")
+    # "NoBanán" (nový payer, 3.9.2026) — bez tejto zhody has_milk/has_gluten
+    # jediné dve rozpoznané frázy ticho zahodili zvyšok kombinácie (napr.
+    # "NoMilk/NoBanán" → len "NO MILK", banán zmizol). `force_match=True` +
+    # nenulová diéta z hooku prebije aj zdieľané písmeno (`forced_diet`),
+    # takže presnosť tu musí byť úplná, nie čiastočná.
+    if "NOBANAN" in key:
+        parts.append("NO BANÁN")
+    diet = "/".join(parts) if parts else None
 
     return PayerRule(match_name=match_name, diet=diet, force_match=True)

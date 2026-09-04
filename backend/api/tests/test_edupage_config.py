@@ -238,6 +238,40 @@ class TestApplyConfigOlovrant(unittest.TestCase):
         apply_config(res, _cfg(OlovrantMode.EDUPAGE))
         self.assertEqual(res.config_notes, [])
 
+    def test_olovrant_missing_ok_suppresses_the_note_for_named_prevadzka(self):
+        """ZŠ Malokarpatská (zdravebrusko) reálne nikdy nemá olovrant/raňajky
+        v tomto EduPage feede — starší žiaci si ich cez appku neobjednávajú,
+        na rozdiel od MŠ na tom istom feede. Živý raw scrape (3.9.2026)
+        potvrdzuje: žiadny payer s menom školy sa v blokoch raňajok/olovrantu
+        vôbec nevyskytuje — nie je to config drift, je to štrukturálny fakt.
+        `olovrant_missing_ok` musí notu pre TÚTO prevádzku umlčať, ale nie
+        pre ostatné na tej istej connection (napr. Deutsche Schule, ktorá
+        olovrant reálne má a mala by byť nahlásená, keby jej zrazu chýbal)."""
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "ZŠ Malokarpatská": {"lunch": LUNCH_DATA},
+                "Deutsche schule": {"lunch": LUNCH_DATA},
+            },
+        )
+
+        apply_config(
+            res,
+            _cfg(
+                OlovrantMode.EDUPAGE,
+                olovrant_missing_ok=frozenset({"ZŠ Malokarpatská"}),
+            ),
+        )
+
+        self.assertFalse(
+            any("ZŠ Malokarpatská" in n for n in res.config_notes),
+            res.config_notes,
+        )
+        self.assertTrue(
+            any("Deutsche schule" in n and "olovrant" in n for n in res.config_notes)
+        )
+
     def test_neznamy_does_not_guess(self):
         """Ivanka: kým nemáme dáta, radšej warning než tichý odhad."""
         res = _result({"lunch": LUNCH_DATA})
@@ -636,13 +670,21 @@ class TestZdravebruskoPayerHook(unittest.TestCase):
         rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoGluten")
         self.assertEqual(rule.diet, "NO MILK/NO GLUTEN")
 
-    def test_no_diet_fragment_still_forces_match(self):
-        """Neznáma prípona (napr. 'NoBanán') nemá rozpoznanú diétu, ale
-        prevádzka sa musí opraviť aj tak — diéta ostane None (engine ju
-        vyrieši inak, viď fallback na `payer_info.get('diet')`)."""
+    def test_no_banan_combo_keeps_both_restrictions(self):
+        """'MŠ Mal. NoMilk/NoBanán' (nový payer, 0 objednávok 3.9.2026, ale
+        potenciálna alergia) — starý kód poznal len milk/gluten fragmenty,
+        takže 'NoBanán' sa ticho stratilo a diéta vyšla len 'NO MILK' (rovnaký
+        vzor ako predtým opravené NO MILK/NO EGG pre Naša škola poznania).
+        Keďže `force_match=True` a diéta z hooku nie je None, `forced_diet`
+        prebije aj zdieľané písmeno — banán sa preto MUSÍ zachovať už tu."""
         rule = zdravebrusko_payer_hook("MŠ Mal. NoMilk/NoBanán")
         self.assertEqual(rule.match_name, "mšMal")
         self.assertTrue(rule.force_match)
+        self.assertEqual(rule.diet, "NO MILK/NO BANÁN")
+
+    def test_no_banan_alone_is_recognised(self):
+        rule = zdravebrusko_payer_hook("MŠ Hey. NoBanán")
+        self.assertEqual(rule.diet, "NO BANÁN")
 
     def test_deutsche_schule_payer_untouched(self):
         self.assertIsNone(zdravebrusko_payer_hook("MŠ Klasik"))

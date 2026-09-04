@@ -122,10 +122,15 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "obmedzení) → NO MILK potvrdené rovnako. Raňajky/olovrant: MŠ "
             "Mal./Hey. diétne porcie zdieľajú dsbNMNE s Deutsche Schule — "
             "payer_hook ich cez force_match vracia správnej škole aj s "
-            "vlastnou diétou (user 2.9.2026, live dáta)."
+            "vlastnou diétou (user 2.9.2026, live dáta). ZŠ Malokarpatská "
+            "nemá na tomto feede vôbec raňajky/olovrant (starší žiaci si ich "
+            "cez EduPage neobjednávajú) — štrukturálny fakt, nie config "
+            "drift, overené naživo 3.9.2026 (žiadny payer pre ňu v týchto "
+            "blokoch), preto v `olovrant_missing_ok`."
         ),
         letter_hook=zdravebrusko_letter_hook,
         payer_hook=zdravebrusko_payer_hook,
+        olovrant_missing_ok=frozenset({"ZŠ Malokarpatská"}),
     ),
     PrevadzkaConfig(
         subdomena="cmspezinok",
