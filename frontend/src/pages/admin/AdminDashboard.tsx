@@ -834,6 +834,9 @@ const TableSettingsModal: React.FC<{
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
+          Filter jedál/clustra a prepínače nižšie (okrem „Zobraziť všetko rozbalené") sa tlačia aj do PDF exportu — vytlačíš presne to, čo vidíš na obrazovke.
+        </div>
         <div>
           <div className="zpa-settings-lbl">Jedlá</div>
           <div className="zpa-section-filter">
@@ -896,7 +899,7 @@ const TableSettingsModal: React.FC<{
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
             <div style={{ fontWeight: 600, fontSize: 13.5 }}>Zobraziť všetko rozbalené</div>
-            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Formát ako v PDF — bez zbaleného medzisúčtu za klienta.</div>
+            <div style={{ fontSize: 12, color: "var(--ink-3)" }}>Formát ako v PDF — bez zbaleného medzisúčtu za klienta. Samotné toto nastavenie sa do PDF nepremieta (PDF je vždy plne rozbalené).</div>
           </div>
           <Toggle on={expanded} onChange={onExpandedChange} ariaLabel="Zobraziť všetko rozbalené" />
         </div>
