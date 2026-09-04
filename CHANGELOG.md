@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.6.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.5.0...v2.6.0) (2026-09-04)
+
+
+### Features
+
+* **admin:** počet porcií v rohu každej bunky gramáže + rozpis po jedlách bez R/Ob/Ol ([6efc4de](https://github.com/tomag-9/zdravy-projekt/commit/6efc4de7553747c2d7a3c8cbe615316de00186d5))
+
+
+### Bug Fixes
+
+* **edupage:** 'NoBanán' payer prefix sa strácal, 'NO MILK' prebilo zvyšok kombinácie ([793db69](https://github.com/tomag-9/zdravy-projekt/commit/793db69f51064a132339e738cd9700c136fd7f88))
+* **edupage:** ZŠ Malokarpatská "očakávaný olovrant chýba" bola falošná ([79a1095](https://github.com/tomag-9/zdravy-projekt/commit/79a1095ba384fb634621f0e2a8f9c56fd5c71870))
+
 ## [2.5.0](https://github.com/tomag-9/zdravy-projekt/compare/v2.4.0...v2.5.0) (2026-09-03)
 
 
