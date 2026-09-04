@@ -27,7 +27,6 @@ interface RenameModal {
   id: number;
   currentName: string;
   newName: string;
-  sortOrder: number;
   description: string;
   color: string;
   baseDietIds: number[];
@@ -45,12 +44,31 @@ interface DragState {
 const sameDietIds = (left: number[], right: number[]) =>
   left.length === right.length && left.every((id, index) => id === right[index]);
 
+// Počet zložiek diéty: nekombinovaná diéta (bez base_diets) je vždy 1-zložková,
+// kombinovaná má toľko zložiek, koľko základných diét spája (min. 2).
+const componentCount = (diet: Pick<Diet, "base_diets">) =>
+  diet.base_diets && diet.base_diets.length > 0 ? diet.base_diets.length : 1;
+
+const COMPONENT_SECTIONS: { label: string; match: (count: number) => boolean }[] = [
+  { label: "1-zložkové", match: (count) => count === 1 },
+  { label: "2-zložkové", match: (count) => count === 2 },
+  { label: "3-zložkové", match: (count) => count === 3 },
+  { label: "Viac-zložkové", match: (count) => count >= 4 },
+];
+
+// Nová diéta sa vždy zaradí na koniec svojho bloku (podľa počtu zložiek) —
+// poradie sa ďalej mení už len drag&drop-om (prípadne šípkami na mobile).
+const nextSortOrderForComponentCount = (diets: Diet[], count: number) => {
+  const inSameBlock = diets.filter((diet) => componentCount(diet) === count);
+  if (inSameBlock.length === 0) return 0;
+  return Math.max(...inSameBlock.map((diet) => diet.sort_order || 0)) + 1;
+};
+
 const DietManager: React.FC = () => {
   const { apiFetch } = useAuth();
   const { success, error } = useToast();
   const [diets, setDiets] = useState<Diet[]>([]);
   const [newDietName, setNewDietName] = useState("");
-  const [newDietSortOrder, setNewDietSortOrder] = useState(0);
   const [newDietDescription, setNewDietDescription] = useState("");
   const [newDietColor, setNewDietColor] = useState("#D83131");
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
@@ -91,7 +109,7 @@ const DietManager: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: newDietName.trim(),
-            sort_order: newDietSortOrder,
+            sort_order: nextSortOrderForComponentCount(diets, 1),
             description: newDietDescription.trim(),
             color: newDietColor,
             base_diets: [],
@@ -103,10 +121,9 @@ const DietManager: React.FC = () => {
         const created = (await res.json()) as Diet;
         setDiets((prev) => {
           if (prev.some((d) => d.id === created.id)) return prev;
-          return [created, ...prev];
+          return [...prev, created];
         });
         setNewDietName("");
-        setNewDietSortOrder(0);
         setNewDietDescription("");
         setNewDietColor("#D83131");
         fetchDiets();
@@ -146,7 +163,7 @@ const DietManager: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: selectedDiets.map((diet) => diet.name).join(" – "),
-            sort_order: Math.max(0, ...diets.map((diet) => diet.sort_order || 0)) + 1,
+            sort_order: nextSortOrderForComponentCount(diets, selectedDiets.length),
             description: `Kombinácia: ${selectedDiets.map((diet) => diet.name).join(", ")}`,
             color: selectedDiets[0].color || "#D83131",
             base_diets: selectedDiets.map((diet) => diet.id),
@@ -201,7 +218,6 @@ const DietManager: React.FC = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             name: renameModal.newName.trim(),
-            sort_order: renameModal.sortOrder,
             description: renameModal.description.trim(),
             color: renameModal.color,
             base_diets: renameModal.baseDietIds,
@@ -311,14 +327,6 @@ const DietManager: React.FC = () => {
                 placeholder="Popis diéty pre prevádzku"
               />
             </Field>
-            <Field label="Poradie">
-              <Input
-                type="number"
-                inputMode="numeric"
-                value={newDietSortOrder}
-                onChange={(e) => setNewDietSortOrder(Number(e.target.value) || 0)}
-              />
-            </Field>
             <Field label="Farba" as="div">
               <ColorSwatchPicker
                 value={newDietColor}
@@ -343,84 +351,105 @@ const DietManager: React.FC = () => {
         {diets.length === 0 ? (
           <Empty>Zatiaľ nie sú vytvorené žiadne diéty.</Empty>
         ) : (
-          <div className="zpa-grid-cards">
-            {diets.map((diet, dietPosition) => (
-              <Card
-                key={diet.id}
-                pad
-                className={`zpa-diet-card zpa-draggable-row${dragging?.dietId === diet.id ? " is-dragging" : ""}`}
-                draggable
-                onDragStart={(event) => startDrag(event, { dietId: diet.id })}
-                onDragEnd={() => setDragging(null)}
-                onDragOver={allowDrop}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  dropDiet(diet.id);
-                }}
-                title="Potiahnutím zmeňte poradie"
-              >
-                <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "flex-start" }}>
-                  <span className="zpa-row-grip" aria-hidden="true"><GripVertical /></span>
-                  <DietColorSwatch color={diet.color} baseColors={diet.base_colors} />
-                  <div>
-                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
-                    {/* Display-only 1-based position in the sorted list — the raw
-                        sort_order field is 0-based (and can repeat across diets
-                        that were never explicitly reordered), so showing it
-                        directly reads as "diéta č. 0". The DB value itself is
-                        left untouched; this is purely presentational. */}
-                    <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {dietPosition + 1}</p>
-                  {diet.description && (
-                    <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
-                  )}
-                  {(diet.base_diets || []).length > 0 && (
-                    <p style={{ fontSize: 12, color: "var(--green-700)", margin: "4px 0 0" }}>
-                      Kombinácia: {(diet.base_diets || []).map((id) => diets.find((item) => item.id === id)?.name).filter(Boolean).join(" + ")}
-                    </p>
-                  )}
-                  </div>
+          COMPONENT_SECTIONS.map((section) => {
+            const sectionDiets = diets.filter((diet) => section.match(componentCount(diet)));
+            if (sectionDiets.length === 0) return null;
+            return (
+              <div key={section.label} className="zpa-diet-section">
+                <h3 style={{
+                  margin: "0 0 10px",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                  color: "var(--ink-3)",
+                }}>
+                  {section.label} <span style={{ fontWeight: 400 }}>({sectionDiets.length})</span>
+                </h3>
+                <div className="zpa-grid-cards">
+                  {sectionDiets.map((diet) => {
+                    const dietPosition = diets.findIndex((item) => item.id === diet.id);
+                    return (
+                      <Card
+                        key={diet.id}
+                        pad
+                        className={`zpa-diet-card zpa-draggable-row${dragging?.dietId === diet.id ? " is-dragging" : ""}`}
+                        draggable
+                        onDragStart={(event) => startDrag(event, { dietId: diet.id })}
+                        onDragEnd={() => setDragging(null)}
+                        onDragOver={allowDrop}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          dropDiet(diet.id);
+                        }}
+                        title="Potiahnutím zmeňte poradie"
+                      >
+                        <div style={{ minWidth: 0, display: "flex", gap: 12, alignItems: "flex-start" }}>
+                          <span className="zpa-row-grip" aria-hidden="true"><GripVertical /></span>
+                          <DietColorSwatch color={diet.color} baseColors={diet.base_colors} />
+                          <div>
+                            <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)" }}>{diet.name}</div>
+                            {/* Display-only 1-based position in the sorted list — the raw
+                                sort_order field is 0-based (and can repeat across diets
+                                that were never explicitly reordered), so showing it
+                                directly reads as "diéta č. 0". The DB value itself is
+                                left untouched; this is purely presentational. */}
+                            <p style={{ fontSize: 12, color: "var(--ink-3)", margin: "4px 0 0" }}>Poradie: {dietPosition + 1}</p>
+                          {diet.description && (
+                            <p style={{ fontSize: 13, color: "var(--ink-3)", margin: "4px 0 0" }}>{diet.description}</p>
+                          )}
+                          {(diet.base_diets || []).length > 0 && (
+                            <p style={{ fontSize: 12, color: "var(--green-700)", margin: "4px 0 0" }}>
+                              Kombinácia: {(diet.base_diets || []).map((id) => diets.find((item) => item.id === id)?.name).filter(Boolean).join(" + ")}
+                            </p>
+                          )}
+                          </div>
+                        </div>
+                        <div className="zpa-rowactions" style={{ flexShrink: 0 }}>
+                          <IconButton
+                            title="Vyššie"
+                            aria-label={`Posunúť diétu ${diet.name} vyššie`}
+                            disabled={dietPosition === 0}
+                            onClick={() => moveDiet(diet.id, -1)}
+                          >
+                            <ArrowUp />
+                          </IconButton>
+                          <IconButton
+                            title="Nižšie"
+                            aria-label={`Posunúť diétu ${diet.name} nižšie`}
+                            disabled={dietPosition === diets.length - 1}
+                            onClick={() => moveDiet(diet.id, 1)}
+                          >
+                            <ArrowDown />
+                          </IconButton>
+                          <IconButton
+                            title="Upraviť"
+                            onClick={() =>
+                              setRenameModal({
+                                id: diet.id,
+                                currentName: diet.name,
+                                newName: diet.name,
+                                description: diet.description || "",
+                                color: diet.color || "#D83131",
+                                baseDietIds: diet.base_diets || [],
+                                isComposite: (diet.base_diets || []).length > 0,
+                              })
+                            }
+                          >
+                            <Pencil />
+                          </IconButton>
+                          <IconButton title="Vymazať" onClick={() => setDeleteConfirm({ id: diet.id, name: diet.name })}>
+                            <Trash2 />
+                          </IconButton>
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
-                <div className="zpa-rowactions" style={{ flexShrink: 0 }}>
-                  <IconButton
-                    title="Vyššie"
-                    aria-label={`Posunúť diétu ${diet.name} vyššie`}
-                    disabled={dietPosition === 0}
-                    onClick={() => moveDiet(diet.id, -1)}
-                  >
-                    <ArrowUp />
-                  </IconButton>
-                  <IconButton
-                    title="Nižšie"
-                    aria-label={`Posunúť diétu ${diet.name} nižšie`}
-                    disabled={dietPosition === diets.length - 1}
-                    onClick={() => moveDiet(diet.id, 1)}
-                  >
-                    <ArrowDown />
-                  </IconButton>
-                  <IconButton
-                    title="Upraviť"
-                    onClick={() =>
-                      setRenameModal({
-                        id: diet.id,
-                        currentName: diet.name,
-                        newName: diet.name,
-                        sortOrder: diet.sort_order ?? 0,
-                        description: diet.description || "",
-                        color: diet.color || "#D83131",
-                        baseDietIds: diet.base_diets || [],
-                        isComposite: (diet.base_diets || []).length > 0,
-                      })
-                    }
-                  >
-                    <Pencil />
-                  </IconButton>
-                  <IconButton title="Vymazať" onClick={() => setDeleteConfirm({ id: diet.id, name: diet.name })}>
-                    <Trash2 />
-                  </IconButton>
-                </div>
-              </Card>
-            ))}
-          </div>
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -507,7 +536,6 @@ const DietManager: React.FC = () => {
                   !renameModal.newName.trim() ||
                   (renameModal.isComposite && renameModal.baseDietIds.length < 2) ||
                   (renameModal.newName.trim() === renameModal.currentName &&
-                    renameModal.sortOrder === (diets.find((diet) => diet.id === renameModal.id)?.sort_order || 0) &&
                     renameModal.description.trim() ===
                       (diets.find((diet) => diet.id === renameModal.id)?.description || "").trim() &&
                     renameModal.color === (diets.find((diet) => diet.id === renameModal.id)?.color || "#D83131"))
@@ -534,14 +562,6 @@ const DietManager: React.FC = () => {
               }}
               placeholder="Nový názov diéty"
               autoFocus
-            />
-          </Field>
-          <Field label="Poradie">
-            <Input
-              type="number"
-              inputMode="numeric"
-              value={renameModal.sortOrder}
-              onChange={(e) => setRenameModal((prev) => (prev ? { ...prev, sortOrder: Number(e.target.value) || 0 } : prev))}
             />
           </Field>
           <Field label="Popis" hint="zobrazí sa v gramážnej tabuľke aj PDF priamo pri diéte">
