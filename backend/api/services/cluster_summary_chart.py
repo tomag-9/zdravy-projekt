@@ -15,7 +15,7 @@ _PLAN_MEALS = {
 def aggregate_day(data, meals, clusters, menus, scope, metric):
     """Sum raw rows by their *lunch* cluster for one date."""
     allowed = set().union(*(_PLAN_MEALS[meal] for meal in meals))
-    totals = defaultdict(Decimal)
+    totals: defaultdict[str, Decimal] = defaultdict(Decimal)
     for row in data.get("rows") or []:
         lunch = (row.get("delivery_by_meal") or {}).get("lunch") or {}
         if lunch.get("delivery_route_id") is None:
