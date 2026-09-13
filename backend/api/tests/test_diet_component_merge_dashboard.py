@@ -15,6 +15,7 @@ import pytest
 from django.contrib.auth.models import User
 from django.core.management import call_command
 
+from api.exporters.gramage_table_spec import build_table_spec
 from api.models import (
     Celok,
     DailyMealPlan,
@@ -96,6 +97,77 @@ def test_diet_keeps_its_own_row_with_no_board_state_at_all():
     # `totals` sčítava len štandardné (bezdiétne) riadky — presne ako
     # vždy, diétne porcie majú vlastný súhrn (`diet_summary_rows`).
     assert data["totals"][0] == ["800.00", "400.00"]
+
+
+@pytest.mark.django_db
+def test_breakfast_dashboard_keeps_each_configured_component_separate():
+    """Kuchyňa musí vidieť gramáž každej raňajkovej zložky, nie len súčet."""
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 9, 14))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=MealTemplate.objects.create(
+            name="Raňajky-desiata 2",
+            category="breakfast_snack",
+            components=[
+                {"label": "Chlieb", "grams": "115", "unit": "g"},
+                {"label": "Maslo", "grams": "5", "unit": "g"},
+                {"label": "Zelenina", "grams": "50", "unit": "g"},
+            ],
+            base_weight_grams="170",
+        ),
+        category="breakfast_snack",
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+
+    [breakfast] = [
+        group for group in data["col_groups"] if group["meal"] == "breakfast_snack"
+    ]
+    assert breakfast["components"] == [
+        {"label": "Chlieb", "base_grams": "115", "unit": "g"},
+        {"label": "Maslo", "base_grams": "5", "unit": "g"},
+        {"label": "Zelenina", "base_grams": "50", "unit": "g"},
+    ]
+    spec = build_table_spec(data, meal_type="breakfast")
+    assert [component["text"] for component in spec["header"]["components"]] == [
+        "Chlieb",
+        "Maslo",
+        "Zelenina",
+    ]
+
+
+@pytest.mark.django_db
+def test_afternoon_snack_dashboard_keeps_each_configured_component_separate():
+    """Olovrant nesmie dostať súčtový stĺpec namiesto svojich zložiek."""
+    plan = DailyMealPlan.objects.create(date=datetime.date(2026, 9, 15))
+    MealPlanItem.objects.create(
+        meal_plan=plan,
+        template=MealTemplate.objects.create(
+            name="Olovrant 2",
+            category="afternoon_snack",
+            components=[
+                {"label": "Jogurt", "grams": "120", "unit": "g"},
+                {"label": "Ovocie", "grams": "80", "unit": "g"},
+            ],
+            base_weight_grams="200",
+        ),
+        category="afternoon_snack",
+    )
+
+    data = MealPlanService.gramage_dashboard(plan.date.isoformat())
+
+    [snack] = [
+        group for group in data["col_groups"] if group["meal"] == "afternoon_snack"
+    ]
+    assert snack["components"] == [
+        {"label": "Jogurt", "base_grams": "120", "unit": "g"},
+        {"label": "Ovocie", "base_grams": "80", "unit": "g"},
+    ]
+    spec = build_table_spec(data, meal_type="olovrant")
+    assert [component["text"] for component in spec["header"]["components"]] == [
+        "Jogurt",
+        "Ovocie",
+    ]
 
 
 @pytest.mark.django_db

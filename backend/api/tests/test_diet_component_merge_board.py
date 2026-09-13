@@ -238,7 +238,7 @@ def test_explicit_separation_row_excludes_that_cell_from_the_default_merge():
     ]
 
 
-def test_breakfast_components_collapse_like_the_gramage_table_does():
+def test_breakfast_components_keep_their_own_gramage_table_columns():
     plan = DailyMealPlan.objects.create(date=datetime.date(2026, 9, 25))
     MealPlanItem.objects.create(
         meal_plan=plan,
@@ -257,4 +257,7 @@ def test_breakfast_components_collapse_like_the_gramage_table_does():
     board = diet_component_merge_board(plan.date.isoformat())
 
     [breakfast] = [m for m in board["meals"] if m["meal"] == "breakfast_snack"]
-    assert breakfast["components"] == [{"index": 0, "label": "Raňajky-desiata spolu"}]
+    assert breakfast["components"] == [
+        {"index": 0, "label": "Hlavná zložka"},
+        {"index": 1, "label": "Extra zložka 1"},
+    ]
