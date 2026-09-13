@@ -1,5 +1,28 @@
 # Changelog
 
+## [5.0.0](https://github.com/tomag-9/zdravy-projekt/compare/v4.0.0...v5.0.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **summaries:** add configurable cluster chart
+
+### Features
+
+* add lunch-cluster order summaries ([7adcc1d](https://github.com/tomag-9/zdravy-projekt/commit/7adcc1d6cefacd0a9bc3f4da17713f31a69a0eed))
+* autosave facility detail settings ([751c068](https://github.com/tomag-9/zdravy-projekt/commit/751c0681d75326c8ce22dd67eb78d4cf7d92e8df))
+* **summaries:** add configurable cluster chart ([9e5fb38](https://github.com/tomag-9/zdravy-projekt/commit/9e5fb38ec972b87924648bbb5aab47aca2dfa1aa))
+* unify admin calendar and dropdowns ([2333e2f](https://github.com/tomag-9/zdravy-projekt/commit/2333e2f3ff838ee075954bac54cca67cee5bcc7c))
+
+
+### Bug Fixes
+
+* **admin:** opraviť pád ClusterSummaryChart na neúplnej odpovedi ([9f792a1](https://github.com/tomag-9/zdravy-projekt/commit/9f792a1e90a38beeb9b2ba1b364f41337a9758b5))
+* **ci:** nespúšťať Main Coverage 2x na main ([ad56b33](https://github.com/tomag-9/zdravy-projekt/commit/ad56b33dc78ae9286f7678f5225884a0ae24d6c3))
+* **ci:** opraviť mypy var-annotated chybu v cluster_summary_chart ([9728be0](https://github.com/tomag-9/zdravy-projekt/commit/9728be0f32544e22129e9466d7ce6563f719325a))
+* show breakfast and snack components separately ([523c471](https://github.com/tomag-9/zdravy-projekt/commit/523c4714b50a02d6830a640237fb1ff46bc712b5))
+* **tests:** počkať na povolené tlačidlo pred klikom v reset teste ([fc0ed37](https://github.com/tomag-9/zdravy-projekt/commit/fc0ed37b050d9b03db80dd42de0de9392c26a4a1))
+
 ## [4.0.0](https://github.com/tomag-9/zdravy-projekt/compare/v3.6.6...v4.0.0) (2026-09-13)
 
 
