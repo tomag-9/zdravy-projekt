@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DayEditorPanel } from "./MealPlanCalendar";
@@ -66,6 +66,15 @@ function lastSavedItems() {
   return JSON.parse((postCall?.[1] as RequestInit).body as string).items_write;
 }
 
+async function chooseTemplate(user: ReturnType<typeof userEvent.setup>, menu: string, option: string) {
+  await user.click(screen.getByRole("combobox", { name: menu }));
+  await user.click(within(screen.getByRole("listbox", { name: menu })).getByRole("option", { name: option }));
+}
+
+function expectTemplate(menu: string, value: string) {
+  expect(screen.getByRole("combobox", { name: menu })).toHaveTextContent(value);
+}
+
 describe("DayEditorPanel menu variant weights", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,19 +86,19 @@ describe("DayEditorPanel menu variant weights", () => {
 
     await screen.findByLabelText("Menu A");
 
-    await user.selectOptions(screen.getByLabelText("Menu A"), "10");
+    await chooseTemplate(user, "Menu A", "Hlavný chod 90/110/25 (90g + 110g + 25g)");
 
     // Každé menu je samostatná gramáž — výber A nesmie nič predvyplniť.
-    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu B")).toHaveValue("");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("");
+    expectTemplate("Menu A", "Hlavný chod 90/110/25");
+    expectTemplate("Menu B", "— nevybraté —");
+    expectTemplate("Menu C", "— nevybraté —");
+    expectTemplate("Menu V", "— nevybraté —");
 
-    await user.selectOptions(screen.getByLabelText("Menu B"), "11");
-    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu B")).toHaveValue("11");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("");
+    await chooseTemplate(user, "Menu B", "Hlavný chod 120/80/30 (120g + 80g + 30g)");
+    expectTemplate("Menu A", "Hlavný chod 90/110/25");
+    expectTemplate("Menu B", "Hlavný chod 120/80/30");
+    expectTemplate("Menu C", "— nevybraté —");
+    expectTemplate("Menu V", "— nevybraté —");
 
     await user.click(screen.getByText("Uložiť"));
 
@@ -120,11 +129,11 @@ describe("DayEditorPanel menu variant weights", () => {
 
     await screen.findByLabelText("Menu A");
 
-    expect(screen.getByLabelText("Menu A")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu B")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu C")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu D")).toHaveValue("10");
-    expect(screen.getByLabelText("Menu V")).toHaveValue("10");
+    expectTemplate("Menu A", "Hlavný chod 90/110/25");
+    expectTemplate("Menu B", "Hlavný chod 90/110/25");
+    expectTemplate("Menu C", "Hlavný chod 90/110/25");
+    expectTemplate("Menu D", "Hlavný chod 90/110/25");
+    expectTemplate("Menu V", "Hlavný chod 90/110/25");
 
     await user.click(screen.getByText("Uložiť"));
 

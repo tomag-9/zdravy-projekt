@@ -4,7 +4,7 @@ import { useAuth } from "../../context/auth";
 import { logger } from '../../lib/logger';
 import { fetchAllPages } from '../../lib/pagination';
 import { fromDateKey, isDayOff } from '../../lib/businessDay';
-import { PageHead, Card, Button, Select } from "./ui";
+import { PageHead, Card, Button, Dropdown } from "./ui";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -184,21 +184,21 @@ export const DayEditorPanel: React.FC<{
     category: MealCategory,
     label: string,
   ) => (
-    <Select
+    <Dropdown
       aria-label={label}
-      value={selected[selectionKey]}
-      onChange={(e) => {
-        const nextValue = e.target.value ? Number(e.target.value) : "";
+      value={String(selected[selectionKey])}
+      onChange={(value) => {
+        const nextValue = value ? Number(value) : "";
         setSelected((current) => ({ ...current, [selectionKey]: nextValue }));
       }}
-    >
-      <option value="">— nevybraté —</option>
-      {templatesByCategory[category].map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name} ({t.weight_label})
-        </option>
-      ))}
-    </Select>
+      options={[
+        { value: "", label: "— nevybraté —" },
+        ...templatesByCategory[category].map((template) => ({
+          value: String(template.id),
+          label: `${template.name} (${template.weight_label})`,
+        })),
+      ]}
+    />
   );
 
   return (
