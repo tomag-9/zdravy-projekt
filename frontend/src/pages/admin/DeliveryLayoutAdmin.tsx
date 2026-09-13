@@ -67,7 +67,8 @@ interface DeliveryLayout {
 const EMPTY_LAYOUT: DeliveryLayout = { blocks: [], unassigned_prevadzky: [] };
 
 type DragState =
-  | { type: "prevadzka"; prevadzkaId: number };
+  | { type: "prevadzka"; prevadzkaId: number }
+  | { type: "route"; routeId: number };
 
 interface ConfirmDialogState {
   title: string;
@@ -237,6 +238,32 @@ const DeliveryLayoutAdmin: React.FC = () => {
     }));
   };
 
+  const moveRoute = (routeId: number, targetBlockId: number, beforeRouteId?: number) => {
+    updateLayout((current) => {
+      let moved: DeliveryRoute | null = null;
+      const blocksWithout = current.blocks.map((block) => ({
+        ...block,
+        routes: block.routes.filter((route) => {
+          if (route.id !== routeId) return true;
+          moved = route;
+          return false;
+        }),
+      }));
+      if (!moved) return current;
+      return {
+        ...current,
+        blocks: blocksWithout.map((block) => {
+          if (block.id !== targetBlockId) return block;
+          const routes = [...block.routes];
+          const targetIndex = beforeRouteId ? routes.findIndex((route) => route.id === beforeRouteId) : -1;
+          if (targetIndex >= 0) routes.splice(targetIndex, 0, moved as DeliveryRoute);
+          else routes.push(moved as DeliveryRoute);
+          return { ...block, routes };
+        }),
+      };
+    });
+  };
+
   const startDrag = (event: React.DragEvent, nextDragging: DragState) => {
     setDragging(nextDragging);
     event.dataTransfer.effectAllowed = "move";
@@ -341,6 +368,11 @@ const DeliveryLayoutAdmin: React.FC = () => {
     }
 
     movePrevadzka(dragging.prevadzkaId, targetRouteId, beforePrevadzkaId);
+  };
+
+  const dropRoute = (targetBlockId: number, beforeRouteId?: number) => {
+    if (dragging?.type !== "route" || dragging.routeId === beforeRouteId) return;
+    moveRoute(dragging.routeId, targetBlockId, beforeRouteId);
   };
 
   const assignPrevadzka = (prevadzkaId: number, routeId: number | null) => {
@@ -637,10 +669,25 @@ const DeliveryLayoutAdmin: React.FC = () => {
                 return (
                 <div
                   key={route.id}
+                  className={`zpa-draggable-row${dragging?.type === "route" && dragging.routeId === route.id ? " is-dragging" : ""}`}
+                  draggable
+                  onDragStart={(event) => startRowDrag(event, { type: "route", routeId: route.id })}
+                  onDragEnd={() => setDragging(null)}
+                  onDragOver={(event) => allowDrop(event, "route")}
+                  onDrop={(event) => {
+                    if (dragging?.type !== "route") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    dropRoute(block.id, route.id);
+                    setDragging(null);
+                  }}
                   style={{ borderBottom: "1px solid var(--line-soft)" }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 20px", background: "var(--bg-cream-soft)" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                      <span className="zpa-row-grip" title="Presunúť trasu" aria-label="Presunúť trasu">
+                        <GripVertical />
+                      </span>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, color: "var(--green-900)" }}>{route.name}</div>
                         <div style={{ fontSize: 12, color: "var(--ink-3)" }}>
