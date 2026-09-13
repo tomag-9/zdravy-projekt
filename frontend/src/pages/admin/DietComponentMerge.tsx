@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronRight, LoaderCircle, RotateCcw } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { logger } from "../../lib/logger";
 import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
-import { PageHead, Card, AdminDateNav, Empty, Badge, Checkbox, TableWrap, SearchBox } from "./ui";
+import { PageHead, Card, AdminDateNav, Empty, Badge, Button, Checkbox, TableWrap, SearchBox } from "./ui";
 
 // Zvýraznenie zlúčenej bunky — rovnaký tón ako zelený Badge (`--green-700`
 // na `rgba(114,136,75,0.16)`), nech zapadne do zvyšku admina.
@@ -70,6 +70,7 @@ const DietComponentMergePage: React.FC = () => {
   // Bunky práve v requeste — nech admin nevidí "zamrznutý" klik, kým čaká
   // na server, ale ani nemôže tú istú bunku odklikať dvakrát súbežne.
   const [pending, setPending] = useState<Set<string>>(new Set());
+  const [resetting, setResetting] = useState(false);
 
   const upperMaxDate = useMemo(() => dashboardMaxDate(), []);
 
@@ -130,6 +131,10 @@ const DietComponentMergePage: React.FC = () => {
     }
     return counts;
   }, [board]);
+  const hasSeparations = useMemo(
+    () => Array.from(separatedCountByMeal.values()).some((count) => count > 0),
+    [separatedCountByMeal]
+  );
 
   // Vyhľadávanie diét, samostatné pre každú časť jedla.
   const [search, setSearch] = useState<Record<string, string>>({});
@@ -172,6 +177,30 @@ const DietComponentMergePage: React.FC = () => {
     }
   };
 
+  const reset = async () => {
+    if (resetting || pending.size > 0) return;
+    setResetting(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${API}/admin/diet-component-merge/reset/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date }),
+      });
+      if (res.ok) {
+        setBoard(await res.json());
+      } else {
+        const body = await res.json().catch(() => null);
+        setError(body?.error || "Reset sa nepodarilo uložiť, skús znova.");
+      }
+    } catch (e) {
+      logger.error(e);
+      setError("Reset sa nepodarilo uložiť, skús znova.");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   // Kombinovaná diéta (má `base_diet_names`) môže byť "spolu" len keď sú
   // "spolu" všetky jej základné diéty pre tú istú bunku — rovnaké pravidlo
   // presadzuje aj backend (`apply_diet_component_merge_toggle`), tu len
@@ -192,6 +221,27 @@ const DietComponentMergePage: React.FC = () => {
         title="Zlúčenie diét"
         desc="Pre každú zložku dnešného raňajok/desiaty, polievky, obeda (Menu A) a olovrantu diéty idú spolu so štandardom (default) — odklikni len tie zložky, čo sa dnes pripravia zvlášť. Polievka a obed sú nezávislé bunky. Referencia pre kuchyňu, gramážnu tabuľku/PDF nemení."
         titleExtra={<AdminDateNav date={date} onChange={setDate} maxDate={upperMaxDate} compact />}
+        actions={
+          <>
+            <span
+              aria-live="polite"
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--ink-mute)" }}
+              title="Každá zmena sa uloží hneď po kliknutí."
+            >
+              {pending.size > 0 || resetting ? <LoaderCircle className="zpa-spin" size={16} /> : <CheckCircle2 size={16} />}
+              {pending.size > 0 || resetting ? "Ukladám…" : "Ukladá sa automaticky"}
+            </span>
+            <Button
+              variant="secondary"
+              sm
+              onClick={reset}
+              disabled={resetting || pending.size > 0 || !hasSeparations}
+              title="Zruší všetky označenia „zvlášť“ pre vybraný deň"
+            >
+              <RotateCcw /> {resetting ? "Resetujem…" : "Resetovať všetko spolu"}
+            </Button>
+          </>
+        }
       />
 
       {error && (

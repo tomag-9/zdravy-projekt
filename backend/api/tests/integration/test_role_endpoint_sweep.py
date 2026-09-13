@@ -78,6 +78,7 @@ KUCHYNA_ALLOWED = {
     "/api/admin/meal-plans/gramage-dashboard-pdf/",
     "/api/admin/diet-component-merge/board/",
     "/api/admin/diet-component-merge/toggle/",
+    "/api/admin/diet-component-merge/reset/",
 }
 
 #: Endpointy, ktoré sú verejné zámerne — prihlasovanie a údaje pre login obrazovku.

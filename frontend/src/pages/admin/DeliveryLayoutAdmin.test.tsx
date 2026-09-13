@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import DeliveryLayoutAdmin from "./DeliveryLayoutAdmin";
 
 const mockApiFetch = vi.fn();
@@ -53,6 +53,12 @@ const response = (payload: unknown) => ({
 });
 
 describe("DeliveryLayoutAdmin", () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+    mockToastSuccess.mockReset();
+    mockToastError.mockReset();
+  });
+
   it("does not let an older meal-tab request overwrite the current layout", async () => {
     let resolveLunch!: (value: ReturnType<typeof response>) => void;
     let resolveBreakfast!: (value: ReturnType<typeof response>) => void;
@@ -99,5 +105,25 @@ describe("DeliveryLayoutAdmin", () => {
     await screen.findByText("Raňajkové trasy");
     expect(screen.queryByLabelText("Cluster")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Cluster — Trasa 1")).not.toBeInTheDocument();
+  });
+
+  it("reorders routes by dragging one route onto another and saves the new order", async () => {
+    mockApiFetch
+      .mockResolvedValueOnce(response(layout("Obedové trasy", "lunch", [route(1, "Trasa 1"), route(2, "Trasa 2")])))
+      .mockResolvedValueOnce(response(layout("Obedové trasy", "lunch", [route(2, "Trasa 2"), route(1, "Trasa 1")])))
+
+    render(<DeliveryLayoutAdmin />);
+
+    const firstRoute = (await screen.findByText("Trasa 1")).closest("[draggable='true']");
+    const secondRoute = screen.getByText("Trasa 2").closest("[draggable='true']");
+    const dataTransfer = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+    fireEvent.dragStart(secondRoute!, { dataTransfer });
+    fireEvent.dragOver(firstRoute!, { dataTransfer });
+    fireEvent.drop(firstRoute!, { dataTransfer });
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(2));
+    const [, options] = mockApiFetch.mock.calls[1];
+    const body = JSON.parse((options as RequestInit).body as string);
+    expect(body.blocks[0].routes.map((item: { id: number }) => item.id)).toEqual([2, 1]);
   });
 });
