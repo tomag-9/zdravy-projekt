@@ -273,7 +273,17 @@ describe("DietComponentMergePage", () => {
 
     render(<MemoryRouter><DietComponentMergePage /></MemoryRouter>);
 
-    fireEvent.click(await screen.findByRole("button", { name: /resetovať všetko spolu/i }));
+    // Tlačidlo je v DOM od prvého renderu, ale ostáva `disabled`, kým sa
+    // nedotiahne board a nevypočíta `hasSeparations` — `findByRole` čaká len
+    // na prítomnosť v DOM, nie na povolený stav. Klik na ešte disabled
+    // tlačidlo React ticho zahodí (žiadny druhý fetch), čo pod záťažou CI
+    // (paralelné behy na self-hosted runneri) padalo ako "called 1 times"
+    // namiesto 2 (#654 Main Coverage run 34765619099).
+    const resetButton = await screen.findByRole("button", {
+      name: /resetovať všetko spolu/i,
+    });
+    await waitFor(() => expect(resetButton).not.toBeDisabled());
+    fireEvent.click(resetButton);
 
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(2));
     const [url, options] = mockApiFetch.mock.calls[1];
