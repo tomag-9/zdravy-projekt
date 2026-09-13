@@ -470,6 +470,21 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     box-shadow: var(--shadow-sm);
 }
 .zpa-card--pad { padding: 24px; }
+.zpa-summary-chart { margin-bottom: 16px; }
+.zpa-summary-chart-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 10px; }
+.zpa-summary-chart-controls label { display: grid; gap: 4px; color: var(--ink-3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.zpa-summary-chart-controls .zpa-input { min-height: 36px; font: inherit; text-transform: none; letter-spacing: normal; }
+.zpa-summary-chart-controls select.zpa-input { appearance: none; min-width: 150px; padding-right: 34px; cursor: pointer; color: var(--green-900); background: var(--bg-cream-warm) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23425422' stroke-width='2'%3E%3Cpath d='m3 5 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center; border-color: var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,.65); }
+.zpa-summary-chart-controls select.zpa-input:hover { border-color: var(--green-500); background-color: var(--bg-cream-soft); }
+.zpa-summary-chart-controls select.zpa-input:focus { outline: 0; border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(114,136,75,.16); }
+.zpa-summary-chart-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+.zpa-summary-chart-filters button { border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 6px 10px; background: var(--bg-cream-warm); color: var(--ink-3); font: inherit; font-size: 12px; cursor: pointer; }
+.zpa-summary-chart-filters button.active { background: var(--green-700); border-color: var(--green-700); color: #fff; }
+.zpa-summary-chart-canvas { height: 300px; min-width: 0; }
+.zpa-summary-day-head { display: flex; align-items: end; justify-content: space-between; margin: 24px 0 10px; padding: 0 2px; }
+.zpa-summary-day-head h3 { margin: 0; font-family: var(--font-display); color: var(--green-900); font-size: 17px; }
+.zpa-summary-day-head p { margin: 3px 0 0; color: var(--ink-3); font-size: 12px; }
+@media (max-width: 600px) { .zpa-summary-chart-canvas { height: 240px; } }
 .zpa-card-head {
     padding: 18px 24px;
     border-bottom: 1px solid var(--line-soft);
@@ -758,15 +773,47 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
  * šírku a bez textu na šípkach, nech sa zmestí do jedného riadku s title. */
 .zpa-datenav--compact { justify-content: flex-start; padding: 10px 14px; }
 .zpa-datenav--compact .zpa-navchip { padding: 8px 10px; }
-/* Popisok dňa ("piatok 4. sep") je klikateľné tlačidlo, ktoré cez skrytý
- * date input otvorí natívny picker — reálny font/štýl namiesto holého
- * prehliadačového date inputu, zdieľané medzi Gramážou jedál a Kontrolou
- * objednávok (`AdminDateNav` v ui.tsx). */
+/* Popisok dňa ("piatok 4. sep") otvára jednotný kalendár, zdieľaný medzi
+ * obrazovkami s dátumovým prepínačom (`AdminDateNav` v ui.tsx). */
 .zpa-datenav-currbtn { background: none; border: 0; padding: 6px 10px; margin: 0; border-radius: var(--radius-sm); cursor: pointer; transition: background 150ms; }
 .zpa-datenav-currbtn:hover:not(:disabled) { background: var(--peach-300); }
 .zpa-datenav-currbtn:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
 .zpa-datenav-currbtn:disabled { cursor: not-allowed; opacity: 0.6; }
 .zpa-datenav-hidden-input { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+.zpa-datenav-picker-wrap { position: relative; }
+.zpa-datenav-currbtn { display: inline-flex; align-items: center; gap: 5px; }
+.zpa-datepop { position: absolute; z-index: 40; top: calc(100% + 10px); left: 0; width: 272px; padding: 12px; background: #fff; border: 1px solid var(--line); border-radius: var(--radius-sm); box-shadow: var(--shadow-lg); color: var(--ink-1); }
+.zpa-datepop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.zpa-datepop-month { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-display); font-size: 14px; font-weight: 700; text-transform: capitalize; }
+.zpa-datepop-monthnav { display: inline-flex; gap: 2px; }
+.zpa-datepop-monthnav button, .zpa-datepop-foot button { display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--green-700); cursor: pointer; border-radius: var(--radius-sm); }
+.zpa-datepop-monthnav button { width: 30px; height: 30px; }
+.zpa-datepop-monthnav button:hover, .zpa-datepop-foot button:hover { background: var(--bg-cream-soft); }
+.zpa-datepop-monthnav svg { width: 17px; height: 17px; }
+.zpa-datepop-weekdays, .zpa-datepop-days { display: grid; grid-template-columns: repeat(5, 1fr); text-align: center; }
+.zpa-datepop-weekdays { margin-bottom: 5px; color: var(--ink-2); font-size: 12px; font-weight: 600; }
+.zpa-datepop-day { width: 32px; height: 32px; justify-self: center; border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--ink-1); font: inherit; font-size: 13px; cursor: pointer; }
+.zpa-datepop-day:hover:not(:disabled):not(.is-selected) { background: var(--peach-300); border-color: var(--green-500); color: var(--green-900); transform: translateY(-1px); }
+.zpa-datepop-day.is-selected { background: #1677ff; border-color: #0958d9; color: #fff; font-weight: 700; }
+.zpa-datepop-day.is-today:not(.is-selected) { border-color: var(--green-700); font-weight: 700; }
+.zpa-datepop-day.is-history:not(.is-selected):not(.is-unavailable) { background: rgba(244, 107, 36, .13); color: #b94d19; }
+.zpa-datepop-day.is-locked:not(.is-selected) { background: #edf0ed; color: #748078; font-weight: 600; }
+.zpa-datepop-day.is-upcoming:not(.is-selected):not(.is-unavailable) { background: #cfe9b7; border-color: #7aa950; color: #243b16; font-weight: 700; }
+.zpa-datepop-day.is-unavailable, .zpa-datepop-day:disabled { background: #f4f5f3; color: var(--gray-400); cursor: not-allowed; }
+.zpa-datepop-foot { display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line-soft); }
+.zpa-datepop-foot button { padding: 5px 8px; font-size: 13px; }
+
+/* Opt-in dropdown: nasadzuje sa postupne, pôvodné .zpa-select ostáva bez zmeny. */
+.zpa-dropdown { position: relative; min-width: 180px; }
+.zpa-dropdown-trigger { width: 100%; min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; color: var(--ink-1); font: inherit; text-align: left; cursor: pointer; }
+.zpa-dropdown-trigger:hover:not(:disabled) { border-color: var(--green-600); background: var(--bg-cream-soft); box-shadow: var(--shadow-sm); }
+.zpa-dropdown-trigger:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+.zpa-dropdown-trigger:disabled { opacity: .6; cursor: not-allowed; }
+.zpa-dropdown-menu { position: absolute; z-index: 45; top: calc(100% + 6px); left: 0; width: 100%; min-width: max-content; max-height: 240px; overflow: auto; padding: 5px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; box-shadow: var(--shadow-lg); }
+.zpa-dropdown-menu button { width: 100%; display: block; padding: 8px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--ink-1); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.zpa-dropdown-menu button:hover:not(:disabled), .zpa-dropdown-menu button.is-selected { background: var(--peach-300); }
+.zpa-dropdown-menu button.is-selected { color: var(--green-800); font-weight: 700; }
+.zpa-dropdown-menu button:disabled { color: var(--gray-400); cursor: not-allowed; }
 
 /* ========================================================== *
  * Calendar

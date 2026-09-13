@@ -46,6 +46,7 @@ import FacilityManager from "./pages/admin/FacilityManager";
 import AdminUserList from "./pages/admin/AdminUserList";
 import AdminUserDetail from "./pages/admin/AdminUserDetail";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import ClusterSummaries from "./pages/admin/ClusterSummaries";
 import PrevadzkaOverview from "./pages/admin/PrevadzkaOverview";
 import DeliveryLayoutAdmin from "./pages/admin/DeliveryLayoutAdmin";
 import SystemSettings from "./pages/admin/SystemSettings";
@@ -286,6 +287,7 @@ export default function App() {
               <Route path="/admin" element={<AdminRoute />}>
                 <Route index element={<Navigate to="dashboard" replace />} />
                 <Route path="dashboard" element={<Section section={SECTION.dashboard}><AdminDashboard /></Section>} />
+                <Route path="summaries" element={<Section section={SECTION.dashboard}><ClusterSummaries /></Section>} />
                 <Route path="prevadzka-overview" element={<Section section={SECTION.podklady}><PrevadzkaOverview /></Section>} />
                 <Route path="delivery-layout" element={<Section section={SECTION.trasy}><DeliveryLayoutAdmin /></Section>} />
                 <Route path="facilities" element={<Section section={SECTION.prevadzky}><FacilityManager /></Section>} />

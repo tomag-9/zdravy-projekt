@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import PushNotifications from "./PushNotifications";
@@ -27,8 +27,7 @@ describe("PushNotifications target page", () => {
 
   it("defaults the target page dropdown to Inbox", async () => {
     render(<PushNotifications />);
-    expect(await screen.findByRole("option", { name: "Inbox" })).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Cieľová stránka/)).toHaveValue("/inbox");
+    expect(await screen.findByRole("combobox", { name: /^Cieľová stránka/ })).toHaveTextContent("Inbox");
   });
 
   it("sends the chosen target page", async () => {
@@ -37,7 +36,8 @@ describe("PushNotifications target page", () => {
 
     await user.type(screen.getByLabelText("Nadpis *"), "Ahoj");
     await user.type(screen.getByLabelText("Správa *"), "Text správy");
-    await user.selectOptions(screen.getByLabelText(/^Cieľová stránka/), "/order");
+    await user.click(screen.getByRole("combobox", { name: /^Cieľová stránka/ }));
+    await user.click(within(screen.getByRole("listbox")).getByRole("option", { name: "Objednávka" }));
     await user.click(screen.getByRole("button", { name: /Odoslať notifikáciu/ }));
 
     await waitFor(() => {

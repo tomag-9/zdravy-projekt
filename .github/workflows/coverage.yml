@@ -3,6 +3,15 @@ name: Main Coverage
 on:
   push:
     branches: [main]
+    # release-please commit (VERSION/package.json/CHANGELOG/manifest) mení
+    # len tieto súbory, žiadny reálny kód — bez tohto by push na `main` z
+    # merge PR AJ hneď nasledujúci release-please push spustili coverage
+    # 2x na tom istom kóde (viď pr.yml, rovnaký dôvod).
+    paths-ignore:
+      - VERSION
+      - frontend/package.json
+      - CHANGELOG.md
+      - .release-please-manifest.json
 
 permissions:
   contents: read

@@ -219,6 +219,8 @@ const ClientDetail: React.FC = () => {
   const [scraping, setScraping] = useState(false);
   const [scrapeResult, setScrapeResult] = useState<ScrapeResult | null>(null);
   const facilityRequestSeq = useRef(0);
+  const autosaveTimersRef = useRef(new Map<string, number>());
+  const autosavePendingRef = useRef(0);
 
   // Password reset
   const [sendingReset, setSendingReset] = useState(false);
@@ -569,71 +571,50 @@ const ClientDetail: React.FC = () => {
     }
   }, [activeTab, fetchOrders]);
 
-  const handleSave = async () => {
+  const saveFacilityPatch = useCallback(async (patch: Record<string, unknown>) => {
     if (!facility) return;
+    autosavePendingRef.current += 1;
     setSaving(true);
     try {
-      // Obmedzenie dní necháva len pre menu, ktoré ešte je vôbec zapnuté v
-      // Viditeľnom menu, a len keď má naozaj vybraný aspoň jeden deň (prázdny
-      // výber = "každý deň", netreba ho ukladať).
-      const cleanedMenuDayRestrictions = Object.fromEntries(
-        Object.entries(menuDayRestrictions).filter(
-          ([menu, days]) => menus.has(menu) && days.length > 0,
-        ),
-      );
-      // Rovnaké čistenie ako pri menu — obmedzenie dní nechávame len pre
-      // jedlo, ktoré je ešte vôbec zapnuté vo Viditeľných jedlách.
-      const cleanedMealDayRestrictions = Object.fromEntries(
-        Object.entries(mealDayRestrictions).filter(
-          ([meal, days]) => meals.has(meal) && days.length > 0,
-        ),
-      );
-      const payload = {
-        ...prevadzkaForm,
-        visible_menus: Array.from(menus),
-        menu_day_restrictions: cleanedMenuDayRestrictions,
-        visible_meals: Array.from(meals),
-        meal_day_restrictions: cleanedMealDayRestrictions,
-        visible_diets: Array.from(userDiets),
-        diet_notes: Object.fromEntries(
-          Array.from(userDiets)
-            .filter((id) => dietNotes[id])
-            .map((id) => [String(id), dietNotes[id]]),
-        ),
-        visible_portion_types: visiblePortionTypes == null
-          ? portionTypes.map((item) => item.id)
-          : Array.from(visiblePortionTypes),
-        admin_order_note: adminOrderNote,
-        pack_separately_enabled: packSeparatelyEnabled,
-        adults_pack_separately_enabled: adultsPackSeparatelyEnabled,
-        olovrant_s_obedom: olovrantSObedom,
-        menu_bc_same_deadline_as_lunch: menuBcSameDeadlineAsLunch,
-      };
-
       const res = await apiFetch(`${API}/admin/facility-prevadzky/${facility.id}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(patch),
       });
-
       if (res.ok) {
         const data = await res.json().catch(() => null);
-        if (data) {
-          setFacility(data);
-          applyFacilitySettings(data);
-        }
-        success("Nastavenia boli uložené.");
-        navigate("/admin/facilities");
+        if (data) setFacility(data);
+        success("Zmena bola zaznamenaná.");
       } else {
-        toastError("Nepodarilo sa uložiť nastavenia.");
+        toastError("Nepodarilo sa zaznamenať zmenu.");
       }
     } catch (e) {
       logger.error(e);
-      toastError("Nastala chyba pri ukladaní nastavení.");
+      toastError("Nastala chyba pri ukladaní zmeny.");
     } finally {
-      setSaving(false);
+      autosavePendingRef.current -= 1;
+      if (autosavePendingRef.current === 0) setSaving(false);
     }
-  };
+  }, [apiFetch, facility, success, toastError]);
+
+  const requestFacilitySave = useCallback((patch: Record<string, unknown>, mode: "immediate" | "debounced" = "immediate") => {
+    const key = Object.keys(patch).sort().join(",");
+    const existingTimer = autosaveTimersRef.current.get(key);
+    if (existingTimer != null) window.clearTimeout(existingTimer);
+    if (mode === "immediate") {
+      void saveFacilityPatch(patch);
+      return;
+    }
+    autosaveTimersRef.current.set(key, window.setTimeout(() => {
+      autosaveTimersRef.current.delete(key);
+      void saveFacilityPatch(patch);
+    }, 1500));
+  }, [saveFacilityPatch]);
+
+  useEffect(() => () => {
+    autosaveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+    autosaveTimersRef.current.clear();
+  }, []);
 
   const openAddLogin = () => {
     if (!facility) return;
@@ -733,22 +714,17 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const toggleSet = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void) => {
+  const toggleSet = <T,>(set: Set<T>, value: T, setter: (s: Set<T>) => void, onChange?: (next: Set<T>) => void) => {
     const newSet = new Set(set);
     if (newSet.has(value)) newSet.delete(value);
     else newSet.add(value);
     setter(newSet);
+    onChange?.(newSet);
   };
 
   const openDietNote = (diet: Diet) => {
     setDietNoteTarget(diet);
     setDietNoteDraft(dietNotes[diet.id] || "");
-  };
-
-  const saveDietNoteDraft = () => {
-    if (!dietNoteTarget) return;
-    setDietNotes((prev) => ({ ...prev, [dietNoteTarget.id]: dietNoteDraft }));
-    setDietNoteTarget(null);
   };
 
   if (loading) return <div className="zpa-empty">Načítavam…</div>;
@@ -1057,6 +1033,7 @@ const ClientDetail: React.FC = () => {
                 <PrevadzkaFields
                   form={prevadzkaForm}
                   setForm={setPrevadzkaForm}
+                  onFieldChange={requestFacilitySave}
                   connections={connections}
                   showEdupage={facility.celok_zdroj_objednavok === "edupage"}
                 />
@@ -1083,7 +1060,7 @@ const ClientDetail: React.FC = () => {
             </Card>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
+              <Badge tone={saving ? "orange" : "green"}>{saving ? "Ukladám…" : "Ukladá sa automaticky"}</Badge>
             </div>
           </div>
         )}
@@ -1098,7 +1075,7 @@ const ClientDetail: React.FC = () => {
                     const selectedDays = new Set(menuDayRestrictions[menu] || []);
                     return (
                       <div key={menu} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-                        <Checkbox on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus)}>
+                        <Checkbox on={menus.has(menu)} onChange={() => toggleSet(menus, menu, setMenus, (next) => requestFacilitySave({ visible_menus: Array.from(next), menu_day_restrictions: Object.fromEntries(Object.entries(menuDayRestrictions).filter(([key, days]) => next.has(key) && days.length > 0)) }))}>
                           Menu {menu}
                         </Checkbox>
                         {menus.has(menu) && (
@@ -1120,6 +1097,7 @@ const ClientDetail: React.FC = () => {
                                       ...prev,
                                       [menu]: Array.from(next).sort(),
                                     }));
+                                    requestFacilitySave({ menu_day_restrictions: Object.fromEntries(Object.entries({ ...menuDayRestrictions, [menu]: Array.from(next).sort() }).filter(([key, days]) => menus.has(key) && days.length > 0)) });
                                   }}
                                 >
                                   {label}
@@ -1144,7 +1122,7 @@ const ClientDetail: React.FC = () => {
                   </div>
                   <Toggle
                     on={menuBcSameDeadlineAsLunch}
-                    onChange={setMenuBcSameDeadlineAsLunch}
+                    onChange={(value) => { setMenuBcSameDeadlineAsLunch(value); requestFacilitySave({ menu_bc_same_deadline_as_lunch: value }); }}
                     ariaLabel="Menu B/C rovnaký termín ako Menu A"
                   />
                 </div>
@@ -1164,7 +1142,7 @@ const ClientDetail: React.FC = () => {
                               toastWarning("Prevádzka musí mať povolený aspoň jeden chod.");
                               return;
                             }
-                            toggleSet(meals, meal, setMeals);
+                            toggleSet(meals, meal, setMeals, (next) => requestFacilitySave({ visible_meals: Array.from(next), meal_day_restrictions: Object.fromEntries(Object.entries(mealDayRestrictions).filter(([key, days]) => next.has(key) && days.length > 0)) }));
                           }}
                         >
                           {MEAL_LABELS[meal] ?? meal}
@@ -1188,6 +1166,7 @@ const ClientDetail: React.FC = () => {
                                       ...prev,
                                       [meal]: Array.from(next).sort(),
                                     }));
+                                    requestFacilitySave({ meal_day_restrictions: Object.fromEntries(Object.entries({ ...mealDayRestrictions, [meal]: Array.from(next).sort() }).filter(([key, days]) => meals.has(key) && days.length > 0)) });
                                   }}
                                 >
                                   {label}
@@ -1219,7 +1198,7 @@ const ClientDetail: React.FC = () => {
                           const current = visiblePortionTypes == null
                             ? new Set(portionTypes.map((item) => item.id))
                             : visiblePortionTypes;
-                          toggleSet(current, portionType.id, setVisiblePortionTypes);
+                          toggleSet(current, portionType.id, setVisiblePortionTypes, (next) => requestFacilitySave({ visible_portion_types: Array.from(next) }));
                         }}
                       >
                         {portionType.name}
@@ -1241,7 +1220,7 @@ const ClientDetail: React.FC = () => {
                     </div>
                     <Toggle
                       on={packSeparatelyEnabled}
-                      onChange={setPackSeparatelyEnabled}
+                      onChange={(value) => { setPackSeparatelyEnabled(value); requestFacilitySave({ pack_separately_enabled: value }); }}
                       ariaLabel="Povoliť zabaliť zvlášť"
                     />
                   </div>
@@ -1256,7 +1235,7 @@ const ClientDetail: React.FC = () => {
                       </div>
                       <Toggle
                         on={adultsPackSeparatelyEnabled}
-                        onChange={setAdultsPackSeparatelyEnabled}
+                        onChange={(value) => { setAdultsPackSeparatelyEnabled(value); requestFacilitySave({ adults_pack_separately_enabled: value }); }}
                         ariaLabel="Automaticky baliť dospelých zvlášť"
                       />
                     </div>
@@ -1271,7 +1250,7 @@ const ClientDetail: React.FC = () => {
                     </div>
                     <Toggle
                       on={olovrantSObedom}
-                      onChange={setOlovrantSObedom}
+                      onChange={(value) => { setOlovrantSObedom(value); requestFacilitySave({ olovrant_s_obedom: value }); }}
                       ariaLabel="Olovrant ide s obedom"
                     />
                   </div>
@@ -1280,7 +1259,7 @@ const ClientDetail: React.FC = () => {
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť nastavenia"}</Button>
+              <Badge tone={saving ? "orange" : "green"}>{saving ? "Ukladám…" : "Ukladá sa automaticky"}</Badge>
             </div>
           </div>
         )}
@@ -1312,7 +1291,7 @@ const ClientDetail: React.FC = () => {
                         <StickyNote />
                       </IconButton>
                       <IconButton
-                        onClick={() => toggleSet(userDiets, diet.id, setUserDiets)}
+                        onClick={() => toggleSet(userDiets, diet.id, setUserDiets, (next) => requestFacilitySave({ visible_diets: Array.from(next), diet_notes: Object.fromEntries(Array.from(next).filter((id) => dietNotes[id]).map((id) => [String(id), dietNotes[id]])) }))}
                         title="Odobrať diétu"
                         aria-label={`Odobrať diétu ${diet.name}`}
                       >
@@ -1340,7 +1319,7 @@ const ClientDetail: React.FC = () => {
                           className="zpa-btn zpa-btn--ghost zpa-btn--sm"
                           style={{ justifyContent: "flex-start", gap: 8 }}
                           onClick={() => {
-                            toggleSet(userDiets, diet.id, setUserDiets);
+                            toggleSet(userDiets, diet.id, setUserDiets, (next) => requestFacilitySave({ visible_diets: Array.from(next), diet_notes: Object.fromEntries(Array.from(next).filter((id) => dietNotes[id]).map((id) => [String(id), dietNotes[id]])) }));
                             setDietSearch("");
                           }}
                         >
@@ -1355,7 +1334,7 @@ const ClientDetail: React.FC = () => {
             </Card>
 
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť diéty"}</Button>
+              <Badge tone={saving ? "orange" : "green"}>{saving ? "Ukladám…" : "Ukladá sa automaticky"}</Badge>
             </div>
           </div>
         )}
@@ -1417,11 +1396,11 @@ const ClientDetail: React.FC = () => {
             <Card pad>
               <CardHead title="Poznámka k objednávke" desc="Táto poznámka sa zobrazuje iba v admin dashboarde po rozkliknutí prevádzky, nad súhrnnými číslami." />
               <div style={{ marginTop: 8 }}>
-                <Textarea value={adminOrderNote} onChange={(e) => setAdminOrderNote(e.target.value)} rows={6} placeholder="Sem zadajte internú poznámku k objednávkam prevádzky…" />
+                <Textarea value={adminOrderNote} onChange={(e) => { setAdminOrderNote(e.target.value); requestFacilitySave({ admin_order_note: e.target.value }, "debounced"); }} rows={6} placeholder="Sem zadajte internú poznámku k objednávkam prevádzky…" />
               </div>
             </Card>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button onClick={handleSave} disabled={saving}>{saving ? "Ukladám…" : "Uložiť poznámku"}</Button>
+              <Badge tone={saving ? "orange" : "green"}>{saving ? "Ukladám…" : "Ukladá sa automaticky"}</Badge>
             </div>
           </div>
         )}
@@ -1492,14 +1471,19 @@ const ClientDetail: React.FC = () => {
           onClose={() => setDietNoteTarget(null)}
           foot={
             <>
-              <Button variant="ghost" onClick={() => setDietNoteTarget(null)}>Zrušiť</Button>
-              <Button onClick={saveDietNoteDraft}>Uložiť poznámku</Button>
+              <Button variant="ghost" onClick={() => setDietNoteTarget(null)}>Hotovo</Button>
             </>
           }
         >
           <Textarea
             value={dietNoteDraft}
-            onChange={(e) => setDietNoteDraft(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              const nextNotes = { ...dietNotes, [dietNoteTarget.id]: value };
+              setDietNoteDraft(value);
+              setDietNotes(nextNotes);
+              requestFacilitySave({ diet_notes: Object.fromEntries(Array.from(userDiets).filter((id) => nextNotes[id]).map((id) => [String(id), nextNotes[id]])) }, "debounced");
+            }}
             rows={3}
             placeholder="Napr. alergik, nahlásiť kuchyni…"
           />

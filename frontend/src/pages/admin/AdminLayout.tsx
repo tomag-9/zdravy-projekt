@@ -14,6 +14,7 @@ import {
     Scroll,
     Bell,
     Shield,
+    FileText,
     LogOut,
     Menu,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import { APP_VERSION } from '../../lib/appVersion';
 
 const NAV: NavEntry[] = [
     { kind: 'item', to: '/admin/dashboard', label: 'Tabuľka', icon: Gauge, section: SECTION.dashboard },
+    { kind: 'item', to: '/admin/summaries', label: 'Sumáre', icon: FileText, section: SECTION.dashboard },
     { kind: 'item', to: '/admin/prevadzka-overview', label: 'Kontrola objednávok', icon: ClipboardCheck, section: SECTION.podklady },
     { kind: 'item', to: '/admin/delivery-layout', label: 'Poradie a trasy', icon: RouteIcon, section: SECTION.trasy },
     { kind: 'item', to: '/admin/meal-plan', label: 'Jedálniček', icon: CalendarDays, section: SECTION.jedalnicek },
@@ -141,7 +143,7 @@ const AdminLayout: React.FC = () => {
             </aside>
 
             <main className="zpa-main" id="zpa-main">
-                <div className={`zpa-content${location.pathname === '/admin/dashboard' ? ' zpa-content--wide zpa-content--fill' : ''}`}>
+                <div className={`zpa-content${location.pathname === '/admin/dashboard' || location.pathname === '/admin/summaries' ? ' zpa-content--wide zpa-content--fill' : ''}`}>
                     <Outlet />
                 </div>
             </main>

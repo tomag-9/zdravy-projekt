@@ -247,29 +247,6 @@ def parse_meal_template_components(
     return numeric_components
 
 
-def collapse_breakfast_snack_components(components: list) -> list:
-    """Raňajky/desiata majú v gramážovej tabuľke jeden súhrnný stĺpec, nie
-    zložku za zložkou (kuchyňa chce "spolu", nie rozpis) — výnimka sú
-    kusové zložky (vajce/guľka), tie ostávajú vlastné. Rovnaká logika ako
-    predtým vnorená v `gramage_dashboard`, teraz zdieľaná aj s
-    `diet_component_merge_board` (#568)."""
-    if len(components) <= 1:
-        return components
-    exception_components = [c for c in components if c.get("is_exception")]
-    total_base = sum(
-        (
-            Decimal(str(c.get("base_grams") or "0"))
-            for c in components
-            if not c.get("is_exception")
-        ),
-        Decimal("0"),
-    )
-    return [
-        {"label": "Raňajky-desiata spolu", "base_grams": str(total_base), "unit": "g"},
-        *exception_components,
-    ]
-
-
 def diet_component_merge_board(date_str: str) -> dict:
     """Dáta pre klikací zoznam "spolu/zvlášť" (#568, flip 10.9.2026) — pre
     daný deň zoznam zložiek raňajok/desiaty, polievky, obeda (len Menu A) a
@@ -316,8 +293,6 @@ def diet_component_merge_board(date_str: str) -> dict:
             components = parse_meal_template_components(
                 t.name, t.components, t.weight_label, t.unit_exception
             )
-            if meal == MealCategory.BREAKFAST_SNACK:
-                components = collapse_breakfast_snack_components(components)
             meals.append(
                 {
                     "meal": meal,
@@ -994,8 +969,6 @@ class MealPlanService:
                 components = parse_components(
                     t.name, t.components, t.weight_label, t.unit_exception
                 )
-                if item.category == MealCategory.BREAKFAST_SNACK:
-                    components = collapse_breakfast_snack_components(components)
                 col_groups.append(
                     {
                         "key": key,

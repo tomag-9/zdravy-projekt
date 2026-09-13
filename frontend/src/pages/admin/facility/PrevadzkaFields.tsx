@@ -39,21 +39,29 @@ export interface EdupageConnectionOption {
 export const PrevadzkaFields: React.FC<{
   form: PrevadzkaForm;
   setForm: React.Dispatch<React.SetStateAction<PrevadzkaForm>>;
+  /** Detail prevádzky ukladá polia priebežne; formulár pri zakladaní nie. */
+  onFieldChange?: (patch: Partial<PrevadzkaForm>, mode: "immediate" | "debounced") => void;
   connections: EdupageConnectionOption[];
   showEdupage: boolean;
-}> = ({ form, setForm, connections, showEdupage }) => (
+}> = ({ form, setForm, onFieldChange, connections, showEdupage }) => {
+  const change = (patch: Partial<PrevadzkaForm>, mode: "immediate" | "debounced") => {
+    setForm((current) => ({ ...current, ...patch }));
+    onFieldChange?.(patch, mode);
+  };
+
+  return (
   <>
     <Field label="Názov prevádzky" req>
-      <Input required value={form.nazov} onChange={(e) => setForm((current) => ({ ...current, nazov: e.target.value }))} />
+      <Input required value={form.nazov} onChange={(e) => change({ nazov: e.target.value }, "debounced")} />
     </Field>
     <Field label="Adresa výdaja">
-      <Input value={form.adresa} onChange={(e) => setForm((current) => ({ ...current, adresa: e.target.value }))} />
+      <Input value={form.adresa} onChange={(e) => change({ adresa: e.target.value }, "debounced")} />
     </Field>
     {showEdupage && (
       <Field label="EduPage spojenie">
         <Select
           value={form.edupage_connection ?? ""}
-          onChange={(e) => setForm((current) => ({ ...current, edupage_connection: e.target.value ? Number(e.target.value) : null }))}
+          onChange={(e) => change({ edupage_connection: e.target.value ? Number(e.target.value) : null }, "immediate")}
         >
           <option value="">Bez spojenia</option>
           {connections.map((connection) => (
@@ -65,21 +73,22 @@ export const PrevadzkaFields: React.FC<{
       </Field>
     )}
     <Field label="Edupage match" hint="(prefix; ; oddeľuje viac)">
-      <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => setForm((current) => ({ ...current, edupage_match: e.target.value }))} />
+      <Input placeholder="napr. Les alebo mšHey; mšMal,Hey" value={form.edupage_match} onChange={(e) => change({ edupage_match: e.target.value }, "debounced")} />
     </Field>
     <Field label="Report alias" hint="(názov vo výkazoch)">
-      <Input value={form.report_alias} onChange={(e) => setForm((current) => ({ ...current, report_alias: e.target.value }))} />
+      <Input value={form.report_alias} onChange={(e) => change({ report_alias: e.target.value }, "debounced")} />
     </Field>
     <Field label="Poznámka k rozvozu">
-      <Textarea rows={2} value={form.delivery_note} onChange={(e) => setForm((current) => ({ ...current, delivery_note: e.target.value }))} />
+      <Textarea rows={2} value={form.delivery_note} onChange={(e) => change({ delivery_note: e.target.value }, "debounced")} />
     </Field>
     <div className="zpa-grid-2">
       <Field label="Poradie">
-        <Input type="number" value={form.sort_order} onChange={(e) => setForm((current) => ({ ...current, sort_order: Number(e.target.value) || 0 }))} />
+        <Input type="number" value={form.sort_order} onChange={(e) => change({ sort_order: Number(e.target.value) || 0 }, "debounced")} />
       </Field>
       <Field label="Aktívna">
-        <Toggle on={form.is_active} onChange={(value) => setForm((current) => ({ ...current, is_active: value }))} ariaLabel="Aktívna prevádzka" />
+        <Toggle on={form.is_active} onChange={(value) => change({ is_active: value }, "immediate")} ariaLabel="Aktívna prevádzka" />
       </Field>
     </div>
   </>
-);
+  );
+};
