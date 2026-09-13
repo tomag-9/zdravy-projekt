@@ -28,6 +28,7 @@ from ..serializers_menu import (
     MealTemplateSerializer,
     PortionTypeSerializer,
 )
+from ..services.cluster_summary_pdf_service import render_cluster_summary_pdf
 from ..services.gramage_pdf_service import (
     get_cached_gramage_dashboard_data as _cached_gramage_dashboard_data,
 )
@@ -120,7 +121,10 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return self.request.path.startswith("/api/admin/")
 
     #: Prehľady nakladania — kuchyňa ich len číta, meniť nesmie nič (#486).
-    KUCHYNA_READABLE_ACTIONS = {"gramage_dashboard", "gramage_dashboard_pdf"}
+    KUCHYNA_READABLE_ACTIONS = {
+        "gramage_dashboard",
+        "gramage_dashboard_pdf",
+    }
 
     def get_permissions(self):
         if (
@@ -419,6 +423,65 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         }[meal_type]
         fname = f"gramaz_{meal_type_slug}_{date}.pdf"
         response["Content-Disposition"] = f"attachment; filename*=UTF-8''{quote(fname)}"
+        return response
+
+    def _cluster_summary_meals(self, request):
+        meals = request.query_params.getlist("meal") or [
+            "breakfast",
+            "lunch",
+            "olovrant",
+        ]
+        if any(meal not in ("breakfast", "lunch", "olovrant") for meal in meals):
+            return None
+        return list(dict.fromkeys(meals))
+
+    @action(detail=False, methods=["get"], url_path="cluster-summary")
+    def cluster_summary(self, request):
+        """GET /api/admin/meal-plans/cluster-summary/?date=...&meal=lunch."""
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        date = parse_date_param(date_str)
+        meals = self._cluster_summary_meals(request)
+        if meals is None:
+            return Response(
+                {"error": "invalid meal"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        from ..exporters.cluster_summary_spec import build_cluster_summary_spec
+
+        data = _cached_gramage_dashboard_data(date.isoformat())
+        return Response(
+            {
+                "date": date.isoformat(),
+                "meals": meals,
+                "spec": build_cluster_summary_spec(data, meals),
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="cluster-summary-pdf")
+    def cluster_summary_pdf(self, request):
+        """GET /api/admin/meal-plans/cluster-summary-pdf/?date=...&meal=lunch."""
+        date_str = request.query_params.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        date = parse_date_param(date_str)
+        meals = self._cluster_summary_meals(request)
+        if meals is None:
+            return Response(
+                {"error": "invalid meal"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        pdf_bytes = render_cluster_summary_pdf(date.isoformat(), meals=meals)
+        slug = (
+            "vsetky" if meals == ["breakfast", "lunch", "olovrant"] else "-".join(meals)
+        )
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f"attachment; filename*=UTF-8''{quote(f'sumare_{slug}_{date}.pdf')}"
+        )
         return response
 
     @action(detail=False, methods=["get"], url_path="range-export-xlsx")
