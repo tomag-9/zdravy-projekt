@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.0.0](https://github.com/tomag-9/zdravy-projekt/compare/v3.6.6...v4.0.0) (2026-09-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ci:** zrýchliť kontrolné workflowy
+
+### Features
+
+* **ci:** zrýchliť kontrolné workflowy ([52d9acd](https://github.com/tomag-9/zdravy-projekt/commit/52d9acd768e27395241b7b94905ac29cae799a2e))
+* reorder delivery routes by drag and drop ([832f963](https://github.com/tomag-9/zdravy-projekt/commit/832f9632b93a4f0a4d8d927fe35a693f076d6716))
+* reset diet component separations ([89ba524](https://github.com/tomag-9/zdravy-projekt/commit/89ba5248ac86ed4fbac0b223d182a24320a0a4de))
+
 ## [3.6.6](https://github.com/tomag-9/zdravy-projekt/compare/v3.6.5...v3.6.6) (2026-09-12)
 
 
