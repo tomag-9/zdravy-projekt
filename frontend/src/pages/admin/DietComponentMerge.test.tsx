@@ -267,6 +267,22 @@ describe("DietComponentMergePage", () => {
     });
   });
 
+  it("resets all zvlášť exceptions for the selected day", async () => {
+    mockApiFetch.mockResolvedValueOnce({ ok: true, json: async () => boardBothSeparate });
+    mockApiFetch.mockResolvedValueOnce({ ok: true, json: async () => boardAllSpolu });
+
+    render(<MemoryRouter><DietComponentMergePage /></MemoryRouter>);
+
+    fireEvent.click(await screen.findByRole("button", { name: /resetovať všetko spolu/i }));
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledTimes(2));
+    const [url, options] = mockApiFetch.mock.calls[1];
+    expect(String(url)).toContain("/admin/diet-component-merge/reset/");
+    expect(options).toMatchObject({ method: "POST" });
+    expect(JSON.parse((options as RequestInit).body as string)).toEqual({ date: expect.any(String) });
+    expect(await screen.findByText(/dnes všetko spolu/i)).toBeInTheDocument();
+  });
+
   it("checkbox is unchecked by default for spolu and checked for the zvlášť exception", async () => {
     mockApiFetch.mockResolvedValue({
       ok: true,

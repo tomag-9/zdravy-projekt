@@ -157,6 +157,44 @@ class DietComponentMergeApiTest(APITestCase):
         ]
         assert DietComponentMerge.objects.count() == 0
 
+    def test_reset_removes_all_separations_for_the_selected_day(self):
+        other_day = self.plan.date + datetime.timedelta(days=1)
+        DietComponentMerge.objects.create(
+            date=self.plan.date,
+            meal=MealCategory.MAIN_COURSE,
+            component_index=0,
+            diet=self.diet,
+        )
+        DietComponentMerge.objects.create(
+            date=other_day,
+            meal=MealCategory.MAIN_COURSE,
+            component_index=0,
+            diet=self.diet,
+        )
+
+        response = self.client.post(
+            "/api/admin/diet-component-merge/reset/",
+            {"date": self.plan.date.isoformat()},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK, response.content
+        assert not DietComponentMerge.objects.filter(date=self.plan.date).exists()
+        assert DietComponentMerge.objects.filter(date=other_day).exists()
+        assert sorted(
+            response.json()["merged"], key=lambda m: m["component_index"]
+        ) == [
+            {"meal": "main_course", "diet_name": "Bez lepku", "component_index": 0},
+            {"meal": "main_course", "diet_name": "Bez lepku", "component_index": 1},
+        ]
+
+    def test_reset_requires_date(self):
+        response = self.client.post(
+            "/api/admin/diet-component-merge/reset/", {}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
     def test_toggle_accepts_soup_as_its_own_independent_meal(self):
         """Polievka (11.9.2026) je nezávislá od hlavného jedla — vlastný
         "spolu/zvlášť" riadok, nie zdieľaný s `main_course`."""

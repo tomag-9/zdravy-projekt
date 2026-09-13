@@ -15,6 +15,7 @@ from ..cache_service import get_cached, get_closed_day_pdf_cache_key
 from ..models import (
     DailyMealPlan,
     Diet,
+    DietComponentMerge,
     MealPlanItem,
     MealTemplate,
     PortionType,
@@ -465,6 +466,22 @@ class DietComponentMergeViewSet(viewsets.ViewSet):
                 {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
             )
         date = parse_date_param(date_str)
+        return Response(diet_component_merge_board(date.isoformat()))
+
+    @action(detail=False, methods=["post"])
+    def reset(self, request):
+        """POST /api/admin/diet-component-merge/reset/
+
+        Body: {date}. Zruší všetky explicitné výnimky "zvlášť" pre daný
+        deň; všetky bunky sa tak vrátia na predvolený stav "spolu".
+        """
+        date_str = request.data.get("date")
+        if not date_str:
+            return Response(
+                {"error": "date required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        date = parse_date_param(date_str)
+        DietComponentMerge.objects.filter(date=date).delete()
         return Response(diet_component_merge_board(date.isoformat()))
 
     @action(detail=False, methods=["post"])
