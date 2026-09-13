@@ -28,7 +28,15 @@ export default function ClusterSummaryChart() {
     meals.forEach((x) => p.append("meal", x)); selected.forEach((x) => p.append("vydaj", x)); menus.forEach((x) => p.append("menu", x));
     return p.toString();
   }, [from, to, meals, scope, metric, selected, menus]);
-  useEffect(() => { void (async () => { const r = await apiFetch(`${API}/admin/meal-plans/cluster-summary-chart/?${query}`); if (r.ok) setChart(await r.json()); })(); }, [apiFetch, query]);
+  useEffect(() => { void (async () => {
+    const r = await apiFetch(`${API}/admin/meal-plans/cluster-summary-chart/?${query}`);
+    if (!r.ok) return;
+    const data = await r.json();
+    // Backend vždy vracia points/clusters (viď cluster_summary_chart view), ale
+    // nedôverujeme tvaru naslepo — chybná/neúplná odpoveď nesmie zhodiť celú
+    // stránku s .map na undefined (spadlo aj v teste s iným mockom endpointu).
+    setChart({ points: Array.isArray(data?.points) ? data.points : [], clusters: Array.isArray(data?.clusters) ? data.clusters : [] });
+  })(); }, [apiFetch, query]);
   const clusters = selected.length ? selected : chart.clusters;
   const toggle = (value: string) => setMeals((x) => x.includes(value) ? (x.length === 1 ? x : x.filter((v) => v !== value)) : [...x, value]);
   return <Card pad className="zpa-summary-chart">

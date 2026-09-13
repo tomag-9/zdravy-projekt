@@ -40,6 +40,12 @@ describe("ClusterSummaries", () => {
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:summary") });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
     mockApiFetch.mockImplementation((url: string) => {
+      // Poradie zámerne: "cluster-summary-chart" aj "cluster-summary-pdf"
+      // obsahujú podreťazec "cluster-summary" — musia sa zachytiť skôr,
+      // inak by chart request dostal spec payload bez points/clusters a
+      // ClusterSummaryChart by padol na chart.clusters.map (regresia
+      // #656: pridaný chart request bez zmeny tohto mocku).
+      if (url.includes("cluster-summary-chart")) return Promise.resolve(response({ points: [], clusters: [], metric: "heads" }));
       if (url.includes("cluster-summary-pdf")) return Promise.resolve(response(null));
       if (url.includes("cluster-summary")) return Promise.resolve(response({ date: "2026-09-14", meals: ["breakfast", "lunch", "olovrant"], spec }));
       throw new Error(`Unexpected URL ${url}`);
