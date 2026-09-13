@@ -470,6 +470,21 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
     box-shadow: var(--shadow-sm);
 }
 .zpa-card--pad { padding: 24px; }
+.zpa-summary-chart { margin-bottom: 16px; }
+.zpa-summary-chart-controls { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 10px; }
+.zpa-summary-chart-controls label { display: grid; gap: 4px; color: var(--ink-3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.zpa-summary-chart-controls .zpa-input { min-height: 36px; font: inherit; text-transform: none; letter-spacing: normal; }
+.zpa-summary-chart-controls select.zpa-input { appearance: none; min-width: 150px; padding-right: 34px; cursor: pointer; color: var(--green-900); background: var(--bg-cream-warm) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%23425422' stroke-width='2'%3E%3Cpath d='m3 5 4 4 4-4'/%3E%3C/svg%3E") no-repeat right 11px center; border-color: var(--line); box-shadow: inset 0 1px 0 rgba(255,255,255,.65); }
+.zpa-summary-chart-controls select.zpa-input:hover { border-color: var(--green-500); background-color: var(--bg-cream-soft); }
+.zpa-summary-chart-controls select.zpa-input:focus { outline: 0; border-color: var(--green-600); box-shadow: 0 0 0 3px rgba(114,136,75,.16); }
+.zpa-summary-chart-filters { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 12px; }
+.zpa-summary-chart-filters button { border: 1px solid var(--line); border-radius: var(--radius-pill); padding: 6px 10px; background: var(--bg-cream-warm); color: var(--ink-3); font: inherit; font-size: 12px; cursor: pointer; }
+.zpa-summary-chart-filters button.active { background: var(--green-700); border-color: var(--green-700); color: #fff; }
+.zpa-summary-chart-canvas { height: 300px; min-width: 0; }
+.zpa-summary-day-head { display: flex; align-items: end; justify-content: space-between; margin: 24px 0 10px; padding: 0 2px; }
+.zpa-summary-day-head h3 { margin: 0; font-family: var(--font-display); color: var(--green-900); font-size: 17px; }
+.zpa-summary-day-head p { margin: 3px 0 0; color: var(--ink-3); font-size: 12px; }
+@media (max-width: 600px) { .zpa-summary-chart-canvas { height: 240px; } }
 .zpa-card-head {
     padding: 18px 24px;
     border-bottom: 1px solid var(--line-soft);

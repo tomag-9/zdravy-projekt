@@ -5,6 +5,7 @@ import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
 import GramageTable, { type TableSpec } from "./GramageTable";
+import ClusterSummaryChart from "./ClusterSummaryChart";
 import { AdminDateNav, Button, Card, Empty, PageHead } from "./ui";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -115,7 +116,11 @@ const ClusterSummaries: React.FC = () => {
           </Button>
         }
       />
+      <ClusterSummaryChart />
 
+      <div className="zpa-summary-day-head">
+        <div><h3>Sumár vybraného dňa</h3><p>Tento dátum mení iba tabuľku a PDF nižšie, nie graf.</p></div>
+      </div>
       <div className="zpa-toolbar" style={{ marginBottom: 16 }}>
         <div className="zpa-toolbar-left">
           <AdminDateNav date={date} onChange={setDate} maxDate={maxDate} disabled={loading} compact />

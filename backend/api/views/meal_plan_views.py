@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from urllib.parse import quote
 
 from django.db.models import Prefetch
@@ -19,6 +20,7 @@ from ..models import (
     MealPlanItem,
     MealTemplate,
     PortionType,
+    Vydaj,
 )
 from ..order_data import OrderData, safe_count
 from ..permissions import IsAdminOrAbove, IsKuchynaOrAbove
@@ -434,6 +436,63 @@ class DailyMealPlanViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         if any(meal not in ("breakfast", "lunch", "olovrant") for meal in meals):
             return None
         return list(dict.fromkeys(meals))
+
+    @action(detail=False, methods=["get"], url_path="cluster-summary-chart")
+    def cluster_summary_chart(self, request):
+        """Weekday chart data, grouped by the lunch delivery cluster."""
+        from_str, to_str = request.query_params.get("from"), request.query_params.get(
+            "to"
+        )
+        if not from_str or not to_str:
+            return Response(
+                {"error": "from and to required"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        from_date, to_date = parse_date_param(from_str, "from"), parse_date_param(
+            to_str, "to"
+        )
+        if to_date < from_date or (to_date - from_date).days > 366:
+            return Response(
+                {"error": "invalid range"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        meals = self._cluster_summary_meals(request)
+        metric = request.query_params.get("metric", "heads")
+        scope = request.query_params.get("scope", "all")
+        if (
+            meals is None
+            or metric not in {"heads", "ms"}
+            or scope not in {"all", "standard", "diets"}
+        ):
+            return Response(
+                {"error": "invalid chart filter"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        from ..services.cluster_summary_chart import aggregate_day
+
+        clusters = set(request.query_params.getlist("vydaj"))
+        menus = set(request.query_params.getlist("menu"))
+        # Filter musí vždy ponúknuť všetky výdajné body, nie iba tie, ktoré
+        # náhodou mali objednávku v zvolenom období.
+        points, keys = [], {value for value, _label in Vydaj.choices}
+        keys.update(clusters)
+        current = from_date
+        while current <= to_date:
+            if current.weekday() < 5:
+                totals = aggregate_day(
+                    _cached_gramage_dashboard_data(current.isoformat()),
+                    set(meals),
+                    clusters,
+                    menus,
+                    scope,
+                    metric,
+                )
+                keys.update(totals)
+                points.append(
+                    {
+                        "date": current.isoformat(),
+                        **{key: float(value) for key, value in totals.items()},
+                    }
+                )
+            current += datetime.timedelta(days=1)
+        return Response({"points": points, "clusters": sorted(keys), "metric": metric})
 
     @action(detail=False, methods=["get"], url_path="cluster-summary")
     def cluster_summary(self, request):
