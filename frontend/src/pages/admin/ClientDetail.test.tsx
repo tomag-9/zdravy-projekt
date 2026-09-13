@@ -130,7 +130,6 @@ describe("ClientDetail portion type visibility", () => {
     await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.getByText("Viditeľné veľkosti porcií")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Jasle" }));
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -177,7 +176,6 @@ describe("ClientDetail adults pack separately (EduPage)", () => {
     await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.getByText("Dospelí zvlášť")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Automaticky baliť dospelých zvlášť" }));
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -242,7 +240,6 @@ describe("ClientDetail menu B/C deadline exemption", () => {
     await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     expect(screen.getByText("Menu B/C: rovnaký termín ako Menu A")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Menu B/C rovnaký termín ako Menu A" }));
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -370,7 +367,6 @@ describe("ClientDetail facility & login management", () => {
 
     await user.clear(nameInput);
     await user.type(nameInput, "Upravená prevádzka");
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -380,8 +376,8 @@ describe("ClientDetail facility & login management", () => {
       expect(patchCall).toBeDefined();
       const body = JSON.parse(String(patchCall?.[1]?.body));
       expect(body.nazov).toBe("Upravená prevádzka");
-      expect(body.visible_menus).toEqual(["A", "B", "C", "V"]);
     });
+    expect(mockSuccess).toHaveBeenCalledWith("Zmena bola zaznamenaná.");
   });
 
   it("restricts a menu to a chosen weekday and saves it, without touching other menus", async () => {
@@ -391,7 +387,6 @@ describe("ClientDetail facility & login management", () => {
 
     await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     await user.click(screen.getByRole("button", { name: "Menu B - Pi" }));
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -401,8 +396,6 @@ describe("ClientDetail facility & login management", () => {
       expect(patchCall).toBeDefined();
       const body = JSON.parse(String(patchCall?.[1]?.body));
       expect(body.menu_day_restrictions).toEqual({ B: [5] });
-      // Ostatné menu (A, C, V) sú stále bez obmedzenia — každý deň.
-      expect(body.visible_menus).toEqual(["A", "B", "C", "V"]);
     });
   });
 
@@ -413,7 +406,6 @@ describe("ClientDetail facility & login management", () => {
 
     await user.click(await screen.findByRole("button", { name: "Objednávanie" }));
     await user.click(screen.getByRole("button", { name: "Raňajky - Pi" }));
-    await user.click(screen.getByRole("button", { name: "Uložiť nastavenia" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -423,8 +415,6 @@ describe("ClientDetail facility & login management", () => {
       expect(patchCall).toBeDefined();
       const body = JSON.parse(String(patchCall?.[1]?.body));
       expect(body.meal_day_restrictions).toEqual({ breakfast: [5] });
-      // Ostatné jedlá (obed, olovrant) sú stále bez obmedzenia — každý deň.
-      expect(body.visible_meals).toEqual(["breakfast", "lunch", "olovrant"]);
     });
   });
 
@@ -626,7 +616,6 @@ describe("ClientDetail diéty tab", () => {
     await user.click(await screen.findByRole("button", { name: /Vegetariánske/ }));
 
     expect(screen.getAllByText("Vegetariánske").length).toBeGreaterThan(0);
-    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -647,7 +636,6 @@ describe("ClientDetail diéty tab", () => {
     await user.click(screen.getByRole("button", { name: "Odobrať diétu Bez lepku" }));
     expect(screen.queryByText("Bez lepku")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
@@ -669,11 +657,10 @@ describe("ClientDetail diéty tab", () => {
 
     const noteModal = screen.getByText("Poznámka — Bez lepku").closest<HTMLElement>(".zpa-modal")!;
     await user.type(within(noteModal).getByRole("textbox"), "Alergik, nahlásiť kuchyni");
-    await user.click(within(noteModal).getByRole("button", { name: "Uložiť poznámku" }));
+    await user.click(within(noteModal).getByRole("button", { name: "Hotovo" }));
 
     expect(screen.getByText("Alergik, nahlásiť kuchyni")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Uložiť diéty" }));
 
     await waitFor(() => {
       const patchCall = mockApiFetch.mock.calls.find(
