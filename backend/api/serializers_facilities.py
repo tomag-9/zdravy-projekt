@@ -40,7 +40,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     orders_count = serializers.SerializerMethodField()
     client_user_id = serializers.SerializerMethodField()
     visible_diets = serializers.PrimaryKeyRelatedField(
-        queryset=Diet.objects.all(), many=True, required=False
+        queryset=Diet.objects.filter(is_active=True), many=True, required=False
     )
     visible_portion_types = serializers.PrimaryKeyRelatedField(
         queryset=PortionType.objects.all(), many=True, required=False
@@ -172,6 +172,23 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
         # Celok je po vytvorení nemenný — prípadnú zmenu ticho ignorujeme.
         validated_data.pop("celok", None)
         diet_notes = validated_data.pop("diet_notes", None)
+        # Trasa je záväzok len pre jedlo, ktoré prevádzka skutočne ponúka.
+        # Pri jeho vypnutí zmažeme aj staré priradenie, takže po opätovnom
+        # povolení skončí prevádzka medzi „Nepriradenými“ a admin ju vedome
+        # zaradí do aktuálnej trasy. Olovrant s obedom je vždy súčasťou
+        # obedového rozvozu, preto nemá vlastnú olovrantovú trasu.
+        visible_meals = validated_data.get("visible_meals", instance.visible_meals)
+        effective_meals = set(visible_meals or ("breakfast", "lunch", "olovrant"))
+        for meal_type in ("breakfast", "lunch", "olovrant"):
+            if meal_type not in effective_meals:
+                validated_data[f"delivery_route_{meal_type}"] = None
+                validated_data[f"delivery_sort_order_{meal_type}"] = 0
+        snack_with_lunch = validated_data.get(
+            "olovrant_s_obedom", instance.olovrant_s_obedom
+        )
+        if snack_with_lunch:
+            validated_data["delivery_route_olovrant"] = None
+            validated_data["delivery_sort_order_olovrant"] = 0
         instance = super().update(instance, validated_data)
         if diet_notes:
             self._apply_diet_notes(instance, diet_notes)

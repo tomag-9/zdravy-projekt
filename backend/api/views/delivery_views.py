@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -31,6 +31,21 @@ def _meal_type_from(source, default: str = str(DeliveryMealType.LUNCH)) -> str |
     return meal_type
 
 
+def _eligible_prevadzky_for_meal(meal_type: str):
+    """Aktívne prevádzky, ktoré sa logisticky týkajú daného jedla.
+
+    Prázdne historické `visible_meals` znamená pôvodný default (všetky jedlá),
+    rovnako ako vo výstupe gramážnej tabuľky. Olovrant vozidla s obedom nemá
+    samostatnú popoludňajšiu trasu ani stav „Nepriradená“.
+    """
+    queryset = Prevadzka.objects.filter(is_active=True).filter(
+        Q(visible_meals__contains=[meal_type]) | Q(visible_meals=[])
+    )
+    if meal_type == DeliveryMealType.OLOVRANT:
+        queryset = queryset.filter(olovrant_s_obedom=False)
+    return queryset
+
+
 @extend_schema_view(
     list=extend_schema(tags=["admin-delivery-layout"]),
     create=extend_schema(tags=["admin-delivery-layout"]),
@@ -52,7 +67,9 @@ class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             qs = qs.filter(meal_type=meal_type).prefetch_related(
                 Prefetch(
                     f"routes__prevadzky_{meal_type}",
-                    queryset=Prevadzka.objects.select_related("celok").order_by(
+                    queryset=_eligible_prevadzky_for_meal(meal_type)
+                    .select_related("celok")
+                    .order_by(
                         f"delivery_sort_order_{meal_type}", "sort_order", "nazov"
                     ),
                 ),
@@ -68,9 +85,8 @@ class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
             )
         blocks = self.get_queryset(meal_type).filter(is_active=True)
         unassigned = (
-            Prevadzka.objects.filter(
-                is_active=True, **{f"delivery_route_{meal_type}__isnull": True}
-            )
+            _eligible_prevadzky_for_meal(meal_type)
+            .filter(**{f"delivery_route_{meal_type}__isnull": True})
             .select_related("celok")
             .order_by("celok__nazov", "sort_order", "nazov")
         )
