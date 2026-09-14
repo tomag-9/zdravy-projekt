@@ -4,7 +4,7 @@ import { useAuth } from '../../context/auth';
 import { useToast } from '../../context/ToastContext';
 import { logger } from '../../lib/logger';
 import { SECTION, canRead } from '../../lib/sections';
-import { PageHead, Card, CardHead, Button, Field, Input, Toggle } from './ui';
+import { PageHead, Card, CardHead, Button, Field, Input, Modal, Toggle } from './ui';
 
 type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report' | 'maintenance';
 
@@ -124,6 +124,10 @@ const SystemSettings: React.FC = () => {
         return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     });
     const [scraping, setScraping] = useState(false);
+    const [scrapeModalOpen, setScrapeModalOpen] = useState(false);
+    const [scrapeMeals, setScrapeMeals] = useState<Record<'breakfast' | 'lunch' | 'olovrant', boolean>>({ breakfast: true, lunch: true, olovrant: true });
+    const [menuScope, setMenuScope] = useState<'all' | 'a' | 'bc'>('all');
+    const [britishMode, setBritishMode] = useState<'exclude' | 'include' | 'only'>('exclude');
     const [connections, setConnections] = useState<EdupageConnection[]>([]);
     const [scrapeResults, setScrapeResults] = useState<ScrapeResult[]>([]);
     const [expandedResults, setExpandedResults] = useState<Set<number>>(() => new Set());
@@ -164,13 +168,19 @@ const SystemSettings: React.FC = () => {
         if (canSeeAutomation) void fetchAutomation();
     }, [canSeeAutomation, fetchAutomation]);
 
-    const runScrapeNow = async (connectionId?: number) => {
+    const runScrapeNow = async () => {
+        const meal_types = (Object.entries(scrapeMeals) as Array<['breakfast' | 'lunch' | 'olovrant', boolean]>)
+            .filter(([, selected]) => selected)
+            .map(([meal]) => meal);
+        if (meal_types.length === 0) {
+            error('Vyber aspoň jedno jedlo.');
+            return;
+        }
         setScraping(true);
         setScrapeResults([]);
         setExpandedResults(new Set());
         try {
-            const body: { date: string; connection_id?: number } = { date: scrapeDate };
-            if (connectionId) body.connection_id = connectionId;
+            const body = { date: scrapeDate, meal_types, menu_scope: menuScope, british_mode: britishMode };
             const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/edupage-connections/scrape/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -189,6 +199,7 @@ const SystemSettings: React.FC = () => {
                 error('Nenačítala sa žiadna prevádzka — skontroluj EduPage nastavenie.');
             } else {
                 success(`Načítané z EduPage: ${updated} prevádzok, ${orders} objednávok (${scrapeDate}).`);
+                setScrapeModalOpen(false);
             }
         } catch (e) {
             logger.error(e);
@@ -572,30 +583,10 @@ const SystemSettings: React.FC = () => {
                             Prepíše objednávky EduPage prevádzok pre zvolený deň aktuálnymi
                             počtami. Použi ráno, keď rodičia po večernom scrape odhlásili deti.
                         </p>
-                        {/* `flexWrap` kvôli úzkym displejom: tlačidlo má nowrap
-                            a vedľa dátumu sa na 320px nezmestí. */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end', marginTop: 12 }}>
-                            <Field label="Deň">
-                                <Input
-                                    type="date"
-                                    value={scrapeDate}
-                                    onChange={(e) => setScrapeDate(e.target.value)}
-                                    style={{ width: 'auto' }}
-                                />
-                            </Field>
-                            <Button type="button" onClick={() => runScrapeNow()} disabled={scraping}>
-                                {scraping ? 'Načítavam…' : 'Načítať z EduPage'}
+                        <div style={{ marginTop: 12 }}>
+                            <Button type="button" onClick={() => setScrapeModalOpen(true)} disabled={scraping}>
+                                Načítať z EduPage…
                             </Button>
-                            {britishSchool && (
-                                <Button
-                                    type="button"
-                                    variant="secondary"
-                                    onClick={() => runScrapeNow(britishSchool.id)}
-                                    disabled={scraping}
-                                >
-                                    {scraping ? 'Načítavam…' : 'Scrapovať len British School'}
-                                </Button>
-                            )}
                         </div>
 
                         {scrapeResults.length > 0 && (
@@ -647,6 +638,26 @@ const SystemSettings: React.FC = () => {
                     </div>
                 </Card>
                 )}
+
+            {scrapeModalOpen && (
+                <Modal title="Manuálny EduPage scrape" onClose={() => !scraping && setScrapeModalOpen(false)}>
+                    <div className="zpa-stack" style={{ gap: 18 }}>
+                        <Field label="Deň"><Input type="date" value={scrapeDate} onChange={(e) => setScrapeDate(e.target.value)} /></Field>
+                        <fieldset><legend>Jedlá</legend>
+                            {([['breakfast', 'Raňajky'], ['lunch', 'Obed'], ['olovrant', 'Olovrant']] as const).map(([meal, label]) => (
+                                <label key={meal} style={{ display: 'block', marginTop: 8 }}><input type="checkbox" checked={scrapeMeals[meal]} onChange={(e) => setScrapeMeals((v) => ({ ...v, [meal]: e.target.checked }))} /> {label}</label>
+                            ))}
+                        </fieldset>
+                        <fieldset><legend>Menu</legend>
+                            {[['all', 'Všetko'], ['a', 'Iba Menu A'], ['bc', 'Iba Menu B–C']].map(([value, label]) => <label key={value} style={{ display: 'block', marginTop: 8 }}><input type="radio" name="manual-menu-scope" checked={menuScope === value} onChange={() => setMenuScope(value as 'all' | 'a' | 'bc')} /> {label}</label>)}
+                        </fieldset>
+                        {britishSchool && <fieldset><legend>British School</legend>
+                            {[['exclude', 'Bez British School'], ['include', 'Vrátane British School'], ['only', 'Iba British School']].map(([value, label]) => <label key={value} style={{ display: 'block', marginTop: 8 }}><input type="radio" name="manual-british-mode" checked={britishMode === value} onChange={() => setBritishMode(value as 'exclude' | 'include' | 'only')} /> {label}</label>)}
+                        </fieldset>}
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><Button variant="ghost" onClick={() => setScrapeModalOpen(false)} disabled={scraping}>Zrušiť</Button><Button onClick={runScrapeNow} disabled={scraping}>{scraping ? 'Načítavam…' : 'Spustiť scrape'}</Button></div>
+                    </div>
+                </Modal>
+            )}
 
                 {/* Contact */}
                 {activeTab === 'contact' && (

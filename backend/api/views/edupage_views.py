@@ -29,6 +29,45 @@ EDUPAGE_SCRAPE_ERROR = (
     "Edupage scraping failed. Check the configured URL and try again."
 )
 EDUPAGE_TEST_URL_ERROR = "URL could not be reached or parsed."
+_MANUAL_SCRAPE_MEALS = {"breakfast", "lunch", "olovrant"}
+_MANUAL_MENU_SCOPES = {"all", "a", "bc"}
+_MANUAL_BRITISH_MODES = {"exclude", "include", "only"}
+
+
+def _apply_manual_scrape_data(
+    existing: dict, imported: dict, meals: list[str], scope: str
+) -> dict:
+    """Apply just the manual-dialog selection without erasing other orders."""
+    result = dict(existing or {})
+    letters = {"a": {"A"}, "bc": {"B", "C"}}.get(scope)
+    for meal in meals:
+        fresh_meal = (imported or {}).get(meal)
+        if letters is None:
+            if fresh_meal:
+                result[meal] = fresh_meal
+            else:
+                result.pop(meal, None)
+            continue
+        old_meal = result.get(meal, {})
+        merged_meal = {}
+        for category in set(old_meal) | set(fresh_meal or {}):
+            old = old_meal.get(category, {})
+            fresh = (fresh_meal or {}).get(category, {})
+            counts = dict(old.get("menuCounts") or {})
+            fresh_counts = fresh.get("menuCounts") or {}
+            for letter in letters:
+                if letter in fresh_counts:
+                    counts[letter] = fresh_counts[letter]
+                else:
+                    counts.pop(letter, None)
+            diets = fresh.get("diets", {}) if "A" in letters else old.get("diets", {})
+            if counts or diets:
+                merged_meal[category] = {"menuCounts": counts, "diets": diets}
+        if merged_meal:
+            result[meal] = merged_meal
+        else:
+            result.pop(meal, None)
+    return result
 
 
 class EdupageConnectionSerializer(serializers.ModelSerializer):
@@ -83,11 +122,32 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
         Scrape mealsGuest HTML for one or all EduPage connections for a given date
         and upsert the result as DailyOrder records.
 
-        Body: { "date": "YYYY-MM-DD", "connection_id": <int> (optional) }
-        When connection_id is omitted, all active EduPage connections are scraped.
+        Body accepts date, selected meal_types, menu_scope (all/a/bc), and
+        british_mode (exclude/include/only). Defaults retain the old full import.
         """
         date_str = request.data.get("date")
         connection_id = request.data.get("connection_id")
+        meal_types = request.data.get("meal_types", ["breakfast", "lunch", "olovrant"])
+        menu_scope = request.data.get("menu_scope", "all")
+        british_mode = request.data.get("british_mode", "include")
+
+        if (
+            not isinstance(meal_types, list)
+            or not meal_types
+            or any(meal not in _MANUAL_SCRAPE_MEALS for meal in meal_types)
+        ):
+            return Response(
+                {"error": "meal_types must contain selected meals"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if menu_scope not in _MANUAL_MENU_SCOPES:
+            return Response(
+                {"error": "invalid menu_scope"}, status=status.HTTP_400_BAD_REQUEST
+            )
+        if british_mode not in _MANUAL_BRITISH_MODES:
+            return Response(
+                {"error": "invalid british_mode"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         if not date_str:
             return Response(
@@ -105,6 +165,10 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
         DailyOrderSerializer._enforce_day_open(target_date)
 
         operations = edupage_operations(connection_id=connection_id)
+        if british_mode == "exclude":
+            operations = [op for op in operations if op["name"] != "British School"]
+        elif british_mode == "only":
+            operations = [op for op in operations if op["name"] == "British School"]
         if connection_id and not operations:
             return Response(
                 {"error": f"Edupage connection {connection_id} not found"},
@@ -220,20 +284,24 @@ class AdminEdupageConnectionViewSet(viewsets.ModelViewSet):
                         data_by_nazov.get(nazov, {}), nazov
                     )
                     order_data = filter_order_data_for_prevadzka(order_data, nazov)
-                    order, created = DailyOrder.objects.update_or_create(
+                    (
+                        order,
+                        created,
+                    ) = DailyOrder.objects.select_for_update().get_or_create(
                         prevadzka=prevadzka,
                         date=target_date,
-                        defaults={
-                            "user": operation["user"],
-                            "data": order_data,
-                            "scrape_flags": {
-                                "attention": list(attention),
-                                "config_notes": list(result.config_notes),
-                                "unmapped_diets": list(unmapped),
-                                "uncertain_diets": list(uncertain),
-                            },
-                        },
+                        defaults={"user": operation["user"], "data": {}},
                     )
+                    order.data = _apply_manual_scrape_data(
+                        order.data, order_data, meal_types, menu_scope
+                    )
+                    order.scrape_flags = {
+                        "attention": list(attention),
+                        "config_notes": list(result.config_notes),
+                        "unmapped_diets": list(unmapped),
+                        "uncertain_diets": list(uncertain),
+                    }
+                    order.save(update_fields=["data", "scrape_flags", "updated_at"])
                     written.append(
                         {
                             "prevadzka": nazov,
