@@ -3,7 +3,8 @@ import { Check, Download, Loader2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
-import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
+import { dashboardDefaultDate } from "../../lib/businessDay";
+import { useDashboardMaxDate } from "../../hooks/useDashboardMaxDate";
 import GramageTable, { type TableSpec } from "./GramageTable";
 import ClusterSummaryChart from "./ClusterSummaryChart";
 import { AdminDateNav, Button, Card, Empty, PageHead } from "./ui";
@@ -32,7 +33,7 @@ interface SummaryResponse {
 const ClusterSummaries: React.FC = () => {
   const { apiFetch } = useAuth();
   const { error: toastError } = useToast();
-  const maxDate = useMemo(() => dashboardMaxDate(), []);
+  const maxDate = useDashboardMaxDate();
   const [date, setDate] = useState(() => dashboardDefaultDate());
   const [meals, setMeals] = useState<Meal[]>(() => MEALS.map(({ key }) => key));
   const [data, setData] = useState<SummaryResponse | null>(null);

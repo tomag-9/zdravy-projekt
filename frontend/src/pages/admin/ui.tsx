@@ -7,6 +7,7 @@ import React from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { useDisabled } from '../../lib/editAccessContext';
 import { fromDateKey, isWeekday, nextWeekday, prevWeekday, toDateString } from '../../lib/businessDay';
+import { useTodayKey } from '../../hooks/useDashboardMaxDate';
 
 type Div = React.HTMLAttributes<HTMLDivElement>;
 
@@ -141,7 +142,7 @@ export const AdminDateNav: React.FC<{
     compact?: boolean;
     className?: string;
 }> = ({ date, onChange, maxDate, dataDates, closedDates, unavailableDates, disabled, compact, className = '' }) => {
-    const actualToday = React.useMemo(() => toDateString(new Date()), []);
+    const actualToday = useTodayKey();
     const [open, setOpen] = React.useState(false);
     const closePicker = React.useCallback(() => setOpen(false), []);
     const pickerRef = usePopoverDismissal(open, closePicker);

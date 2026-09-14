@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Check, AlertTriangle, X, Upload, Smartphone, Undo2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
 import { AdminDateNav, PageHead, Card } from "./ui";
-import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
+import { dashboardDefaultDate } from "../../lib/businessDay";
+import { useDashboardMaxDate } from "../../hooks/useDashboardMaxDate";
 import { useScrollToHashRow } from "../../lib/scrollToHashRow";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -313,7 +314,7 @@ const PrevadzkaOverview: React.FC = () => {
   // Rovnaký cap ako gramážny dashboard (`AdminDashboard.tsx`) — dnes + 2
   // pracovné dni, zosúladené s hodinovým EduPage priebežným náhľadom, ktorý
   // dáta na toto okno priebežne dopĺňa.
-  const maxDate = useMemo(() => dashboardMaxDate(), []);
+  const maxDate = useDashboardMaxDate();
   const [data, setData] = useState<OverviewResponse | null>(null);
   const [loading, setLoading] = useState(false);
 

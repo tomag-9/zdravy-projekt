@@ -1211,7 +1211,7 @@ def test_scrape_task_runs_on_sunday_for_a_day_before_meal(edupage_user, monkeypa
 def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
     edupage_user, monkeypatch
 ):
-    """`days_ahead=2` scrapne dnes, dnes+1, dnes+2 — nezávisle od
+    """`days_ahead=3` scrapne dnes až dnes+3 — nezávisle od
     GlobalSettings deadlinov (žiadne v teste), všetky jedlá naraz."""
     GlobalSettings.objects.create(pk=1)
     monday = datetime.date(2026, 6, 29)
@@ -1224,13 +1224,14 @@ def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
     _freeze_local(monkeypatch, monday)
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
-    result = scrape_edupage_orders_task.run(days_ahead=2)
+    result = scrape_edupage_orders_task.run(days_ahead=3)
 
     tuesday = datetime.date(2026, 6, 30)
     wednesday = datetime.date(2026, 7, 1)
-    assert seen_dates == [monday, tuesday, wednesday]
-    assert result["dates"] == [str(monday), str(tuesday), str(wednesday)]
-    for target_date in (monday, tuesday, wednesday):
+    thursday = datetime.date(2026, 7, 2)
+    assert seen_dates == [monday, tuesday, wednesday, thursday]
+    assert result["dates"] == [str(monday), str(tuesday), str(wednesday), str(thursday)]
+    for target_date in (monday, tuesday, wednesday, thursday):
         order = DailyOrder.objects.get(user=edupage_user, date=target_date)
         assert order.data["lunch"]["Edupage school"]["menuCounts"]["A"] == 3
 
@@ -1533,7 +1534,7 @@ def test_preview_scrape_schedule_creates_hourly_task():
     assert task.crontab.minute == "0"
     assert task.crontab.hour == "0-23"
     assert task.crontab.day_of_week == "*"
-    assert json.loads(task.kwargs) == {"days_ahead": 2}
+    assert json.loads(task.kwargs) == {"days_ahead": 3}
 
 
 @pytest.mark.django_db

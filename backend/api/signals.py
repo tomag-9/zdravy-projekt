@@ -54,7 +54,7 @@ DEDICATED_SCRAPE_TASK_PREFIX = f"{EDUPAGE_SCRAPE_TASK_PREFIX}dedicated-"
 # pripojenia (`_sync_dedicated_connection_scrape_schedules`) nižšie. Poradie
 # volaní v `on_global_settings_saved` je preto dôležité.
 EDUPAGE_PREVIEW_SCRAPE_TASK_NAME = f"{EDUPAGE_SCRAPE_TASK_PREFIX}preview"
-EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD = 2
+EDUPAGE_PREVIEW_SCRAPE_DAYS_AHEAD = 3
 
 # A connection can opt out of the shared GlobalSettings meal deadlines and
 # scrape on its own crontab instead (day before, Sun–Thu, targeting the next

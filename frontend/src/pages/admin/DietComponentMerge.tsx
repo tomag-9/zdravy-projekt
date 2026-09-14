@@ -2,7 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ChevronRight, LoaderCircle, RotateCcw } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { logger } from "../../lib/logger";
-import { dashboardDefaultDate, dashboardMaxDate } from "../../lib/businessDay";
+import { dashboardDefaultDate } from "../../lib/businessDay";
+import { useDashboardMaxDate } from "../../hooks/useDashboardMaxDate";
 import { PageHead, Card, AdminDateNav, Empty, Badge, Button, Checkbox, TableWrap, SearchBox } from "./ui";
 
 // Zvýraznenie zlúčenej bunky — rovnaký tón ako zelený Badge (`--green-700`
@@ -72,7 +73,7 @@ const DietComponentMergePage: React.FC = () => {
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [resetting, setResetting] = useState(false);
 
-  const upperMaxDate = useMemo(() => dashboardMaxDate(), []);
+  const upperMaxDate = useDashboardMaxDate();
 
   // Jedlo bez dnešných zlúčení je (default) zbalené — kuchyňa rieši len
   // výnimky, tabuľka s jedlami "ako obvykle" by len zaberala miesto.

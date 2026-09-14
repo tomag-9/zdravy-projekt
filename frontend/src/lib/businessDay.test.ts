@@ -86,31 +86,31 @@ describe("businessDays", () => {
 });
 
 // Hodinový EduPage priebežný náhľad (`_sync_edupage_preview_scrape_schedule`)
-// dopĺňa dáta na dnes + 2 pracovné dni celý deň, takže dashboard už nemusí
+// dopĺňa dáta na dnes + 3 pracovné dni celý deň, takže dashboard už nemusí
 // čakať na konkrétnu hodinu ako predtým (#535, len pre zajtrajšok) — vždy
 // odomkne rovnaké okno, bez ohľadu na to, kedy sa otvorí.
 describe("dashboardMaxDate", () => {
-  it("extends 2 business days ahead of today, any hour", () => {
-    expect(dashboardMaxDate(atHour(monday(), 0))).toBe("2026-08-12");
-    expect(dashboardMaxDate(atHour(monday(), 23))).toBe("2026-08-12");
+  it("extends 3 business days ahead of today, any hour", () => {
+    expect(dashboardMaxDate(atHour(monday(), 0))).toBe("2026-08-13");
+    expect(dashboardMaxDate(atHour(monday(), 23))).toBe("2026-08-13");
   });
 
-  it("skips the weekend when counting the 2 business days ahead", () => {
+  it("skips the weekend when counting the 3 business days ahead", () => {
     const friday = new Date(2026, 7, 7);
-    expect(dashboardMaxDate(atHour(friday, 12))).toBe("2026-08-11");
+    expect(dashboardMaxDate(atHour(friday, 12))).toBe("2026-08-12");
   });
 
   it("Sunday collapses to Friday first, same result as Friday", () => {
-    expect(dashboardMaxDate(atHour(sunday(), 12))).toBe("2026-08-11");
+    expect(dashboardMaxDate(atHour(sunday(), 12))).toBe("2026-08-12");
   });
 
   it("Saturday collapses to Friday first, same result as Friday", () => {
-    expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-11");
+    expect(dashboardMaxDate(atHour(saturday(), 12))).toBe("2026-08-12");
   });
 
-  it("skips a holiday inside the 2-business-day window", () => {
+  it("skips a holiday inside the 3-business-day window", () => {
     const holidays = new Set(["2026-08-11"]);
-    expect(dashboardMaxDate(atHour(monday(), 12), { holidays })).toBe("2026-08-13");
+    expect(dashboardMaxDate(atHour(monday(), 12), { holidays })).toBe("2026-08-14");
   });
 });
 
