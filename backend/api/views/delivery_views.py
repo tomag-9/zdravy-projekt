@@ -77,8 +77,8 @@ class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
         return qs.order_by("sort_order", "name")
 
     @action(detail=False, methods=["get"], url_path="layout")
-    def layout(self, request):
-        meal_type = _meal_type_from(request.query_params)
+    def layout(self, request, meal_type: str | None = None):
+        meal_type = meal_type or _meal_type_from(request.query_params)
         if meal_type is None:
             return Response(
                 {"error": "invalid meal_type"}, status=status.HTTP_400_BAD_REQUEST
@@ -173,7 +173,7 @@ class DeliveryBlockViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
                             **{route_field: None, sort_field: 0}
                         )
 
-        return self.layout(request)
+        return self.layout(request, meal_type=meal_type)
 
 
 @extend_schema_view(

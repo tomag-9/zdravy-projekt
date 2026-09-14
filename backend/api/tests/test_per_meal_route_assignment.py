@@ -205,6 +205,32 @@ def test_marking_snack_with_lunch_clears_its_separate_delivery_route():
     assert prevadzka.delivery_route_olovrant_id is None
 
 
+def test_reorder_returns_the_selected_meal_layout_not_the_lunch_default():
+    breakfast_route = _route("breakfast")
+    view = DeliveryBlockViewSet()
+    view.action_map = {"post": "reorder"}
+    request = view.initialize_request(
+        APIRequestFactory().post(
+            "/",
+            {
+                "meal_type": "breakfast",
+                "blocks": [
+                    {
+                        "id": breakfast_route.block_id,
+                        "routes": [{"id": breakfast_route.id, "prevadzky": []}],
+                    }
+                ],
+                "unassigned_prevadzky": [],
+            },
+            format="json",
+        )
+    )
+
+    response = view.reorder(request)
+
+    assert response.data["blocks"][0]["meal_type"] == "breakfast"
+
+
 def test_olovrant_s_obedom_snack_shows_up_inside_the_lunch_row():
     plan = _plan(datetime.date(2026, 9, 22))
     route = _route("lunch")
