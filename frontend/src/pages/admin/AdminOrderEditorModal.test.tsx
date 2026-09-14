@@ -121,10 +121,14 @@ describe('AdminOrderEditorModal', () => {
 
             expect(screen.getByText('Dnes streda 2.9.')).toBeInTheDocument();
 
-            fireEvent.change(screen.getByLabelText(/dátum objednávky/i), { target: { value: '2026-09-03' } });
+            // Dátum je teraz vlastný kalendár (tlačidlo + popover), nie natívny
+            // <input type="date"> — vyberáme deň cez popover, nie fireEvent.change.
+            fireEvent.click(screen.getByLabelText(/dátum objednávky/i));
+            fireEvent.click(screen.getByRole('button', { name: '3. septembra 2026' }));
             expect(screen.getByText('Zajtra štvrtok 3.9.')).toBeInTheDocument();
 
-            fireEvent.change(screen.getByLabelText(/dátum objednávky/i), { target: { value: '2026-09-08' } });
+            fireEvent.click(screen.getByLabelText(/dátum objednávky/i));
+            fireEvent.click(screen.getByRole('button', { name: '8. septembra 2026' }));
             expect(screen.getByText('Utorok 8.9.')).toBeInTheDocument();
         } finally {
             vi.useRealTimers();

@@ -8,6 +8,7 @@ from api.management.commands import repoint_deduplicated_diets_2026_09 as comman
 from api.models import (
     Celok,
     DailyMealPlan,
+    DailyOrder,
     Diet,
     DietComponentMerge,
     MealCategory,
@@ -135,3 +136,24 @@ def test_old_diet_used_as_a_component_blocks_apply_instead_of_creating_nested_co
         call_command("repoint_deduplicated_diets_2026_09", "--apply")
 
     assert composite.base_diets.filter(pk=old.pk).exists()
+
+
+def test_retiring_legacy_diet_keeps_existing_order_json_unchanged(mapping):
+    """Retirement only removes a future UI choice, never rewrites an order."""
+    old = Diet.objects.create(name="Stará")
+    Diet.objects.create(name="Nová")
+    celok = Celok.objects.create(nazov="Celok")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
+    data = {"lunch": {"Škôlka": {"menuCounts": {"A": 2}, "diets": {"Stará": 1}}}}
+    order = DailyOrder.objects.create(
+        prevadzka=prevadzka,
+        date=datetime.date(2026, 9, 20),
+        data=data,
+    )
+
+    call_command("retire_deduplicated_diets_2026_09", "--apply")
+
+    old.refresh_from_db()
+    order.refresh_from_db()
+    assert old.is_active is False
+    assert order.data == data

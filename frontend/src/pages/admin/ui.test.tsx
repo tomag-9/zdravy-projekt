@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AdminDateNav, Dropdown } from "./ui";
+import { AdminDateNav, Dropdown, Input } from "./ui";
 
 describe("AdminDateNav", () => {
   it("uses muted states for history, locked and upcoming dates", () => {
@@ -74,5 +74,17 @@ describe("Dropdown", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Typ jedla" }));
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("listbox", { name: "Typ jedla" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Input type=date", () => {
+  it("uses the shared calendar instead of the browser date popup", () => {
+    const onChange = vi.fn();
+    render(<Input type="date" aria-label="Dátum voľna" value="2026-09-11" onChange={onChange} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Dátum voľna" }));
+    expect(screen.getByRole("dialog", { name: "Výber dátumu" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "15. septembra 2026" }));
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ target: { value: "2026-09-15" } }));
   });
 });

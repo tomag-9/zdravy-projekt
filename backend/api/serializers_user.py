@@ -408,7 +408,7 @@ class AdminPrevadzkaSettingsSerializer(serializers.ModelSerializer):
     """Compatibility serializer backed by Prevádzka, not by the login."""
 
     visible_diets = serializers.PrimaryKeyRelatedField(
-        queryset=Diet.objects.all(), many=True, required=False
+        queryset=Diet.objects.filter(is_active=True), many=True, required=False
     )
 
     class Meta:

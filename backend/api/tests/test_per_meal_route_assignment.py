@@ -14,6 +14,8 @@ import importlib
 
 import pytest
 from django.contrib.auth.models import User
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from api.models import (
     Celok,
@@ -25,7 +27,9 @@ from api.models import (
     MealTemplate,
     Prevadzka,
 )
+from api.serializers_facilities import AdminPrevadzkaSerializer
 from api.services.meal_plan_service import MealPlanService
+from api.views.delivery_views import DeliveryBlockViewSet
 
 pytestmark = pytest.mark.django_db
 
@@ -127,6 +131,104 @@ def test_olovrant_s_obedom_prevadzka_is_absent_from_the_olovrant_table():
 
     assert data["vydaje_by_meal"]["olovrant"] == []
     assert data["unassigned_rows_by_meal"]["olovrant"] == []
+
+
+def test_delivery_layout_hides_ineligible_facilities_and_keeps_newly_enabled_one_unassigned():
+    """Trasy neukazujú vypnuté jedlá; po opätovnom zapnutí sa priraďujú ručne."""
+    breakfast_route = _route("breakfast")
+    snack_route = _route("olovrant")
+    without_breakfast = _prevadzka("MŠ Bez raňajok")
+    without_breakfast.delivery_route_breakfast = breakfast_route
+    without_breakfast.save(update_fields=["delivery_route_breakfast"])
+    serializer = AdminPrevadzkaSerializer(
+        without_breakfast, data={"visible_meals": ["lunch"]}, partial=True
+    )
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    without_breakfast.refresh_from_db()
+    assert without_breakfast.delivery_route_breakfast_id is None
+    yellow_snack = _prevadzka(
+        "MŠ Žltý olovrant",
+        visible_meals=["lunch", "olovrant"],
+        olovrant_s_obedom=True,
+    )
+    yellow_snack.delivery_route_olovrant = snack_route
+    yellow_snack.save(update_fields=["delivery_route_olovrant"])
+
+    factory = APIRequestFactory()
+    breakfast_layout = (
+        DeliveryBlockViewSet()
+        .layout(Request(factory.get("/", {"meal_type": "breakfast"})))
+        .data
+    )
+    snack_layout = (
+        DeliveryBlockViewSet()
+        .layout(Request(factory.get("/", {"meal_type": "olovrant"})))
+        .data
+    )
+
+    assert breakfast_layout["blocks"][0]["routes"][0]["prevadzky"] == []
+    assert breakfast_layout["unassigned_prevadzky"] == []
+    assert snack_layout["blocks"][0]["routes"][0]["prevadzky"] == []
+    assert snack_layout["unassigned_prevadzky"] == []
+
+    serializer = AdminPrevadzkaSerializer(
+        without_breakfast, data={"visible_meals": ["breakfast", "lunch"]}, partial=True
+    )
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    without_breakfast.refresh_from_db()
+
+    newly_enabled_layout = (
+        DeliveryBlockViewSet()
+        .layout(Request(factory.get("/", {"meal_type": "breakfast"})))
+        .data
+    )
+    assert [row["id"] for row in newly_enabled_layout["unassigned_prevadzky"]] == [
+        without_breakfast.id
+    ]
+
+
+def test_marking_snack_with_lunch_clears_its_separate_delivery_route():
+    snack_route = _route("olovrant")
+    prevadzka = _prevadzka("MŠ Presun olovrantu")
+    prevadzka.delivery_route_olovrant = snack_route
+    prevadzka.save(update_fields=["delivery_route_olovrant"])
+
+    serializer = AdminPrevadzkaSerializer(
+        prevadzka, data={"olovrant_s_obedom": True}, partial=True
+    )
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    prevadzka.refresh_from_db()
+
+    assert prevadzka.delivery_route_olovrant_id is None
+
+
+def test_reorder_returns_the_selected_meal_layout_not_the_lunch_default():
+    breakfast_route = _route("breakfast")
+    view = DeliveryBlockViewSet()
+    view.action_map = {"post": "reorder"}
+    request = view.initialize_request(
+        APIRequestFactory().post(
+            "/",
+            {
+                "meal_type": "breakfast",
+                "blocks": [
+                    {
+                        "id": breakfast_route.block_id,
+                        "routes": [{"id": breakfast_route.id, "prevadzky": []}],
+                    }
+                ],
+                "unassigned_prevadzky": [],
+            },
+            format="json",
+        )
+    )
+
+    response = view.reorder(request)
+
+    assert response.data["blocks"][0]["meal_type"] == "breakfast"
 
 
 def test_olovrant_s_obedom_snack_shows_up_inside_the_lunch_row():

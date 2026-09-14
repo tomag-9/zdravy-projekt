@@ -184,6 +184,8 @@ def _gram_cells(
     hues: list[str],
     snack_with_lunch: bool = False,
     counts: dict[int, object] | None = None,
+    data: dict | None = None,
+    diet_name: str | None = None,
 ) -> list[dict]:
     """Bunky s gramážou pre jeden riadok, vrátane oddeľovača medzi jedlami.
 
@@ -217,6 +219,19 @@ def _gram_cells(
             # pásu Obed; prázdna bunka ho nesmie dostať vôbec.
             if component_index == 0 and group_count and text is not None:
                 cell["corner_count"] = format_count(group_count)
+            # Spolu/zvlášť je vlastnosťou zložky, nie celej diéty. Prázdna
+            # bunka nemá zložku, preto odznak nedostane.
+            if diet_name and text is not None:
+                separated = (
+                    (data or {})
+                    .get("diet_component_pack_state", {})
+                    .get(str(group.get("meal") or ""), {})
+                    .get(diet_name, [])
+                )
+                cell["component_pack_badge"] = (
+                    "Z" if component_index in separated else "S"
+                )
+                cell["css"] += " has-component-pack-badge"
             cells.append(cell)
     return cells
 
@@ -690,7 +705,6 @@ def _diet_name_rows(
         # keď ho tabuľka má, len táto diéta ho neobjednala).
         meal_counts = diet.get("meal_counts") or {}
         name = str(diet["name"])
-        badge = _diet_pack_badge(data, name, meal_counts, visible_bands)
         label_cell = _label_cell(
             name,
             diet["count"],
@@ -698,7 +712,6 @@ def _diet_name_rows(
                 "color": f"#{diet_color(data, diet)}",
                 "base_colors": diet.get("base_colors") or [],
             },
-            pack_badge=badge,
         )
         if visible_bands:
             label_cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
@@ -709,7 +722,9 @@ def _diet_name_rows(
                 "color": f"#{text_hex}",
                 "background": f"#{background_hex}",
                 "cells": [label_cell]
-                + _gram_cells(diet.get("col_grams") or [], groups, hues),
+                + _gram_cells(
+                    diet.get("col_grams") or [], groups, hues, data=data, diet_name=name
+                ),
             }
         )
     return diet_rows
@@ -1183,6 +1198,12 @@ def _client_rows(
                 sub_row.get("_meal_counts"),
                 sub_row.get("_group_counts"),
             ),
+            data=data if sub_row.get("type") == "diet" else None,
+            diet_name=(
+                str(sub_row.get("diet_name") or "")
+                if sub_row.get("type") == "diet"
+                else None
+            ),
         )
         # Riadok bez jediného čísla vo viditeľných stĺpcoch nemá čo povedať.
         if any("cell-num" in cell["css"] for cell in gram_cells):
@@ -1320,21 +1341,7 @@ def _client_rows(
         display_label = f"↳ {label}" if is_diet else label
         if diet_note:
             display_label = f"{display_label} — {diet_note}"
-        # "S"/"Z" odznak (10.9.2026, #568 nadväzba) — spolu/zvlášť na
-        # diet-component-merge boarde, vedľa count-badge, nie v mene/poznámke
-        # (viď `_diet_pack_badge`).
-        badge = (
-            _diet_pack_badge(
-                data, str(sub_row.get("diet_name") or ""), meal_counts, visible_bands
-            )
-            if is_diet
-            else ""
-        )
-        cell = _label_cell(
-            display_label,
-            sub_row.get("count"),
-            pack_badge=badge,
-        )
+        cell = _label_cell(display_label, sub_row.get("count"))
         if visible_bands:
             cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
         text_hex = background_hex = None
@@ -1425,7 +1432,6 @@ def _client_rows(
         # to isté dieťa na raňajkách/obede/olovrante viackrát, rozpis
         # "0 + x + y" ukáže reálny počet za každý pás zvlášť.
         meal_counts = diet_meal_counts.get(name) or {}
-        badge = _diet_pack_badge(data, name, meal_counts, visible_bands)
         label_cell = _label_cell(
             f"{name} — {diet_note}" if diet_note else name,
             diet_counts[name],
@@ -1433,7 +1439,6 @@ def _client_rows(
                 "color": f"#{hex_color}",
                 "base_colors": diet.get("base_colors") or [],
             },
-            pack_badge=badge,
         )
         if visible_bands:
             label_cell["count"] = _composite_meal_count_text(meal_counts, visible_bands)
@@ -1445,7 +1450,12 @@ def _client_rows(
                 "background": f"#{background_hex}",
                 "cells": [label_cell]
                 + _gram_cells(
-                    diet.get("col_grams") or [], groups, hues, snack_with_lunch
+                    diet.get("col_grams") or [],
+                    groups,
+                    hues,
+                    snack_with_lunch,
+                    data=data,
+                    diet_name=name,
                 ),
             }
         )

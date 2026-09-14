@@ -233,6 +233,11 @@ tr.zpa-row-highlight td { animation: zpa-row-highlight 2s ease-out; }
 .zpa-gram .cell-empty { position: relative; text-align: right; color: var(--line); }
 /* Počet presne pre túto stĺpcovú skupinu/menu; je mimo toku gramáže. */
 .zpa-gram .corner-count { position: absolute; top: 1px; left: 3px; line-height: 1; font-family: var(--font-display); font-size: 9px; font-weight: 700; color: var(--green-800); background: rgba(26,77,46,0.12); border-radius: 3px; padding: 1px 3px; pointer-events: none; }
+/* S/Z je pri zložke, ktorej sa týka — vľavo v bunke, nie pri názve diéty.
+ * Počet porcií je hore vľavo, odznak naspodku, aby sa neprekrývali. */
+.zpa-gram .has-component-pack-badge { padding-left: 21px; }
+.zpa-gram .component-pack-badge { position: absolute; bottom: 1px; left: 3px; min-width: 13px; height: 15px; padding: 0 3px; border-radius: var(--radius-pill); display: inline-flex; align-items: center; justify-content: center; background: rgba(26,77,46,0.10); color: var(--green-900); font-family: var(--font-display); font-size: 9px; font-weight: 700; pointer-events: none; }
+.zpa-gram .component-pack-badge--z { background: rgba(244,107,36,0.16); color: var(--orange-600); }
 .zpa-gram .summ-std td { background: rgba(114,136,75,0.10); color: var(--green-800); border-top: 1px solid rgba(114,136,75,0.2); font-weight: 600; }
 /* "Súčet bez diét" je viditeľný aj zbalený (nie je collapsible) — olovrant s
  * obedom (#mh-snacklunch-cell vyššie) tam preto musí prebiť tónovanie

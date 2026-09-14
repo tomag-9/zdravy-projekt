@@ -84,6 +84,33 @@ describe("DeliveryLayoutAdmin", () => {
     expect(screen.getByText("Raňajkové trasy")).toBeInTheDocument();
   });
 
+  it("does not let a delayed save from another meal overwrite the active tab", async () => {
+    let resolveSave!: (value: ReturnType<typeof response>) => void;
+    const delayedSave = new Promise<ReturnType<typeof response>>((resolve) => { resolveSave = resolve; });
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/reorder/")) return delayedSave;
+      if (url.includes("meal_type=breakfast")) return response(layout("Raňajkové trasy", "breakfast"));
+      return response(layout("Obedové trasy", "lunch", [route(1, "Trasa 1"), route(2, "Trasa 2")]));
+    });
+
+    render(<DeliveryLayoutAdmin />);
+    const firstRoute = (await screen.findByText("Trasa 1")).closest("[draggable='true']");
+    const secondRoute = screen.getByText("Trasa 2").closest("[draggable='true']");
+    const dataTransfer = { effectAllowed: "", dropEffect: "", setData: vi.fn() };
+    fireEvent.dragStart(secondRoute!, { dataTransfer });
+    fireEvent.dragOver(firstRoute!, { dataTransfer });
+    fireEvent.drop(firstRoute!, { dataTransfer });
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith(expect.stringContaining("/reorder/"), expect.anything()));
+
+    fireEvent.click(screen.getByRole("button", { name: "Raňajky" }));
+    expect(await screen.findByText("Raňajkové trasy")).toBeInTheDocument();
+
+    resolveSave(response(layout("Obedové trasy", "lunch")));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("Raňajkové trasy")).toBeInTheDocument();
+    expect(screen.queryByText("Obedové trasy")).not.toBeInTheDocument();
+  });
+
   // Raňajky/olovrant nemajú Cluster (#dashboard-per-meal-routes,
   // 11.9.2026 backfill-bug follow-up) — kuchyňa ich vydáva z jedného
   // miesta, takže výber/filter clustra pre tieto dve jedlá v UI nedáva

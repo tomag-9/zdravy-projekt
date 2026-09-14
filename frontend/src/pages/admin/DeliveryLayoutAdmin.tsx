@@ -137,6 +137,10 @@ const DeliveryLayoutAdmin: React.FC = () => {
   // Prepnutie tabu spustí nový fetch; odpoveď zo starého tabu nesmie neskôr
   // prepísať layout, ktorý už patrí aktuálne vybranému jedlu.
   const fetchVersionRef = useRef(0);
+  // POST s uložením môže dobehnúť po prepnutí tabu. Ref aktualizujeme priamo
+  // v click handlery, aby ani odpoveď, ktorá príde pred ďalším renderom,
+  // nemohla vložiť starý layout do nového tabu.
+  const activeMealTypeRef = useRef<MealType>(mealType);
 
   const routeOptions = useMemo(
     () => layout.blocks.flatMap((block) => block.routes.map((route) => ({ route, block }))),
@@ -172,6 +176,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
   const persistLayout = async (nextLayout: DeliveryLayout) => {
     const saveVersion = saveVersionRef.current + 1;
     saveVersionRef.current = saveVersion;
+    const savedMealType = mealType;
     setSaving(true);
     try {
       const payload = { ...renumberLayout(nextLayout, mealType), meal_type: mealType };
@@ -182,15 +187,24 @@ const DeliveryLayoutAdmin: React.FC = () => {
       });
       if (!res.ok) {
         toastError("Nepodarilo sa uložiť poradie.");
-        if (saveVersionRef.current === saveVersion) await fetchLayout();
+        if (
+          saveVersionRef.current === saveVersion
+          && activeMealTypeRef.current === savedMealType
+        ) await fetchLayout();
         return;
       }
-      const savedLayout = renumberLayout(await res.json(), mealType);
-      if (saveVersionRef.current === saveVersion) setLayout(savedLayout);
+      const savedLayout = renumberLayout(await res.json(), savedMealType);
+      if (
+        saveVersionRef.current === saveVersion
+        && activeMealTypeRef.current === savedMealType
+      ) setLayout(savedLayout);
     } catch (e) {
       logger.error(e);
       toastError("Chyba pri ukladaní poradia.");
-      if (saveVersionRef.current === saveVersion) await fetchLayout();
+      if (
+        saveVersionRef.current === saveVersion
+        && activeMealTypeRef.current === savedMealType
+      ) await fetchLayout();
     } finally {
       if (saveVersionRef.current === saveVersion) setSaving(false);
     }
@@ -200,6 +214,11 @@ const DeliveryLayoutAdmin: React.FC = () => {
     const nextLayout = renumberLayout(recipe(layout), mealType);
     setLayout(nextLayout);
     void persistLayout(nextLayout);
+  };
+
+  const selectMealType = (nextMealType: MealType) => {
+    activeMealTypeRef.current = nextMealType;
+    setMealType(nextMealType);
   };
 
   const moveBlock = (blockId: number, delta: number) => {
@@ -617,7 +636,7 @@ const DeliveryLayoutAdmin: React.FC = () => {
           <button
             key={item.key}
             type="button"
-            onClick={() => setMealType(item.key)}
+            onClick={() => selectMealType(item.key)}
             className={`zpa-tab${mealType === item.key ? " active" : ""}`}
           >
             {item.label}

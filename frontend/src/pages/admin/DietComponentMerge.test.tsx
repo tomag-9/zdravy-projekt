@@ -50,9 +50,9 @@ afterEach(() => {
 });
 
 describe("DietComponentMergePage", () => {
-  it("uses the same Friday-after-21:00 default day as the dashboard: Monday", () => {
+  it("uses the same Friday-after-14:00 default day as the dashboard: Monday", () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(2026, 7, 7, 21, 0, 0));
+    vi.setSystemTime(new Date(2026, 7, 7, 14, 0, 0));
     mockApiFetch.mockResolvedValue({ ok: true, json: async () => emptyBoard });
 
     render(<MemoryRouter><DietComponentMergePage /></MemoryRouter>);

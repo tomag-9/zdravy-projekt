@@ -114,29 +114,29 @@ describe("dashboardMaxDate", () => {
   });
 });
 
-// #539 — tomorrow is navigable from noon (dashboardMaxDate above), but the
-// default view a freshly-opened dashboard shows stays on today until 21:00,
-// so nobody opens the table at 14:00 and lands on a day that's still running.
 describe("dashboardDefaultDate", () => {
-  it("stays on today at noon, even though tomorrow is already unlocked", () => {
+  it("stays on today before 14:00", () => {
     expect(dashboardDefaultDate(atHour(monday(), 12))).toBe("2026-08-10");
   });
 
-  it("stays on today just before 21:00", () => {
-    expect(dashboardDefaultDate(atHour(monday(), 20))).toBe("2026-08-10");
+  it("switches to tomorrow from 14:00 on a weekday", () => {
+    expect(dashboardDefaultDate(atHour(monday(), 14))).toBe("2026-08-11");
   });
 
-  it("switches to tomorrow from 21:00 on a weekday whose tomorrow is a workday", () => {
-    expect(dashboardDefaultDate(atHour(monday(), 21))).toBe("2026-08-11");
-  });
-
-  it("switches past the weekend — Friday 21:00 shows the upcoming Monday", () => {
+  it("switches past the weekend — Friday 14:00 shows the upcoming Monday", () => {
     const friday = new Date(2026, 7, 7);
-    expect(dashboardDefaultDate(atHour(friday, 21))).toBe("2026-08-10");
+    expect(dashboardDefaultDate(atHour(friday, 14))).toBe("2026-08-10");
+  });
+
+  it("keeps Monday through the whole weekend", () => {
+    const saturday = new Date(2026, 7, 8);
+    const sunday = new Date(2026, 7, 9);
+    expect(dashboardDefaultDate(atHour(saturday, 10))).toBe("2026-08-10");
+    expect(dashboardDefaultDate(atHour(sunday, 16))).toBe("2026-08-10");
   });
 
   it("does not switch to a tomorrow that is a holiday", () => {
     const holidays = new Set(["2026-08-11"]);
-    expect(dashboardDefaultDate(atHour(monday(), 21), { holidays })).toBe("2026-08-10");
+    expect(dashboardDefaultDate(atHour(monday(), 14), { holidays })).toBe("2026-08-10");
   });
 });
