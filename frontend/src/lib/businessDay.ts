@@ -145,12 +145,9 @@ export function lastWeekdayToday(sets: DayOffSets = {}): string {
  * dopredu — bez neho by odomknutý deň v dashboarde často ostal prázdny. */
 const DASHBOARD_DAYS_AHEAD = 2;
 
-/** Od ktorej hodiny je zajtrajšok už natoľko "hotový" deň, že sa oplatí ho
- * ukázať ako predvolený pri otvorení tabuľky — po večernom scrapi (den-
- * vopred jedlá bežia okolo 20:xx), nie hneď od polnoci. Odomknutie
- * (`dashboardMaxDate`) a predvolený pohľad (`dashboardDefaultDate`) sú preto
- * zámerne dve rôzne hranice, nie jedna. */
-const DASHBOARD_NEXT_DAY_DEFAULT_HOUR = 21;
+/** Od 14:00 kuchyňa pracuje s nasledujúcim pracovným dňom, preto sa naň
+ * prepne predvolený dátum všetkých prevádzkových pohľadov. */
+const DASHBOARD_NEXT_DAY_DEFAULT_HOUR = 14;
 
 /**
  * Najneskorší deň, ktorý smie dashboard tabuľka (admin Prehľad, kuchyňa,
@@ -167,23 +164,25 @@ export function dashboardMaxDate(now: Date = new Date(), sets: DayOffSets = {}):
 }
 
 /**
- * Deň, ktorý má dashboard tabuľka predvolene ukázať pri otvorení. Zámerne
- * inde ako `dashboardMaxDate` (#539) — zajtrajšok je síce navigovateľný (viď
- * vyššie), ale ako predvolený pohľad naskočí až od
- * `DASHBOARD_NEXT_DAY_DEFAULT_HOUR` (21:00): dovtedy má admin/kuchyňa pri
- * otvorení tabuľky pred očami dnešok, nie deň, ktorý ešte len prebieha.
+ * Deň, ktorý má dashboard tabuľka predvolene ukázať pri otvorení. Od 14:00
+ * ukazuje najbližší pracovný deň; cez víkend sa drží pondelok, aby sa sobota
+ * ani nedeľa neposúvala ďalej na utorok.
  */
 export function dashboardDefaultDate(now: Date = new Date(), sets: DayOffSets = {}): string {
+  const dayOfWeek = now.getDay();
+  if (dayOfWeek === 6 || dayOfWeek === 0) {
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + (dayOfWeek === 6 ? 2 : 1));
+    return toDateKey(nextBusinessDay(monday, sets));
+  }
   if (now.getHours() < DASHBOARD_NEXT_DAY_DEFAULT_HOUR) {
     return toDateKey(previousBusinessDay(now, sets));
   }
   const tomorrow = new Date(now);
   tomorrow.setDate(tomorrow.getDate() + 1);
-  // V piatok po večernom scrapi už kuchyňa pripravuje pondelok. Predchádzajúce
-  // pravidlo tu kvôli sobote vrátilo späť piatok, takže Gramáž/Kontrola/
-  // Zlúčenie diét ukazovali už vybavený deň namiesto najbližšieho pracovného.
-  // Sviatok alebo voľno v iný deň zostáva zámerne na dnešku — naň sa nesmie
-  // potichu preskočiť bez potvrdeného náhľadu dát.
+  // V piatok popoludní kuchyňa pripravuje pondelok. Sviatok alebo voľno v
+  // bežný pracovný deň zostáva zámerne na dnešku — naň sa nesmie potichu
+  // preskočiť bez potvrdeného náhľadu dát.
   if (isWeekend(tomorrow)) return toDateKey(nextBusinessDay(tomorrow, sets));
   if (isDayOff(tomorrow, sets)) return toDateKey(previousBusinessDay(now, sets));
   return toDateKey(tomorrow);

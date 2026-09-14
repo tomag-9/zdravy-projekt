@@ -117,6 +117,7 @@ test/
 prevadzky.md
 feedback.md
 CLAUDE-LOCAL.md
+analysis/
 
 # Playwright E2E artefakty
 frontend/test-results/

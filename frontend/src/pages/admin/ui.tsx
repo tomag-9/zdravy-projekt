@@ -304,15 +304,91 @@ export const Field: React.FC<{
     </Component>
 );
 
-export const Input: React.FC<
-    React.InputHTMLAttributes<HTMLInputElement> & ReadOnlyAware
-> = ({ className = '', allowReadOnly, disabled, ...rest }) => (
-    <input
-        className={`zpa-input ${className}`.trim()}
-        disabled={useDisabled(disabled, allowReadOnly)}
-        {...rest}
-    />
-);
+type DateInputProps = React.InputHTMLAttributes<HTMLInputElement> & ReadOnlyAware;
+
+/** Všeobecný kalendár pre administrátorské formuláre (s víkendami — tie sa
+ * pri sviatkoch, uzávierkach a logoch musia dať zvoliť). */
+const DateInput: React.FC<DateInputProps> = ({
+    value = '', min, max, onChange, className = '', allowReadOnly, disabled,
+    'aria-label': ariaLabel, id, required,
+}) => {
+    const isDisabled = useDisabled(disabled, allowReadOnly);
+    const dateValue = String(value);
+    const initial = dateValue ? fromDateKey(dateValue) : new Date();
+    const [open, setOpen] = React.useState(false);
+    const [viewMonth, setViewMonth] = React.useState(() => new Date(initial.getFullYear(), initial.getMonth(), 1, 12));
+    const closePicker = React.useCallback(() => setOpen(false), []);
+    const pickerRef = usePopoverDismissal(open, closePicker);
+    const monthDays = React.useMemo(() => {
+        const first = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1, 12);
+        const start = new Date(first);
+        start.setDate(first.getDate() - first.getDay());
+        return Array.from({ length: 42 }, (_, index) => {
+            const day = new Date(start);
+            day.setDate(start.getDate() + index);
+            return day;
+        });
+    }, [viewMonth]);
+    const chooseDate = (nextValue: string) => {
+        onChange?.({ target: { value: nextValue }, currentTarget: { value: nextValue } } as React.ChangeEvent<HTMLInputElement>);
+        setOpen(false);
+    };
+    const label = dateValue
+        ? fromDateKey(dateValue).toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' })
+        : 'Vyberte dátum';
+    const monthLabel = new Intl.DateTimeFormat('sk-SK', { month: 'long', year: 'numeric' }).format(viewMonth);
+
+    return (
+        <div className={`zpa-dateinput ${className}`.trim()} ref={pickerRef}>
+            <button
+                id={id}
+                type="button"
+                className="zpa-dateinput-trigger"
+                aria-label={ariaLabel}
+                aria-expanded={open}
+                disabled={isDisabled}
+                onClick={() => {
+                    const selected = dateValue ? fromDateKey(dateValue) : new Date();
+                    setViewMonth(new Date(selected.getFullYear(), selected.getMonth(), 1, 12));
+                    setOpen((current) => !current);
+                }}
+            >
+                <span>{label}</span><ChevronDown size={16} aria-hidden="true" />
+            </button>
+            <input type="date" value={dateValue} min={min} max={max} required={required} tabIndex={-1} className="zpa-datenav-hidden-input" aria-hidden="true" readOnly />
+            {open && (
+                <div className="zpa-datepop zpa-datepop--all-days" role="dialog" aria-label="Výber dátumu">
+                    <div className="zpa-datepop-head">
+                        <span className="zpa-datepop-month">{monthLabel}</span>
+                        <div className="zpa-datepop-monthnav">
+                            <button type="button" aria-label="Predchádzajúci mesiac" onClick={() => setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1, 12))}><ChevronLeft /></button>
+                            <button type="button" aria-label="Nasledujúci mesiac" onClick={() => setViewMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1, 12))}><ChevronRight /></button>
+                        </div>
+                    </div>
+                    <div className="zpa-datepop-weekdays" aria-hidden="true">{['Ne', 'Po', 'Ut', 'St', 'Št', 'Pi', 'So'].map((day) => <span key={day}>{day}</span>)}</div>
+                    <div className="zpa-datepop-days">
+                        {monthDays.map((day) => {
+                            const key = toDateString(day);
+                            const outside = day.getMonth() !== viewMonth.getMonth();
+                            const unavailable = outside || (min != null && key < min) || (max != null && key > max);
+                            return <button key={key} type="button" className={`zpa-datepop-day${key === dateValue ? ' is-selected' : ''}${unavailable ? ' is-unavailable' : ''}${outside ? ' is-outside' : ''}`} disabled={unavailable} aria-label={day.toLocaleDateString('sk-SK', { day: 'numeric', month: 'long', year: 'numeric' })} onClick={() => chooseDate(key)}>{day.getDate()}</button>;
+                        })}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const Input: React.FC<DateInputProps> = ({ type, ...props }) => {
+    const isDisabled = useDisabled(props.disabled, props.allowReadOnly);
+    if (type === 'date') return <DateInput {...props} />;
+    const inputProps = { ...props };
+    delete inputProps.allowReadOnly;
+    delete inputProps.disabled;
+    const { className = '', ...rest } = inputProps;
+    return <input className={`zpa-input ${className}`.trim()} disabled={isDisabled} type={type} {...rest} />;
+};
 
 const DIET_COLORS = [
     // One consistent saturation/lightness level across the full hue wheel.

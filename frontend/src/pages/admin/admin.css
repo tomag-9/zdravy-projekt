@@ -802,6 +802,13 @@ a.zpa-ovrow-link .nm:hover, a.zpa-ovrow-link .nm:focus-visible { text-decoration
 .zpa-datepop-day.is-unavailable, .zpa-datepop-day:disabled { background: #f4f5f3; color: var(--gray-400); cursor: not-allowed; }
 .zpa-datepop-foot { display: flex; justify-content: flex-end; margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line-soft); }
 .zpa-datepop-foot button { padding: 5px 8px; font-size: 13px; }
+.zpa-dateinput { position: relative; width: 100%; }
+.zpa-dateinput-trigger { width: 100%; min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: #fff; color: var(--ink-1); font: inherit; text-align: left; cursor: pointer; }
+.zpa-dateinput-trigger:hover:not(:disabled) { border-color: var(--green-600); background: var(--bg-cream-soft); box-shadow: var(--shadow-sm); }
+.zpa-dateinput-trigger:focus-visible { outline: 2px solid var(--green-600); outline-offset: 2px; }
+.zpa-dateinput-trigger:disabled { opacity: .6; cursor: not-allowed; }
+.zpa-datepop--all-days .zpa-datepop-weekdays, .zpa-datepop--all-days .zpa-datepop-days { grid-template-columns: repeat(7, 1fr); }
+.zpa-datepop--all-days .zpa-datepop-day.is-outside { color: var(--gray-300); }
 
 /* Opt-in dropdown: nasadzuje sa postupne, pôvodné .zpa-select ostáva bez zmeny. */
 .zpa-dropdown { position: relative; min-width: 180px; }
