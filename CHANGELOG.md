@@ -1,5 +1,15 @@
 # Changelog
 
+## [5.0.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.0...v5.0.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* **diets:** retire legacy duplicate diets ([dac4b2f](https://github.com/tomag-9/zdravy-projekt/commit/dac4b2fb8eb316149e469fe5fbd98ef5aad9c5cf))
+* show diet packing state per component ([2f9a3c3](https://github.com/tomag-9/zdravy-projekt/commit/2f9a3c3213b6649bb78e1892c22da6eddf668548))
+* **trasy:** skry neprislusne jedla z tras ([e127077](https://github.com/tomag-9/zdravy-projekt/commit/e127077f4c72c45c8e75c8ba2494225eb53b1a39))
+* **trasy:** zachovaj jedlo pri ulozeni layoutu ([9abb848](https://github.com/tomag-9/zdravy-projekt/commit/9abb848dc806d9360f54eb1ab1a341690a28e06a))
+
 ## [5.0.0](https://github.com/tomag-9/zdravy-projekt/compare/v4.0.0...v5.0.0) (2026-09-13)
 
 
