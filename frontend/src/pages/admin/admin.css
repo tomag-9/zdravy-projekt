@@ -47,6 +47,7 @@
 .zpa-statusdot svg { width: 15px; height: 15px; }
 .zpa-statusdot.ok { background: rgba(114,136,75,0.16); color: var(--green-700); }
 .zpa-statusdot.warn { background: rgba(255,201,92,0.28); color: var(--mustard-700); }
+.zpa-statusdot.auto { background: rgba(96,113,137,0.14); color: var(--ink-3); }
 .zpa-statusdot.err { background: rgba(201,46,82,0.10); color: var(--coral-600); }
 .zpa-statusdot.zero { background: rgba(96,113,137,0.14); color: var(--ink-3); font-family: var(--font-display); font-size: 13px; font-weight: 800; }
 /* Attention hover popover (nahrádza natívny title tooltip, #563) */

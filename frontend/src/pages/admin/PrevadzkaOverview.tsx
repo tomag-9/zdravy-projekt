@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Check, AlertTriangle, X, Upload, Smartphone } from "lucide-react";
+import { Check, AlertTriangle, X, Upload, Smartphone, Undo2 } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import { logger } from "../../lib/logger";
@@ -152,8 +152,8 @@ const StatusDot: React.FC<{
     }
     if (row.delivery_status === "auto") {
       return (
-        <span className="zpa-statusdot warn" title="Automaticky skopírované z predchádzajúceho dňa">
-          <AlertTriangle />
+        <span className="zpa-statusdot auto" title="Automaticky skopírované z predchádzajúcej objednávky">
+          <Undo2 />
         </span>
       );
     }
@@ -266,7 +266,7 @@ const CategoryCard: React.FC<{
   onDismissed: () => void;
 }> = ({ title, icon, rows, source, date, onDismissed }) => {
   const delivered = rows.filter((r) => r.delivered).length;
-  const warnings = rows.filter((r) => r.delivered && (r.has_warning || r.delivery_status === "auto")).length;
+  const warnings = rows.filter((r) => r.delivered && r.has_warning).length;
   return (
     <Card style={{ overflow: "hidden" }}>
       <div className="zpa-card-head" style={{ padding: "16px 20px", borderBottom: "1px solid var(--line-soft)" }}>
