@@ -78,11 +78,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "potvrdzuje olovrant = obed 4/4 dní (27.–30.7.2026). "
             "'Iná..NmNgNe' fuzzy-matchovalo len na NO MILK/NO GLUTEN (#527, "
             "vajcia sa strácali) — letter_hook opravuje na plnú kombináciu. "
-            "Montessori Borínska MŠ má celodennú dochádzku — raňajky = obed "
-            "(user 2.9.2026). Config je per-connection (zdieľaná MŠ aj ZŠ), "
-            "takže sa uplatní na obe prevádzky rovnako."
+            "Montessori Borínska MŠ má celodennú dochádzku — raňajky aj "
+            "olovrant = obed. ZŠ má v EduPage iba obed (user 14.9.2026)."
         ),
         ranajky_z_obedu=True,
+        ranajky_z_obedu_prevadzky=frozenset({"Montesori škôlka"}),
+        olovrant_z_obedu_prevadzky=frozenset({"Montesori škôlka"}),
         letter_hook=montessori_letter_hook,
     ),
     PrevadzkaConfig(

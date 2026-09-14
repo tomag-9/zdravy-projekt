@@ -120,6 +120,14 @@ class PrevadzkaConfig:
     # OlovrantMode.ODVODIT_Z_OBEDU, len pre raňajky — user 2.9.2026, Pramienok
     # a Montessori Borínska MŠ).
     ranajky_z_obedu: bool = False
+    # Pri zdieľanej EduPage connection môže celodenná dochádzka platiť iba pre
+    # časť prevádzok. `None` zachováva pôvodné správanie (všetky prevádzky),
+    # neprázdna množina obmedzí odvodenie presne na uvedené názvy.
+    ranajky_z_obedu_prevadzky: frozenset[str] | None = None
+    # Rovnaké per-prevádzkové obmedzenie pre
+    # `OlovrantMode.ODVODIT_Z_OBEDU`. Montessori Borínska napríklad zdieľa
+    # connection: MŠ má celodennú dochádzku, ZŠ iba obed.
+    olovrant_z_obedu_prevadzky: frozenset[str] | None = None
     # Mená prevádzok (per-prevádzka `label`, viď `_apply_olovrant_config`), pre
     # ktoré je chýbajúci olovrant pri `OlovrantMode.EDUPAGE` ŠTRUKTURÁLNY fakt,
     # nie config drift — napr. zdieľaná connection, kde len časť prevádzok
@@ -165,6 +173,12 @@ def _apply_olovrant_config(
     Heyrovského/Malokarpatská ho nemajú, ale merged pohľad to prekryje (user
     2.9.2026: "zle ich čítalo, treba preveriť").
     """
+    if (
+        config.olovrant_z_obedu_prevadzky is not None
+        and label not in config.olovrant_z_obedu_prevadzky
+    ):
+        return order_data
+
     lunch = order_data.get(LUNCH)
     has_olovrant = bool(order_data.get(OLOVRANT))
     kde = f"{config.subdomena}/{label}" if label else config.subdomena
@@ -222,7 +236,10 @@ def _apply_ranajky_config(
     škola má celodennú dochádzku, raňajky sa neobjednávajú cez EduPage samostatne.
     `label` — viď `_apply_olovrant_config`.
     """
-    if not config.ranajky_z_obedu:
+    if not config.ranajky_z_obedu or (
+        config.ranajky_z_obedu_prevadzky is not None
+        and label not in config.ranajky_z_obedu_prevadzky
+    ):
         return order_data
 
     lunch = order_data.get(LUNCH)
@@ -259,5 +276,16 @@ def apply_config(result: ScrapeResult, config: PrevadzkaConfig) -> ScrapeResult:
     for nazov, order_data in result.order_data_by_prevadzka.items():
         _apply_olovrant_config(order_data, config, result.config_notes, label=nazov)
         _apply_ranajky_config(order_data, config, result.config_notes, label=nazov)
+
+    # Pri scoping-u nevie zlúčený pohľad aplikovať odvodenie sám: obsahuje už
+    # obed MŠ aj ZŠ. Zostav ho preto z upravených per-prevádzkových dát, aby
+    # preview neukazoval školské raňajky/olovrant, ktoré neexistujú.
+    if result.order_data_by_prevadzka and (
+        config.ranajky_z_obedu_prevadzky is not None
+        or config.olovrant_z_obedu_prevadzky is not None
+    ):
+        from api.edupage_scraper import _merge_meal_counts
+
+        result.order_data = _merge_meal_counts(result.order_data_by_prevadzka.values())
 
     return result
