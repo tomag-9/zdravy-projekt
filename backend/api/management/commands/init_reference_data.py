@@ -71,7 +71,9 @@ class Command(BaseCommand):
         for name, description in ALL_DIETS:
             diet, created = Diet.objects.update_or_create(
                 name=name,
-                defaults={"description": description, "is_active": True},
+                # `is_active` is a deliberate operational choice. In particular,
+                # retired legacy combinations must stay retired across deploys.
+                defaults={"description": description},
             )
             if created:
                 highest_sort_order += 1

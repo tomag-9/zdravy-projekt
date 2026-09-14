@@ -214,6 +214,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
         await user.click(await screen.findByRole('button', { name: 'EduPage' }));
         const btn = await screen.findByRole('button', { name: /Načítať z EduPage/i });
         await user.click(btn);
+        await user.click(screen.getByRole('button', { name: 'Spustiť scrape' }));
 
         await waitFor(() => {
             const call = mockApiFetch.mock.calls.find((c) =>
@@ -244,6 +245,7 @@ describe('SystemSettings - manuálny EduPage scrape', () => {
         render(<SystemSettings />);
         await user.click(await screen.findByRole('button', { name: 'EduPage' }));
         await user.click(await screen.findByRole('button', { name: /Načítať z EduPage/i }));
+        await user.click(screen.getByRole('button', { name: 'Spustiť scrape' }));
 
         await waitFor(() => {
             expect(mockError).toHaveBeenCalledWith(expect.stringContaining('žiadna prevádzka'));

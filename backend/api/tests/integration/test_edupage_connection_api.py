@@ -147,6 +147,65 @@ def test_scrape_imports_orders_for_open_day(admin_client, admin_user, monkeypatc
 
 
 @pytest.mark.django_db
+def test_manual_scrape_can_update_only_menu_a_for_selected_meal(
+    admin_client, admin_user, monkeypatch
+):
+    target_date = "2099-08-08"
+    celok = Celok.objects.create(nazov="Scoped import school")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Scoped import school")
+    DailyOrder.objects.create(
+        prevadzka=prevadzka,
+        user=admin_user,
+        date=target_date,
+        data={
+            "lunch": {
+                "Scoped import school": {
+                    "menuCounts": {"A": 9, "B": 8, "C": 7},
+                    "diets": {"NO MILK": 2},
+                }
+            }
+        },
+    )
+    operation = {
+        "connection_id": 125,
+        "name": "Scoped import",
+        "url": "https://example.edupage.org/menu/mealsGuest?id=scoped",
+        "user": admin_user,
+        "prevadzky": [prevadzka],
+    }
+    monkeypatch.setattr(
+        "api.views.edupage_views.edupage_operations",
+        lambda connection_id=None: [operation],
+    )
+    monkeypatch.setattr(
+        "api.views.edupage_views.EdupageScraper.scrape",
+        lambda self, url, date, **kwargs: ScrapeResult(
+            date=date,
+            order_data={
+                "breakfast": {"menuCounts": {"A": 4}, "diets": {}},
+                "lunch": {"menuCounts": {"A": 3, "B": 1}, "diets": {"NO MILK": 1}},
+            },
+        ),
+    )
+
+    response = admin_client.post(
+        f"{CONNECTIONS_URL}scrape/",
+        {"date": target_date, "meal_types": ["lunch"], "menu_scope": "a"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert DailyOrder.objects.get(prevadzka=prevadzka, date=target_date).data == {
+        "lunch": {
+            "Scoped import school": {
+                "menuCounts": {"A": 3, "B": 8, "C": 7},
+                "diets": {"NO MILK": 1},
+            }
+        }
+    }
+
+
+@pytest.mark.django_db
 def test_manual_scrape_persists_attention_flags_for_kontrola(
     admin_client, admin_user, monkeypatch
 ):
