@@ -24,6 +24,7 @@ from .overrides.dobrodruzstvo import (
     dobrodruzstvo_letter_hook,
     dobrodruzstvo_payer_hook,
 )
+from .overrides.edulienka import edulienka_letter_hook
 from .overrides.fantasticka import (
     fantasticka_letter_hook,
     fantasticka_payer_hook,
@@ -127,7 +128,13 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         subdomena="edulienka",
         ucty=("Edulienka Palisády", "Edulienka Stupava"),
         olovrant_mode=_C,
-        poznamka='Split podľa menu prefixu P/S. "+ dotácia" sa sčítava, nie dedup.',
+        poznamka=(
+            'Split podľa menu prefixu P/S. "+ dotácia" sa sčítava, nie dedup. '
+            "Potvrdené diétne skratky cmsNM/cmsNMNE/cmsNMNG a HISTAMIN, NO "
+            "GLUTEN rieši letter_hook (user 14. 9. 2026), aby nepadali na "
+            "fuzzy neistotu ani nestratili zložku diéty."
+        ),
+        letter_hook=edulienka_letter_hook,
     ),
     PrevadzkaConfig(
         subdomena="zdravebrusko",

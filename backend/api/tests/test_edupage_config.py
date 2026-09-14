@@ -24,6 +24,7 @@ from api.edupage.overrides.dobrodruzstvo import (
     dobrodruzstvo_letter_hook,
     dobrodruzstvo_payer_hook,
 )
+from api.edupage.overrides.edulienka import edulienka_letter_hook
 from api.edupage.overrides.fantasticka import (
     fantasticka_letter_hook,
     fantasticka_payer_hook,
@@ -140,6 +141,11 @@ class TestConfigPreUrl(unittest.TestCase):
     def test_zdravebrusko_has_letter_hook(self):
         cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg.letter_hook)
+
+    def test_edulienka_has_confirmed_diet_letter_hook(self):
+        cfg = config_pre_url("https://edulienka.edupage.org/menu/mealsGuest?id=x")
+        self.assertIsNotNone(cfg)
+        self.assertIs(cfg.letter_hook, edulienka_letter_hook)
 
     def test_british_school_has_letter_and_payer_hook(self):
         cfg = config_pre_url("https://zdravyprojekt.edupage.org/menu/mealsGuest?id=x")
@@ -698,6 +704,27 @@ class TestFelixKarloveskaLetterHook(unittest.TestCase):
 
     def test_plain_ne_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NE"))
+
+
+class TestEdulienkaLetterHook(unittest.TestCase):
+    """Potvrdené menu skratky z EduLienky (user 14. 9. 2026)."""
+
+    def _rule(self, skratka) -> LetterRule:
+        return edulienka_letter_hook("X", skratka, "")
+
+    def test_confirmed_diets_are_exact_and_not_fuzzy(self):
+        cases = {
+            "cmsNM": "NO MILK",
+            "cmsNMNE": "NO MILK – NO EGG",
+            "cmsNMNG": "NO MILK – NO GLUTEN",
+            "HISTAMIN, NO GLUTEN": "NO GLUTEN – HISTAMIN",
+        }
+        for skratka, expected_diet in cases.items():
+            with self.subTest(skratka=skratka):
+                self.assertEqual(self._rule(skratka).diet, expected_diet)
+
+    def test_unknown_skratka_falls_through_to_engine(self):
+        self.assertIsNone(self._rule("nieco ine"))
 
 
 class TestZdravebruskoLetterHook(unittest.TestCase):
