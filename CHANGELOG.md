@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.2.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.1.0...v5.2.0) (2026-09-14)
+
+
+### Features
+
+* flag unexpected meal disappearances ([0a99343](https://github.com/tomag-9/zdravy-projekt/commit/0a9934385bdfb824509970410ac7994b52333784))
+
+
+### Bug Fixes
+
+* **edupage:** map confirmed Edulienka diets ([df85b03](https://github.com/tomag-9/zdravy-projekt/commit/df85b038af7988533bdf3ce309b88bd316f7b23e))
+
 ## [5.1.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.2...v5.1.0) (2026-09-14)
 
 
