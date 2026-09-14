@@ -327,6 +327,15 @@ def diet_component_merge_board(date_str: str) -> dict:
         }
         for diet in Diet.objects.filter(is_active=True).prefetch_related("base_diets")
     ]
+    # Kuchyňa potrebuje najskôr skontrolovať jednoduché diéty, potom ich
+    # kombinácie — v každej skupine čitateľne podľa názvu. Samostatná diéta
+    # nemá `base_diet_names`, ale stále predstavuje jednu zložku.
+    diets.sort(
+        key=lambda diet: (
+            len(diet["base_diet_names"]) or 1,
+            diet["name"].casefold(),
+        )
+    )
     merged: list[dict] = []
     for meal_data in meals:
         universe = set(range(len(meal_data["components"])))

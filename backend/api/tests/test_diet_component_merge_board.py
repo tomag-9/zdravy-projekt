@@ -29,6 +29,30 @@ def test_no_meal_plan_returns_no_meals_but_still_lists_diets():
     assert any(d["name"] == "NO MILK" for d in board["diets"])
 
 
+def test_diets_are_grouped_by_component_count_then_name():
+    """Board lists single diets first, then progressively larger combinations."""
+    alfa = Diet.objects.create(name="Alfa")
+    beta = Diet.objects.create(name="Beta")
+    gama = Diet.objects.create(name="Gama")
+    alfa_beta = Diet.objects.create(name="Alfa + Beta")
+    alfa_gama = Diet.objects.create(name="Alfa + Gama")
+    alfa_beta_gama = Diet.objects.create(name="Alfa + Beta + Gama")
+    alfa_beta.base_diets.set([alfa, beta])
+    alfa_gama.base_diets.set([alfa, gama])
+    alfa_beta_gama.base_diets.set([alfa, beta, gama])
+
+    board = diet_component_merge_board("2026-09-20")
+
+    assert [diet["name"] for diet in board["diets"]] == [
+        "Alfa",
+        "Beta",
+        "Gama",
+        "Alfa + Beta",
+        "Alfa + Gama",
+        "Alfa + Beta + Gama",
+    ]
+
+
 def test_lists_components_for_all_four_relevant_meals():
     plan = DailyMealPlan.objects.create(date=datetime.date(2026, 9, 21))
     MealPlanItem.objects.create(

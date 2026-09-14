@@ -420,6 +420,42 @@ class TestApplyConfigRanajky(unittest.TestCase):
             res.order_data_by_prevadzka["Druhá"]["breakfast"], second_lunch
         )
 
+    def test_scoped_full_day_meals_do_not_apply_to_school(self):
+        """Montessori: MŠ is full-day, while ZŠ orders lunch only."""
+        nursery_lunch = {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}}
+        school_lunch = {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}
+        res = ScrapeResult(
+            date=TARGET,
+            order_data={"lunch": LUNCH_DATA},
+            order_data_by_prevadzka={
+                "Montesori škôlka": {"lunch": nursery_lunch},
+                "montesori škola": {"lunch": school_lunch},
+            },
+        )
+
+        apply_config(
+            res,
+            _cfg(
+                OlovrantMode.ODVODIT_Z_OBEDU,
+                ranajky_z_obedu=True,
+                olovrant_z_obedu_prevadzky=frozenset({"Montesori škôlka"}),
+                ranajky_z_obedu_prevadzky=frozenset({"Montesori škôlka"}),
+            ),
+        )
+
+        self.assertEqual(
+            res.order_data_by_prevadzka["Montesori škôlka"]["breakfast"],
+            nursery_lunch,
+        )
+        self.assertEqual(
+            res.order_data_by_prevadzka["Montesori škôlka"]["olovrant"],
+            nursery_lunch,
+        )
+        self.assertEqual(
+            res.order_data_by_prevadzka["montesori škola"],
+            {"lunch": school_lunch},
+        )
+
 
 class TestApplyConfigPerPrevadzkaDrift(unittest.TestCase):
     """Zdravé Brúško 2.9.2026: merged (celok-wide) pohľad drift skryje, ak čo i
