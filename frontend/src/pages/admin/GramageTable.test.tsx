@@ -42,3 +42,34 @@ describe("GramageTable meal-type wrapper class", () => {
     expect(wrap.className).not.toMatch(/\bmeal-/);
   });
 });
+
+describe("GramageTable component packing badge", () => {
+  it("renders S/Z in the left side of its own component cell", () => {
+    render(
+      <GramageTable
+        spec={{
+          ...baseSpec,
+          total_columns: 2,
+          rows: [
+            {
+              kind: "sub-row",
+              css: "sub-row diet",
+              cells: [
+                { text: "↳ No Milk", css: "lbl" },
+                {
+                  text: "200",
+                  css: "cell-num has-component-pack-badge",
+                  component_pack_badge: "Z",
+                },
+              ],
+            },
+          ],
+        }}
+      />
+    );
+
+    const badge = screen.getByText("Z");
+    expect(badge).toHaveClass("component-pack-badge", "component-pack-badge--z");
+    expect(badge.closest("td")).toHaveClass("has-component-pack-badge");
+  });
+});

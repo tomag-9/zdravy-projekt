@@ -110,6 +110,14 @@ def _cell(cell: dict) -> str:
         else ""
     )
 
+    component_badge = str(cell.get("component_pack_badge") or "")
+    component_badge_html = (
+        f'<span class="component-pack-badge{' component-pack-badge--z' if component_badge == "Z" else ""}">'
+        f"{escape(component_badge)}</span>"
+        if component_badge
+        else ""
+    )
+
     if cell.get("count") is not None:
         inner = text
         if cell.get("swatch"):
@@ -132,7 +140,7 @@ def _cell(cell: dict) -> str:
             f'<span class="count-badge">{count}</span>{badge_html}</span>'
         )
     else:
-        body = corner + text
+        body = corner + text + component_badge_html
     return f"<td{attrs}>{body}</td>"
 
 

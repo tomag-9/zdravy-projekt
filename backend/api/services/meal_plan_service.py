@@ -758,10 +758,10 @@ class MealPlanService:
 
         `DietComponentMerge` (#568) NEOVPLYVŇUJE riadky samotné (retirované
         10.9.2026, viď model docstring) — diéta má vždy vlastný, celý riadok.
-        Board sa premieta len do `data["diet_pack_state"]` ({meal: {diet_name:
-        "S"|"Z"}}) — vstup pre "S"/"Z" odznak pri diéte a pre "Zabaliť
-        spolu:" (`gramage_table_spec`), oboje sa počíta až nad hotovými
-        `sub_rows`, nie tu.
+        Board sa premieta do `data["diet_component_pack_state"]` ({meal:
+        {diet_name: [component_index]}}) pre odznak v bunke konkrétnej
+        zložky a do `diet_pack_state` pre súhrn "Zabaliť spolu:". Obe mapy
+        sa počítajú nad hotovými `sub_rows`, nie tu.
         """
         from ..models import (
             DailyMealPlan,
@@ -898,11 +898,15 @@ class MealPlanService:
         # `gramage_table_spec` (odznak pri KAŽDOM riadku s diétou) aj
         # "Zabaliť spolu:" (diéta so "Z" sa doň nepočíta).
         diet_pack_state: dict[str, dict[str, str]] = {}
+        diet_component_pack_state: dict[str, dict[str, list[int]]] = {}
         for (sep_meal, sep_diet_name), indices in resolve_diet_component_separations(
             date_str
         ).items():
             if indices:
                 diet_pack_state.setdefault(sep_meal, {})[sep_diet_name] = "Z"
+                diet_component_pack_state.setdefault(sep_meal, {})[sep_diet_name] = (
+                    sorted(indices)
+                )
 
         def _normalize_variant(value: object) -> str:
             variant = str(value or "").strip()
@@ -2163,4 +2167,5 @@ class MealPlanService:
             "diet_background_colors": diet_background_color_map,
             "diet_descriptions": diet_description_map,
             "diet_pack_state": diet_pack_state,
+            "diet_component_pack_state": diet_component_pack_state,
         }

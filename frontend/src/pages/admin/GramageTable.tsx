@@ -28,6 +28,8 @@ export interface SpecCell {
   /** "S"/"Z" (10.9.2026, #568 nadväzba) — spolu/zvlášť na diet-component-merge
    * boarde, napr. "S" alebo composite "Z + S + Z". */
   pack_badge?: string;
+  /** "S"/"Z" pre túto konkrétnu zložku diétneho riadku. */
+  component_pack_badge?: string;
 }
 
 export interface SpecRow {
@@ -100,7 +102,18 @@ const SpecCells: React.FC<{ cells: SpecCell[] }> = ({ cells }) => (
             )}
           </span>
         ) : (
-          cell.text
+          <>
+            {cell.text}
+            {cell.component_pack_badge && (
+              <span
+                className={`component-pack-badge${
+                  cell.component_pack_badge === "Z" ? " component-pack-badge--z" : ""
+                }`}
+              >
+                {cell.component_pack_badge}
+              </span>
+            )}
+          </>
         )}
       </td>
     ))}

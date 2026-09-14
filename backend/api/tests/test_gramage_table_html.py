@@ -36,6 +36,26 @@ def test_row_without_colour_or_background_has_no_style_attribute():
     assert " style=" not in html
 
 
+def test_component_pack_badge_is_rendered_inside_the_component_cell():
+    html = _row(
+        {
+            "kind": "sub-row",
+            "css": "sub-row diet",
+            "cells": [
+                {"text": "↳ No Milk"},
+                {
+                    "text": "200",
+                    "css": "cell-num has-component-pack-badge",
+                    "component_pack_badge": "Z",
+                },
+            ],
+        }
+    )
+
+    assert "component-pack-badge component-pack-badge--z" in html
+    assert ">Z</span>" in html
+
+
 def _minimal_spec(meal_type: str) -> dict:
     return {
         "date": "2026-09-11",
