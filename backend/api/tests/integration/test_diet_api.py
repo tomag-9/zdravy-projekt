@@ -43,6 +43,20 @@ def test_diet_list_returns_all_items_without_pagination(api_client):
 
 
 @pytest.mark.django_db
+def test_diet_list_hides_inactive_diets_but_keeps_them_in_database(api_client):
+    """Retired legacy diets must not be offered anywhere in the UI catalogue."""
+    api_client.force_authenticate(user=AdminUserFactory())
+    active = Diet.objects.create(name="Aktívna")
+    inactive = Diet.objects.create(name="Starý duplicitný názov", is_active=False)
+
+    response = api_client.get("/api/diets/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [active.id]
+    assert Diet.objects.filter(pk=inactive.pk).exists()
+
+
+@pytest.mark.django_db
 def test_diet_model_ordering_is_sort_order_then_name():
     """Ordering musí platiť na úrovni modelu, nie len v jednom endpointe."""
     Diet.objects.create(name="Zulu", sort_order=0)

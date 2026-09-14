@@ -38,7 +38,9 @@ class DietViewSet(AuditedModelViewSetMixin, viewsets.ModelViewSet):
     via signal handlers.
     """
 
-    queryset = Diet.objects.prefetch_related("base_diets").all()
+    # A retired legacy diet must remain in the DB for historical DailyOrder JSON,
+    # but must never be returned as a selectable catalogue entry.
+    queryset = Diet.objects.filter(is_active=True).prefetch_related("base_diets")
     serializer_class = DietSerializer
     permission_classes = [permissions.IsAuthenticated]
     # Diets are reference data consumed as one complete set by the management

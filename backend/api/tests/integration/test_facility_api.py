@@ -355,6 +355,23 @@ def test_patch_visible_diets_assigns_diet_with_empty_note(admin_client):
 
 
 @pytest.mark.django_db
+def test_patch_visible_diets_rejects_inactive_diet(admin_client):
+    """A retired legacy diet cannot be made selectable again via the API."""
+    celok = Celok.objects.create(nazov="Neaktívna diéta")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
+    diet = Diet.objects.create(name="Stará duplicitná", is_active=False)
+
+    response = admin_client.patch(
+        f"/api/admin/facility-prevadzky/{prevadzka.pk}/",
+        {"visible_diets": [diet.id]},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert not PrevadzkaDiet.objects.filter(prevadzka=prevadzka, diet=diet).exists()
+
+
+@pytest.mark.django_db
 def test_removing_diet_from_visible_diets_deletes_its_note(admin_client):
     celok = Celok.objects.create(nazov="Odobratie diéty")
     prevadzka = Prevadzka.objects.create(celok=celok, nazov="Prevádzka")
