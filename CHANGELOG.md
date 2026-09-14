@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.1.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.2...v5.1.0) (2026-09-14)
+
+
+### Features
+
+* **edupage:** add manual scrape options ([bbf5b1f](https://github.com/tomag-9/zdravy-projekt/commit/bbf5b1fe1e4bf18d9fb9a532c81b3b71b8e67e7a))
+
+
+### Bug Fixes
+
+* **diets:** preserve retired diets on deploy ([7603d99](https://github.com/tomag-9/zdravy-projekt/commit/7603d99fdb2d70c0ba0cb021b2a588e137f8847f))
+
 ## [5.0.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.1...v5.0.2) (2026-09-14)
 
 
