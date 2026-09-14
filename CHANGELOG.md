@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.0.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.1...v5.0.2) (2026-09-14)
+
+
+### Bug Fixes
+
+* **diets:** order component merge board ([ec83f63](https://github.com/tomag-9/zdravy-projekt/commit/ec83f63d742510474676857a3846f5dadccb4666))
+* **edupage:** scope Montessori full-day meals ([ec83f63](https://github.com/tomag-9/zdravy-projekt/commit/ec83f63d742510474676857a3846f5dadccb4666))
+
 ## [5.0.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.0.0...v5.0.1) (2026-09-14)
 
 
