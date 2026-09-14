@@ -161,6 +161,116 @@ def test_overview_attention_dismissed_hides_all_flags_for_that_day(admin_client)
 
 
 @pytest.mark.django_db
+def test_overview_flags_missing_lunch_after_three_previous_fridays(admin_client):
+    """Historická kontrola platí pre app objednávky rovnako ako pre EduPage.
+
+    Porovnávame len rovnaký deň v týždni: ak prevádzka mala obed v troch
+    predchádzajúcich piatkoch a v aktuálny piatok je nula, administrátor musí
+    dostať nedismissnutý attention flag s viditeľným porovnaním hodnôt.
+    """
+    _celok, prevadzka, user = _celok_with_prevadzka("Piatková škola", False)
+    for historical_date, count in zip(
+        (
+            DATE - datetime.timedelta(days=21),
+            DATE - datetime.timedelta(days=14),
+            DATE - datetime.timedelta(days=7),
+        ),
+        (12, 11, 10),
+    ):
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=historical_date,
+            data={
+                "lunch": {
+                    "Piatková škola": {
+                        "menuCounts": {"A": count},
+                    }
+                }
+            },
+        )
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=DATE,
+        data={"lunch": {"Piatková škola": {"menuCounts": {}}}},
+    )
+
+    res = admin_client.get(URL, {"date": DATE.isoformat()})
+
+    assert res.status_code == 200
+    row = res.json()["app"][0]
+    assert row["attention_dismissed"] is False
+    assert row["has_warning"] is True
+    assert row["flags"]["attention"] == [
+        "Obed: dnes 0, predchádzajúce piatky 12 / 11 / 10 — over objednávku"
+    ]
+
+
+@pytest.mark.django_db
+def test_overview_does_not_skip_zero_in_recent_matching_weekdays(admin_client):
+    _celok, prevadzka, user = _celok_with_prevadzka("Piatková nula", False)
+    for historical_date, count in zip(
+        (
+            DATE - datetime.timedelta(days=28),
+            DATE - datetime.timedelta(days=21),
+            DATE - datetime.timedelta(days=14),
+            DATE - datetime.timedelta(days=7),
+        ),
+        (12, 10, 11, 0),
+    ):
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=historical_date,
+            data={"lunch": {"Piatková nula": {"menuCounts": {"A": count}}}},
+        )
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=DATE,
+        data={"lunch": {"Piatková nula": {"menuCounts": {}}}},
+    )
+
+    res = admin_client.get(URL, {"date": DATE.isoformat()})
+
+    assert res.status_code == 200
+    row = res.json()["app"][0]
+    assert row["flags"]["attention"] == []
+    assert row["has_warning"] is False
+
+
+@pytest.mark.django_db
+def test_overview_does_not_flag_missing_meal_with_only_two_matching_weekdays(
+    admin_client,
+):
+    _celok, prevadzka, user = _celok_with_prevadzka("Dve piatky", False)
+    for historical_date, count in (
+        (DATE - datetime.timedelta(days=14), 12),
+        (DATE - datetime.timedelta(days=7), 10),
+    ):
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=historical_date,
+            data={"lunch": {"Dve piatky": {"menuCounts": {"A": count}}}},
+        )
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=DATE,
+        data={"lunch": {"Dve piatky": {"menuCounts": {}}}},
+    )
+
+    res = admin_client.get(URL, {"date": DATE.isoformat()})
+
+    assert res.status_code == 200
+    row = res.json()["app"][0]
+    assert row["flags"]["attention"] == []
+    assert row["has_warning"] is False
+
+
+@pytest.mark.django_db
 def test_dismiss_attention_endpoint_sets_flag_for_that_day_only(admin_client):
     _celok, prev, user = _celok_with_prevadzka("Dismiss Endpoint", True)
     other_date = DATE + datetime.timedelta(days=1)

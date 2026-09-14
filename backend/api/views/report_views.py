@@ -16,6 +16,62 @@ from .report_helpers import build_user_meal_row, merge_meal_totals
 logger = logging.getLogger(__name__)
 
 
+MEAL_LABELS = {
+    "breakfast": "Raňajky",
+    "lunch": "Obed",
+    "olovrant": "Olovrant",
+}
+WEEKDAY_REFERENCE_LABELS = (
+    "pondelky",
+    "utorky",
+    "stredy",
+    "štvrtky",
+    "piatky",
+    "soboty",
+    "nedele",
+)
+
+
+def _historical_meal_attention(target_date, prevadzka_ids):
+    """Return counts from the latest three matching weekdays.
+
+    This is deliberately based on ``DailyOrder`` rather than EduPage scrape
+    metadata: manual/app facilities need the same anomaly detection.  The
+    three reference days are selected before inspecting their meal counts.
+    This means an intervening zero is evidence against a stable meal and must
+    not be skipped in favour of an older positive order.
+    """
+    histories = {}
+    matching_orders_seen = {}
+    historical_orders = (
+        DailyOrder.objects.filter(
+            prevadzka_id__in=prevadzka_ids,
+            date__lt=target_date,
+        )
+        .only("prevadzka_id", "date", "data")
+        .order_by("prevadzka_id", "-date")
+    )
+
+    for historical_order in historical_orders:
+        if historical_order.date.weekday() != target_date.weekday():
+            continue
+
+        seen = matching_orders_seen.get(historical_order.prevadzka_id, 0)
+        if seen >= 3:
+            continue
+        matching_orders_seen[historical_order.prevadzka_id] = seen + 1
+
+        by_meal = histories.setdefault(historical_order.prevadzka_id, {})
+        historical_counts = meal_counts(
+            historical_order.data if isinstance(historical_order.data, dict) else {}
+        )
+        for meal in MEAL_LABELS:
+            values = by_meal.setdefault(meal, [])
+            values.append(historical_counts[meal])
+
+    return histories
+
+
 def build_prevadzka_overview(target_date):
     """Payload pre prehľad dodania podkladov za deň.
 
@@ -34,6 +90,9 @@ def build_prevadzka_overview(target_date):
             date=target_date, prevadzka__isnull=False
         )
     }
+    historical_attention = _historical_meal_attention(
+        target_date, [prevadzka.id for prevadzka in prevadzky]
+    )
 
     edupage_rows = []
     app_rows = []
@@ -69,6 +128,32 @@ def build_prevadzka_overview(target_date):
                     "uncertain_diets": order.scrape_flags.get("uncertain_diets", [])
                     or [],
                 }
+
+            # Behavioural attention is computed for every source type.  Keep
+            # scrape-produced flags intact; this UI-only signal must neither
+            # overwrite them nor be written back into ``scrape_flags``.
+            # Values are collected newest-first and reversed for a natural
+            # oldest-to-newest explanation in the admin popup.
+            for meal, label in MEAL_LABELS.items():
+                historical_values = historical_attention.get(
+                    order.prevadzka_id, {}
+                ).get(meal, [])
+                if (
+                    counts[meal] != 0
+                    or len(historical_values) != 3
+                    or not all(value > 0 for value in historical_values)
+                ):
+                    continue
+                values_text = " / ".join(
+                    str(value) for value in reversed(historical_values)
+                )
+                attention = (
+                    f"{label}: dnes 0, predchádzajúce "
+                    f"{WEEKDAY_REFERENCE_LABELS[target_date.weekday()]} {values_text} "
+                    "— over objednávku"
+                )
+                if attention not in flags["attention"]:
+                    flags["attention"].append(attention)
 
         # `attention_dismissed` skrýva CELÝ warning popup pre tento deň (admin
         # ho odklikol ako "OK, vybavené") — pôvodne len `attention`, rozšírené

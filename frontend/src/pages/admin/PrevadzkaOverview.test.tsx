@@ -65,6 +65,51 @@ describe("PrevadzkaOverview", () => {
     has_warning: true,
   };
 
+  it("shows an automatic app copy as a restore indicator, not an attention alert", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [],
+        app: [{
+          ...baseRow,
+          delivery_status: "auto" as const,
+          has_warning: false,
+          flags: { attention: [], config_notes: [], unmapped_diets: [], uncertain_diets: [] },
+        }],
+      }),
+    });
+
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    const copiedStatus = document.querySelector("#prevadzka-row-1 .zpa-statusdot") as HTMLElement;
+    expect(copiedStatus).toHaveAttribute("title", "Automaticky skopírované z predchádzajúcej objednávky");
+    expect(copiedStatus.querySelector("svg.lucide-undo-2")).toBeInTheDocument();
+    expect(copiedStatus.querySelector("svg.lucide-triangle-alert")).not.toBeInTheDocument();
+  });
+
+  it("does not count an automatic app copy as an attention warning", async () => {
+    mockApiFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        date: "2026-08-10",
+        edupage: [],
+        app: [{
+          ...baseRow,
+          delivery_status: "auto" as const,
+          has_warning: false,
+          flags: { attention: [], config_notes: [], unmapped_diets: [], uncertain_diets: [] },
+        }],
+      }),
+    });
+
+    render(<MemoryRouter><PrevadzkaOverview /></MemoryRouter>);
+
+    await screen.findByText("MŠ Testovacia");
+    expect(screen.queryByText(/na kontrolu/i)).not.toBeInTheDocument();
+  });
+
   it("shows unmapped diets inline, not just in a hover tooltip", async () => {
     mockApiFetch.mockResolvedValue({
       ok: true,
