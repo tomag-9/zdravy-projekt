@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, Mapping
+from typing import Any, Dict, Iterable, Iterator, Mapping
 
 MEAL_KEYS = ("breakfast", "lunch", "olovrant")
 
@@ -43,6 +44,92 @@ def _is_leaf(value: Any) -> bool:
 
 def _mapping_or_empty(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
+
+
+def merge_order_data(*datasets: Mapping[str, Any] | None) -> Dict[str, Any]:
+    """Return a count-wise merge of canonical order-data documents.
+
+    An external snapshot has the same meal/portion shape as `DailyOrder.data`,
+    but only its numeric selection maps are additive. This keeps the external
+    source out of the writable app order while giving kitchen/report consumers
+    one effective view.
+    """
+
+    def merge_into(target: dict, source: Mapping[str, Any]) -> None:
+        for key, source_value in source.items():
+            if not isinstance(key, str):
+                continue
+            if _is_leaf(source_value):
+                target_value = target.setdefault(key, {})
+                if not isinstance(target_value, dict):
+                    target_value = target[key] = {}
+                for count_key in (
+                    "menuCounts",
+                    "diets",
+                    "packSeparately",
+                    "packSeparatelyGn",
+                ):
+                    source_counts = source_value.get(count_key) or {}
+                    if not isinstance(source_counts, Mapping):
+                        continue
+                    target_counts = target_value.setdefault(count_key, {})
+                    if not isinstance(target_counts, dict):
+                        target_counts = target_value[count_key] = {}
+                    for name, count in source_counts.items():
+                        if isinstance(name, str):
+                            target_counts[name] = safe_count(
+                                target_counts.get(name)
+                            ) + safe_count(count)
+                continue
+            if isinstance(source_value, Mapping):
+                target_value = target.setdefault(key, {})
+                if not isinstance(target_value, dict):
+                    target_value = target[key] = {}
+                merge_into(target_value, source_value)
+            elif key not in target:
+                # Metadata such as `__gram_corrections__` belongs to the app
+                # order and must survive construction of the effective view.
+                target[key] = deepcopy(source_value)
+
+    valid_datasets = [dataset for dataset in datasets if isinstance(dataset, Mapping)]
+    if not valid_datasets:
+        return {}
+
+    # Appkové dáta skopírujeme presne (obsahujú aj pack/gram metadáta); až
+    # ďalšie, externé zdroje majú byť aditívne.
+    merged: Dict[str, Any] = deepcopy(dict(valid_datasets[0]))
+    for dataset in valid_datasets[1:]:
+        if isinstance(dataset, Mapping):
+            merge_into(merged, dataset)
+    return merged
+
+
+def effective_order_data(
+    order: Any, snapshots: Iterable[Any] | None = None
+) -> Dict[str, Any]:
+    """App order plus its external source snapshots, without mutating either."""
+    app_data = getattr(order, "data", {})
+    if snapshots is None:
+        prevadzka = getattr(order, "prevadzka", None)
+        if prevadzka is None:
+            snapshots = ()
+        else:
+            prefetched = getattr(prevadzka, "_prefetched_objects_cache", {}).get(
+                "external_order_snapshots"
+            )
+            snapshots = (
+                (snapshot for snapshot in prefetched if snapshot.date == order.date)
+                if prefetched is not None
+                else prevadzka.external_order_snapshots.filter(date=order.date)
+            )
+    return merge_order_data(
+        app_data if isinstance(app_data, Mapping) else {},
+        *(
+            snapshot.data
+            for snapshot in snapshots
+            if isinstance(getattr(snapshot, "data", None), Mapping)
+        ),
+    )
 
 
 class OrderData:

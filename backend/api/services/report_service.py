@@ -2,9 +2,11 @@
 
 import datetime
 
-from ..models import DailyOrder
+from django.db.models import OuterRef, Subquery
+
+from ..models import DailyOrder, ExternalOrderSnapshot
 from ..order_data import MEAL_KEYS as ORDER_MEAL_KEYS
-from ..order_data import OrderData, safe_count
+from ..order_data import OrderData, effective_order_data, merge_order_data, safe_count
 from ..utils import build_user_meal_row, merge_meal_totals, order_row_label
 
 
@@ -32,7 +34,9 @@ class ReportService:
         orders = (
             DailyOrder.objects.filter(date=target_date)
             .select_related("user", "user__profile", "prevadzka__celok")
-            .prefetch_related("prevadzka__celok__prevadzky")
+            .prefetch_related(
+                "prevadzka__celok__prevadzky", "prevadzka__external_order_snapshots"
+            )
             .order_by("user__email")
         )
 
@@ -46,7 +50,7 @@ class ReportService:
 
         for order in orders:
             user = order.user
-            data = order.data if isinstance(order.data, dict) else {}
+            data = effective_order_data(order)
             bf = build_user_meal_row(data, "breakfast")
             lu = build_user_meal_row(data, "lunch")
             ol = build_user_meal_row(data, "olovrant")
@@ -101,7 +105,14 @@ class ReportService:
             },
         }
         """
-        orders = DailyOrder.objects.filter(date=target_date)
+        external_data = ExternalOrderSnapshot.objects.filter(
+            prevadzka_id=OuterRef("prevadzka_id"),
+            date=OuterRef("date"),
+            source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+        ).values("data")[:1]
+        orders = DailyOrder.objects.filter(date=target_date).annotate(
+            _external_order_data=Subquery(external_data)
+        )
 
         stats: dict = {
             "total_orders": 0,
@@ -112,7 +123,10 @@ class ReportService:
         for order in orders:
             stats["total_orders"] += 1
             stats["status_breakdown"]["submitted"] += 1
-            data = order.data if isinstance(order.data, dict) else {}
+            data = merge_order_data(
+                order.data if isinstance(order.data, dict) else {},
+                getattr(order, "_external_order_data", None),
+            )
             ReportService._aggregate_meal(stats, data, "breakfast")
             ReportService._aggregate_meal(stats, data, "lunch")
             ReportService._aggregate_meal(stats, data, "olovrant")

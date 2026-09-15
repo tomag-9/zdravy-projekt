@@ -1087,12 +1087,9 @@ class TestParse(unittest.TestCase):
             },
         )
 
-    def test_parse_libellus_sa_flags_both_libellus_and_stromcek(self):
-        """`sA` sa zapíše ako diéta "Klasik STROMČEK" priamo do Libellusu
-        (žiadny presmerovaný dátový merge, viď libellus.py) — admin má o tom
-        vedieť na oboch stranách: `attention` na Libelluse (`flag`) a
-        `relayed_attention["Stromček"]` na Stromčeku (`relay_attention_to`),
-        bez toho, aby sa Stromčekove dáta menili (user 9.9.2026)."""
+    def test_parse_libellus_sa_isolated_as_stromcek_external_source(self):
+        """`sA` sa vyberie z Libellusovho výsledku a vytvorí samostatný
+        Stromčekov snapshot; appkové dáta sa až neskôr pripočítajú pri reporte."""
         prehlad = {
             "prehlad": {
                 self.DATE_STR: {
@@ -1130,12 +1127,17 @@ class TestParse(unittest.TestCase):
             olovrant_mode=OlovrantMode.EDUPAGE,
             letter_hook=libellus_letter_hook,
             relay_targets=frozenset({"Stromček"}),
+            external_order_targets=frozenset({"Stromček"}),
         )
         result = self._scrape_html(html, config=config)
 
         self.assertEqual(
             result.order_data["lunch"]["Škôlka"],
-            {"menuCounts": {"A": 37}, "diets": {"Klasik STROMČEK": 4}},
+            {"menuCounts": {"A": 33}, "diets": {}},
+        )
+        self.assertEqual(
+            result.external_order_data_by_prevadzka,
+            {"Stromček": {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}}},
         )
         self.assertEqual(
             result.attention,

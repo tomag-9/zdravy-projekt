@@ -59,6 +59,9 @@ class LetterRule:
     # attention zoznamu pomenovanej prevádzky, nech to admin vidí aj tam. Bez
     # `flag` na tom istom pravidle sa použije holé `letter:skratka`.
     relay_attention_to: str | None = None
+    # Cudzí agregát z rovnakého feedu. Na rozdiel od historického redirectu sa
+    # nezapisuje do `DailyOrder.data`, ale ako samostatný snapshot zdroja.
+    external_order_prevadzka: str | None = None
 
 
 # Hook beží pri parsovaní, na každé menu písmeno pred agregáciou.
@@ -157,6 +160,7 @@ class PrevadzkaConfig:
     # prevádzke visieť starý flag z predošlého behu (tasks.py ho totiž
     # zapisuje ako plné nahradenie, nie prírastok).
     relay_targets: frozenset[str] = frozenset()
+    external_order_targets: frozenset[str] = frozenset()
 
 
 def _apply_olovrant_config(

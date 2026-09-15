@@ -7,7 +7,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from .. import sections
-from ..models import Celok, DailyOrder, Prevadzka
+from ..models import Celok, DailyOrder, ExternalOrderSnapshot, Prevadzka
+from ..order_data import effective_order_data
 from ..permissions import IsAdminOrAbove, SectionAccess
 from ..services import ReportService
 from ..utils import meal_counts, order_row_label
@@ -90,6 +91,9 @@ def build_prevadzka_overview(target_date):
             date=target_date, prevadzka__isnull=False
         )
     }
+    external_by_prevadzka = {}
+    for snapshot in ExternalOrderSnapshot.objects.filter(date=target_date):
+        external_by_prevadzka.setdefault(snapshot.prevadzka_id, []).append(snapshot)
     historical_attention = _historical_meal_attention(
         target_date, [prevadzka.id for prevadzka in prevadzky]
     )
@@ -110,7 +114,9 @@ def build_prevadzka_overview(target_date):
         delivery_status = "missing"
         attention_dismissed = False
         if order is not None:
-            data = order.data if isinstance(order.data, dict) else {}
+            data = effective_order_data(
+                order, external_by_prevadzka.get(order.prevadzka_id, [])
+            )
             counts = meal_counts(data)
             attention_dismissed = order.attention_dismissed
             if order.is_auto:
@@ -283,7 +289,9 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         orders = (
             DailyOrder.objects.filter(date=target_date)
             .select_related("user", "user__profile", "prevadzka__celok")
-            .prefetch_related("prevadzka__celok__prevadzky")
+            .prefetch_related(
+                "prevadzka__celok__prevadzky", "prevadzka__external_order_snapshots"
+            )
             .order_by("user__email", "prevadzka__sort_order", "prevadzka__nazov")
         )
 
@@ -296,7 +304,7 @@ class AdminSummaryViewSet(viewsets.ViewSet):
         rows = []
         for order in orders:
             user = order.user
-            data = order.data if isinstance(order.data, dict) else {}
+            data = effective_order_data(order)
             bf = build_user_meal_row(data, "breakfast")
             lu = build_user_meal_row(data, "lunch")
             ol = build_user_meal_row(data, "olovrant")

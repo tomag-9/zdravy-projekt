@@ -188,6 +188,36 @@ class DailyOrder(models.Model):
         self._response_status = value
 
 
+class ExternalOrderSnapshot(models.Model):
+    """Autoritatívny agregát z externého objednávkového zdroja.
+
+    Nie je súčasťou ``DailyOrder.data``: appka a scraper tak nikdy nemôžu
+    navzájom prepísať svoje počty. Pri čítaní podkladov sa jeho dáta pripočítajú
+    k objednávke danej prevádzky.
+    """
+
+    class Source(models.TextChoices):
+        EDUPAGE_SA = "edupage_sa", "EduPage sA"
+
+    prevadzka = models.ForeignKey(
+        "Prevadzka", on_delete=models.PROTECT, related_name="external_order_snapshots"
+    )
+    date = models.DateField(db_index=True)
+    source = models.CharField(max_length=32, choices=Source.choices)
+    data = models.JSONField(default=dict)
+    scraped_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["prevadzka", "date", "source"],
+                name="unique_external_order_snapshot",
+            )
+        ]
+        indexes = [models.Index(fields=["prevadzka", "date"])]
+        ordering = ["-date"]
+
+
 class ClosedDay(models.Model):
     """Globálne uzavretý objednávkový deň pre všetky prevádzky."""
 

@@ -20,7 +20,7 @@ from ..models import (
     MealTemplate,
     Vydaj,
 )
-from ..order_data import OrderData
+from ..order_data import OrderData, effective_order_data
 from ..utils import (
     ADULT_PORTION_TYPE_NAME,
     SNACK_DOUBLE_BILLING_PORTIONS,
@@ -1172,6 +1172,7 @@ class MealPlanService:
         rows = []
         orders = (
             DailyOrder.objects.filter(date=date_str)
+            .prefetch_related("prevadzka__external_order_snapshots")
             # `gramage_summary_only` prevádzky (British School, Cluster C,
             # #531) nemajú menu-šablóny — gramáž/D/VEGE1/desiata cez bežnú
             # per-klientskú mriežku by boli prázdne alebo neúplné. Vynechané
@@ -1230,7 +1231,7 @@ class MealPlanService:
             # "R 12 + Ob 12 + Ol 10" namiesto naspočítaného súčtu, ktorý by
             # rovnaké dieťa na raňajkách/obede/olovrante rátal 3× (#560).
             diet_summary_meal_counts: dict[str, dict[str, int | Decimal]] = {}
-            order_data = order.data if isinstance(order.data, dict) else {}
+            order_data = effective_order_data(order)
             if prevadzka_key in SNACK_MIRRORS_LUNCH_PREVADZKY:
                 # Report-only: klientov Excel neráta olovrant zo skutočných
                 # EduPage objednávok, len skopíruje počet z obeda. `order.data`

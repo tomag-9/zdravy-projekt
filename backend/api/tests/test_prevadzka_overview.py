@@ -2,7 +2,14 @@ import datetime
 
 import pytest
 
-from api.models import Celok, DailyOrder, Prevadzka, ProfileCelokAccess, UserProfile
+from api.models import (
+    Celok,
+    DailyOrder,
+    ExternalOrderSnapshot,
+    Prevadzka,
+    ProfileCelokAccess,
+    UserProfile,
+)
 
 URL = "/api/admin/summary/prevadzka-overview/"
 DATE = datetime.date(2026, 7, 10)
@@ -158,6 +165,30 @@ def test_overview_attention_dismissed_hides_all_flags_for_that_day(admin_client)
     res = admin_client.get(URL, {"date": DATE.isoformat()})
     row = res.json()["edupage"][0]
     assert row["has_warning"] is True
+
+
+@pytest.mark.django_db
+def test_overview_adds_external_sa_snapshot_to_app_order(admin_client):
+    """Kuchynský počet Stromčeka je súčet appky a izolovaného sA snapshotu."""
+    _celok, prevadzka, user = _celok_with_prevadzka("Stromček", False)
+    DailyOrder.objects.create(
+        user=user,
+        prevadzka=prevadzka,
+        date=DATE,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}},
+    )
+    ExternalOrderSnapshot.objects.create(
+        prevadzka=prevadzka,
+        date=DATE,
+        source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+        data={"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}},
+    )
+
+    response = admin_client.get(URL, {"date": DATE.isoformat()})
+
+    row = response.json()["app"][0]
+    assert row["counts"]["lunch"] == 11
+    assert row["counts"]["total"] == 11
 
 
 @pytest.mark.django_db
