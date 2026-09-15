@@ -5,7 +5,7 @@ EduPage vlastný `nazov` vypisuje celý obsah jednoznačne:
 
     NGNF               nazov="NoGluten/NoFish"                → engine chytí len "NG" a
                                                                    stratí rybu
-    NMNE               nazov="NoMilk/NoEgg"                    → rovnaký #527 vzor ako
+    NMNE / cmsNMNE     nazov="NoMilk/NoEgg"                    → rovnaký #527 vzor ako
                                                                    "dsbNMNE" (zdravebrusko)
                                                                    a Libellus — engine skratku
                                                                    chytí ako "no egg" a stratí
@@ -35,6 +35,9 @@ from ..base import LetterRule
 _RULES: dict[str, LetterRule] = {
     "NGNF": LetterRule(diet="NO GLUTEN – NO FISH"),
     "NMNE": LetterRule(diet="NO MILK/NO EGG"),
+    # CMŠ Ivanka používa na spoločnom EduPage feede vlastný prefix. Bez presnej
+    # zhody engine skončil na príponu "NE" a stratil NoMilk (16. 9. 2026).
+    "CMSNMNE": LetterRule(diet="NO MILK/NO EGG"),
     "MŠ NMNG BEZ ARAS": LetterRule(diet="NO MILK – NO GLUTEN – NO ARASIDY"),
     # "Ng+Olo" — potvrdené s userom 1.9.2026, fuzzy tip (NO GLUTEN) bol správny,
     # istá diéta namiesto uncertain.
