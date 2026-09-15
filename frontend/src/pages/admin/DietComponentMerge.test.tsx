@@ -58,7 +58,10 @@ describe("DietComponentMergePage", () => {
     render(<MemoryRouter><DietComponentMergePage /></MemoryRouter>);
 
     const input = screen.getByDisplayValue("2026-08-10");
-    expect(input).toHaveAttribute("max", "2026-08-11");
+    // DASHBOARD_DAYS_AHEAD = 3 (businessDay.ts, "refresh dashboard date
+    // limits automatically", 14.9.2026) — max je 3 pracovné dni od dnes
+    // (piatok 7.8.), nie 2.
+    expect(input).toHaveAttribute("max", "2026-08-12");
   });
 
   it("shows an empty state when the day has no meal plan", async () => {
