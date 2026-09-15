@@ -9,7 +9,10 @@ vôbec nevyskytuje.
 
 EduPage vlastný `nazov` (nie skratka) skutočný obsah spoľahlivo vypíše:
 
-    nMnČnJ            nazov="NMnKako,nJahody"                → No Milk, No Kakao, No Jahody
+    nMnČnJ            nazov="NMnKako,nJahody"                → No Milk – No Čokoláda – No
+                                                                  Jahoda (user 15.9.2026: založená
+                                                                  diéta je „Čokoláda", nie „Kakao",
+                                                                  napriek nazvu z EduPage)
     nMnOnJnPnČnŠnZEL  nazov="nMnOREnPARnJAHnKAKnŠKOnZELER"    → No Milk, No Orech, No Paradajka,
                                                                   No Jahoda, No Kakao, No Škorica,
                                                                   No Zeler (klient sám označil
@@ -32,7 +35,12 @@ from __future__ import annotations
 from ..base import LetterRule
 
 _RULES: dict[str, LetterRule] = {
-    "NMNČNJ": LetterRule(diet="NO MILK/NO KAKAO/NO JAHODA"),
+    # Skutočná založená diéta má iný tvar/poradie slov ("No Čokoláda", nie
+    # "No Kakao", s pomlčkami) než pôvodne zapísané pravidlo — user
+    # 15.9.2026 potvrdil ekvivalenciu (produkčné dáta: 6× objednané pod
+    # týmto presným názvom, predtým sa appke nesadelo na kanonický názov
+    # a hlásila to ako neznámu diétu).
+    "NMNČNJ": LetterRule(diet="NO MILK – No Čokoláda – NO JAHODA"),
     "NMNONJNPNČNŠNZEL": LetterRule(
         diet="NO MILK/NO ORECH/NO PARADAJKA/NO JAHODA/NO KAKAO/NO SKORICA/NO ZELER"
     ),

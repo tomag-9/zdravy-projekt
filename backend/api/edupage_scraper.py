@@ -959,10 +959,12 @@ class EdupageScraper:
                             # Radšej ju zapíšeme pod názvom z EduPage a nahlásime —
                             # admin ju založí v appke a od ďalšieho behu je známa.
                             unmapped_label = f"{letter}:{diet_name}"
-                        if unmapped_label is not None:
-                            unmapped.append(unmapped_label)
-                        if uncertain_label is not None:
-                            uncertain.append(uncertain_label)
+                        # Pridanie do (top-level aj per-prevádzka) zoznamov sa
+                        # odkladá na payer loop nižšie — písmeno samo osebe
+                        # nič neznamená, ale `force_match` payer_hook diétu
+                        # môže napokon vyriešiť úplne isto (viď
+                        # `payer_unmapped_label`/`payer_uncertain_label`
+                        # nižšie); reportovať by to bol falošný poplach.
 
                 tp = letter_data.get("typ_platitela", {})
                 if not isinstance(tp, dict):
@@ -1021,6 +1023,16 @@ class EdupageScraper:
                             _normalise_key(effective_diet), effective_diet
                         )
                     effective_menu = "A" if effective_diet else (menu_variant or "A")
+                    # `forced_diet` znamená, že payer label úplne prebil diétu
+                    # zdieľaného písmena (viď vyššie) — potom sa už nehodí ani
+                    # letter-úrovňový `unmapped_label`/`uncertain_label`
+                    # (počítaný z písmena PRED touto payer logikou): diéta pre
+                    # TENTO riadok je vyriešená isto, takže hlásiť ju ako
+                    # nezmapovanú/neistú by bol falošný poplach (zdravebrusko
+                    # „Diéta Lamač", 15.9.2026 — mšMal/mšHey force_match už
+                    # diétu určí presne, no písmeno samo osebe nič neznamená).
+                    payer_unmapped_label = None if forced_diet else unmapped_label
+                    payer_uncertain_label = None if forced_diet else uncertain_label
 
                     if rule is not None and rule.relay_attention_to:
                         relay_label = (
@@ -1079,14 +1091,18 @@ class EdupageScraper:
                                 )
                         if flag_label is not None:
                             attention_buckets.setdefault(bucket, set()).add(flag_label)
-                        if unmapped_label is not None:
+                        if payer_unmapped_label is not None:
                             unmapped_buckets.setdefault(bucket, set()).add(
-                                unmapped_label
+                                payer_unmapped_label
                             )
-                        if uncertain_label is not None:
+                            if payer_unmapped_label not in unmapped:
+                                unmapped.append(payer_unmapped_label)
+                        if payer_uncertain_label is not None:
                             uncertain_buckets.setdefault(bucket, set()).add(
-                                uncertain_label
+                                payer_uncertain_label
                             )
+                            if payer_uncertain_label not in uncertain:
+                                uncertain.append(payer_uncertain_label)
 
                         counts_by_meal = counts.setdefault(bucket, {})
                         meal_counts = counts_by_meal.setdefault(meal_key, {})

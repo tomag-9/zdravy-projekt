@@ -163,7 +163,7 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         ),
         letter_hook=zdravebrusko_letter_hook,
         payer_hook=zdravebrusko_payer_hook,
-        olovrant_missing_ok=frozenset({"ZŠ Malokarpatská"}),
+        olovrant_missing_ok=frozenset({"ZŠ Malokarpatská Lamač"}),
     ),
     PrevadzkaConfig(
         subdomena="cmspezinok",

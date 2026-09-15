@@ -80,6 +80,9 @@ def test_admin_can_manage_connections_and_assign_them_to_prevadzka(admin_client)
     assert prevadzka_response.status_code == status.HTTP_201_CREATED
     assert prevadzka_response.json()["edupage_connection"] == connection_id
     assert prevadzka_response.json()["edupage_connection_name"] == "Managed EduPage"
+    assert prevadzka_response.json()["edupage_url"] == (
+        "https://managed.edupage.org/menu/mealsGuest?id=managed-token"
+    )
 
 
 @pytest.mark.django_db

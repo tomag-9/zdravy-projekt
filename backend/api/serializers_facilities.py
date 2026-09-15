@@ -37,6 +37,9 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
     edupage_connection_name = serializers.CharField(
         source="edupage_connection.name", read_only=True
     )
+    edupage_url = serializers.URLField(
+        source="edupage_connection.mealsguest_url", read_only=True
+    )
     orders_count = serializers.SerializerMethodField()
     client_user_id = serializers.SerializerMethodField()
     visible_diets = serializers.PrimaryKeyRelatedField(
@@ -114,6 +117,7 @@ class AdminPrevadzkaSerializer(serializers.ModelSerializer):
             "adresa",
             "edupage_connection",
             "edupage_connection_name",
+            "edupage_url",
             "edupage_match",
             "report_alias",
             "delivery_note",

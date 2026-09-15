@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 
 from api.edupage.base import OlovrantMode, PrevadzkaConfig
 from api.edupage.overrides.libellus import libellus_letter_hook
-from api.edupage.overrides.zdravebrusko import zdravebrusko_letter_hook
+from api.edupage.overrides.zdravebrusko import (
+    zdravebrusko_letter_hook,
+    zdravebrusko_payer_hook,
+)
 from api.edupage_scraper import EdupageScraper, nest_order_data_by_category
 
 
@@ -917,6 +920,74 @@ class TestParse(unittest.TestCase):
         # Obed: to isté písmeno B je na jid 2 skutočne "NoMilk" diéta.
         self.assertEqual(
             result.order_data["lunch"]["Škôlka"]["diets"].get("NO MILK"), 3
+        )
+        self.assertEqual(result.unmapped_letters, [])
+
+    def test_parse_force_matched_payer_diet_does_not_flag_letter_as_unmapped(self):
+        """Regression test (zdravebrusko feed, „Diéta Lamač", 15.9.2026):
+        na raňajkovom/olovrantovom jide má písmeno C skratku `mšMal,Hey` a
+        `nazov="Diéta Lamač"` — sám o sebe nič neznamená, generický engine ho
+        nevie namapovať. Deti pod ním sú ale platiteľské skupiny „MŠ Mal.
+        NoMilk"/„MŠ Hey. NoGluten", ktoré `zdravebrusko_payer_hook` cez
+        `force_match` už rieši úplne presne (diéta aj prevádzka). Diéta sa
+        teda reálne priradí správne — `unmapped_letters` sa napriek tomu
+        hlásilo (počítalo sa z písmena PRED touto payer-úrovňovou logikou),
+        čo je falošný poplach, nie chýbajúca diéta."""
+        prehlad = {
+            "prehlad": {
+                self.DATE_STR: {
+                    "1": {
+                        "C": {
+                            "typ_platitela": {
+                                "17": {"o": 1},
+                                "21": {"o": 1},
+                            }
+                        }
+                    },
+                }
+            },
+            "mamUnknown": False,
+            "unknownTypyIDS": [],
+        }
+        nazov_menu = {
+            "C": {"skratka": "mšMal,Hey", "nazov": "Diéta Lamač"},
+        }
+        nastavenia = [
+            {
+                "setting": "vydaj_normal",
+                "hodnota": json.dumps(
+                    {"1": {"1": {"vydaj_od": "07:30", "vydaj_do": "09:00"}}}
+                ),
+            }
+        ]
+        html = _make_html(
+            prehlad,
+            nazov_menu,
+            nastavenia,
+            self._typy(
+                [
+                    (17, "MŠ Mal. NoMilk", 0),
+                    (21, "MŠ Hey. NoGluten", 0),
+                ]
+            ),
+            self.DATE_STR,
+        )
+        config = PrevadzkaConfig(
+            subdomena="zdravebrusko",
+            ucty=("Ďumbierska", "Lamač", "Malý", "Heyrovského"),
+            olovrant_mode=OlovrantMode.EDUPAGE,
+            letter_hook=zdravebrusko_letter_hook,
+            payer_hook=zdravebrusko_payer_hook,
+        )
+        result = self._scrape_html(
+            html, allowed_diets={"NO MILK", "NO GLUTEN"}, config=config
+        )
+
+        self.assertEqual(
+            result.order_data["breakfast"]["Škôlka"]["diets"].get("NO MILK"), 1
+        )
+        self.assertEqual(
+            result.order_data["breakfast"]["Škôlka"]["diets"].get("NO GLUTEN"), 1
         )
         self.assertEqual(result.unmapped_letters, [])
 
