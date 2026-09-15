@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck, Download, StickyNote } from "lucide-react";
+import { ChevronLeft, ChevronDown, ChevronUp, KeyRound, Plus, Pencil, RotateCcw, Trash2, Copy, AlertTriangle, Send, Gauge, ClipboardCheck, Download, StickyNote, ExternalLink } from "lucide-react";
 import { useAuth } from "../../context/auth";
 import { useToast } from "../../context/ToastContext";
 import AdminOrderEditorModal from "./AdminOrderEditorModal";
@@ -52,6 +52,7 @@ interface FacilityDetail {
   adresa: string;
   edupage_connection: number | null;
   edupage_connection_name?: string | null;
+  edupage_url?: string | null;
   edupage_match: string;
   report_alias: string;
   delivery_note: string;
@@ -813,6 +814,17 @@ const ClientDetail: React.FC = () => {
               >
                 <ClipboardCheck /> Dodanie podkladov
               </Button>
+              {facility.edupage_url && (
+                <a
+                  className="zpa-btn zpa-btn--secondary"
+                  href={facility.edupage_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Otvoriť jedálny lístok EduPage v novej karte"
+                >
+                  <ExternalLink /> EduPage
+                </a>
+              )}
               {canResetPassword && (
                 <Button variant="secondary" onClick={() => setShowResetConfirmation(true)} disabled={sendingReset} title="Odoslať reset hesla na email">
                   <KeyRound /> {sendingReset ? "Odosielam…" : "Reset hesla"}
