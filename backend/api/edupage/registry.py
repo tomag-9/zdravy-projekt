@@ -103,7 +103,12 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
             "ORECH' vs olovrant 'NO MILK/NO GLUTEN'), nie je to len kópia. "
             "Pozor: menu A=NM, nie klasik! NGNF/NMNE/'MŠ NMNG bez ARAS' "
             "fuzzy-matchovali len na jedno obmedzenie z viacerých (#527) — "
-            "letter_hook opravuje na plné kombinácie."
+            "letter_hook opravuje na plné kombinácie. Na tomto zdieľanom feede "
+            "objednáva aj CMŠ Ivanka, vlastným prefixom `cms` (cmsNM/cmsNMNE/"
+            "cmsNMNG) — pôvodne omylom priradené MŠ Edulienke (df85b03), "
+            "presunuté sem 15.9.2026 (user potvrdil, že Edulienka `cms` "
+            "v EduPage nemá; `typy_platitelov` adresár feedu má tieto skupiny "
+            "priamo pomenované „CMS Ivanka …“)."
         ),
         letter_hook=ivanka_letter_hook,
     ),
@@ -130,9 +135,11 @@ _CONFIGS: tuple[PrevadzkaConfig, ...] = (
         olovrant_mode=_C,
         poznamka=(
             'Split podľa menu prefixu P/S. "+ dotácia" sa sčítava, nie dedup. '
-            "Potvrdené diétne skratky cmsNM/cmsNMNE/cmsNMNG a HISTAMIN, NO "
-            "GLUTEN rieši letter_hook (user 14. 9. 2026), aby nepadali na "
-            "fuzzy neistotu ani nestratili zložku diéty."
+            "Potvrdená diétna skratka HISTAMIN, NO GLUTEN rieši letter_hook "
+            "(user 14. 9. 2026), aby nepadala na fuzzy neistotu ani nestratila "
+            "zložku diéty. (cmsNM/cmsNMNE/cmsNMNG boli tu pôvodne omylom — "
+            "patria CMŠ Ivanka na zdieľanom ZŠ Ivanka feede, presunuté "
+            "15.9.2026, viď poznámka pri `zsivanka`.)"
         ),
         letter_hook=edulienka_letter_hook,
     ),

@@ -35,9 +35,15 @@ from ..base import LetterRule
 _RULES: dict[str, LetterRule] = {
     "NGNF": LetterRule(diet="NO GLUTEN – NO FISH"),
     "NMNE": LetterRule(diet="NO MILK/NO EGG"),
-    # CMŠ Ivanka používa na spoločnom EduPage feede vlastný prefix. Bez presnej
-    # zhody engine skončil na príponu "NE" a stratil NoMilk (16. 9. 2026).
+    # CMŠ Ivanka používa na spoločnom EduPage feede vlastný prefix `cms`. Tieto
+    # tri skratky boli pôvodne (omylom) priradené MŠ Edulienke (commit df85b03)
+    # — Edulienka v EduPage žiadny `cms` prefix nemá (user 15.9.2026), skratky
+    # reálne patria sem: produkčné `uncertain_diets` ich viedli pod prevádzkou
+    # „ZŠ Ivanka pri Dunaji" a `typy_platitelov` adresár feedu má tieto skupiny
+    # priamo pomenované „CMS Ivanka NoMilk"/„NoMilk/NoEgg"/„NoMilk/NoGluten".
+    "CMSNM": LetterRule(diet="NO MILK"),
     "CMSNMNE": LetterRule(diet="NO MILK/NO EGG"),
+    "CMSNMNG": LetterRule(diet="NO MILK/NO GLUTEN"),
     "MŠ NMNG BEZ ARAS": LetterRule(diet="NO MILK – NO GLUTEN – NO ARASIDY"),
     # "Ng+Olo" — potvrdené s userom 1.9.2026, fuzzy tip (NO GLUTEN) bol správny,
     # istá diéta namiesto uncertain.
