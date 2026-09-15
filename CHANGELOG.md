@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.1...v5.4.2) (2026-09-15)
+
+
+### Bug Fixes
+
+* **edupage:** presuň cms diétne skratky z Edulienky na CMŠ Ivanka ([1cf5f5e](https://github.com/tomag-9/zdravy-projekt/commit/1cf5f5e01f05a2ae1aa79f303347062dbecf0d2d))
+
 ## [5.4.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.0...v5.4.1) (2026-09-15)
 
 
