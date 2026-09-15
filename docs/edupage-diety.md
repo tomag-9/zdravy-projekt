@@ -285,11 +285,15 @@ Realita (14.–18.9.2026): NO GLUTEN×12.
 | V EduPage vidíme (skratka) | Je to diéta |
 |---|---|
 | `nGnS` | **NO GLUTEN – NO SOJA** |
+| `nMnG` | **NO MILK – NO GLUTEN** |
 
 Zdroj: `strecnianska_letter_hook`.
 
-Realita (14.–18.9.2026): NO GLUTEN×15, NO MILK–NO GLUTEN×15 (NO MILK–NO GLUTEN ide cez
-generický fallback, nie je v `_RULES` explicitne — over, či treba zapísať aj tento riadok).
+Realita (14.–18.9.2026): NO GLUTEN×15, NO MILK–NO GLUTEN×15.
+
+> ✅ **Opravené 15.9.2026**: `nMnG`/„noMilk/noGluten" fungovalo aj predtým (cez generický
+> fallback), ale nebolo explicitné — user potvrdil, že má mať vlastné pravidlo ako ostatné
+> skratky na tomto feede, teraz doplnené do `_RULES`.
 
 ---
 
@@ -324,9 +328,9 @@ NO MILK×1, NO PARADAJKA×10, VEGGIE×3 — sedí.
 
 Zdroj: `filipaneriho_letter_hook`.
 
-Realita (14.–18.9.2026): NO GLUTEN×1, NO GLUTEN–NO HUBY×2 (pozor: „NO GLUTEN – NO HUBY" ≠
-„NO GLUTEN, HRÍBY" v tabuľke vyššie — over, či ide o ten istý Diet záznam pod iným
-formátovaním, alebo o skutočne inú diétu), NO MILK×9, NO ORECH×12, NO ZEMIAK×9.
+Realita (14.–18.9.2026): NO GLUTEN×1, NO GLUTEN–NO HUBY×2, NO MILK×9, NO ORECH×12, NO ZEMIAK×9.
+„NO GLUTEN – NO HUBY" (reálny Diet názov) a „NO GLUTEN, HRÍBY" (tabuľka vyššie) sú **rovnaká
+diéta**, len iné formátovanie — potvrdené userom 15.9.2026, nič netreba opravovať.
 
 ---
 
@@ -334,17 +338,19 @@ formátovaním, alebo o skutočne inú diétu), NO MILK×9, NO ORECH×12, NO ZEM
 
 | V EduPage vidíme (skratka) | `nazov` | Je to diéta |
 |---|---|---|
-| `nMnČnJ` | „NMnKako,nJahody" | **NO MILK/NO KAKAO/NO JAHODA** |
+| `nMnČnJ` | „NMnKako,nJahody" | **NO MILK – No Čokoláda – NO JAHODA** |
 | `nMnOnJnPnČnŠnZEL` | „nMOREnPARnJAHnKAKnŠKOnZELER" | **NO MILK/NO ORECH/NO PARADAJKA/NO JAHODA/NO KAKAO/NO SKORICA/NO ZELER** |
 | `AnHorčica` | „Klasik/noHorčica" | **NO HORCICA** |
 
 Zdroj: `cvernicka_letter_hook`.
 
-Realita (14.–18.9.2026): NO HORCICA×10, VEGAN×10 (generický fallback), a **NO MILK – No
-Čokoláda – NO JAHODA × 6** — nový tvar, ktorý sa nezhoduje presne so žiadnym z troch riadkov
-vyššie (podobný `nMnČnJ`, ale „No Čokoláda" namiesto „No Kakao" a iný oddeľovač). ⚠️ **Over** či
-ide o rovnaké dieťa/diétu premenovanú v appke, alebo novú diétu, ktorú treba dopísať do
-`_RULES`.
+> ✅ **Opravené 15.9.2026**: `nMnČnJ` mal v `_RULES` zapísaný tvar „NO MILK/NO KAKAO/NO JAHODA",
+> no skutočná založená diéta je „NO MILK – No Čokoláda – NO JAHODA" (iné slovo aj oddeľovač) —
+> user potvrdil ekvivalenciu. Predtým sa to appke nesadelo na kanonický názov a hlásilo sa to
+> ako neznáma diéta (6× v produkcii), teraz opravené.
+
+Realita (14.–18.9.2026): NO HORCICA×10, VEGAN×10 (generický fallback), NO MILK – No Čokoláda –
+NO JAHODA×6.
 
 ---
 
@@ -445,8 +451,11 @@ Realita (14.–18.9.2026): Školička 1.stupeň HISTAMIN×4, NO MILK×11, NO MIL
 [generický fallback](#generický-fallback-engine); `_SKRATKA_MAP["NOGLUTEN"]` má explicitnú
 poznámku „MŠ Dobrého Pastiera píše skratku vypísanú celú".
 
-Realita (14.–18.9.2026): žiadne diéty v okne (prázdne `diets`) — over, či je to očakávané
-(žiadne dieťa s diétou práve teraz), alebo scrape niečo nevidí.
+Realita (14.–18.9.2026): žiadne diéty v okne (prázdne `diets`). Overené naživo (15.9.2026) na
+konkrétnom historickom dátume, ktorý mal reálne dieťa s diétou — [11.9.2026](https://msdobrehopastiera.edupage.org/menu/mealsGuest?id=5gTWnNR&date=2026-09-11):
+menu písmeno D (skratka „NoMilk", 1 objednávka) sa scrapne a vyrieši ako **NO MILK** správne
+(cez generický fallback). Prázdne okno 14.–18.9. je teda len aktuálna realita tohto konkrétneho
+týždňa (žiadne dieťa s diétou práve teraz), nie chyba scrapu.
 
 ---
 
@@ -461,9 +470,10 @@ Zdroj: `felixkarloveska_letter_hook`. Referenčne čistá kategória — sedí s
 presne.
 
 Realita (14.–18.9.2026): NO GLUTEN×12, NO MILK–NO ORECH×15, „No Arašídy – NO EGG – NO SOJA –
-NO ORECH – NO SEZAM"×9 (rozšírená EpiPen kombinácia — mierne iný tvar než tabuľka vyššie,
-zrejme viac zložiek pridaných po potvrdení pravidla; over či treba `_RULES` aktualizovať na
-plný aktuálny reťazec).
+NO ORECH – NO SEZAM"×9 — iný (plný) tvar než tabuľka vyššie, vysvetlené (nie bug): `canonical_diet_names`
+alias mapa (`repoint_deduplicated_diets_2026_09.py`) prekladá skratkový `_RULES` reťazec
+`"NO EGG/NO ORECH/NO ARASIDY/NO SOJA/NO SEZAM"` na tento plný založený názov — rovnaký
+mechanizmus ako pri [British School](#british-school-zdravyprojekt), overené 15.9.2026.
 
 ---
 
@@ -529,13 +539,22 @@ koncovým „+" nesú len prvú diétu, zvyšok je v payer mene → rozhoduje `p
 Zdroj: `british_school_letter_hook` / `british_school_payer_hook`. Nová kombinácia na tom istom
 „+"-sufixe bez záznamu v `_PAYER_RULES` sa nahlási ako `unmapped_diets`, nie ticho zle priradí.
 
+> ✅ **Overené 15.9.2026** (predtým vyzeralo ako rozpor kódu a reality): produkčné dáta majú
+> diéty ako „NO MILK – NO GLUTEN – NO EGG – HISTAMIN – NO STRUKOVINY – NO ANANÁS", ktoré sa
+> nezhodujú so žiadnym `_PAYER_RULES` reťazcom priamo — **`_PAYER_RULES` je aj tak správne**.
+> Scraper dostáva pri behu (`tasks.py`) `canonical_diet_names` — alias mapu z
+> `repoint_deduplicated_diets_2026_09.py` (`MAPPINGS`), ktorá skratkový tvar z `_PAYER_RULES`
+> (napr. `"NONONO/NO ANANAS/NO STRUKOVINY/HISTAMIN"`) prekladá na plný, aktuálne založený názov
+> diéty (`"NO MILK – NO GLUTEN – NO EGG – HISTAMIN – NO STRUKOVINY – NO ANANÁS"`) — presne tento
+> mechanizmus vysvetľuje aj širší tvar u [MŠ Felix Karlovská](#mš-felix-karlovská-msfelixkarloveska)
+> nižšie. Živý audit celého `typy_platitelov` adresára feedu navyše potvrdil, že aktuálne beží
+> bez `unmapped`/`uncertain` — doplnené 3 preventívne pravidlá pre kombinované payer skupiny s 0
+> deťmi zatiaľ (rovnaký #527 vzor, viď docstring `britishschool.py`).
+
 Realita (14.–18.9.2026): HISTAMIN×1, NO BRAVCOVINA×30, NO CUKOR×26, NO GLUTEN×1, NO MILK×31,
 NO MILK–NO GLUTEN×4, NO MILK–NO GLUTEN–NO EGG–HISTAMIN–NO STRUKOVINY–NO ANANÁS×15, NO
 MILK–NO GLUTEN–NO EGG–NO BOBULE–NO BRAVCOVINA×15, NO MILK–REFLUX×15, NO ORECH×10, NO ORECH–NO
-JABLKO–NO JAHODA×1, NO ORECH–NO KIWI×5, NONONO×2, VEGAN×2, VEGGIE×44 — širšie kombinácie než
-tabuľka vyššie (viac než 2 zložky na viacero riadkov) naznačujú, že `_PAYER_RULES` odvtedy
-narástol/aktualizoval sa priamo v `britishschool.py` nad rámec pôvodne zdokumentovaných 10
-labelov — over pri ďalšej úprave, že si tabuľka vyššie a `_PAYER_RULES` v kóde sedia 1:1.
+JABLKO–NO JAHODA×1, NO ORECH–NO KIWI×5, NONONO×2, VEGAN×2, VEGGIE×44.
 
 ---
 

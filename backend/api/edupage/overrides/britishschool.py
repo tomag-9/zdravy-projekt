@@ -30,6 +30,15 @@ namiesto generického fuzzy enginu. `menu="A"` je len placeholder — keď
 Payer meno, ktoré tu nie je (napr. nová kombinácia na `nP+`, dosiaľ bez dát),
 necháme cez `payer_diet = None` padnúť na engine (echo raw skratky) — appka to
 nahlási cez `unmapped_diets`, nie ticho zle priradí.
+
+Audit celého `typy_platitelov` adresára feedu (15.9.2026) proti tejto mape
+odhalil 3 ďalšie kombinované payer skupiny s rovnakým #527 vzorom (generický
+fragment matcher by chytil len prvú zložku) — zatiaľ 0 detí na nich, preto
+doplnené preventívne (rovnaký princíp ako Filipáneriho NNNO):
+
+    3.st. noPorknoNuts    → NO BRAVCOVINA/NO ORECH
+    2.st. HIT/noPork      → HISTAMIN/NO BRAVCOVINA
+    Učiteľ HIT+ nM + VEGE → HISTAMIN/NO MILK/VEGGIE
 """
 
 from __future__ import annotations
@@ -49,6 +58,10 @@ _PAYER_RULES: dict[str, str] = {
     "3.ST. NONUTS/SEZAM": "NO ORECH/NO SEZAM",
     "MŠ NONONO+PORK+BERR": "NONONO/NO BRAVCOVINA/NO BOBULE",
     "MŠ NONONONANANLEG HIT": "NONONO/NO ANANAS/NO STRUKOVINY/HISTAMIN",
+    # Nájdené auditom typy_platitelov (15.9.2026), zatiaľ 0 detí — preventívne.
+    "3.ST. NOPORKNONUTS": "NO BRAVCOVINA/NO ORECH",
+    "2.ST. HIT/NOPORK": "HISTAMIN/NO BRAVCOVINA",
+    "UČITEĽ HIT+ NM + VEGE": "HISTAMIN/NO MILK/VEGGIE",
 }
 
 

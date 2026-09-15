@@ -671,7 +671,11 @@ class TestCvernickaLetterHook(unittest.TestCase):
         return cvernicka_letter_hook("X", skratka, "")
 
     def test_nmncnj_full_combo(self):
-        self.assertEqual(self._rule("nMnČnJ").diet, "NO MILK/NO KAKAO/NO JAHODA")
+        """Skutočná založená diéta má iný tvar/poradie slov než pôvodne
+        zapísané pravidlo — potvrdené userom 15.9.2026 (produkčné dáta:
+        „NO MILK – No Čokoláda – NO JAHODA" × 6, nesadelo na kanonický
+        názov, appka to predtým hlásila ako neznámu diétu)."""
+        self.assertEqual(self._rule("nMnČnJ").diet, "NO MILK – No Čokoláda – NO JAHODA")
 
     def test_seven_way_combo(self):
         self.assertEqual(
@@ -1215,6 +1219,12 @@ class TestStrecnianskaLetterHook(unittest.TestCase):
         – NO SOJA (user 1.9.2026)."""
         self.assertEqual(self._rule("nGnS").diet, "NO GLUTEN – NO SOJA")
 
+    def test_nmng_confirmed_certain(self):
+        """`nMnG`/`noMilk/noGluten` (živý fetch 15.9.2026) išlo doteraz len
+        cez generický fallback — user 15.9.2026 potvrdil, že má byť explicitné
+        pravidlo, nie fuzzy engine."""
+        self.assertEqual(self._rule("nMnG").diet, "NO MILK – NO GLUTEN")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
 
@@ -1247,7 +1257,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("nMnČnJ", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"],
-            {"NO MILK/NO KAKAO/NO JAHODA": 1},
+            {"NO MILK – No Čokoláda – NO JAHODA": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
@@ -1362,6 +1372,22 @@ class TestBritishSchoolHooks(unittest.TestCase):
 
     def test_payer_hook_unknown_falls_through_to_engine(self):
         self.assertIsNone(british_school_payer_hook("2.st. noNuts/noBanana"))
+
+    def test_payer_hook_preventive_combos_from_payer_directory_audit(self):
+        """Nájdené auditom celého `typy_platitelov` adresára (15.9.2026) —
+        rovnaký #527 vzor ako ostatné pravidlá vyššie (generický fragment
+        matcher by chytil len prvú zložku), zatiaľ 0 detí na skupine, preto
+        preventívne (rovnaký princíp ako Filipáneriho NNNO)."""
+        cases = [
+            ("3.st. noPorknoNuts", "NO BRAVCOVINA/NO ORECH"),
+            ("2.st. HIT/noPork", "HISTAMIN/NO BRAVCOVINA"),
+            ("Učiteľ HIT+ nM + VEGE", "HISTAMIN/NO MILK/VEGGIE"),
+        ]
+        for payer_name, expected in cases:
+            with self.subTest(payer_name=payer_name):
+                rule = british_school_payer_hook(payer_name)
+                self.assertIsNotNone(rule)
+                self.assertEqual(rule.diet, expected)
 
     def test_letter_hook_recognizes_vege1_as_own_menu_variant(self):
         """VEGE1 je vlastné menu, nie diéta VEGGIE — bez tohto pravidla by
