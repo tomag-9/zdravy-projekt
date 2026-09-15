@@ -737,6 +737,45 @@ describe("ClientDetail dashboard history limit", () => {
   });
 });
 
+describe("ClientDetail EduPage link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response([]));
+      if (url.includes("/orders/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/edupage-connections/")) {
+        return Promise.resolve(response([]));
+      }
+      if (url.includes("/admin/celky/3/")) {
+        return Promise.resolve(response(celokWithLogins));
+      }
+      if (url.includes("/admin/facility-prevadzky/7/")) {
+        return Promise.resolve(
+          response({
+            ...facility,
+            edupage_connection: 12,
+            edupage_url: "https://school.edupage.org/menu/mealsGuest?id=TOKEN",
+          }),
+        );
+      }
+      return Promise.resolve(response([]));
+    });
+  });
+
+  it("opens the assigned EduPage link in a new tab", async () => {
+    renderClientDetail();
+
+    const link = await screen.findByRole("link", { name: "EduPage" });
+    expect(link).toHaveAttribute(
+      "href",
+      "https://school.edupage.org/menu/mealsGuest?id=TOKEN",
+    );
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+});
+
 describe("ClientDetail order protection", () => {
   const order = {
     id: 42,

@@ -142,6 +142,17 @@ class TestConfigPreUrl(unittest.TestCase):
         cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg.letter_hook)
 
+    def test_zdravebrusko_olovrant_missing_ok_matches_real_prevadzka_name(self):
+        """`olovrant_missing_ok` sa porovnáva presne (`label not in
+        config.olovrant_missing_ok`, viď `_apply_olovrant_config`) — musí
+        obsahovať skutočný `Prevadzka.nazov`, nie skrátenú/starú verziu.
+        Reálny názov v appke je „ZŠ Malokarpatská Lamač" (potvrdené v
+        produkcii 15.9.2026), nie holé „ZŠ Malokarpatská" — s tým by sa
+        suppression nikdy netrafila a config_notes by hlásil chýbajúci
+        olovrant každý deň, hoci je to štrukturálny, očakávaný stav."""
+        cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
+        self.assertIn("ZŠ Malokarpatská Lamač", cfg.olovrant_missing_ok)
+
     def test_edulienka_has_confirmed_diet_letter_hook(self):
         cfg = config_pre_url("https://edulienka.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg)
@@ -660,7 +671,11 @@ class TestCvernickaLetterHook(unittest.TestCase):
         return cvernicka_letter_hook("X", skratka, "")
 
     def test_nmncnj_full_combo(self):
-        self.assertEqual(self._rule("nMnČnJ").diet, "NO MILK/NO KAKAO/NO JAHODA")
+        """Skutočná založená diéta má iný tvar/poradie slov než pôvodne
+        zapísané pravidlo — potvrdené userom 15.9.2026 (produkčné dáta:
+        „NO MILK – No Čokoláda – NO JAHODA" × 6, nesadelo na kanonický
+        názov, appka to predtým hlásila ako neznámu diétu)."""
+        self.assertEqual(self._rule("nMnČnJ").diet, "NO MILK – No Čokoláda – NO JAHODA")
 
     def test_seven_way_combo(self):
         self.assertEqual(
@@ -712,13 +727,25 @@ class TestEdulienkaLetterHook(unittest.TestCase):
     def _rule(self, skratka) -> LetterRule:
         return edulienka_letter_hook("X", skratka, "")
 
-    def test_confirmed_diets_are_exact_and_not_fuzzy(self):
-        cases = {
-            "HISTAMIN, NO GLUTEN": "NO GLUTEN – HISTAMIN",
-        }
-        for skratka, expected_diet in cases.items():
-            with self.subTest(skratka=skratka):
-                self.assertEqual(self._rule(skratka).diet, expected_diet)
+    def test_real_ngh_skratka_resolves_to_confirmed_combo(self):
+        """`_RULES` mal pôvodne kľúč `"HISTAMIN, NO GLUTEN"` (celý `nazov`),
+        ale skutočná skratka, ktorú EduPage pre toto menu písmeno posiela, je
+        `nGH` (`nazov="NGH"`, overené naživo 15.9.2026) — kľúč sa preto
+        nikdy netrafil a padalo to cez na generický
+        `_SKRATKA_MAP["NGH"] = "HISTAMIN, NO GLUTEN"`, ktorého hodnota má
+        opačné poradie slov než založená diéta „NO GLUTEN – HISTAMIN" —
+        normalizácia (`_normalise_key`) poradie slov nemení, takže kanonický
+        lookup zlyhal a appka to hlásila ako `unmapped: J:HISTAMIN, NO
+        GLUTEN` (user-reported 15.9.2026), hoci rovnaká diéta v ten istý deň
+        inde už mala count."""
+        self.assertEqual(self._rule("nGH").diet, "NO GLUTEN – HISTAMIN")
+
+    def test_real_ngh_skratka_is_case_insensitive(self):
+        self.assertEqual(self._rule("NGH").diet, "NO GLUTEN – HISTAMIN")
+
+    def test_old_nazov_based_key_no_longer_used(self):
+        """Bývalý (chybný) kľúč nesmie náhodou znova ožiť ako platná skratka."""
+        self.assertIsNone(self._rule("HISTAMIN, NO GLUTEN"))
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("nieco ine"))
@@ -1192,6 +1219,12 @@ class TestStrecnianskaLetterHook(unittest.TestCase):
         – NO SOJA (user 1.9.2026)."""
         self.assertEqual(self._rule("nGnS").diet, "NO GLUTEN – NO SOJA")
 
+    def test_nmng_confirmed_certain(self):
+        """`nMnG`/`noMilk/noGluten` (živý fetch 15.9.2026) išlo doteraz len
+        cez generický fallback — user 15.9.2026 potvrdil, že má byť explicitné
+        pravidlo, nie fuzzy engine."""
+        self.assertEqual(self._rule("nMnG").diet, "NO MILK – NO GLUTEN")
+
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("niečo iné"))
 
@@ -1224,7 +1257,7 @@ class TestFixedLetterHooksInParse(unittest.TestCase):
         res = self._parse("nMnČnJ", cfg)
         self.assertEqual(
             res.order_data["lunch"]["Škôlka"]["diets"],
-            {"NO MILK/NO KAKAO/NO JAHODA": 1},
+            {"NO MILK – No Čokoláda – NO JAHODA": 1},
         )
         self.assertEqual(res.uncertain_letters, [])
         self.assertEqual(res.unmapped_letters, [])
@@ -1339,6 +1372,22 @@ class TestBritishSchoolHooks(unittest.TestCase):
 
     def test_payer_hook_unknown_falls_through_to_engine(self):
         self.assertIsNone(british_school_payer_hook("2.st. noNuts/noBanana"))
+
+    def test_payer_hook_preventive_combos_from_payer_directory_audit(self):
+        """Nájdené auditom celého `typy_platitelov` adresára (15.9.2026) —
+        rovnaký #527 vzor ako ostatné pravidlá vyššie (generický fragment
+        matcher by chytil len prvú zložku), zatiaľ 0 detí na skupine, preto
+        preventívne (rovnaký princíp ako Filipáneriho NNNO)."""
+        cases = [
+            ("3.st. noPorknoNuts", "NO BRAVCOVINA/NO ORECH"),
+            ("2.st. HIT/noPork", "HISTAMIN/NO BRAVCOVINA"),
+            ("Učiteľ HIT+ nM + VEGE", "HISTAMIN/NO MILK/VEGGIE"),
+        ]
+        for payer_name, expected in cases:
+            with self.subTest(payer_name=payer_name):
+                rule = british_school_payer_hook(payer_name)
+                self.assertIsNotNone(rule)
+                self.assertEqual(rule.diet, expected)
 
     def test_letter_hook_recognizes_vege1_as_own_menu_variant(self):
         """VEGE1 je vlastné menu, nie diéta VEGGIE — bez tohto pravidla by
