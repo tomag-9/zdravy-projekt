@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.5.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.2...v5.5.0) (2026-09-15)
+
+
+### Features
+
+* **admin:** add EduPage link to facility detail ([0f080fa](https://github.com/tomag-9/zdravy-projekt/commit/0f080fa1deb4d8aed059205b2f74d3875b2bc11a))
+
+
+### Bug Fixes
+
+* **edupage:** 3 ďalšie chybné/chýbajúce pravidlá + zdokumentovaný canonical_diet_names mechanizmus ([7a12314](https://github.com/tomag-9/zdravy-projekt/commit/7a12314645101f3267a2298bc055df15535d52ab))
+* **edupage:** 3 falošné/chybné attention flagy zo zdravebrusko a edulienka ([e7a5ebc](https://github.com/tomag-9/zdravy-projekt/commit/e7a5ebc9c22aa97ee4ee0ddd407d00c0d337b5cc))
+* **test:** zdvihni asyncUtilTimeout na 8000ms, opakovaný flake pod CI záťažou ([aec7565](https://github.com/tomag-9/zdravy-projekt/commit/aec7565a4bf1802cd1b01ffe77b30549177937d8))
+
 ## [5.4.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.1...v5.4.2) (2026-09-15)
 
 
