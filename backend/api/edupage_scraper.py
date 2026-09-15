@@ -208,6 +208,10 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "orech": "NO ORECH",
     "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
+    # Pramienok: EduPage názov obsahuje aj „Klasik", no ide o samostatnú
+    # diétnu voľbu. Bez tohto signálu `resolve_menu_variant()` vyhodnotí celý
+    # riadok ako menu A a diéta sa potichu nezapíše ani neohlási.
+    "nohovadzietelacie": "No Hovädzie/Teľacie, Bravčové mäso",
     "horcica": "NO HORCICA",  # Cvernička "AnHorčica"/"Klasik/noHorčica"
     # MŠ Rozmanitá "Klasik bez citrus" — bez tohto fragmentu nemá "citrus" v
     # nazve žiadny diétny signál, takže by spadlo do resolve_menu_variant()
@@ -294,6 +298,11 @@ def match_prevadzka(
     majú prednosť, aby `J1` neprebilo špecifickejší match; vyhráva teda JEDEN prefix,
     a viac prevádzok vráti len vtedy, keď si ten istý prefix zdieľajú (`mšMal,Hey`).
 
+    Samotná hodnota `*` je záchytná prevádzka: dostane len riadok, ktorý nesadol na
+    žiadny konkrétny prefix. Umožňuje teda napr. vyňať `CMŠ` z inak spoločného
+    EduPage feedu ZŠ. Nikdy nesmie vyhrať pred konkrétnym prefixom, ani keď má
+    nezhodnú skratku menu vyššiu prioritu než payer label.
+
     Vracia zoznam — prázdny znamená „nepriradené", nie „nič sa nedeje": volajúci to
     musí nahlásiť ako neúplný scrape, inak by porcie ticho zmizli.
 
@@ -318,13 +327,13 @@ def match_prevadzka(
     for key in kandidati:
         if not key:
             continue
-        for prefix in sorted(matches, key=len, reverse=True):
+        for prefix in sorted((p for p in matches if p != "*"), key=len, reverse=True):
             prefix_key = _normalise_key(prefix)
             if not prefix_key:
                 continue
             if key.startswith(prefix_key):
                 return list(matches[prefix])
-    return []
+    return list(matches.get("*", []))
 
 
 # ------------------------------------------------------------------

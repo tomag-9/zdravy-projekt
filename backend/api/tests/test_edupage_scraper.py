@@ -189,6 +189,18 @@ class TestResolveDietName(unittest.TestCase):
     def test_keyword_fallback_citrus_in_nazov(self):
         self.assertEqual(self._r("KLC", "Klasik bez citrus"), "NO CITRUS")
 
+    def test_keyword_fallback_beef_veal_pork_diet_in_nazov(self):
+        """Pramienok: `Klasik` nesmie prekryť túto diétnu voľbu ako menu A."""
+        label = "Klasik No Hovädzie/Teľacie, Bravčové mäso"
+        self.assertEqual(
+            EdupageScraper.resolve_menu_variant("NH", label),
+            None,
+        )
+        self.assertEqual(
+            self._r("NH", label),
+            "No Hovädzie/Teľacie, Bravčové mäso",
+        )
+
     def test_unknown_fallback_returns_nazov(self):
         self.assertEqual(self._r("ABC", "menu A"), "menu A")
 

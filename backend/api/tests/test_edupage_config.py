@@ -1803,6 +1803,14 @@ class TestMatchPrevadzka(unittest.TestCase):
             ["MŠ Heyrovského 4", "MŠ Malokarpatké námestie 6"],
         )
 
+    def test_star_is_fallback_after_specific_prefix(self):
+        """ZŠ Ivanka berie všetko, čo nepatrí samostatnej CMŠ Ivanka."""
+        matches = {"*": ["ZŠ Ivanka pri Dunaji"], "CMŠ": ["CMŠ Ivanka"]}
+        self.assertEqual(match_prevadzka(matches, "CMŠ klasik", ""), ["CMŠ Ivanka"])
+        self.assertEqual(
+            match_prevadzka(matches, "ZŠ klasik", ""), ["ZŠ Ivanka pri Dunaji"]
+        )
+
 
 class _FakePrevadzka:
     """Len to, čo `build_prevadzka_matches` potrebuje — bez DB."""

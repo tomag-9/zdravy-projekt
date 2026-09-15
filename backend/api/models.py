@@ -654,6 +654,8 @@ class Prevadzka(models.Model):
         help_text=(
             "Prefix payer labelu / menu skratky, podľa ktorého sa EduPage riadky "
             "priradia tejto prevádzke (napr. 'J1', 'Palisády', 'B - Les'). "
+            "Samotné '*' je záchytný match pre všetky riadky, ktoré nesadnú na "
+            "konkrétny prefix inej prevádzky. "
             "Viac prefixov oddeľ BODKOČIARKOU — škola nemá spoločný prefix, jej "
             "skupiny sa volajú '1.st', '2.st' aj 'Dospelý' ('1.st; 2.st; Dospelý'). "
             "Čiarka oddeľovač byť nemôže: sama sa vyskytuje v skratkách menu "
