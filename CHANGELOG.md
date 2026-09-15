@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.4.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.3.0...v5.4.0) (2026-09-15)
+
+
+### Features
+
+* **edupage:** add fallback facility match ([4e759da](https://github.com/tomag-9/zdravy-projekt/commit/4e759da73376c0944c71ca66c74603b9eae31b2c))
+
+
+### Bug Fixes
+
+* **edupage:** recognize Pramienok beef and veal diet ([9d27aea](https://github.com/tomag-9/zdravy-projekt/commit/9d27aea3c921a051eae0128bfb6799ecb6f88e14))
+
 ## [5.3.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.2.0...v5.3.0) (2026-09-15)
 
 
