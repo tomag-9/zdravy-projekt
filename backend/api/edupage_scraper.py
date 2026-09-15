@@ -208,6 +208,10 @@ _NAZOV_KEYWORD_MAP: dict[str, str] = {
     "orech": "NO ORECH",
     "arasid": "NO ORECH",
     "nozemiak": "NO ZEMIAK",
+    # Pramienok: EduPage názov obsahuje aj „Klasik", no ide o samostatnú
+    # diétnu voľbu. Bez tohto signálu `resolve_menu_variant()` vyhodnotí celý
+    # riadok ako menu A a diéta sa potichu nezapíše ani neohlási.
+    "nohovadzietelacie": "No Hovädzie/Teľacie, Bravčové mäso",
     "horcica": "NO HORCICA",  # Cvernička "AnHorčica"/"Klasik/noHorčica"
     # MŠ Rozmanitá "Klasik bez citrus" — bez tohto fragmentu nemá "citrus" v
     # nazve žiadny diétny signál, takže by spadlo do resolve_menu_variant()
