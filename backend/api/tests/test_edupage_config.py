@@ -142,6 +142,17 @@ class TestConfigPreUrl(unittest.TestCase):
         cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg.letter_hook)
 
+    def test_zdravebrusko_olovrant_missing_ok_matches_real_prevadzka_name(self):
+        """`olovrant_missing_ok` sa porovnáva presne (`label not in
+        config.olovrant_missing_ok`, viď `_apply_olovrant_config`) — musí
+        obsahovať skutočný `Prevadzka.nazov`, nie skrátenú/starú verziu.
+        Reálny názov v appke je „ZŠ Malokarpatská Lamač" (potvrdené v
+        produkcii 15.9.2026), nie holé „ZŠ Malokarpatská" — s tým by sa
+        suppression nikdy netrafila a config_notes by hlásil chýbajúci
+        olovrant každý deň, hoci je to štrukturálny, očakávaný stav."""
+        cfg = config_pre_url("https://zdravebrusko.edupage.org/menu/mealsGuest?id=x")
+        self.assertIn("ZŠ Malokarpatská Lamač", cfg.olovrant_missing_ok)
+
     def test_edulienka_has_confirmed_diet_letter_hook(self):
         cfg = config_pre_url("https://edulienka.edupage.org/menu/mealsGuest?id=x")
         self.assertIsNotNone(cfg)
@@ -712,13 +723,25 @@ class TestEdulienkaLetterHook(unittest.TestCase):
     def _rule(self, skratka) -> LetterRule:
         return edulienka_letter_hook("X", skratka, "")
 
-    def test_confirmed_diets_are_exact_and_not_fuzzy(self):
-        cases = {
-            "HISTAMIN, NO GLUTEN": "NO GLUTEN – HISTAMIN",
-        }
-        for skratka, expected_diet in cases.items():
-            with self.subTest(skratka=skratka):
-                self.assertEqual(self._rule(skratka).diet, expected_diet)
+    def test_real_ngh_skratka_resolves_to_confirmed_combo(self):
+        """`_RULES` mal pôvodne kľúč `"HISTAMIN, NO GLUTEN"` (celý `nazov`),
+        ale skutočná skratka, ktorú EduPage pre toto menu písmeno posiela, je
+        `nGH` (`nazov="NGH"`, overené naživo 15.9.2026) — kľúč sa preto
+        nikdy netrafil a padalo to cez na generický
+        `_SKRATKA_MAP["NGH"] = "HISTAMIN, NO GLUTEN"`, ktorého hodnota má
+        opačné poradie slov než založená diéta „NO GLUTEN – HISTAMIN" —
+        normalizácia (`_normalise_key`) poradie slov nemení, takže kanonický
+        lookup zlyhal a appka to hlásila ako `unmapped: J:HISTAMIN, NO
+        GLUTEN` (user-reported 15.9.2026), hoci rovnaká diéta v ten istý deň
+        inde už mala count."""
+        self.assertEqual(self._rule("nGH").diet, "NO GLUTEN – HISTAMIN")
+
+    def test_real_ngh_skratka_is_case_insensitive(self):
+        self.assertEqual(self._rule("NGH").diet, "NO GLUTEN – HISTAMIN")
+
+    def test_old_nazov_based_key_no_longer_used(self):
+        """Bývalý (chybný) kľúč nesmie náhodou znova ožiť ako platná skratka."""
+        self.assertIsNone(self._rule("HISTAMIN, NO GLUTEN"))
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("nieco ine"))

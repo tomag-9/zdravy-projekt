@@ -200,10 +200,16 @@ Zdroj: `edulienka_letter_hook`.
 Realita (14.–18.9.2026), prevádzka „MŠ Edulienka": NO GLUTEN×10, NO GLUTEN–HISTAMIN×5,
 NO MILK×36, NO MILK–NO GLUTEN×9, NONONO×4, VEGGIE×6 — NO MILK aj NO MILK–NO GLUTEN tu vznikajú
 cez generický fallback (`_SKRATKA_MAP`/`_NAZOV_KEYWORD_MAP` fragmenty „nomilk"/„nogluten"), nie
-cez (teraz odstránené) `cms` pravidlá — po oprave sa tieto počty nemenia. V `unmapped_diets`
-visí `J:HISTAMIN, NO GLUTEN` — **skratka `J` nie je v `_RULES` mapovaná priamo, len presný
-`nazov` reťazec**; over, či EduPage posiela `nazov` konzistentne aj pre písmeno J, alebo treba
-doplniť kľúč do `_RULES` podľa skratky.
+cez (teraz odstránené) `cms` pravidlá — po oprave sa tieto počty nemenia.
+
+> ✅ **Opravené 15.9.2026**: `unmapped: J:HISTAMIN, NO GLUTEN` bol druhý bug v tom istom hooku
+> — `_RULES` mal kľúč `"HISTAMIN, NO GLUTEN"` (celý `nazov`), ale skutočná skratka, ktorú
+> EduPage pre toto písmeno posiela, je **`nGH`** (`nazov="NGH"`, overené živým fetchom
+> 15.9.2026). Kľúč sa preto nikdy netrafil — padalo to cez na generický
+> `_SKRATKA_MAP["NGH"] = "HISTAMIN, NO GLUTEN"`, ktorého hodnota má **opačné poradie slov** než
+> založená diéta „NO GLUTEN – HISTAMIN"; `_normalise_key` poradie slov nemení, takže kanonický
+> lookup zlyhal a appka to hlásila ako neznámu diétu (napriek tomu, že rovnaká diéta v appke
+> reálne existuje a inde v ten istý deň už mala count). Kľúč v `_RULES` je teraz `"NGH"`.
 
 ---
 
@@ -231,25 +237,34 @@ doplniť kľúč do `_RULES` podľa skratky.
 | payer „MŠ NoNoNo Bez Sóje a Jablka" (na zdieľanom `dsb`-písmene) | **NO MILK – NO GLUTEN – NO EGG – NO SOJA – NO JABLKO – NO TELACIE** |
 | payer „MŠ Mal.*"/„MŠ Hey.*" (raňajky/olovrant, zdieľajú `dsbNMNE` písmeno s Deutsche Schule) | diéta sa odvodí z payer mena (NoMilk/NoGluten/NoBanán fragmenty), `force_match` ju priradí správnej MŠ, nie Deutsche Schule |
 
-Zdroj: `zdravebrusko_letter_hook` / `zdravebrusko_payer_hook`. ZŠ Malokarpatská nemá na tomto
-feede raňajky/olovrant vôbec (`olovrant_missing_ok`).
+Zdroj: `zdravebrusko_letter_hook` / `zdravebrusko_payer_hook`. ZŠ Malokarpatská Lamač nemá na
+tomto feede raňajky/olovrant vôbec (`olovrant_missing_ok`).
+
+> ✅ **Opravené 15.9.2026**: `olovrant_missing_ok` mal `frozenset({"ZŠ Malokarpatská"})`, ale
+> skutočný `Prevadzka.nazov` v appke je **„ZŠ Malokarpatská Lamač"** (potvrdené v produkcii).
+> Suppression porovnáva presne (`label not in config.olovrant_missing_ok`), takže s chybným
+> názvom sa nikdy netrafila — `config_notes` hlásil „očakávaný olovrant z EduPage chýba (obed
+> prítomný)" každý jeden deň, hoci ide o štrukturálny, dávno potvrdený stav (starší žiaci si
+> olovrant cez EduPage neobjednávajú), nie o skutočný drift. Opravené na skutočný názov.
 
 Realita (14.–18.9.2026): Deutsche Schule NO MILK×4, NO MILK–NO GLUTEN×1, plná kombinácia×4,
 NO ORECH×4; MŠ Heyrovského 4 NO GLUTEN×12; MŠ Malokarpatké nám. 6 NO GLUTEN×18, NO MILK×12;
 ZŠ Malokarpatská Lamač NO GLUTEN×24, NO MILK×4, NO MILK–NO BANÁN×4.
 
-> ℹ️ **Overené 15.9.2026 (živý fetch surového EduPage JSON), false-positive, nie chýbajúca
-> diéta**: obom prevádzkam (Heyrovského, Malokarpatké nám. 6) sa v `unmapped_diets` hlási
-> `C:Diéta Lamač`. Nie je to nová/premenovaná diétna skratka — je to len **názov, ktorý EduPage
-> dáva samotnému písmenu C na raňajkovom/olovrantovom jide** (`skratka="mšMal,Hey"`,
-> `nazov="Diéta Lamač"`; na obedovom jide má tá istá litera C iný, už mapovaný obsah —
-> `dsbNMNE`/„NoMilk/NoEgg"). Deti pod týmto písmenom sú platiteľské skupiny „MŠ Mal. NoMilk"
-> (payer 17) a „MŠ Hey. NoGluten" (payer 21) — presne tie, čo už rieši `force_match` v
-> `zdravebrusko_payer_hook` vyššie, takže **diéty aj počty sa priraďujú správne** (NO MILK →
-> mšMal, NO GLUTEN → mšHey). `unmapped_label` sa ale počíta z `nazov` písmena C ešte pred touto
-> payer-úrovňovou logikou a pridá sa do `scrape_flags` bez ohľadu na to, že payer_hook diétu
-> napokon doriešil — je to kozmetický šum v logu, nie zle/nepriradená diéta. Nič tu netreba
-> mapovať.
+> ✅ **Opravené 15.9.2026** (predtým bol false-positive, nie chýbajúca diéta): obom prevádzkam
+> (Heyrovského, Malokarpatké nám. 6) sa v `unmapped_diets` hlásilo `C:Diéta Lamač`. Nebola to
+> nová/premenovaná diétna skratka — je to len **názov, ktorý EduPage dáva samotnému písmenu C na
+> raňajkovom/olovrantovom jide** (`skratka="mšMal,Hey"`, `nazov="Diéta Lamač"`; na obedovom jide
+> má tá istá litera C iný, už mapovaný obsah — `dsbNMNE`/„NoMilk/NoEgg"). Deti pod týmto písmenom
+> sú platiteľské skupiny „MŠ Mal. NoMilk" (payer 17) a „MŠ Hey. NoGluten" (payer 21) — presne
+> tie, čo už rieši `force_match` v `zdravebrusko_payer_hook` vyššie, takže **diéty aj počty sa
+> priraďovali správne aj predtým** (NO MILK → mšMal, NO GLUTEN → mšHey). Bug bol v samotnom
+> `_parse` enginu: `unmapped_label`/`uncertain_label` sa počítal z `nazov` písmena PRED
+> payer-úrovňovou `force_match` logikou a pridával sa do `scrape_flags` bez ohľadu na to, že
+> payer_hook diétu napokon doriešil isto — kozmetický šum v logu. Engine teraz letter-level
+> `unmapped`/`uncertain` label pre daný riadok potlačí, keď `force_match` payera diétu už
+> definitívne určil (`edupage_scraper.py`, `payer_unmapped_label`/`payer_uncertain_label`) —
+> regresný test `test_parse_force_matched_payer_diet_does_not_flag_letter_as_unmapped`.
 
 ---
 
