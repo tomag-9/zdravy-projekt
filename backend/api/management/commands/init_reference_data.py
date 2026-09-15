@@ -5,8 +5,7 @@ Seeds system-level lookup data that must exist before the app is usable:
   - PortionType rows (Jasle, Škôlka, ZŠ 1.stupeň, ZŠ 2.stupeň, Dospelý (SŠ))
   - MealTemplate catalog rows (seed_meal_weight_catalog)
 
-Uses update_or_create so it is safe to run repeatedly (no duplicates)
-while keeping coefficients and sort order in sync.
+Only fills missing reference data so deploys preserve admin edits.
 
 Usage:
     python manage.py init_reference_data
@@ -43,7 +42,7 @@ class Command(BaseCommand):
 
         created_count = 0
         for pt_data in PORTION_TYPES:
-            _, created = PortionType.objects.update_or_create(
+            _, created = PortionType.objects.get_or_create(
                 name=pt_data["name"],
                 defaults={
                     "coefficient": pt_data["coefficient"],
@@ -55,11 +54,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"  PortionType created: {pt_data['name']}")
 
         # Novo vytvorená diéta má nastaviť sort_order tak, aby pristála NA KONCI
-        # zoznamu (Diet.Meta.ordering = [sort_order, name]), nie na začiatku:
-        # `sort_order` má model default 0 a bez tohto by sa zaradila na úroveň
-        # najvyššie postavených diét. Nastavuje sa len pri vytvorení — pri
-        # opakovanom behu (update_or_create beží pri každom deployi) nechceme
-        # prepísať prípadné ručné preusporiadanie cez admin.
+        # zoznamu (Diet.Meta.ordering = [sort_order, name]), nie na začiatku.
+        # Existujúce diéty deploy nikdy neupravuje — vrátane ich popisu a poradia.
         highest_sort_order = (
             Diet.objects.order_by("-sort_order")
             .values_list("sort_order", flat=True)
@@ -69,7 +65,7 @@ class Command(BaseCommand):
 
         diet_created_count = 0
         for name, description in ALL_DIETS:
-            diet, created = Diet.objects.update_or_create(
+            diet, created = Diet.objects.get_or_create(
                 name=name,
                 # `is_active` is a deliberate operational choice. In particular,
                 # retired legacy combinations must stay retired across deploys.

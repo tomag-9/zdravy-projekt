@@ -26,6 +26,29 @@ def test_seed_is_idempotent():
 
 
 @pytest.mark.django_db
+def test_seed_does_not_overwrite_admin_changes_to_catalog_template():
+    call_command("seed_meal_weight_catalog", verbosity=0)
+    category, name, _components, _unit_exception = CATALOG[0]
+    seeded = MealTemplate.objects.get(name=name)
+
+    seeded.is_active = False
+    seeded.weight_label = "ručne upravené"
+    seeded.base_weight_grams = Decimal("42.00")
+    seeded.components = [{"label": "Vlastná zložka", "grams": "42", "unit": "g"}]
+    seeded.save()
+
+    call_command("seed_meal_weight_catalog", verbosity=0)
+
+    seeded.refresh_from_db()
+    assert seeded.is_active is False
+    assert seeded.weight_label == "ručne upravené"
+    assert seeded.base_weight_grams == Decimal("42.00")
+    assert seeded.components == [
+        {"label": "Vlastná zložka", "grams": "42", "unit": "g"}
+    ]
+
+
+@pytest.mark.django_db
 def test_seed_survives_admin_created_duplicate_name():
     call_command("seed_meal_weight_catalog", verbosity=0)
     category, name, _components, _unit_exception = CATALOG[0]
@@ -42,7 +65,7 @@ def test_seed_survives_admin_created_duplicate_name():
 
     call_command("seed_meal_weight_catalog", verbosity=0)
 
-    # Seed aktualizuje najstarší (najnižšie id) riadok…
+    # Seed nemeňuje ani pôvodný katalógový riadok…
     seeded.refresh_from_db()
     assert seeded.is_active is True
     assert seeded.base_weight_grams != Decimal("42.00")

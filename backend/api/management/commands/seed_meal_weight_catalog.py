@@ -8,8 +8,8 @@ Admins pick one of these per day/slot instead of uploading a weekly xlsx.
 Data is hardcoded here (not read from any xlsx file at runtime) — it mirrors
 `test/jedalnicky/Váhy jedál - apka ZP.xlsx`.
 
-Matches existing rows by `name` (oldest wins), so it is safe to run repeatedly
-even when an admin has created a row that shares a catalog name.
+Matches existing rows by `name` (oldest wins), but creates only missing rows.
+This makes it safe to run on every deploy without overwriting admin changes.
 
 Usage:
     python manage.py seed_meal_weight_catalog
@@ -260,22 +260,14 @@ class Command(BaseCommand):
                 "menu_variant": "",
                 "is_active": True,
             }
-            # Deliberately not update_or_create(name=...): `name` has no unique
-            # constraint and admins may add their own catalog rows through
-            # /api/admin/meal-templates, so a name can occur more than once and
-            # get() would raise MultipleObjectsReturned — killing the whole
-            # deploy bootstrap. Keep the oldest (lowest-id) row as the seeded
-            # one and leave any admin-created namesakes untouched.
+            # `name` has no unique constraint, so keep the oldest row when an
+            # admin-created namesake exists. A deploy must only fill catalog
+            # gaps; it must never overwrite an existing admin-edited template.
             existing = MealTemplate.objects.filter(name=name).order_by("id").first()
             if existing is None:
                 MealTemplate.objects.create(name=name, **defaults)
                 created_count += 1
                 self.stdout.write(f"  MealTemplate created: {name}")
-                continue
-
-            for field, value in defaults.items():
-                setattr(existing, field, value)
-            existing.save(update_fields=[*defaults, "updated_at"])
 
         if created_count:
             self.stdout.write(
