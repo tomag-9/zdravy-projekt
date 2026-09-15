@@ -20,11 +20,11 @@ import { plural } from '../../lib/plural';
 import {
     prevWeekday,
     nextWeekday,
-    dashboardMaxDate,
     dashboardDefaultDate,
     toDateString,
     formatDay,
 } from '../../lib/businessDay';
+import { useDashboardMaxDate } from '../../hooks/useDashboardMaxDate';
 import GramageTable, { type TableSpec } from '../admin/GramageTable';
 
 const API = import.meta.env.VITE_API_URL || '/api';
@@ -64,7 +64,7 @@ const KuchynaOverview: React.FC = () => {
     // Predvolený pohľad ale naskočí na zajtrajšok až od 21:00 (#539) — do
     // vtedy je pri otvorení tabuľky vidno dnešok, hoci zajtrajšok je už
     // navigovateľný.
-    const maxDate = useMemo(() => dashboardMaxDate(), []);
+    const maxDate = useDashboardMaxDate();
     const actualToday = useMemo(() => toDateString(new Date()), []);
     const [date, setDate] = useState(() => dashboardDefaultDate());
     const [data, setData] = useState<DashboardResponse | null>(null);

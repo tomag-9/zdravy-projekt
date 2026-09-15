@@ -13,6 +13,7 @@ from api.models import (
     DailyOrder,
     EdupageConnection,
     EventLog,
+    ExternalOrderSnapshot,
     GlobalSettings,
     ProfileCelokAccess,
     UserProfile,
@@ -376,6 +377,68 @@ def test_edupage_scrape_relays_attention_without_touching_target_data(
     stromcek_order.refresh_from_db()
     assert stromcek_order.data == app_data
     assert stromcek_order.scrape_flags["attention"] == []
+
+
+@pytest.mark.django_db
+def test_edupage_scrape_stores_sa_separately_and_preserves_app_order(
+    edupage_user, monkeypatch
+):
+    """Stromčekove appkové a Libellus `sA` počty sú oddelené zdroje.
+
+    Scrape smie nahradiť iba svoj snapshot; nesmie prepísať appkové dáta. Pri
+    ďalšom behu nula vyčistí práve snapshot, nie objednávku z appky.
+    """
+    from api.models import Prevadzka
+
+    stromcek_celok = Celok.objects.create(
+        nazov="Stromček", zdroj_objednavok=Celok.ZdrojObjednavok.APP
+    )
+    stromcek = Prevadzka.objects.create(celok=stromcek_celok, nazov="Stromček")
+    GlobalSettings.objects.create(
+        pk=1,
+        deadline_breakfast=datetime.time(18, 0),
+        deadline_lunch=datetime.time(9, 0),
+        deadline_olovrant=datetime.time(10, 0),
+    )
+    target_date = datetime.date(2026, 6, 30)
+    app_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 7}, "diets": {}}}}
+    DailyOrder.objects.create(
+        prevadzka=stromcek, date=target_date, user=edupage_user, data=app_data
+    )
+
+    def with_sa(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 33}, "diets": {}}},
+            external_order_data_by_prevadzka={
+                "Stromček": {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}}
+            },
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", with_sa)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    stromcek_order = DailyOrder.objects.get(prevadzka=stromcek, date=target_date)
+    assert stromcek_order.data == app_data
+    snapshot = ExternalOrderSnapshot.objects.get(
+        prevadzka=stromcek,
+        date=target_date,
+        source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+    )
+    assert snapshot.data == {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}}
+
+    def without_sa(self, url, scrape_date, prevadzka_matches=None, allowed_diets=None):
+        return _scrape_result(
+            order_data={"lunch": {"menuCounts": {"A": 33}, "diets": {}}},
+            external_order_data_by_prevadzka={"Stromček": {}},
+        )
+
+    monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", without_sa)
+    scrape_edupage_orders_task.run(date_str=target_date.isoformat())
+
+    snapshot.refresh_from_db()
+    stromcek_order.refresh_from_db()
+    assert snapshot.data == {}
+    assert stromcek_order.data == app_data
 
 
 @pytest.mark.django_db
@@ -1211,7 +1274,7 @@ def test_scrape_task_runs_on_sunday_for_a_day_before_meal(edupage_user, monkeypa
 def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
     edupage_user, monkeypatch
 ):
-    """`days_ahead=2` scrapne dnes, dnes+1, dnes+2 — nezávisle od
+    """`days_ahead=3` scrapne dnes až dnes+3 — nezávisle od
     GlobalSettings deadlinov (žiadne v teste), všetky jedlá naraz."""
     GlobalSettings.objects.create(pk=1)
     monday = datetime.date(2026, 6, 29)
@@ -1224,13 +1287,14 @@ def test_scrape_task_days_ahead_scrapes_rolling_window_all_meals(
     _freeze_local(monkeypatch, monday)
     monkeypatch.setattr("api.edupage_scraper.EdupageScraper.scrape", fake_scrape)
 
-    result = scrape_edupage_orders_task.run(days_ahead=2)
+    result = scrape_edupage_orders_task.run(days_ahead=3)
 
     tuesday = datetime.date(2026, 6, 30)
     wednesday = datetime.date(2026, 7, 1)
-    assert seen_dates == [monday, tuesday, wednesday]
-    assert result["dates"] == [str(monday), str(tuesday), str(wednesday)]
-    for target_date in (monday, tuesday, wednesday):
+    thursday = datetime.date(2026, 7, 2)
+    assert seen_dates == [monday, tuesday, wednesday, thursday]
+    assert result["dates"] == [str(monday), str(tuesday), str(wednesday), str(thursday)]
+    for target_date in (monday, tuesday, wednesday, thursday):
         order = DailyOrder.objects.get(user=edupage_user, date=target_date)
         assert order.data["lunch"]["Edupage school"]["menuCounts"]["A"] == 3
 
@@ -1533,7 +1597,7 @@ def test_preview_scrape_schedule_creates_hourly_task():
     assert task.crontab.minute == "0"
     assert task.crontab.hour == "0-23"
     assert task.crontab.day_of_week == "*"
-    assert json.loads(task.kwargs) == {"days_ahead": 2}
+    assert json.loads(task.kwargs) == {"days_ahead": 3}
 
 
 @pytest.mark.django_db

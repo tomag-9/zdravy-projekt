@@ -9,7 +9,8 @@ import { normalizeForSearch } from "../../lib/searchNormalize";
 import ConfirmationModal from "../client/components/ui/ConfirmationModal";
 import { AdminDateNav, Button, Card, Empty, Modal, Toggle, Checkbox, Textarea } from "./ui";
 import GramageTable, { type TableSpec, type SpecSection, type SpecVydaj } from "./GramageTable";
-import { dashboardMaxDate, dashboardDefaultDate } from "../../lib/businessDay";
+import { dashboardDefaultDate } from "../../lib/businessDay";
+import { useDashboardMaxDate } from "../../hooks/useDashboardMaxDate";
 
 const API = import.meta.env.VITE_API_URL || "/api";
 
@@ -206,7 +207,7 @@ const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
   // Od 12:00 sa odomkne aj zajtrajšok — British School sa scrapuje o 12:15
   // deň vopred, tak jej riadok potrebuje byť vidno ešte pred tým (#535).
-  const maxDate = useMemo(() => dashboardMaxDate(), []);
+  const maxDate = useDashboardMaxDate();
   const [date, setDate] = useState(() => dashboardDefaultDate());
   const [data, setData] = useState<GramageDashboard | null>(null);
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);

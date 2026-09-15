@@ -1180,6 +1180,107 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
+  // ── Lazy Copy nesmie doplniť jedlo aktívne len z defaultu (Emjoy) ──────────
+  //
+  // `lunch` je v `defaultActive` aktívne od začiatku (aj bez toho, aby ho
+  // klient v tejto session cez toggle vôbec otvoril) — typicky preto, že
+  // `activeMeals_<dátum>` v localStorage prežíva z predošlej session, kde bol
+  // obed reálne zapnutý. Klient v NOVEJ session zatiaľ neriešil nič, edituje
+  // len raňajky — Lazy Copy efekt (história z localStorage, až 30 dní späť)
+  // sa nesmie spustiť na obed len preto, že vyzerá "aktívny a prázdny": inak
+  // by ho ticho doplnil zo starého dňa a označil za touched, čím by v
+  // submitOrder obišiel poistku, ktorá pre nedotknuté jedlo použije čerstvú
+  // (tu: prázdnu, draft) serverovú hodnotu.
+  it("does not lazy-copy history into a meal that is only default-active, not explicitly opened", async () => {
+    const date = localDateStr();
+    const yesterday = localDateStr(new Date(Date.now() - 24 * 60 * 60 * 1000));
+
+    localStorageMock.setItem(
+      `order_${yesterday}`,
+      JSON.stringify({
+        status: "submitted",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 12 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    // Dnešok: žiadny draft, obed aktívny len z predošlej session (persistovaný
+    // v localStorage), nie z explicitného toggle v TEJTO session.
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    const breakfastCard = getMealCard("Raňajky");
+    const skolkaRow = getCategoryRow(breakfastCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+    fireEvent.change(input, { target: { value: "3" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.touched_meals).not.toContain("lunch");
+      expect(body.data.lunch["Škôlka"]?.menuCounts?.A ?? 0).toBe(0);
+    });
+  });
+
+  // ── Blur bez reálnej zmeny nesmie "touchnúť" jedlo (Emjoy) ──────────────────
+  //
+  // Vstup vie vyvolať onChange/blur aj bez toho, aby klient hodnotu naozaj
+  // zmenil (napr. preklikanie/tab cez pole, alebo blur tesne po vykreslení so
+  // starou/placeholder hodnotou). Bez tejto poistky by to jedlo označilo za
+  // touched a submitOrder by preň prestal používať čerstvú serverovú hodnotu.
+  it("does not mark a meal as touched when the submitted count did not actually change", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "submitted",
+        breakfast: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        lunch: {
+          Škôlka: { menuCounts: { A: 23 }, diets: {} },
+          "Dospelý (SŠ)": { menuCounts: { A: 0, B: 1, C: 2 }, diets: {} },
+        },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    // Klient klikne do poľa raňajok a hneď z neho odíde bez zmeny hodnoty.
+    const breakfastCard = getMealCard("Raňajky");
+    const skolkaRow = getCategoryRow(breakfastCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.touched_meals).not.toContain("breakfast");
+      // Obed (nikdy sa ho v session nedotkol) musí ostať presne taký, aký bol.
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
+    });
+  });
+
   // ── Celodenná objednávka (Full-day order) ───────────────────────────────────
 
   it("Celodenná: renders the full-day card alongside individual meal cards", () => {

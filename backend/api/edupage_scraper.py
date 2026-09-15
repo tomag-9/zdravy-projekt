@@ -375,6 +375,12 @@ class ScrapeResult:
     # attention flag pre CUDZIU prevádzku (mimo tohto scrapu), bez dátového
     # merge. Kľúč je názov tej cudzej prevádzky.
     relayed_attention: dict[str, list[str]] = field(default_factory=dict)
+    # Agregáty, ktoré patria inej prevádzke, ale nesmú sa miešať do jej
+    # `DailyOrder.data` (Libellus shared feed: `sA` → Stromček). Task ich
+    # uloží ako samostatný ExternalOrderSnapshot.
+    external_order_data_by_prevadzka: dict[str, dict[str, Any]] = field(
+        default_factory=dict
+    )
 
 
 # ------------------------------------------------------------------
@@ -867,6 +873,9 @@ class EdupageScraper:
         relayed_attention_buckets: dict[str, set[str]] = {
             nazov: set() for nazov in (config.relay_targets if config else ())
         }
+        external_counts: dict[str, dict[str, dict[str, dict[str, dict[str, int]]]]] = {
+            nazov: {} for nazov in (config.external_order_targets if config else ())
+        }
 
         date_key = target_date.isoformat()
         day_data = prehlad.get(date_key, {})
@@ -909,7 +918,9 @@ class EdupageScraper:
                 flag_label: str | None = None
                 unmapped_label: str | None = None
                 uncertain_label: str | None = None
-                if rule is not None and (rule.menu or rule.diet):
+                if rule is not None and (
+                    rule.menu or rule.diet or rule.external_order_prevadzka
+                ):
                     menu_variant = rule.menu
                     diet_name = rule.diet
                     if rule.flag:
@@ -1011,6 +1022,20 @@ class EdupageScraper:
                         relayed_attention_buckets.setdefault(
                             rule.relay_attention_to, set()
                         ).add(relay_label)
+
+                    if rule is not None and rule.external_order_prevadzka:
+                        target_counts = external_counts.setdefault(
+                            rule.external_order_prevadzka, {}
+                        )
+                        meal_counts = target_counts.setdefault(meal_key, {})
+                        portion_counts = meal_counts.setdefault(
+                            portion_name, {"menuCounts": {}, "diets": {}}
+                        )
+                        menu_counts = portion_counts["menuCounts"]
+                        menu_counts[effective_menu] = (
+                            menu_counts.get(effective_menu, 0) + total
+                        )
+                        continue
 
                     if matches:
                         buckets = match_prevadzka(
@@ -1125,6 +1150,11 @@ class EdupageScraper:
             relayed_attention={
                 nazov: sorted(flags)
                 for nazov, flags in relayed_attention_buckets.items()
+                if nazov
+            },
+            external_order_data_by_prevadzka={
+                nazov: _clean(counts_by_meal)
+                for nazov, counts_by_meal in external_counts.items()
                 if nazov
             },
         )

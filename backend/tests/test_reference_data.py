@@ -33,7 +33,7 @@ def test_init_reference_data_seeds_default_diets_idempotently():
 
 
 @pytest.mark.django_db
-def test_init_reference_data_syncs_real_portion_coefficients():
+def test_init_reference_data_creates_default_portion_types():
     call_command("init_reference_data")
     call_command("init_reference_data")
 
@@ -47,6 +47,27 @@ def test_init_reference_data_syncs_real_portion_coefficients():
     assert coefficients["ZŠ 1.stupeň"] == "1.2500"
     assert coefficients["ZŠ 2.stupeň"] == "1.5000"
     assert coefficients["Dospelý (SŠ)"] == "2.0000"
+
+
+@pytest.mark.django_db
+def test_init_reference_data_does_not_overwrite_admin_reference_data():
+    call_command("init_reference_data")
+
+    portion_type = PortionType.objects.get(name="Škôlka")
+    portion_type.coefficient = "1.1250"
+    portion_type.sort_order = 99
+    portion_type.save(update_fields=["coefficient", "sort_order"])
+    diet = Diet.objects.get(name="NO MILK")
+    diet.description = "Ručne upravený popis"
+    diet.save(update_fields=["description"])
+
+    call_command("init_reference_data")
+
+    portion_type.refresh_from_db()
+    diet.refresh_from_db()
+    assert str(portion_type.coefficient) == "1.1250"
+    assert portion_type.sort_order == 99
+    assert diet.description == "Ručne upravený popis"
 
 
 @pytest.mark.django_db
@@ -78,6 +99,24 @@ def test_init_reference_data_enables_default_diets_for_empty_prevadzky():
     }
     assert "DIA" not in enabled_diets
     assert "VEGAN" not in enabled_diets
+
+
+@pytest.mark.django_db
+def test_init_reference_data_does_not_overwrite_configured_visibility():
+    call_command("init_reference_data")
+    celok = Celok.objects.create(nazov="Nastavená prevádzka")
+    prevadzka = Prevadzka.objects.create(celok=celok, nazov="Nastavená prevádzka")
+    no_milk = Diet.objects.get(name="NO MILK")
+    skolka = PortionType.objects.get(name="Škôlka")
+    prevadzka.visible_diets.set([no_milk])
+    prevadzka.visible_portion_types.set([skolka])
+
+    call_command("init_reference_data")
+
+    assert list(prevadzka.visible_diets.values_list("name", flat=True)) == ["NO MILK"]
+    assert list(prevadzka.visible_portion_types.values_list("name", flat=True)) == [
+        "Škôlka"
+    ]
 
 
 @pytest.mark.django_db

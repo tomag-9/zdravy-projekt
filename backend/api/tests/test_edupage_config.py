@@ -1036,18 +1036,14 @@ class TestLibellusLetterHook(unittest.TestCase):
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("NE"))
 
-    def test_sa_stromcek_recorded_as_libellus_diet(self):
-        """`sA` (nazov "Stomček Klasik") sa už nepresmerúva na samostatný
-        celok Stromček (nespoľahlivý mechanizmus, appkové a EduPage počty sa
-        vedeli rozísť — user 9.9.2026) — namiesto toho sa započíta priamo do
-        Libellusu ako diéta "Klasik STROMČEK". Bez skip by substring "klasik"
-        v nazve skratku tíško zlúčil do Libellusovho vlastného Klasik/A počtu
-        (pôvodne nahlásené 3.9.2026, živý porovnávací scrape: Škôlka A o 4
-        vyššie než uložená objednávka na obede aj raňajkách)."""
+    def test_sa_is_a_separate_stromcek_external_source(self):
+        """`sA` patrí Stromčeku a je iná skupina detí než appkové objednávky.
+        Preto nesmie byť ani Libellusova diéta, ani zdieľaný DailyOrder zápis."""
         rule = self._rule("sA")
         self.assertFalse(rule.skip)
-        self.assertEqual(rule.diet, "Klasik STROMČEK")
-        self.assertIsNone(rule.menu)
+        self.assertIsNone(rule.diet)
+        self.assertEqual(rule.menu, "A")
+        self.assertEqual(rule.external_order_prevadzka, "Stromček")
         # Admin sa musí dozvedieť o oboch stranách — vidí to na Libelluse
         # (`flag`) aj na Stromčeku (`relay_attention_to`), bez zmeny dát.
         self.assertTrue(rule.flag)

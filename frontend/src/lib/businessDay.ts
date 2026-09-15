@@ -143,7 +143,7 @@ export function lastWeekdayToday(sets: DayOffSets = {}): string {
  * (`_sync_edupage_preview_scrape_schedule`, `EDUPAGE_PREVIEW_SCRAPE_DAYS_
  * AHEAD` v `backend/api/signals.py`), ktorý dopĺňa čísla na presne toľko dní
  * dopredu — bez neho by odomknutý deň v dashboarde často ostal prázdny. */
-const DASHBOARD_DAYS_AHEAD = 2;
+const DASHBOARD_DAYS_AHEAD = 3;
 
 /** Od 14:00 kuchyňa pracuje s nasledujúcim pracovným dňom, preto sa naň
  * prepne predvolený dátum všetkých prevádzkových pohľadov. */

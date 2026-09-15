@@ -599,6 +599,32 @@ def _diet_pack_badge(
     return " + ".join(parts)
 
 
+def _zero_out_separated_diet_components(
+    data: dict, sub_grams: list, groups: list, diet_name: str
+) -> list:
+    """Vynuluje gramáž tých zložiek diétneho sub-riadku, čo sú pre svoje
+    (jedlo, diéta) explicitne "zvlášť" (`data["diet_component_pack_state"]`,
+    per zložka — presne tá istá mapa, z ktorej si odznak berie
+    `_gram_cells`). Iné zložky (stĺpce) tej istej diéty na tom istom jedle
+    môžu ostať "spolu" súčasne — vracia kópiu, pôvodný `sub_grams` sa
+    nemení."""
+    component_pack_state = data.get("diet_component_pack_state") or {}
+    filtered = list(sub_grams)
+    for group_index, group in groups:
+        if group_index >= len(filtered) or not filtered[group_index]:
+            continue
+        separated = component_pack_state.get(str(group.get("meal") or ""), {}).get(
+            diet_name, []
+        )
+        if not separated:
+            continue
+        filtered[group_index] = [
+            "0" if i in separated else value
+            for i, value in enumerate(filtered[group_index])
+        ]
+    return filtered
+
+
 def _pack_together_row(
     data: dict,
     client_row: dict,
@@ -613,9 +639,15 @@ def _pack_together_row(
     - štandardné porcie (`sub_row.type == "standard"`, hocijaké Menu/deti aj
       dospelí) — vždy, ich počet už má odpočítané, čo klient označil ako
       "zvlášť" (viď nižšie),
-    - diétne porcie (`sub_row.type == "diet"`), LEN keď je tá diéta pre dané
-      jedlo dnes na diet-component-merge boarde "spolu" (default,
-      `data["diet_pack_state"]`) — "zvlášť" diéta do súčtu nejde.
+    - diétne porcie (`sub_row.type == "diet"`), PO ZLOŽKÁCH — do súčtu ide
+      gramáž len tých zložiek, čo sú pre danú (jedlo, diéta) dnes na
+      diet-component-merge boarde "spolu" (default,
+      `data["diet_component_pack_state"]`, viď `_zero_out_separated_diet_components`);
+      zvlášť označená zložka (napr. príloha) sa vynuluje, aj keď iná zložka
+      TEJ ISTEJ diéty (napr. hlavná časť) v súčte ostáva. Diéta úplne
+      vypadne zo súčtu, len keď nemá ani jednu "spolu" zložku — nerozhoduje
+      o tom hrubý `_diet_pack_state` (per celé jedlo), ten je príliš hrubý
+      (viď jeho docstring) a slúži len ako odznak/legacy stav.
 
     Vynecháva klientom vyžiadané "zvlášť"/"zvlášť do GN"
     (`sub_row.type in ("zvlast", "zvlast_gn")`, napr. "dospelí zvlášť") — tie
@@ -650,14 +682,30 @@ def _pack_together_row(
             continue
         if meal not in visible_meals:
             continue
-        if (
-            row_type == "diet"
-            and _diet_pack_state(data, str(meal), str(sub_row.get("diet_name") or ""))
-            != "S"
-        ):
-            continue
-        total_count += _as_decimal(sub_row.get("count"))
         sub_grams = sub_row.get("col_grams") or []
+        if row_type == "diet":
+            # Spolu/zvlášť je vlastnosťou KAŽDEJ zložky zvlášť (hlavná časť
+            # môže byť "spolu", príloha "zvlášť" a šalát znova "spolu" pre tú
+            # istú diétu na tom istom jedle naraz, viď
+            # `data["diet_component_pack_state"]`) — hrubý `_diet_pack_state`
+            # (per celé jedlo, "Z" hneď ako má diéta čo i len jednu zvlášť
+            # zložku) je na toto rozhodnutie príliš hrubý, vynechal by aj
+            # zložky, čo sú stále "spolu". Filtrujeme preto po stĺpcoch,
+            # rovnako ako odznak v `_gram_cells`.
+            sub_grams = _zero_out_separated_diet_components(
+                data, sub_grams, groups, str(sub_row.get("diet_name") or "")
+            )
+            if not any(
+                _as_decimal(value)
+                for group_index, _ in groups
+                for value in (
+                    sub_grams[group_index] if group_index < len(sub_grams) else []
+                )
+            ):
+                # Ani jedna viditeľná zložka tejto diéty dnes nie je "spolu"
+                # — celá ide bokom, niet čo do súčtu pridať.
+                continue
+        total_count += _as_decimal(sub_row.get("count"))
         col_grams = (
             sub_grams if col_grams is None else _sum_col_grams(col_grams, sub_grams)
         )

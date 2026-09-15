@@ -146,6 +146,12 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const packSeparatelyEnabled = prevadzky.find((item) => item.id === activePrevadzkaId)?.pack_separately_enabled ?? false;
 
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
+    // Ktoré jedlo klient v TEJTO session naozaj vedome otvoril cez `toggleMeal`
+    // (nie tie, čo sú aktívne len z defaultu/localStorage, napr. `lunch: true`
+    // v `defaultActive`) — Lazy Copy nižšie sa smie spustiť len pre tieto, inak
+    // by pri každom otvorení appky ticho dopĺňalo aj jedlo, ktorého sa klient
+    // vôbec nechystal dotknúť (Emjoy).
+    const [explicitlyOpenedMeals, setExplicitlyOpenedMeals] = useState<Set<string>>(new Set());
 
     // State
     const [selectedDate, setSelectedDate] = useState(
@@ -259,6 +265,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
         loadedPrevadzkaIdRef.current = activePrevadzkaId;
         setTouchedMeals(new Set());
+        setExplicitlyOpenedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
         // Predbežný strop z lokálneho draftu — server fetch nižšie ho prepíše
@@ -560,7 +567,13 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // Draft state is kept only in localStorage (see safeParse logic above) to survive page refreshes.
 
 
-    // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true)
+    // Lazy Copy Logic: Trigger when a meal is OPENED (active becomes true) BY
+    // THE CLIENT (`explicitlyOpenedMeals`, set in `toggleMeal`) — nie len preto,
+    // že je aktívne z defaultu (`lunch: true` v `defaultActive`). Inak by pri
+    // každom otvorení appky (napr. klient rieši len raňajky) ticho doplnilo aj
+    // obed z až 30 dní starého localStorage a označilo ho za `touched`, čím by
+    // obišlo poistku v `submitOrder`, ktorá pre netknuté jedlo uprednostní
+    // čerstvú serverovú hodnotu (Emjoy).
     useEffect(() => {
         if (!currentOrder) return;
 
@@ -568,7 +581,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // We do this check first to avoid expensive history lookup if not needed
         const mealsToCopy: (keyof DailyOrder)[] = [];
         (['breakfast', 'lunch', 'olovrant'] as const).forEach(mealKey => {
-            if (activeMeals[mealKey] && !touchedMeals.has(mealKey)) {
+            if (
+                activeMeals[mealKey]
+                && explicitlyOpenedMeals.has(mealKey)
+                && !touchedMeals.has(mealKey)
+            ) {
                 if (OrderService.isMealEmpty(currentOrder[mealKey])) {
                     if (currentOrder.status !== 'submitted') {
                         mealsToCopy.push(mealKey);
@@ -633,7 +650,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // and then SET `currentOrder` if empty, it will naturally re-run.
         // The re-run will find it NOT empty, and thus stabilize.
         // To be safe against "React Hook useEffect has missing dependencies", we include them.
-    }, [activeMeals, selectedDate, currentOrder, touchedMeals, scopedKey]);
+    }, [activeMeals, explicitlyOpenedMeals, selectedDate, currentOrder, touchedMeals, scopedKey]);
 
     // Kopírovanie medzi chodmi je výhradne akcia používateľa (tlačidlá „Načítať z…“).
     // Automatické kopírovanie na pozadí tu kedysi bolo, ale keďže sa spúšťalo len kým
@@ -652,6 +669,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         // musí chrániť nulu pred scoped auto-orderom.
         if (isTurningOff) {
             setTouchedMeals(prev => new Set(prev).add(mealKey));
+        } else {
+            // Klient toto jedlo VEDOME otvoril teraz — len toto smie spustiť
+            // Lazy Copy nižšie (na rozdiel od jedla, ktoré je aktívne len
+            // z defaultu, napr. `lunch: true`).
+            setExplicitlyOpenedMeals(prev => new Set(prev).add(mealKey));
         }
     };
 
@@ -754,6 +776,13 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     };
 
     const updateDiet = (mealKey: 'breakfast' | 'lunch' | 'olovrant', category: string, diet: string, count: number) => {
+        // Rovnaká poistka ako v `updateMenuCount` — bezo zmeny hodnoty niet dôvod
+        // jedlo označiť za `touched`.
+        const existingCount = currentOrder[mealKey]?.[category]?.diets?.[diet];
+        if (existingCount === count) {
+            return;
+        }
+
         setTouchedMeals(prev => {
             const next = new Set(prev);
             next.add(mealKey);
@@ -999,6 +1028,18 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             if (clampedCount > ceiling) {
                 clampedCount = ceiling;
             }
+        }
+
+        // Bez tejto poistky vie aj vstup, ktorý reálne nezmenil hodnotu (napr.
+        // blur/tab cez pole, kým ešte nedobehol počiatočný GET a input dočasne
+        // ukazoval 0/placeholder namiesto skutočného počtu), označiť jedlo za
+        // `touched` — a tým v `submitOrder` obísť poistku, ktorá pre netknuté
+        // jedlo uprednostní čerstvú serverovú hodnotu (Emjoy, viď komentár pri
+        // `submitOrder`). Skutočná zmena hodnoty je jediný legitímny dôvod na
+        // touch.
+        const existingCount = currentOrder[mealKey]?.[category]?.menuCounts?.[menuType];
+        if (existingCount === clampedCount) {
+            return;
         }
 
         setTouchedMeals(prev => {

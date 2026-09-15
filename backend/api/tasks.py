@@ -623,6 +623,26 @@ def _write_relayed_attention(nazov, target_date, messages, *, source_user):
         order.save(update_fields=["scrape_flags", "updated_at"])
 
 
+def _write_external_order_snapshot(nazov, target_date, data, meal_types):
+    """Nahradí externý zdroj objednávok bez zásahu do appkového orderu."""
+    from api.models import ExternalOrderSnapshot, Prevadzka
+
+    target = Prevadzka.objects.filter(nazov=nazov).first()
+    if target is None:
+        logger.error(
+            "scrape_edupage_orders_task: external order target %s missing", nazov
+        )
+        return
+    snapshot, _created = ExternalOrderSnapshot.objects.update_or_create(
+        prevadzka=target,
+        date=target_date,
+        source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+        defaults={"data": {}},
+    )
+    snapshot.data = _apply_scrape(snapshot.data, data or {}, meal_types)
+    snapshot.save(update_fields=["data", "scraped_at"])
+
+
 def _apply_scrape(existing_data, imported_data, requested_meals):
     """Vlož výsledok scrapu s UPDATE sémantikou (nie ADD).
 
@@ -1197,6 +1217,17 @@ def scrape_edupage_orders_task(
                         target_date,
                         relay_messages,
                         source_user=operation["user"],
+                    )
+
+                for (
+                    external_nazov,
+                    external_data,
+                ) in result.external_order_data_by_prevadzka.items():
+                    _write_external_order_snapshot(
+                        external_nazov,
+                        target_date,
+                        _filter_order_data_by_meals(external_data, requested_meals),
+                        requested_meals,
                     )
 
         # Scrape prepísal DailyOrder.data pre tieto dni — gramage dashboard by
