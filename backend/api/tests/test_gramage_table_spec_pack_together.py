@@ -32,6 +32,7 @@ def _col_groups():
 
 
 def _diet_sub_row(count, grams, diet_name="No Milk"):
+    components = grams if isinstance(grams, list) else [grams]
     return {
         "type": "diet",
         "meal": "main_course",
@@ -40,7 +41,7 @@ def _diet_sub_row(count, grams, diet_name="No Milk"):
         "diet_name": diet_name,
         "diet_color": "#F59E0B",
         "count": count,
-        "col_grams": [[grams]],
+        "col_grams": [components],
     }
 
 
@@ -119,6 +120,10 @@ def test_pack_together_row_excludes_a_diet_marked_zvlast_on_the_board():
         "MŠ Alfa", [_standard_sub_row(4, "1200.00"), _diet_sub_row(2, "600.00")]
     )
     payload = _one_route_payload(row, diet_pack_state={"main_course": {"No Milk": "Z"}})
+    # Zdroj pravdy je per-zložka mapa (`gramage_dashboard` ju nastavuje vždy
+    # spolu s hrubým `diet_pack_state` nad tými istými dátami) — táto diéta
+    # má jedinú zložku (index 0), tá je "zvlášť".
+    payload["diet_component_pack_state"] = {"main_course": {"No Milk": [0]}}
 
     spec = build_table_spec(payload, include_summary_rows=False)
 
@@ -320,3 +325,111 @@ def test_pack_together_row_appears_in_the_flat_no_vydaje_table_too():
     spec = build_table_spec(payload, include_summary_rows=False)
 
     assert len(_pack_together_rows(spec)) == 1
+
+
+# Spolu/zvlášť je vlastnosťou KAŽDEJ zložky zvlášť (`diet_component_pack_state`,
+# viď `test_gramage_table_spec_diet_pack_badge.py`) — hlavná časť môže byť
+# "spolu", príloha "zvlášť" a šalát znova "spolu" pre tú istú diétu na tom
+# istom jedle naraz. "Zabaliť spolu:" preto musí sčítavať gramáž PO ZLOŽKÁCH
+# (stĺpcoch), nie podľa jedného hrubého stavu za celú diétu/jedlo.
+_TWO_COMPONENTS = [
+    {"label": "Mäso", "base_grams": "300", "unit": "g"},
+    {"label": "Príloha", "base_grams": "150", "unit": "g"},
+]
+
+
+def _two_component_col_groups():
+    return [
+        {
+            "key": "main_course_A",
+            "meal": "main_course",
+            "variant": "A",
+            "label": "Obed",
+            "template_name": "Kuracie",
+            "components": _TWO_COMPONENTS,
+        }
+    ]
+
+
+def test_pack_together_row_excludes_only_the_separated_component_not_the_whole_diet():
+    row = _client_row(
+        "MŠ Alfa",
+        [
+            {
+                "type": "standard",
+                "meal": "main_course",
+                "variant": "A",
+                "portion_name": "Škôlka",
+                "label": "Škôlka - Obed Menu A",
+                "count": 4,
+                "col_grams": [["1200.00", "600.00"]],
+            },
+            _diet_sub_row(2, ["400.00", "200.00"]),
+        ],
+    )
+    payload = _payload(
+        [
+            {
+                "key": "A",
+                "name": "Vydaj A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": [row]}],
+            }
+        ],
+    )
+    payload["col_groups"] = _two_component_col_groups()
+    # Príloha (index 1) tejto diéty je dnes na doske označená zvlášť, hlavná
+    # časť (index 0) ostáva spolu — `diet_pack_state` (hrubý stav za celé
+    # jedlo) tu zámerne chýba, presne ako to posiela `gramage_dashboard`,
+    # keď nie sú spolu VŠETKY zložky "spolu" (default).
+    payload["diet_component_pack_state"] = {"main_course": {"No Milk": [1]}}
+
+    spec = build_table_spec(payload, include_summary_rows=False)
+
+    [pack] = _pack_together_rows(spec)
+    # Headcount ostáva 6 (4 štandard + 2 diéta) — diéta má stále čo ísť do
+    # spoločného balenia (hlavnú časť). Mäso: 1200 + 400 = 1600 (spolu).
+    # Príloha: 600 + 0 = 600 (diétna príloha je dnes zvlášť, jej 200 g do
+    # súčtu nejde).
+    assert pack["cells"][0]["count"] == "6"
+    assert [cell["text"] for cell in pack["cells"][1:]] == ["1600", "600"]
+
+
+def test_pack_together_row_still_includes_the_together_component_when_meal_level_state_is_z():
+    """`diet_pack_state` (per jedlo, nie per zložka) je "Z", hneď ako má
+    diéta čo i len jednu zvlášť zložku (`meal_plan_service.resolve_diet_component_separations`)
+    — to smie ovplyvniť odznak/legacy čítačky toho hrubého stavu, ale
+    NESMIE spôsobiť, že sa vynechá aj zložka, ktorá je stále "spolu"."""
+    row = _client_row(
+        "MŠ Alfa",
+        [
+            {
+                "type": "standard",
+                "meal": "main_course",
+                "variant": "A",
+                "portion_name": "Škôlka",
+                "label": "Škôlka - Obed Menu A",
+                "count": 4,
+                "col_grams": [["1200.00", "600.00"]],
+            },
+            _diet_sub_row(2, ["400.00", "200.00"]),
+        ],
+    )
+    payload = _payload(
+        [
+            {
+                "key": "A",
+                "name": "Vydaj A",
+                "routes": [{"id": 1, "name": "Trasa 1", "rows": [row]}],
+            }
+        ],
+        # Hrubý (odvodený) stav za celé jedlo — "Z", lebo príloha je zvlášť.
+        diet_pack_state={"main_course": {"No Milk": "Z"}},
+    )
+    payload["col_groups"] = _two_component_col_groups()
+    payload["diet_component_pack_state"] = {"main_course": {"No Milk": [1]}}
+
+    spec = build_table_spec(payload, include_summary_rows=False)
+
+    [pack] = _pack_together_rows(spec)
+    assert pack["cells"][0]["count"] == "6"
+    assert [cell["text"] for cell in pack["cells"][1:]] == ["1600", "600"]
