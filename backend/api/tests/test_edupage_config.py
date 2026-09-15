@@ -714,9 +714,6 @@ class TestEdulienkaLetterHook(unittest.TestCase):
 
     def test_confirmed_diets_are_exact_and_not_fuzzy(self):
         cases = {
-            "cmsNM": "NO MILK",
-            "cmsNMNE": "NO MILK – NO EGG",
-            "cmsNMNG": "NO MILK – NO GLUTEN",
             "HISTAMIN, NO GLUTEN": "NO GLUTEN – HISTAMIN",
         }
         for skratka, expected_diet in cases.items():
@@ -725,6 +722,17 @@ class TestEdulienkaLetterHook(unittest.TestCase):
 
     def test_unknown_skratka_falls_through_to_engine(self):
         self.assertIsNone(self._rule("nieco ine"))
+
+    def test_cms_prefix_does_not_belong_to_edulienka(self):
+        """`cms` skratky (cmsNM/cmsNMNE/cmsNMNG) boli sem pri založení hooku
+        (commit df85b03) priradené omylom. Overené s userom 15.9.2026: MŠ
+        Edulienka v EduPage žiadne skratky s prefixom `cms` nemá — patria
+        CMŠ Ivanka na zdieľanom ZŠ Ivanka feede (`ivanka_letter_hook`,
+        `TestIvankaLetterHook`). Musia tu padnúť cez na engine (`None`), nie
+        vrátiť pevne priradenú diétu."""
+        for skratka in ("cmsNM", "cmsNMNE", "cmsNMNG"):
+            with self.subTest(skratka=skratka):
+                self.assertIsNone(self._rule(skratka))
 
 
 class TestZdravebruskoLetterHook(unittest.TestCase):
@@ -987,6 +995,17 @@ class TestIvankaLetterHook(unittest.TestCase):
     def test_cms_nmne_full_combo(self):
         """CMŠ Ivanka používa vlastnú skratku v zdieľanom ZŠ EduPage feede."""
         self.assertEqual(self._rule("cmsNMNE").diet, "NO MILK/NO EGG")
+
+    def test_cms_nm_confirmed(self):
+        """CMŠ Ivanka: `cmsNM` — potvrdené v produkčných `uncertain_diets`
+        (15.9.2026, predtým omylom v `edulienka.py`, viď
+        `TestEdulienkaLetterHook.test_cms_prefix_does_not_belong_to_edulienka`)."""
+        self.assertEqual(self._rule("cmsNM").diet, "NO MILK")
+
+    def test_cms_nmng_confirmed(self):
+        """CMŠ Ivanka: `cmsNMNG` — potvrdené v produkčných `uncertain_diets`
+        (15.9.2026, predtým omylom v `edulienka.py`)."""
+        self.assertEqual(self._rule("cmsNMNG").diet, "NO MILK/NO GLUTEN")
 
     def test_ms_nmng_bez_aras_full_combo(self):
         self.assertEqual(

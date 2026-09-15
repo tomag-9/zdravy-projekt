@@ -142,19 +142,15 @@ Zdroj: `ivanka_letter_hook`. Pozor: **Menu A = NM** (no milk), nie klasik.
 **`cms` prefix patrí sem, nie Edulienke** — na zdieľanom ZŠ Ivanka feede objednáva aj **CMŠ
 Ivanka** (vlastný subjekt na tom istom EduPage, vlastný prefix skratky). Predchádzajúca verzia
 tohto dokumentu mala `cmsNM`/`cmsNMNE`/`cmsNMNG` chybne pod MŠ Edulienka — overené s userom
-15.9.2026 (Edulienka v EduPage žiadne „cms" skratky nemá). Oprava (`CMSNMNE` presunuté do
-`ivanka_letter_hook`) je pripravená v `backend/api/edupage/overrides/ivanka.py`, zatiaľ ako
-necommitnutá zmena:
+15.9.2026 (Edulienka v EduPage žiadne „cms" skratky nemá; potvrdil aj `typy_platitelov` adresár
+feedu, kde sú tieto skupiny priamo pomenované „CMS Ivanka …"). Presunuté a doplnené v
+`ivanka_letter_hook`:
 
 | V EduPage vidíme (skratka) | Je to diéta |
 |---|---|
+| `cmsNM` | **NO MILK** |
 | `cmsNMNE` | **NO MILK/NO EGG** |
-
-> ⚠️ **Ešte doplniť/skontrolovať**: len `cmsNMNE` je zatiaľ v `ivanka.py` vyriešené. Ak sa u
-> CMŠ Ivanka objavia aj `cmsNM`/`cmsNMNG` (analogicky k pôvodným, mylne umiestneným pravidlám v
-> `edulienka.py`), treba ich sem pridať s rovnakým overením ako `cmsNMNE`. Zároveň skontroluj,
-> že `edulienka.py`/`edulienka_letter_hook` po tejto oprave už žiadne `cms`-pravidlá neobsahuje
-> (mŕtvy/chybný kód, viď sekcia MŠ Edulienka nižšie).
+| `cmsNMNG` | **NO MILK/NO GLUTEN** |
 
 Realita (14.–18.9.2026): NO EGG×9, NO GLUTEN×18, NO GLUTEN–NO FISH×2, NO MILK×23,
 NO MILK–NO GLUTEN×9, NO MILK–NO GLUTEN–NO ORECH×9 — sedí.
@@ -189,22 +185,22 @@ dotácia (nededup).
 
 Zdroj: `edulienka_letter_hook`.
 
-> 🔴 **Chyba v kóde, nie v tomto dokumente**: `edulienka_letter_hook` (`edulienka.py`, commit
-> `df85b03`) má aktuálne v `_RULES` aj `cmsNM`/`cmsNMNE`/`cmsNMNG` → NO MILK / NO MILK–NO EGG /
-> NO MILK–NO GLUTEN. **Overené s userom 15.9.2026: MŠ Edulienka v EduPage žiadne skratky s
-> prefixom `cms` nemá** — `cms` patrí **CMŠ Ivanka** (samostatný subjekt na zdieľanom ZŠ Ivanka
-> feede, viď [sekcia Ivanka](#zš-ivanka-pri-dunaji-zsivanka)), boli sem priradené omylom pri
-> zakladaní `edulienka.py`. Potvrdzujú to aj produkčné `scrape_flags.uncertain_diets` — `cms`
-> skratky sa objavujú zavesené na prevádzke „ZŠ Ivanka pri Dunaji", nie na „MŠ Edulienka". Tieto
-> tri riadky v `edulienka.py` treba pri najbližšej úprave vymazať ako mŕtvy/chybný kód (fix pre
-> CMŠ Ivanka sa medzičasom rieši priamo v `ivanka.py`, zatiaľ necommitnuté).
+> ✅ **Opravené 15.9.2026**: `edulienka_letter_hook` mal pôvodne (commit `df85b03`) v `_RULES`
+> aj `cmsNM`/`cmsNMNE`/`cmsNMNG` → NO MILK / NO MILK–NO EGG / NO MILK–NO GLUTEN. Overené s
+> userom: MŠ Edulienka v EduPage žiadne skratky s prefixom `cms` nemá — `cms` patrí **CMŠ
+> Ivanka** (samostatný subjekt na zdieľanom ZŠ Ivanka feede, viď
+> [sekcia Ivanka](#zš-ivanka-pri-dunaji-zsivanka)), boli sem priradené omylom pri zakladaní
+> `edulienka.py`. Potvrdili to aj produkčné `scrape_flags.uncertain_diets` (viseli na prevádzke
+> „ZŠ Ivanka pri Dunaji", nikdy na „MŠ Edulienka") a `typy_platitelov` adresár feedu (skupiny sú
+> tam priamo pomenované „CMS Ivanka …"). Tri riadky presunuté do `ivanka_letter_hook`, testy
+> (`TestEdulienkaLetterHook.test_cms_prefix_does_not_belong_to_edulienka`,
+> `TestIvankaLetterHook.test_cms_nm_confirmed`/`test_cms_nmng_confirmed`) zamykajú, že sa to
+> nevráti.
 
 Realita (14.–18.9.2026), prevádzka „MŠ Edulienka": NO GLUTEN×10, NO GLUTEN–HISTAMIN×5,
-NO MILK×36, NO MILK–NO GLUTEN×9, NONONO×4, VEGGIE×6 — NO MILK/NO MILK–NO GLUTEN tu reálne
-vznikajú (36×, 9×), no keďže mylné `cms` pravidlá v `edulienka.py` v produkcii bežia, nedá sa z
-tohto súčtu spoľahlivo overiť, či ich generuje mŕtvy `cms` kód alebo generický fallback (bežné
-`_SKRATKA_MAP`/`_NAZOV_KEYWORD_MAP` fragmenty „nomilk"/„nogluten" by na tieto diéty trafili aj
-bez neho) — over pri odstraňovaní `cms` riadkov, že sa tieto počty nezmenia. V `unmapped_diets`
+NO MILK×36, NO MILK–NO GLUTEN×9, NONONO×4, VEGGIE×6 — NO MILK aj NO MILK–NO GLUTEN tu vznikajú
+cez generický fallback (`_SKRATKA_MAP`/`_NAZOV_KEYWORD_MAP` fragmenty „nomilk"/„nogluten"), nie
+cez (teraz odstránené) `cms` pravidlá — po oprave sa tieto počty nemenia. V `unmapped_diets`
 visí `J:HISTAMIN, NO GLUTEN` — **skratka `J` nie je v `_RULES` mapovaná priamo, len presný
 `nazov` reťazec**; over, či EduPage posiela `nazov` konzistentne aj pre písmeno J, alebo treba
 doplniť kľúč do `_RULES` podľa skratky.
