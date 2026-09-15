@@ -984,6 +984,10 @@ class TestIvankaLetterHook(unittest.TestCase):
     def test_nmne_full_combo(self):
         self.assertEqual(self._rule("NMNE").diet, "NO MILK/NO EGG")
 
+    def test_cms_nmne_full_combo(self):
+        """CMŠ Ivanka používa vlastnú skratku v zdieľanom ZŠ EduPage feede."""
+        self.assertEqual(self._rule("cmsNMNE").diet, "NO MILK/NO EGG")
+
     def test_ms_nmng_bez_aras_full_combo(self):
         self.assertEqual(
             self._rule("MŠ NMNG bez ARAS").diet, "NO MILK – NO GLUTEN – NO ARASIDY"
