@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.0...v5.4.1) (2026-09-15)
+
+
+### Bug Fixes
+
+* **edupage:** preserve CMŠ Ivanka no milk no egg diet ([c72752a](https://github.com/tomag-9/zdravy-projekt/commit/c72752a51180ab6cbf219814abdd697bebdcbda8))
+
 ## [5.4.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.3.0...v5.4.0) (2026-09-15)
 
 
