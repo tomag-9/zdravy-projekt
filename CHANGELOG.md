@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.3.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.2.0...v5.3.0) (2026-09-15)
+
+
+### Features
+
+* **edupage:** sčítaj Stromček sA externé objednávky ([f20713e](https://github.com/tomag-9/zdravy-projekt/commit/f20713ed652bf6e748cad0a733876c94c77e15ba))
+* refresh dashboard date limits automatically ([88558f1](https://github.com/tomag-9/zdravy-projekt/commit/88558f192a68b294dcb3ac5e6203a61376bdb4e4))
+
+
+### Bug Fixes
+
+* **gramaz:** Zabaliť spolu: sčítaj diétu po zložkách, nie po celom jedle ([8eb43e5](https://github.com/tomag-9/zdravy-projekt/commit/8eb43e5e168e043fcf8ab240a2aa39499421d649))
+* **objednavky:** jedlo sa nesmie touchnúť bez skutočnej akcie klienta ([53145f6](https://github.com/tomag-9/zdravy-projekt/commit/53145f619e99ff38149275ba9a387ac773790eac))
+* preserve admin-edited reference data on deploy ([3c53c38](https://github.com/tomag-9/zdravy-projekt/commit/3c53c3884264f48e2d6bfeb01d57e2736897dc16))
+* **test:** DietComponentMerge test čaká DASHBOARD_DAYS_AHEAD=3, nie 2 ([5af8eb2](https://github.com/tomag-9/zdravy-projekt/commit/5af8eb2c5a21f4452d1908a52ea74d1b7602044c))
+
 ## [5.2.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.1.0...v5.2.0) (2026-09-14)
 
 
