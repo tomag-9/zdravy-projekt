@@ -460,7 +460,10 @@ describe('AdminOrderEditorModal', () => {
 
     it('renders all three meal cards', () => {
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
-        expect(screen.getByText('Raňajky')).toBeInTheDocument();
+        // Rýchle zhrnutie teraz vypisuje tie isté názvy jedál (napr.
+        // "Raňajky") ako stavový riadok, takže na kartu sa musí mieriť
+        // scopovane, nie plošným `screen.getByText`.
+        expect(getMealCard('Raňajky')).toBeInTheDocument();
         expect(screen.getByText('Obed')).toBeInTheDocument();
         expect(screen.getByText('Olovrant')).toBeInTheDocument();
     });
@@ -493,7 +496,7 @@ describe('AdminOrderEditorModal', () => {
                 existingOrder={{ id: 1, date: '2099-03-06', data: {} }}
             />,
         );
-        expect(screen.getByText('Raňajky')).toBeInTheDocument();
+        expect(getMealCard('Raňajky')).toBeInTheDocument();
     });
 
     it('renders a category present in the order but absent from the hardcoded list and preserves it in the PATCH payload', async () => {
@@ -794,7 +797,7 @@ describe('AdminOrderEditorModal', () => {
 
         expect(screen.getByText(/bude objednané:/i)).toBeInTheDocument();
         expect(screen.getAllByText('Celodenná objednávka je aktívna')).toHaveLength(3);
-        expect(screen.getByText('Raňajky')).toBeInTheDocument();
+        expect(getMealCard('Raňajky')).toBeInTheDocument();
         expect(screen.getByText('Obed')).toBeInTheDocument();
         expect(screen.getByText('Olovrant')).toBeInTheDocument();
     });

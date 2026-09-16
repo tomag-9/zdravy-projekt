@@ -7,6 +7,10 @@ interface MealCardProps {
     onToggle: () => void;
     copyAction?: ReactNode | null;
     statusMessage?: ReactNode | null;
+    /** Zobrazí sa len kým je karta zbalená — informuje, že prázdny/netouchnutý
+     * chod môže auto-order cron ešte doplniť podľa predošlého dňa, a ako to
+     * prípadne zabrániť (otvoriť + Vymazať). Viď `mealHint` v OrderPage. */
+    hint?: ReactNode | null;
     children: ReactNode;
     icon: ComponentType<{ className?: string; style?: React.CSSProperties }>;
     className?: string;
@@ -19,6 +23,7 @@ const MealCard = ({
     onToggle,
     copyAction,
     statusMessage,
+    hint,
     children,
     icon: Icon,
     className,
@@ -60,6 +65,12 @@ const MealCard = ({
                 <div className="zp-banner zp-banner--locked" style={{ marginBottom: 16 }}>
                     <Lock style={{ width: 14, height: 14 }} />
                     {statusMessage}
+                </div>
+            )}
+
+            {!isActive && hint && (
+                <div className="zp-meal-hint" style={{ fontSize: 12, color: "var(--ink-3)", padding: "0 4px 8px" }}>
+                    {hint}
                 </div>
             )}
 

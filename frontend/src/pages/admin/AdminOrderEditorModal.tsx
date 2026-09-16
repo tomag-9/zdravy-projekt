@@ -748,6 +748,12 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     <OrderSummary
                         order={order}
                         activeMeals={activeMeals}
+                        visibleMeals={visibleMealsList.map((m) => m.key)}
+                        // Admin editor je "nastav celý deň naraz" nástroj — každý
+                        // zobrazený chod je vždy explicitne odkontrolovaný (viď
+                        // touchedMealsPayload v handleSave vyššie), nikdy
+                        // "Automatická".
+                        touchedMeals={new Set(visibleMealsList.map((m) => m.key))}
                         date={date}
                         onSubmit={handleSave}
                         onReset={resetOrder}

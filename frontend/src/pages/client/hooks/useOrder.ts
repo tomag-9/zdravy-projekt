@@ -665,11 +665,18 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         const isTurningOff = Boolean(activeMeals[mealKey]);
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
         // Otvorenie chodu ešte nie je rozhodnutie: lazy-copy smie načítať
-        // poslednú objednávku. Vypnutie je naopak explicitné "nechcem" a
-        // musí chrániť nulu pred scoped auto-orderom.
-        if (isTurningOff) {
+        // poslednú objednávku. Vypnutie je naopak explicitné "nechcem" A
+        // musí chrániť nulu pred scoped auto-orderom — ALE len ak v chode
+        // reálne niečo bolo. Bez tejto podmienky obyčajné "otvorím-pozriem-
+        // -zavriem" prázdneho chodu (napr. kým klient rieši iný deň/chod)
+        // touchlo aj jedlo, ktoré klient nikdy nerozhodol — cron ho potom už
+        // nikdy nedoplnil (PEKNÁ CESTIČKA, 16.9.2026: raňajky nedostali
+        // šablónu, lebo boli takto omylom "touchnuté" prázdne). Explicitnú
+        // nulu na chode, ktorý bol už prázdny, chráni tlačidlo „Vymazať“
+        // (`clearMeal` nižšie) — to touchne vždy, bez ohľadu na predošlý stav.
+        if (isTurningOff && !OrderService.isMealEmpty(currentOrder[mealKey as 'breakfast' | 'lunch' | 'olovrant'])) {
             setTouchedMeals(prev => new Set(prev).add(mealKey));
-        } else {
+        } else if (!isTurningOff) {
             // Klient toto jedlo VEDOME otvoril teraz — len toto smie spustiť
             // Lazy Copy nižšie (na rozdiel od jedla, ktoré je aktívne len
             // z defaultu, napr. `lunch: true`).
@@ -1137,7 +1144,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,
-        currentOrder, activeMeals, toggleMeal,
+        currentOrder, activeMeals, toggleMeal, touchedMeals,
         fullDayOrder, toggleFullDay,
         fullDayData, updateFullDayMenuCount, updateFullDayDiet, updateFullDayPackSeparately, clearFullDay,
         specialDietNote, setSpecialDietNote,

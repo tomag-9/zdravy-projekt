@@ -43,6 +43,7 @@ interface OrderFormBodyProps {
   mealActions?: (meal: MealKey) => ReactNode;
   isMealEditable?: (meal: MealKey) => boolean;
   mealStatusMessage?: (meal: MealKey) => ReactNode;
+  mealHint?: (meal: MealKey) => ReactNode;
   packSeparatelyEnabled: boolean;
   activePackSeparatelyItems: PackSeparatelySection[];
   onOpenPackSeparately: () => void;
@@ -86,6 +87,7 @@ const OrderFormBody = ({
   mealActions,
   isMealEditable = () => true,
   mealStatusMessage = () => null,
+  mealHint = () => null,
   packSeparatelyEnabled,
   activePackSeparatelyItems,
   onOpenPackSeparately,
@@ -167,6 +169,7 @@ const OrderFormBody = ({
               copyAction={!fullDayBlocked && editable ? mealActions?.(key) : null}
               tourId={tourIds && mealIndex === 0 ? "tour-meal-card" : undefined}
               statusMessage={mealStatusMessage(key)}
+              hint={mealHint(key)}
             >
               <div>
                 {categories.map((category, catIndex) => {

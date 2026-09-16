@@ -32,6 +32,7 @@ const OrderPage = () => {
     setSelectedDate,
     activeMeals,
     toggleMeal,
+    touchedMeals,
     fullDayOrder,
     toggleFullDay,
     fullDayData,
@@ -514,6 +515,18 @@ const OrderPage = () => {
           <>Termín uplynul · Objednávka uzavretá</>
         ) : null;
       }}
+      mealHint={(meal) => {
+        // Prázdny a v tejto session netouchnutý chod môže auto-order cron
+        // ešte doplniť podľa predošlého dňa (viď `touchedMeals` v useOrder) —
+        // klient to tu vidí, aj keď má kartu zbalenú, a vie, že na istú nulu
+        // treba otvoriť chod a kliknúť „Vymazať“.
+        if (touchedMeals.has(meal) || !OrderService.isMealEmpty(currentOrder[meal])) {
+          return null;
+        }
+        return (
+          <>Toto jedlo je zatiaľ prázdne — bez potvrdenia ho môže systém automaticky doplniť podľa predošlého dňa. Ak ho chceš isto nechať na nule, otvor ho a klikni na „Vymazať“.</>
+        );
+      }}
       packSeparatelyEnabled={packSeparatelyEnabled}
       activePackSeparatelyItems={activePackSeparatelyItems}
       onOpenPackSeparately={() => setActivePackSeparatelyModal({ scope: "order" })}
@@ -532,6 +545,8 @@ const OrderPage = () => {
       <OrderSummary
         order={currentOrder}
         activeMeals={activeMeals as Record<MealKey, boolean>}
+        visibleMeals={visibleMealsList.map((m) => m.key) as MealKey[]}
+        touchedMeals={touchedMeals}
         date={selectedDate}
         onSubmit={handleSubmit}
         onReset={
