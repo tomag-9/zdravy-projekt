@@ -97,6 +97,9 @@ interface DailyOrder {
   date: string;
   status: string;
   data: OrderData;
+  // Kuchynský pohľad: appková objednávka + externé snapshoty (napr. sA).
+  // `data` sa ponecháva surové, aby editácia nezapísala externý zdroj späť.
+  effective_data?: OrderData;
 }
 
 interface ScrapeResult {
@@ -877,18 +880,19 @@ const ClientDetail: React.FC = () => {
                   </thead>
                   <tbody>
                     {recentOrders.map((order) => {
+                      const displayData = order.effective_data ?? order.data;
                       const summaries: string[] = [];
-                      const breakfastCount = mealCount(order.data.breakfast);
+                      const breakfastCount = mealCount(displayData.breakfast);
                       if (breakfastCount > 0) summaries.push(`${breakfastCount}x Raňajky`);
-                      const lunchCount = mealCount(order.data.lunch);
+                      const lunchCount = mealCount(displayData.lunch);
                       if (lunchCount > 0) summaries.push(`${lunchCount}x Obed`);
-                      const olovrantCount = mealCount(order.data.olovrant);
+                      const olovrantCount = mealCount(displayData.olovrant);
                       if (olovrantCount > 0) summaries.push(`${olovrantCount}x Olovrant`);
                       const summaryText = summaries.length > 0 ? summaries.join(", ") : "-";
                       const isExpanded = expandedOrderId === order.id;
                       const specialDietNote =
-                        typeof order.data.special_diet_note === "string"
-                          ? order.data.special_diet_note.trim()
+                        typeof displayData.special_diet_note === "string"
+                          ? displayData.special_diet_note.trim()
                           : "";
 
                       return (
@@ -919,9 +923,9 @@ const ClientDetail: React.FC = () => {
                               <td colSpan={4} style={{ borderTop: "1px solid var(--line-soft)" }}>
                                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 24, fontSize: 14 }}>
                                   {[
-                                    { title: "Raňajky", data: order.data.breakfast },
-                                    { title: "Obed", data: order.data.lunch },
-                                    { title: "Olovrant", data: order.data.olovrant },
+                                    { title: "Raňajky", data: displayData.breakfast },
+                                    { title: "Obed", data: displayData.lunch },
+                                    { title: "Olovrant", data: displayData.olovrant },
                                   ].map(({ title, data }) => (
                                     <div key={title}>
                                       <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", marginBottom: 8, borderBottom: "1px solid var(--line-soft)", paddingBottom: 4 }}>{title}</div>
@@ -980,10 +984,10 @@ const ClientDetail: React.FC = () => {
                                     </div>
                                   ))}
                                 </div>
-                                {order.data.soup && typeof order.data.soup === "string" && (
+                                {displayData.soup && typeof displayData.soup === "string" && (
                                   <div style={{ marginTop: 16, paddingTop: 8, borderTop: "1px solid var(--line-soft)" }}>
                                     <span style={{ fontFamily: "var(--font-display)", fontWeight: 600, color: "var(--green-900)", marginRight: 8 }}>Polievka:</span>
-                                    <span>{order.data.soup}</span>
+                                    <span>{displayData.soup}</span>
                                   </div>
                                 )}
                                 {specialDietNote && (

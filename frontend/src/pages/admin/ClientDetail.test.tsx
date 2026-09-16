@@ -534,6 +534,37 @@ describe("ClientDetail order history diets", () => {
   });
 });
 
+describe("ClientDetail external order totals", () => {
+  it("shows the effective external total in history, without replacing raw order data", async () => {
+    const order = {
+      id: 93,
+      date: "2026-08-14",
+      status: "submitted",
+      data: {
+        lunch: { "Škôlka": { menuCounts: { A: 10 }, diets: {} } },
+      },
+      effective_data: {
+        lunch: { "Škôlka": { menuCounts: { A: 16 }, diets: {} } },
+      },
+    };
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url.includes("/admin/portion-types/")) return Promise.resolve(response([]));
+      if (url.includes("/diets/")) return Promise.resolve(response([]));
+      if (url.includes("/orders/")) return Promise.resolve(response([order]));
+      if (url.includes("/admin/edupage-connections/")) return Promise.resolve(response([]));
+      if (url.includes("/admin/celky/3/")) return Promise.resolve(response(celokWithLogins));
+      if (url.includes("/admin/facility-prevadzky/7/")) return Promise.resolve(response(facility));
+      return Promise.resolve(response([]));
+    });
+
+    renderClientDetail();
+
+    expect(await screen.findByText("16x Obed")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText("2026-08-14"));
+    expect(await screen.findByText("16x Škôlka")).toBeInTheDocument();
+  });
+});
+
 describe("ClientDetail order history menu bez rozpisu", () => {
   const singleMenuOrder = {
     id: 92,

@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
-from api.models import DailyOrder, UserProfile
+from api.models import DailyOrder, ExternalOrderSnapshot, UserProfile
 
 pytestmark = pytest.mark.integration
 
@@ -319,6 +319,40 @@ class TestOrderRetrieval:
         assert response.data["count"] == 5
         assert len(response.data["results"]) == 3
         assert response.data["next"] is not None
+
+    def test_list_includes_effective_data_from_external_snapshot(
+        self, authenticated_client, user
+    ):
+        """Facility history displays an external feed, but keeps editable data raw.
+
+        An admin must see the kitchen total for Stromček-like facilities without
+        accidentally saving that external contribution back into ``data``.
+        """
+        app_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 10}, "diets": {}}}}
+        external_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 6}, "diets": {}}}}
+        order = DailyOrder.objects.create(user=user, date=MONDAY, data=app_data)
+        ExternalOrderSnapshot.objects.create(
+            prevadzka=order.prevadzka,
+            date=MONDAY,
+            source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+            data=external_data,
+        )
+
+        response = authenticated_client.get(reverse("dailyorder-list"))
+
+        assert response.status_code == status.HTTP_200_OK
+        result = response.data["results"][0]
+        assert result["data"] == app_data
+        assert result["effective_data"] == {
+            "lunch": {
+                "Škôlka": {
+                    "menuCounts": {"A": 16},
+                    "diets": {},
+                    "packSeparately": {},
+                    "packSeparatelyGn": {},
+                }
+            }
+        }
 
 
 @pytest.mark.django_db

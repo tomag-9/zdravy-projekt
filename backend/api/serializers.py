@@ -24,7 +24,7 @@ from .models import (
     Prevadzka,
     PrevadzkaClosure,
 )
-from .order_data import OrderData, safe_count
+from .order_data import OrderData, effective_order_data, safe_count
 from .roles import is_admin_or_above
 from .scheduling import is_prevadzka_closed
 from .services.prevadzka_service import (
@@ -52,6 +52,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     prevadzka = serializers.PrimaryKeyRelatedField(
         queryset=Prevadzka.objects.all(), required=False, allow_null=True
     )
+    # `data` ostáva jediný zapisovateľný zdroj appkovej objednávky. Detail
+    # prevádzky však potrebuje vidieť aj automatický externý feed (Stromček
+    # sA), preto ho vraciame vedľa ako read-only pohľad. Nesmie nahradiť
+    # `data`, lebo následný admin edit by ho zapísal späť a zdroj zdvojil.
+    effective_data = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = DailyOrder
@@ -60,17 +65,21 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             "date",
             "status",
             "data",
+            "effective_data",
             "is_auto",
             "updated_at",
             "prevadzka",
             "touched_meals",
         ]
-        read_only_fields = ["id", "is_auto", "updated_at"]
+        read_only_fields = ["id", "effective_data", "is_auto", "updated_at"]
         # DRF by z UniqueConstraint(prevadzka, date) odvodil UniqueTogetherValidator,
         # ktorý spraví `prevadzka` povinným poľom — lenže pri jedno-prevádzkovom
         # celku ho klient neposiela a dopĺňame ho my. Unikátnosť aj tak vynucuje
         # DB constraint + IntegrityError retry v `create()`.
         validators: list = []
+
+    def get_effective_data(self, instance: DailyOrder) -> Dict[str, Any]:
+        return effective_order_data(instance)
 
     MEAL_FIELD_CONFIG = {
         "breakfast": ("deadline_breakfast", "deadline_breakfast_is_day_before"),

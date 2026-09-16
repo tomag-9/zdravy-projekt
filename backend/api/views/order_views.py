@@ -68,7 +68,11 @@ class DailyOrderViewSet(viewsets.ModelViewSet):
         queryset is already optimized and query count remains constant
         regardless of the number of orders returned.
         """
-        queryset = DailyOrder.objects.all()
+        # Detail prevádzky zobrazuje `effective_data` (appka + externé sA
+        # snapshoty). Prefetch zabráni N+1 dotazu na každý riadok histórie.
+        queryset = DailyOrder.objects.select_related("prevadzka").prefetch_related(
+            "prevadzka__external_order_snapshots"
+        )
         user = self.request.user
 
         prevadzka_id = self.request.query_params.get("prevadzka")
