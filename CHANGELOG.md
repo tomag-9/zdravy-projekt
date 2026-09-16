@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.5.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.5.0...v5.5.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **admin:** nikdy nezačínať objednávku od nuly, ak na daný deň už existuje ([a681486](https://github.com/tomag-9/zdravy-projekt/commit/a68148675d9424cc57f953adb40cdf266593bce2))
+* **admin:** zobraz efektívne externé objednávky v detaile ([2f05724](https://github.com/tomag-9/zdravy-projekt/commit/2f05724280b3c0e3bc3e98030128854c977f15eb))
+* **order:** chod netouchnúť len otvorením a zavretím, pridať stav v zhrnutí ([55e826a](https://github.com/tomag-9/zdravy-projekt/commit/55e826ac49d3fcf050323fb17f917ef2e1d1f507))
+* **order:** nezmenená skrytá veľkosť nesmie závisieť od presnej zhody dát ([5b4b4be](https://github.com/tomag-9/zdravy-projekt/commit/5b4b4be191e41fd9ad46d8b453882722d7f5f6b7))
+* **order:** obnoviť automatické objednávanie chodu ([037778d](https://github.com/tomag-9/zdravy-projekt/commit/037778d068af8141e3021416da323b70bedbbcc4))
+* **order:** povoliť nezmenené skryté veľkosti ([4b612c4](https://github.com/tomag-9/zdravy-projekt/commit/4b612c4fdd1a1b8d71ef51f069719ba97336180f))
+* **order:** spresniť zdroj automatickej objednávky ([c3a8ff1](https://github.com/tomag-9/zdravy-projekt/commit/c3a8ff1e84cc062e59241de7d5a898de33c30aea))
+* **test:** zafixuj systémový čas v AdminDateNav teste ([2f1fd23](https://github.com/tomag-9/zdravy-projekt/commit/2f1fd2366812862ace29ac92a8536569be765f91))
+
 ## [5.5.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.4.2...v5.5.0) (2026-09-15)
 
 
