@@ -70,6 +70,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             "updated_at",
             "prevadzka",
             "touched_meals",
+            "automatic_meals",
+            "preserve_meals",
         ]
         read_only_fields = ["id", "effective_data", "is_auto", "updated_at"]
         # DRF by z UniqueConstraint(prevadzka, date) odvodil UniqueTogetherValidator,
@@ -106,6 +108,26 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         required=False,
         default=list,
     )
+    # Explicitný návrat jedla do automatiky. Na rozdiel od ``touched_meals``
+    # je to príkaz, nie stav, preto sa do modelu nikdy neserializuje ani
+    # nevracia v odpovedi. Potrebuje ho klient po predchádzajúcom „Vymazať“:
+    # marker sa inak zámerne len unionoval a cron už daný chod nemohol doplniť.
+    automatic_meals = serializers.ListField(
+        child=serializers.ChoiceField(choices=sorted(_ALLOWED_MEAL_KEYS)),
+        required=False,
+        write_only=True,
+        default=list,
+    )
+    # Pri zmiešanom dni môže byť časť chodov už uzavretá a časť ešte otvorená.
+    # Klient uzavretý chod vôbec neposiela; explicitný marker bráni tomu, aby
+    # chýbajúci kľúč znamenal „vynuluj ho“. Je write-only, v DB ostávajú len
+    # dáta objednávky.
+    preserve_meals = serializers.ListField(
+        child=serializers.ChoiceField(choices=sorted(_ALLOWED_MEAL_KEYS)),
+        required=False,
+        default=list,
+        write_only=True,
+    )
     # Poznámka k špeciálnej diéte sedí v `data` vedľa jedál (tak ju posiela klient
     # aj admin editor a tak ju číta admin UI), takže musí prejsť allowlistom —
     # nie je to jedlo, preto sa validuje zvlášť a preskakuje traverzáciu kategórií.
@@ -129,6 +151,25 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     _MAX_NOTE_CHARS = 1000
     _MAX_DATA_BYTES = 10 * 1024  # 10 KB
     _MAX_COUNT = 9999
+
+    @classmethod
+    def _preserve_omitted_meals(
+        cls,
+        new_data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None,
+        preserve_meals: list[str],
+    ) -> Dict[str, Any]:
+        """Restore closed meals deliberately omitted by a partial client submit."""
+        merged = dict(new_data)
+        existing_data = existing_data or {}
+        for meal_key in preserve_meals:
+            if meal_key in merged:
+                raise serializers.ValidationError(
+                    {"preserve_meals": f"{meal_key} cannot be both sent and preserved."}
+                )
+            if meal_key in existing_data:
+                merged[meal_key] = existing_data[meal_key]
+        return merged
 
     @staticmethod
     def _enforce_day_open(target_date: datetime.date) -> None:
@@ -907,10 +948,16 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             .only("data", "touched_meals")
             .first()
         )
+        new_data = self._preserve_omitted_meals(
+            new_data,
+            existing_order.data if existing_order else None,
+            validated_data.pop("preserve_meals", []),
+        )
         # Tento vstup sa spojí až po ``select_for_update()`` nižšie. Výpočet
         # unionu zo snapshotu tu by pri dvoch súbežných requestoch vedel
         # stratiť marker, ktorý prvý request medzičasom práve uložil.
         incoming_touched_meals = set(validated_data.get("touched_meals") or [])
+        automatic_meals = set(validated_data.get("automatic_meals") or [])
         if not is_admin:
             self._validate_deadlines(
                 validated_data["date"],
@@ -942,7 +989,8 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 actual_previous_data = order.data or {}
                 order.data = new_data
                 order.touched_meals = sorted(
-                    set(order.touched_meals or []) | incoming_touched_meals
+                    (set(order.touched_meals or []) | incoming_touched_meals)
+                    - automatic_meals
                 )
                 # Issue #507: a manual submit overwriting an auto-generated
                 # placeholder (`is_auto=True`, created by auto_order_service
@@ -965,7 +1013,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                             prevadzka=prevadzka,
                             date=validated_data["date"],
                             data=new_data,
-                            touched_meals=sorted(incoming_touched_meals),
+                            touched_meals=sorted(
+                                incoming_touched_meals - automatic_meals
+                            ),
                         )
                         actual_previous_data = {}
                         actual_audit_event = "create"
@@ -979,12 +1029,16 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     # Retry už drží lock na aktuálnom riadku; union musí čítať
                     # jeho čerstvú hodnotu, nie hodnotu pred prvým pokusom.
                     order.touched_meals = sorted(
-                        set(order.touched_meals or []) | incoming_touched_meals
+                        (set(order.touched_meals or []) | incoming_touched_meals)
+                        - automatic_meals
                     )
                     order.save(update_fields=["data", "touched_meals", "updated_at"])
                     actual_audit_event = "update"
 
         self._sync_auto_order_pause(prevadzka, new_data)
+        if automatic_meals and prevadzka.auto_order_paused:
+            prevadzka.auto_order_paused = False
+            prevadzka.save(update_fields=["auto_order_paused"])
         # Audit trail: `create()` je upsert (viď docstring), takže "create"
         # requesty tu bežne aj prepisujú existujúci riadok. `perform_create`
         # v `order_views.py` z tohto odvodí, či ide o skutočné vytvorenie
@@ -1011,6 +1065,9 @@ class DailyOrderSerializer(serializers.ModelSerializer):
     ) -> DailyOrder:
         input_status = validated_data.get("status", instance.status)
         new_data = validated_data.get("data", instance.data)
+        new_data = self._preserve_omitted_meals(
+            new_data, instance.data, validated_data.pop("preserve_meals", [])
+        )
         request = self.context.get("request")
         user = validated_data.get("user") or instance.user
         is_admin = is_admin_or_above(getattr(request, "user", None))
@@ -1056,8 +1113,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             actual_previous_data = instance.data or {}
             instance.data = new_data
             instance.touched_meals = sorted(
-                set(instance.touched_meals or [])
-                | set(validated_data.get("touched_meals") or [])
+                (
+                    set(instance.touched_meals or [])
+                    | set(validated_data.get("touched_meals") or [])
+                )
+                - set(validated_data.get("automatic_meals") or [])
             )
             # Issue #507: see the matching comment in create() above.
             instance.is_auto = False
@@ -1066,6 +1126,12 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
         instance._audit_previous_data = actual_previous_data
         self._sync_auto_order_pause(instance.prevadzka, new_data)
+        if (
+            validated_data.get("automatic_meals")
+            and instance.prevadzka.auto_order_paused
+        ):
+            instance.prevadzka.auto_order_paused = False
+            instance.prevadzka.save(update_fields=["auto_order_paused"])
         return instance
 
 

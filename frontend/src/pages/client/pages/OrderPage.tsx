@@ -7,7 +7,7 @@ import DietSelector from "../components/order/DietSelector";
 import PackSeparatelySelector from "../components/order/PackSeparatelySelector";
 import OrderSummary from "../components/order/OrderSummary";
 import OrderFormBody from "../components/order/OrderFormBody";
-import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, Store } from "lucide-react";
+import { Coffee, Utensils, Apple, Trash2, ArrowLeft, Copy, Calendar, Settings, Store, RefreshCcw } from "lucide-react";
 import ConfirmationModal from "../components/ui/ConfirmationModal";
 import OrderService, { CategoryData, DailyOrder } from "../services/OrderService";
 import { useToast } from "../../../context/ToastContext";
@@ -48,6 +48,7 @@ const OrderPage = () => {
     updatePackSeparately,
     enabledCategories,
     clearMeal,
+    setMealAutomatic,
     getAvailableDiets,
     submitOrder,
     adminVisibleMeals,
@@ -359,9 +360,30 @@ const OrderPage = () => {
   };
 
   const handleCopyTrigger = (mealKey: string) => {
+    const automaticAction = (key: MealKey) => (
+      <button
+        className="zp-btn zp-btn--secondary zp-btn--sm"
+        onClick={() => {
+          setMealAutomatic(key);
+          toast.info("Jedlo je znovu automatické. Odošlite objednávku, aby sa zmena uložila.");
+        }}
+      >
+        <RefreshCcw style={{ width: 12, height: 12 }} /> Automatická
+      </button>
+    );
     if (mealKey === "breakfast") {
       return (
         <>
+          <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
+            onClick={() => {
+              clearMeal("breakfast");
+              resetMealData("breakfast");
+            }}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+          </button>
+          {automaticAction("breakfast")}
           <button
             className="zp-btn zp-btn--secondary zp-btn--sm"
             style={{ flex: 1 }}
@@ -377,21 +399,22 @@ const OrderPage = () => {
           >
             <Copy style={{ width: 12, height: 12 }} /> Načítať z včerajška
           </button>
-          <button
-            className="zp-btn zp-btn--danger zp-btn--sm"
-            onClick={() => {
-              clearMeal("breakfast");
-              resetMealData("breakfast");
-            }}
-          >
-            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
-          </button>
         </>
       );
     }
     if (mealKey === "lunch") {
       return (
         <>
+          <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
+            onClick={() => {
+              clearMeal("lunch");
+              resetMealData("lunch");
+            }}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+          </button>
+          {automaticAction("lunch")}
           <button
             className="zp-btn zp-btn--secondary zp-btn--sm"
             style={{ flex: 1 }}
@@ -407,21 +430,22 @@ const OrderPage = () => {
           >
             <Copy style={{ width: 12, height: 12 }} /> Načítať z raňajok
           </button>
-          <button
-            className="zp-btn zp-btn--danger zp-btn--sm"
-            onClick={() => {
-              clearMeal("lunch");
-              resetMealData("lunch");
-            }}
-          >
-            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
-          </button>
         </>
       );
     }
     if (mealKey === "olovrant") {
       return (
         <>
+          <button
+            className="zp-btn zp-btn--danger zp-btn--sm"
+            onClick={() => {
+              clearMeal("olovrant");
+              resetMealData("olovrant");
+            }}
+          >
+            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
+          </button>
+          {automaticAction("olovrant")}
           <button
             className="zp-btn zp-btn--secondary zp-btn--sm"
             style={{ flex: 1 }}
@@ -436,15 +460,6 @@ const OrderPage = () => {
             }}
           >
             <Copy style={{ width: 12, height: 12 }} /> Kopírovať z obeda
-          </button>
-          <button
-            className="zp-btn zp-btn--danger zp-btn--sm"
-            onClick={() => {
-              clearMeal("olovrant");
-              resetMealData("olovrant");
-            }}
-          >
-            <Trash2 style={{ width: 12, height: 12 }} /> Vymazať
           </button>
         </>
       );

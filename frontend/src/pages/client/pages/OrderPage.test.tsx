@@ -1106,6 +1106,46 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
+  it("omits a closed inactive breakfast and marks it for preservation", async () => {
+    const date = localDateStr();
+    (OrderService.checkDeadline as Mock).mockImplementation(
+      (_date: string, meal: string) => meal !== "breakfast",
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) return Promise.resolve(makeMockResponse({}));
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(makeMockResponse({
+          id: 1,
+          status: "submitted",
+          data: {
+            breakfast: { Škôlka: { menuCounts: { A: 8 }, diets: {} } },
+            lunch: { Škôlka: { menuCounts: { A: 3 }, diets: {} } },
+          },
+        }));
+      }
+      if (url.includes("/orders/") && init?.method === "POST") return Promise.resolve(makeMockResponse({}));
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data).not.toHaveProperty("breakfast");
+      expect(body.preserve_meals).toEqual(["breakfast"]);
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(3);
+    });
+  });
+
   it("does not re-apply a stale URL date after the user picks a different day via DaySelector", async () => {
     const today = localDateStr();
     // DaySelector's "Ďalší deň" calls `stepBusinessDay`, ktorý víkend
@@ -1384,6 +1424,44 @@ describe("OrderPage Logic & Triggers", () => {
     );
 
     expect(within(getSummaryRow("Raňajky")).getByText("Manuálna nulová")).toBeInTheDocument();
+  });
+
+  it("returns a cleared meal to the automatic state", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    const breakfastCard = getMealCard("Raňajky");
+    fireEvent.click(within(breakfastCard).getByRole("button", { name: /Vymazať/i }));
+    expect(within(getSummaryRow("Raňajky")).getByText("Manuálna nulová")).toBeInTheDocument();
+
+    fireEvent.click(within(breakfastCard).getByRole("button", { name: /^Automatická$/i }));
+
+    expect(within(getSummaryRow("Raňajky")).getByText("Automatická")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.automatic_meals).toContain("breakfast");
+      expect(body.touched_meals).not.toContain("breakfast");
+    });
   });
 
   // ── Lazy Copy nesmie doplniť jedlo aktívne len z defaultu (Emjoy) ──────────

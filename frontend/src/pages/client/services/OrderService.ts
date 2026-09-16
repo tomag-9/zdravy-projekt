@@ -409,6 +409,29 @@ class OrderService {
             }
         });
 
+        // Kategórie porcií sú konfigurovateľné na serveri. Fallback schéma v
+        // klientovi pozná len historický základ, preto nesmie pri načítaní
+        // zahodiť novú kategóriu (napr. Predškolák). Zachováme ju iba na
+        // úrovni kategórie jedla — neznáme top-level kľúče objednávky naďalej
+        // ignorujeme.
+        const isCategoryMap = Object.values(schemaRecord).some(value =>
+            value && typeof value === 'object' && !Array.isArray(value) &&
+            Object.prototype.hasOwnProperty.call(value, 'menuCounts') &&
+            Object.prototype.hasOwnProperty.call(value, 'diets')
+        );
+        if (isCategoryMap) {
+            const categorySchema = Object.values(schemaRecord).find(value =>
+                value && typeof value === 'object' && !Array.isArray(value) &&
+                Object.prototype.hasOwnProperty.call(value, 'menuCounts') &&
+                Object.prototype.hasOwnProperty.call(value, 'diets')
+            );
+            Object.entries(dataRecord).forEach(([key, value]) => {
+                if (!Object.prototype.hasOwnProperty.call(schemaRecord, key)) {
+                    result[key] = this.enforceStructure(value, categorySchema);
+                }
+            });
+        }
+
         return result as T;
     }
 
