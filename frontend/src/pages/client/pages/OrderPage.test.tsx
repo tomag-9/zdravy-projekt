@@ -288,6 +288,13 @@ describe("OrderPage Logic & Triggers", () => {
     return row;
   };
 
+  const getSummaryRow = (label: string) => {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(".zp-summary-row"));
+    const row = rows.find((r) => r.querySelector(".l")?.textContent?.trim() === label);
+    if (!row) throw new Error(`Summary row "${label}" not found`);
+    return row;
+  };
+
   /**
    * Prevádzku vracia len test, ktorý ju naozaj potrebuje. Keby ju vracal
    * zdieľaný mock, `scopedKey` by localStorage kľúče začal scopovať podľa
@@ -1099,6 +1106,46 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
+  it("omits a closed inactive breakfast and marks it for preservation", async () => {
+    const date = localDateStr();
+    (OrderService.checkDeadline as Mock).mockImplementation(
+      (_date: string, meal: string) => meal !== "breakfast",
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) return Promise.resolve(makeMockResponse({}));
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(makeMockResponse({
+          id: 1,
+          status: "submitted",
+          data: {
+            breakfast: { Škôlka: { menuCounts: { A: 8 }, diets: {} } },
+            lunch: { Škôlka: { menuCounts: { A: 3 }, diets: {} } },
+          },
+        }));
+      }
+      if (url.includes("/orders/") && init?.method === "POST") return Promise.resolve(makeMockResponse({}));
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data).not.toHaveProperty("breakfast");
+      expect(body.preserve_meals).toEqual(["breakfast"]);
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(3);
+    });
+  });
+
   it("does not re-apply a stale URL date after the user picks a different day via DaySelector", async () => {
     const today = localDateStr();
     // DaySelector's "Ďalší deň" calls `stepBusinessDay`, ktorý víkend
@@ -1177,6 +1224,247 @@ describe("OrderPage Logic & Triggers", () => {
       expect(postCall).toBeDefined();
       const body = JSON.parse(postCall![1].body as string);
       expect(body.touched_meals).toEqual(["breakfast"]);
+    });
+  });
+
+  // PEKNÁ CESTIČKA, 16.9.2026: klient len nakukol do raňajok (otvoril a hneď
+  // zavrel prepínač), nič tam nezadal — cron ich potom nikdy nedoplnil, lebo
+  // vypnutie prepínača samo osebe touchlo chod bez ohľadu na to, či v ňom
+  // vôbec niečo bolo.
+  it("does not mark an already-empty meal as touched when the client only opens and closes it", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Raňajky - prepnúť" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Raňajky - prepnúť" }));
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+    fireEvent.change(input, { target: { value: "3" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.touched_meals).not.toContain("breakfast");
+      expect(body.touched_meals).toContain("lunch");
+    });
+  });
+
+  // Pôvodná Jarabinka ochrana musí ostať funkčná: vypnutie chodu, ktorý
+  // REÁLNE mal dáta, je skutočné rozhodnutie a musí zostať touched.
+  it("still marks a meal as touched when the client turns off a meal that actually had data", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Raňajky - prepnúť" }));
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+    fireEvent.change(input, { target: { value: "3" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.touched_meals).toContain("breakfast");
+    });
+  });
+
+  // Keďže vypnutie prázdneho chodu už touch nedáva (viď test vyššie), klient
+  // potrebuje viditeľný spôsob, ako zistiť, že prázdny+netouchnutý chod môže
+  // cron ešte doplniť — a ako to prípadne zabrániť (Vymazať).
+  it("shows a hint on a closed, empty, untouched meal and hides it once Vymazať explicitly zeroes it", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    expect(
+      within(getMealCard("Raňajky")).getByText(/automaticky doplniť/i),
+    ).toBeInTheDocument();
+
+    // Otvor, potvrď nulu cez Vymazať, zavri — hint musí zmiznúť, lebo chod je
+    // už explicitne (touched) vynulovaný.
+    fireEvent.click(screen.getByRole("switch", { name: "Raňajky - prepnúť" }));
+    fireEvent.click(
+      within(getMealCard("Raňajky")).getByRole("button", { name: /Vymazať/i }),
+    );
+    fireEvent.click(screen.getByRole("switch", { name: "Raňajky - prepnúť" }));
+
+    expect(
+      within(getMealCard("Raňajky")).queryByText(/automaticky doplniť/i),
+    ).not.toBeInTheDocument();
+  });
+
+  // ── Rýchle zhrnutie: manuálna / manuálna nulová / automatická ──────────────
+
+  it("labels an empty, untouched meal as automatic from the previous day in the quick summary", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    expect(
+      within(getSummaryRow("Raňajky")).getByText("Automatická – z predošlého dňa"),
+    ).toBeInTheDocument();
+  });
+
+  it("labels a meal the client edited as 'Manuálna' with its count in the quick summary", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText("Počet porcií pre menu A");
+    fireEvent.change(input, { target: { value: "3" } });
+    fireEvent.blur(input);
+
+    const summaryRow = getSummaryRow("Obedy");
+    expect(within(summaryRow).getByText("Manuálna")).toBeInTheDocument();
+    expect(within(summaryRow).getByText("3")).toBeInTheDocument();
+  });
+
+  it("labels an explicitly cleared meal as 'Manuálna nulová' in the quick summary", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    fireEvent.click(
+      within(getMealCard("Raňajky")).getByRole("button", { name: /Vymazať/i }),
+    );
+
+    expect(within(getSummaryRow("Raňajky")).getByText("Manuálna nulová")).toBeInTheDocument();
+  });
+
+  it("returns a cleared meal to the automatic state", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `order_${date}`,
+      JSON.stringify({
+        status: "draft",
+        breakfast: { Škôlka: { menuCounts: { A: 5 }, diets: {} } },
+        lunch: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+        olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+      }),
+    );
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: true, lunch: true, olovrant: false }),
+    );
+
+    renderPage();
+
+    const breakfastCard = getMealCard("Raňajky");
+    fireEvent.click(within(breakfastCard).getByRole("button", { name: /Vymazať/i }));
+    expect(within(getSummaryRow("Raňajky")).getByText("Manuálna nulová")).toBeInTheDocument();
+
+    fireEvent.click(within(breakfastCard).getByRole("button", { name: /^Automatická$/i }));
+
+    expect(
+      within(getSummaryRow("Raňajky")).getByText("Automatická – z predošlého dňa"),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.automatic_meals).toContain("breakfast");
+      expect(body.touched_meals).not.toContain("breakfast");
     });
   });
 

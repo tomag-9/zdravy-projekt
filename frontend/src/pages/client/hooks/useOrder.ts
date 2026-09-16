@@ -146,6 +146,9 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     const packSeparatelyEnabled = prevadzky.find((item) => item.id === activePrevadzkaId)?.pack_separately_enabled ?? false;
 
     const [touchedMeals, setTouchedMeals] = useState<Set<string>>(new Set());
+    // Jedlá, ktoré klient výslovne vracia z manuálneho režimu do auto-orderu.
+    // Ide o jednorazový príkaz pre server, nie perzistentný lokálny stav.
+    const [automaticMeals, setAutomaticMeals] = useState<Set<string>>(new Set());
     // Ktoré jedlo klient v TEJTO session naozaj vedome otvoril cez `toggleMeal`
     // (nie tie, čo sú aktívne len z defaultu/localStorage, napr. `lunch: true`
     // v `defaultActive`) — Lazy Copy nižšie sa smie spustiť len pre tieto, inak
@@ -265,6 +268,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
         loadedPrevadzkaIdRef.current = activePrevadzkaId;
         setTouchedMeals(new Set());
+        setAutomaticMeals(new Set());
         setExplicitlyOpenedMeals(new Set());
         setActiveMeals(newActive);
         setCurrentOrder(newOrder);
@@ -665,11 +669,18 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         const isTurningOff = Boolean(activeMeals[mealKey]);
         setActiveMeals(prev => ({ ...prev, [mealKey]: !prev[mealKey] }));
         // Otvorenie chodu ešte nie je rozhodnutie: lazy-copy smie načítať
-        // poslednú objednávku. Vypnutie je naopak explicitné "nechcem" a
-        // musí chrániť nulu pred scoped auto-orderom.
-        if (isTurningOff) {
+        // poslednú objednávku. Vypnutie je naopak explicitné "nechcem" A
+        // musí chrániť nulu pred scoped auto-orderom — ALE len ak v chode
+        // reálne niečo bolo. Bez tejto podmienky obyčajné "otvorím-pozriem-
+        // -zavriem" prázdneho chodu (napr. kým klient rieši iný deň/chod)
+        // touchlo aj jedlo, ktoré klient nikdy nerozhodol — cron ho potom už
+        // nikdy nedoplnil (PEKNÁ CESTIČKA, 16.9.2026: raňajky nedostali
+        // šablónu, lebo boli takto omylom "touchnuté" prázdne). Explicitnú
+        // nulu na chode, ktorý bol už prázdny, chráni tlačidlo „Vymazať“
+        // (`clearMeal` nižšie) — to touchne vždy, bez ohľadu na predošlý stav.
+        if (isTurningOff && !OrderService.isMealEmpty(currentOrder[mealKey as 'breakfast' | 'lunch' | 'olovrant'])) {
             setTouchedMeals(prev => new Set(prev).add(mealKey));
-        } else {
+        } else if (!isTurningOff) {
             // Klient toto jedlo VEDOME otvoril teraz — len toto smie spustiť
             // Lazy Copy nižšie (na rozdiel od jedla, ktoré je aktívne len
             // z defaultu, napr. `lunch: true`).
@@ -817,6 +828,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     };
 
     const clearMeal = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
+        setAutomaticMeals(prev => {
+            const next = new Set(prev);
+            next.delete(mealKey);
+            return next;
+        });
         setTouchedMeals(prev => {
             const next = new Set(prev);
             next.add(mealKey);
@@ -827,6 +843,27 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             [mealKey]: OrderService.createEmptyMeal(),
             status: 'draft',
         }));
+    };
+
+    const setMealAutomatic = (mealKey: 'breakfast' | 'lunch' | 'olovrant') => {
+        setCurrentOrder(prev => ({
+            ...prev,
+            [mealKey]: OrderService.createEmptyMeal(),
+            status: 'draft',
+        }));
+        setTouchedMeals(prev => {
+            const next = new Set(prev);
+            next.delete(mealKey);
+            return next;
+        });
+        setAutomaticMeals(prev => new Set(prev).add(mealKey));
+        // Inak by otvorená karta spustila lazy-copy a hneď sa znovu označila
+        // ako manuálne upravená.
+        setExplicitlyOpenedMeals(prev => {
+            const next = new Set(prev);
+            next.delete(mealKey);
+            return next;
+        });
     };
 
 
@@ -854,11 +891,21 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             return currentOrder[key];
         };
 
-        const payload = {
-            breakfast: isMealActive('breakfast') ? mealData('breakfast') : OrderService.createEmptyMeal(),
-            lunch: isMealActive('lunch') ? mealData('lunch') : OrderService.createEmptyMeal(),
-            olovrant: isMealActive('olovrant') ? mealData('olovrant') : OrderService.createEmptyMeal(),
-        };
+        const mealKeys = ['breakfast', 'lunch', 'olovrant'] as const;
+        // Po uzávierke klient nesmie daný chod ani náhodou poslať ako prázdny
+        // (neaktívny switch predtým znamenal „vymaž raňajky“). Backend ho
+        // preto dostane v `preserve_meals` a zachová autoritatívny stav.
+        const preserveMeals = fullDayOrder
+            ? []
+            : mealKeys.filter(key => !OrderService.checkDeadline(date, key, globalDeadlines));
+        const payload = Object.fromEntries(
+            mealKeys
+                .filter(key => !preserveMeals.includes(key))
+                .map(key => [
+                    key,
+                    isMealActive(key) ? mealData(key) : OrderService.createEmptyMeal(),
+                ]),
+        ) as Partial<Pick<DailyOrder, 'breakfast' | 'lunch' | 'olovrant'>>;
 
         try {
             const response = await apiFetch(`${API_URL}/orders/`, {
@@ -870,6 +917,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                     date,
                     status: 'submitted',
                     ...(prevadzkaId ? { prevadzka: prevadzkaId } : {}),
+                    ...(preserveMeals.length > 0 ? { preserve_meals: preserveMeals } : {}),
                     // Ktoré chody klient v TEJTO session skutočne riešil (aj na
                     // nulu) — server si to union-uje s tým, čo už na daný deň
                     // bolo touched, a auto-order cron takto označené jedlo už
@@ -879,6 +927,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                         ? adminVisibleMeals
                         : (['breakfast', 'lunch', 'olovrant'] as const).filter(
                             key => touchedMeals.has(key),
+                        ),
+                    automatic_meals: fullDayOrder
+                        ? []
+                        : (['breakfast', 'lunch', 'olovrant'] as const).filter(
+                            key => automaticMeals.has(key),
                         ),
                     data: {
                         ...payload,
@@ -1137,14 +1190,14 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         portionTypes,
         visibleDietDetails,
         selectedDate, setSelectedDate,
-        currentOrder, activeMeals, toggleMeal,
+        currentOrder, activeMeals, toggleMeal, touchedMeals,
         fullDayOrder, toggleFullDay,
         fullDayData, updateFullDayMenuCount, updateFullDayDiet, updateFullDayPackSeparately, clearFullDay,
         specialDietNote, setSpecialDietNote,
         updateMenuCount, updateDiet, updatePackSeparately,
         getAvailableDiets,
         prevDayLunches,
-        clearMeal,
+        clearMeal, setMealAutomatic,
         loadBreakfastFromPrevLunch,
         copyLunchFromCurrentBreakfast,
         copyOlovrantFromCurrentLunch,

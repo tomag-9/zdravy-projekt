@@ -4,9 +4,26 @@ import { getSlovakPlural } from "../../../../lib/utils";
 
 type MealKey = "breakfast" | "lunch" | "olovrant";
 
+const ALL_MEAL_KEYS: MealKey[] = ["breakfast", "lunch", "olovrant"];
+
 interface OrderSummaryProps {
   order: DailyOrder;
   activeMeals: Record<MealKey, boolean>;
+  /** Ktoré jedlá má táto prevádzka vôbec vypnuté/zapnuté v nastaveniach —
+   * riadok v zhrnutí sa ukáže pre KAŽDÉ z nich bez ohľadu na to, či je práve
+   * teraz zbalené/aktívne (chýbalo predtým: zbalený chod nemal riadok vôbec,
+   * takže "Automatická" stavová informácia nemala kde byť vidieť). Bez tohto
+   * propu sa použije `activeMeals` ako predtým (spätná kompatibilita).
+   */
+  visibleMeals?: MealKey[];
+  /** Ktoré jedlá boli v tejto session skutočne rozhodnuté (viď
+   * `DailyOrder.touched_meals`) — riadi štítok vedľa počtu: "Manuálna"
+   * (touched, nenulové), "Manuálna nulová" (touched, nula — napr. cez
+   * „Vymazať“) alebo "Automatická – z predošlého dňa" (netouched — auto-order
+   * cron ho ešte môže doplniť podľa predošlého dňa). Bez tohto propu sa štítok
+   * nezobrazí.
+   */
+  touchedMeals?: Set<string>;
   date: string;
   onSubmit: () => void;
   onReset?: () => void;
@@ -18,6 +35,8 @@ interface OrderSummaryProps {
 const OrderSummary = ({
   order,
   activeMeals,
+  visibleMeals,
+  touchedMeals,
   date,
   onSubmit,
   onReset,
@@ -25,6 +44,10 @@ const OrderSummary = ({
   disabledMessage,
   submitLabel = "Odoslať objednávku",
 }: OrderSummaryProps) => {
+  // Bez `visibleMeals` (staré volanie) sa zachová pôvodné správanie — riadok
+  // len pre práve aktívny chod.
+  const shownMeals = visibleMeals ?? ALL_MEAL_KEYS.filter((key) => activeMeals[key]);
+
   const getMealTotal = (mealKey: MealKey) => {
     if (!activeMeals[mealKey] || !order[mealKey]) return 0;
     return Object.values(order[mealKey]).reduce(
@@ -46,6 +69,12 @@ const OrderSummary = ({
       },
       0,
     );
+  };
+
+  const getMealTag = (mealKey: MealKey): { label: string } | null => {
+    if (!touchedMeals) return null;
+    if (!touchedMeals.has(mealKey)) return { label: "Automatická – z predošlého dňa" };
+    return getMealTotal(mealKey) > 0 ? { label: "Manuálna" } : { label: "Manuálna nulová" };
   };
 
   const lunchTotal = getMealTotal("lunch");
@@ -72,7 +101,7 @@ const OrderSummary = ({
         <span className="r" style={{ textTransform: "capitalize" }}>{dateLabel}</span>
       </div>
 
-      {activeMeals.breakfast && (
+      {shownMeals.includes("breakfast") && (
         <div className="zp-summary-row">
           <span className="l">Raňajky</span>
           <span className="r">
@@ -82,11 +111,14 @@ const OrderSummary = ({
                 ({breakfastDiets} {getSlovakPlural(breakfastDiets, "diéta", "diéty", "diét")})
               </small>
             )}
+            {getMealTag("breakfast") && (
+              <small className="zp-summary-tag">{getMealTag("breakfast")!.label}</small>
+            )}
           </span>
         </div>
       )}
 
-      {activeMeals.lunch && (
+      {shownMeals.includes("lunch") && (
         <div className="zp-summary-row">
           <span className="l">Obedy</span>
           <span className="r">
@@ -96,11 +128,14 @@ const OrderSummary = ({
                 ({lunchDiets} {getSlovakPlural(lunchDiets, "diéta", "diéty", "diét")})
               </small>
             )}
+            {getMealTag("lunch") && (
+              <small className="zp-summary-tag">{getMealTag("lunch")!.label}</small>
+            )}
           </span>
         </div>
       )}
 
-      {activeMeals.olovrant && (
+      {shownMeals.includes("olovrant") && (
         <div className="zp-summary-row">
           <span className="l">Olovranty</span>
           <span className="r">
@@ -109,6 +144,9 @@ const OrderSummary = ({
               <small>
                 ({olovrantDiets} {getSlovakPlural(olovrantDiets, "diéta", "diéty", "diét")})
               </small>
+            )}
+            {getMealTag("olovrant") && (
+              <small className="zp-summary-tag">{getMealTag("olovrant")!.label}</small>
             )}
           </span>
         </div>

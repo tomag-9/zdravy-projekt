@@ -69,6 +69,24 @@ describe('OrderService', () => {
             expect(OrderService.getPlainMenuACount(cat)).toBe(8);
         });
 
+        it('preserves an unknown server-side portion category', () => {
+            const result = OrderService.enforceStructure<DailyOrder>(
+                {
+                    breakfast: {
+                        'Škôlka': { menuCounts: { A: 8 }, diets: {} },
+                        'Predškolák': { menuCounts: { A: 11 }, diets: {} },
+                    },
+                },
+                OrderService.createEmptyOrder(),
+            );
+
+            // Portion types are configured in the backend. A newer name must
+            // not disappear merely because this browser's fallback list does
+            // not contain it yet.
+            expect(result.breakfast['Predškolák'].menuCounts.A).toBe(11);
+            expect(result.breakfast['Škôlka'].menuCounts.A).toBe(8);
+        });
+
         it('ignores non-numeric or negative diet counts', () => {
             const schema = OrderService.createEmptyOrder();
             const result = OrderService.enforceStructure<DailyOrder>(

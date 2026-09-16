@@ -5,7 +5,7 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
 
-from api.models import DailyOrder, UserProfile
+from api.models import DailyOrder, ExternalOrderSnapshot, UserProfile
 
 pytestmark = pytest.mark.integration
 
@@ -122,6 +122,32 @@ class TestOrderUpdate:
         order = DailyOrder.objects.get()
         assert order.data == new_data
 
+    def test_partial_submit_preserves_explicitly_omitted_meals(
+        self, authenticated_client, user
+    ):
+        """A closed meal omitted by the client must not be interpreted as zero."""
+        url = reverse("dailyorder-list")
+        original = {
+            "breakfast": {"Škôlka": {"menuCounts": {"A": 8}, "diets": {}}},
+            "lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}},
+        }
+        DailyOrder.objects.create(user=user, date=MONDAY, data=original)
+
+        response = authenticated_client.post(
+            url,
+            {
+                "date": str(MONDAY),
+                "data": {"lunch": {"Škôlka": {"menuCounts": {"A": 9}, "diets": {}}}},
+                "preserve_meals": ["breakfast"],
+            },
+            format="json",
+        )
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+        order = DailyOrder.objects.get()
+        assert order.data["breakfast"] == original["breakfast"]
+        assert order.data["lunch"]["Škôlka"]["menuCounts"]["A"] == 9
+
     def test_manual_submit_over_auto_order_clears_is_auto(
         self, authenticated_client, user
     ):
@@ -152,7 +178,8 @@ class TestOrderUpdate:
             url, {"data": NON_EMPTY_DATA}, format="json"
         )
 
-        assert response.status_code == status.HTTP_200_OK
+        # Viewset POST odpovedá 201 aj pri jeho internom upsert-e.
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
         order.refresh_from_db()
         assert order.data == NON_EMPTY_DATA
         assert order.is_auto is False
@@ -242,6 +269,43 @@ class TestTouchedMeals:
         order.refresh_from_db()
         assert set(order.touched_meals) == {"breakfast", "lunch"}
 
+    def test_post_can_return_a_meal_to_automatic_ordering(
+        self, authenticated_client, user
+    ):
+        """Explicitný návrat do automatiky zruší ochranu po „Vymazať“."""
+        url = reverse("dailyorder-list")
+        created = authenticated_client.post(
+            url,
+            {
+                "date": str(MONDAY),
+                "data": EMPTY_DATA,
+                "touched_meals": ["breakfast"],
+            },
+            format="json",
+        )
+        assert created.status_code == status.HTTP_201_CREATED
+        order = DailyOrder.objects.get()
+        order.prevadzka.auto_order_paused = True
+        order.prevadzka.save(update_fields=["auto_order_paused"])
+
+        response = authenticated_client.post(
+            url,
+            {
+                "date": str(MONDAY),
+                "data": EMPTY_DATA,
+                "prevadzka": created.data["prevadzka"],
+                "automatic_meals": ["breakfast"],
+            },
+            format="json",
+        )
+
+        # Viewset POST odpovedá 201 aj pri jeho internom upsert-e.
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+        order.refresh_from_db()
+        order.prevadzka.refresh_from_db()
+        assert order.touched_meals == []
+        assert order.prevadzka.auto_order_paused is False
+
     def test_invalid_meal_key_rejected(self, authenticated_client, user):
         url = reverse("dailyorder-list")
         response = authenticated_client.post(
@@ -319,6 +383,40 @@ class TestOrderRetrieval:
         assert response.data["count"] == 5
         assert len(response.data["results"]) == 3
         assert response.data["next"] is not None
+
+    def test_list_includes_effective_data_from_external_snapshot(
+        self, authenticated_client, user
+    ):
+        """Facility history displays an external feed, but keeps editable data raw.
+
+        An admin must see the kitchen total for Stromček-like facilities without
+        accidentally saving that external contribution back into ``data``.
+        """
+        app_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 10}, "diets": {}}}}
+        external_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 6}, "diets": {}}}}
+        order = DailyOrder.objects.create(user=user, date=MONDAY, data=app_data)
+        ExternalOrderSnapshot.objects.create(
+            prevadzka=order.prevadzka,
+            date=MONDAY,
+            source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+            data=external_data,
+        )
+
+        response = authenticated_client.get(reverse("dailyorder-list"))
+
+        assert response.status_code == status.HTTP_200_OK
+        result = response.data["results"][0]
+        assert result["data"] == app_data
+        assert result["effective_data"] == {
+            "lunch": {
+                "Škôlka": {
+                    "menuCounts": {"A": 16},
+                    "diets": {},
+                    "packSeparately": {},
+                    "packSeparatelyGn": {},
+                }
+            }
+        }
 
 
 @pytest.mark.django_db
