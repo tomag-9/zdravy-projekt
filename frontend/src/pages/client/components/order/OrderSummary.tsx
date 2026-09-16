@@ -19,8 +19,9 @@ interface OrderSummaryProps {
   /** Ktoré jedlá boli v tejto session skutočne rozhodnuté (viď
    * `DailyOrder.touched_meals`) — riadi štítok vedľa počtu: "Manuálna"
    * (touched, nenulové), "Manuálna nulová" (touched, nula — napr. cez
-   * „Vymazať“) alebo "Automatická" (netouched — auto-order cron ho ešte
-   * môže doplniť podľa predošlého dňa). Bez tohto propu sa štítok nezobrazí.
+   * „Vymazať“) alebo "Automatická – z predošlého dňa" (netouched — auto-order
+   * cron ho ešte môže doplniť podľa predošlého dňa). Bez tohto propu sa štítok
+   * nezobrazí.
    */
   touchedMeals?: Set<string>;
   date: string;
@@ -72,7 +73,7 @@ const OrderSummary = ({
 
   const getMealTag = (mealKey: MealKey): { label: string } | null => {
     if (!touchedMeals) return null;
-    if (!touchedMeals.has(mealKey)) return { label: "Automatická" };
+    if (!touchedMeals.has(mealKey)) return { label: "Automatická – z predošlého dňa" };
     return getMealTotal(mealKey) > 0 ? { label: "Manuálna" } : { label: "Manuálna nulová" };
   };
 

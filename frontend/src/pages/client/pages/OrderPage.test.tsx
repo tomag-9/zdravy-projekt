@@ -1351,7 +1351,7 @@ describe("OrderPage Logic & Triggers", () => {
 
   // ── Rýchle zhrnutie: manuálna / manuálna nulová / automatická ──────────────
 
-  it("labels an empty, untouched meal as 'Automatická' in the quick summary", async () => {
+  it("labels an empty, untouched meal as automatic from the previous day in the quick summary", async () => {
     const date = localDateStr();
     localStorageMock.setItem(
       `order_${date}`,
@@ -1369,7 +1369,9 @@ describe("OrderPage Logic & Triggers", () => {
 
     renderPage();
 
-    expect(within(getSummaryRow("Raňajky")).getByText("Automatická")).toBeInTheDocument();
+    expect(
+      within(getSummaryRow("Raňajky")).getByText("Automatická – z predošlého dňa"),
+    ).toBeInTheDocument();
   });
 
   it("labels a meal the client edited as 'Manuálna' with its count in the quick summary", async () => {
@@ -1450,7 +1452,9 @@ describe("OrderPage Logic & Triggers", () => {
 
     fireEvent.click(within(breakfastCard).getByRole("button", { name: /^Automatická$/i }));
 
-    expect(within(getSummaryRow("Raňajky")).getByText("Automatická")).toBeInTheDocument();
+    expect(
+      within(getSummaryRow("Raňajky")).getByText("Automatická – z predošlého dňa"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Odoslať objednávku"));
     await waitFor(() => {
