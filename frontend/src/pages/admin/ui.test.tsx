@@ -4,6 +4,13 @@ import { AdminDateNav, Dropdown, Input } from "./ui";
 
 describe("AdminDateNav", () => {
   it("uses muted states for history, locked and upcoming dates", () => {
+    // `is-history`/`is-upcoming` sú relatívne k reálnemu dnešku
+    // (`useTodayKey` číta `new Date()`) — bez zafixovania hodín test
+    // časom prestane platiť (padlo to 16.9.2026, keď "dnešok" prešiel
+    // cez hardcoded "15. septembra").
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-12T12:00:00"));
+
     const onChange = vi.fn();
     render(
       <AdminDateNav
@@ -28,6 +35,8 @@ describe("AdminDateNav", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "15. septembra 2026" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-15");
+
+    vi.useRealTimers();
   });
 
   it("closes when the user clicks outside it or presses Escape", () => {
