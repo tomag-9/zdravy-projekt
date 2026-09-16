@@ -717,6 +717,32 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 raise PrevadzkaClosureOrderNotAllowedError()
 
     @staticmethod
+    def _normalize_category_for_comparison(value: Any) -> Any:
+        """Odstráni nulové/prázdne hodnoty pred porovnaním 'zmenilo sa to?'.
+
+        Frontend pri načítaní objednávky doplní chýbajúce menu písmená a
+        diéty nulou (`OrderService.enforceStructure`/`enforceCountMap`), takže
+        skrytá kategória sa pri ďalšom submite vráti štrukturálne iná
+        (`{"A": 6}` → `{"A": 6, "B": 0, "C": 0, ...}`), hoci ju užívateľ vôbec
+        neupravoval. Presná zhoda slovníkov (`==`) by to omylom vyhodnotila
+        ako zmenu a zablokovala aj úplne nesúvisiaci chod — porovnávať treba
+        len nenulové/neprázdne hodnoty.
+        """
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            normalized = {
+                key: DailyOrderSerializer._normalize_category_for_comparison(val)
+                for key, val in value.items()
+            }
+            return {
+                key: val
+                for key, val in normalized.items()
+                if val not in (0, None, "", {}, [])
+            }
+        return value
+
+    @staticmethod
     def _enforce_portion_types(
         prevadzka: Prevadzka,
         data: Dict[str, Any],
@@ -757,7 +783,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                     if isinstance(existing_data.get(meal_key), dict)
                     else None
                 )
-                if cat_data == existing_category:
+                if DailyOrderSerializer._normalize_category_for_comparison(
+                    cat_data
+                ) == DailyOrderSerializer._normalize_category_for_comparison(
+                    existing_category
+                ):
                     continue
                 if isinstance(menu_counts, dict) and any(
                     (count or 0) > 0 for count in menu_counts.values()

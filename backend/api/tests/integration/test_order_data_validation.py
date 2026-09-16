@@ -572,6 +572,49 @@ class TestPortionTypeRestriction:
 
         assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
 
+    def test_accepts_unchanged_legacy_size_after_frontend_zero_padding(
+        self, authenticated_client, user
+    ):
+        """Frontend pri načítaní doplní chýbajúce menu písmená/diéty nulou
+        (`OrderService.enforceStructure`/`enforceCountMap`) — objednávka sa
+        teda na server vráti štrukturálne iná, hoci užívateľ v skrytej
+        kategórii nič nezmenil. Porovnanie 'nezmenené?' preto nesmie byť
+        presná zhoda slovníkov, len zhoda nenulových hodnôt.
+        """
+        from api.models import PortionType
+
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        old_data = {
+            "breakfast": {"Predškolák": {"menuCounts": {"A": 6}, "diets": {}}},
+            "lunch": {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}},
+        }
+        assert (
+            self._post(authenticated_client, old_data).status_code
+            == status.HTTP_201_CREATED
+        )
+
+        allowed, _ = PortionType.objects.get_or_create(
+            name="Škôlka", defaults={"coefficient": 1}
+        )
+        prevadzka.visible_portion_types.set([allowed])
+
+        # presne to, čo pošle frontend po prejdení cez enforceStructure:
+        # chýbajúce menu písmená (B, C, D, V) doplnené nulou, diets tiež
+        # doplnené o momentálne viditeľné diéty (0)
+        zero_padded_resubmit = {
+            "breakfast": {
+                "Predškolák": {
+                    "menuCounts": {"A": 6, "B": 0, "C": 0, "D": 0, "V": 0},
+                    "diets": {},
+                }
+            },
+            "lunch": {"Škôlka": {"menuCounts": {"A": 3}, "diets": {}}},
+        }
+
+        response = self._post(authenticated_client, zero_padded_resubmit)
+
+        assert response.status_code in [status.HTTP_200_OK, status.HTTP_201_CREATED]
+
 
 @pytest.mark.django_db
 class TestMenuDayRestriction:
