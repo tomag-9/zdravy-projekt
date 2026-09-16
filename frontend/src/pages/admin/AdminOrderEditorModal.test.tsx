@@ -99,10 +99,36 @@ const getMealCard = (title: string) => {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
+// GET-y na pozadí (uzávierka dňa + kontrola existujúcej objednávky) bežia
+// súbežne s uložením a poradie volaní `apiFetch` medzi nimi nie je pevné —
+// testy preto smerujú mock podľa URL/metódy, nie podľa poradia volania
+// (`mockResolvedValueOnce` by inak mohol omylom "nakŕmiť" iné GET namiesto
+// samotného uloženia).
+const mockSaveResponse = (payload: unknown, ok = true) => {
+    mockApiFetch.mockImplementation((url: string, options?: { method?: string }) => {
+        if (options?.method === 'POST' || options?.method === 'PATCH') {
+            return Promise.resolve(makeMockResponse(payload, ok));
+        }
+        if (url.includes('/orders/by-date/')) {
+            return Promise.resolve(makeMockResponse({ data: {} }, true));
+        }
+        return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+    });
+};
+
 describe('AdminOrderEditorModal', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        mockApiFetch.mockResolvedValue(makeMockResponse({ is_closed: false }, true));
+        mockApiFetch.mockImplementation((url: string) => {
+            // Bez existujúcej objednávky na daný deň (prázdna štruktúra bez `id`,
+            // presne ako to vracia `GET /orders/by-date/<date>/` pri 404) —
+            // rovnaký tvar zámerne nemá `is_closed`, takže ho closedState-check
+            // vyhodnotí ako "open", nie "closed".
+            if (url.includes('/orders/by-date/')) {
+                return Promise.resolve(makeMockResponse({ data: {} }, true));
+            }
+            return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+        });
     });
 
     it('renders create mode with date input and save button', () => {
@@ -164,10 +190,13 @@ describe('AdminOrderEditorModal', () => {
     });
 
     it('POSTs with prevadzka when creating a new order', async () => {
-        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 10, date: '2099-05-01', data: {} }, true));
+        mockSaveResponse({ id: 10, date: '2099-05-01', data: {} });
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
+        // Uložiť je zablokované, kým nedobehne kontrola, či na tento deň už
+        // objednávka neexistuje (viď testy nižšie pre "existujúca objednávka").
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Uložiť' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
@@ -192,10 +221,11 @@ describe('AdminOrderEditorModal', () => {
     });
 
     it('POSTs with prevadzka without user_id when facility has no login', async () => {
-        mockApiFetch.mockResolvedValueOnce(makeMockResponse({ id: 11, date: '2099-05-02', data: {} }, true));
+        mockSaveResponse({ id: 11, date: '2099-05-02', data: {} });
 
         render(<AdminOrderEditorModal {...BASE_PROPS} clientId={null} />);
 
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Uložiť' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
@@ -211,6 +241,96 @@ describe('AdminOrderEditorModal', () => {
         expect(mockApiFetch.mock.calls[0][0]).not.toContain('user_id=');
         expect(mockToastSuccess).toHaveBeenCalledWith('Objednávka bola vytvorená.');
         expect(BASE_PROPS.onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    // PEKNÁ CESTIČKA, 16.9.2026: admin otvoril "Nová objednávka" na deň, ktorý
+    // klient už mal zadaný (Menu C), formulár začal prázdny a POST upsert
+    // ticho prepísal celý deň vrátane netknutých chodov — Menu C zmizlo.
+    // "Nová objednávka" preto musí najprv overiť, či na daný dátum objednávka
+    // už neexistuje, a ak áno, správať sa ako edit (predvyplniť + PATCH).
+    it('loads existing data and PATCHes instead of POSTing when an order already exists for the selected date', async () => {
+        const foundOrder = {
+            id: 55,
+            date: '2099-05-01',
+            data: {
+                lunch: { Škôlka: { menuCounts: { A: 0, B: 2 }, diets: {} } },
+            },
+            touched_meals: ['lunch'],
+        };
+        mockApiFetch.mockImplementation((url: string, options?: { method?: string }) => {
+            if (options?.method === 'POST' || options?.method === 'PATCH') {
+                return Promise.resolve(makeMockResponse({ id: 55 }, true));
+            }
+            if (url.includes('/orders/by-date/')) {
+                return Promise.resolve(makeMockResponse(foundOrder, true));
+            }
+            return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+        });
+
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        // Predvyplnenie z existujúcej objednávky dobehne až po async kontrole.
+        await waitFor(() => {
+            const lunchCard = getMealCard('Obed');
+            const skolkaCard = within(lunchCard).getByText('Škôlka').closest('.zp-cat') as HTMLElement;
+            const menuBInput = within(skolkaCard).getByLabelText('Počet porcií pre menu B');
+            expect((menuBInput as HTMLInputElement).value).toBe('2');
+        });
+
+        fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith(
+                expect.stringContaining('/orders/55/?prevadzka=99'),
+                expect.objectContaining({ method: 'PATCH' }),
+            );
+        });
+
+        const patchCall = mockApiFetch.mock.calls.find(([, options]) => options?.method === 'PATCH');
+        const body = JSON.parse(patchCall![1].body as string);
+        expect(body.data.lunch.Škôlka.menuCounts.B).toBe(2);
+
+        expect(mockApiFetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+        expect(mockToastSuccess).toHaveBeenCalledWith('Objednávka bola uložená.');
+        expect(BASE_PROPS.onSaved).toHaveBeenCalledTimes(1);
+    });
+
+    it('disables Uložiť while checking whether an order already exists for the selected date', () => {
+        mockApiFetch.mockImplementation((url: string) => {
+            if (url.includes('/orders/by-date/')) return new Promise(() => {});
+            return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+        });
+
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        expect(screen.getByRole('button', { name: 'Uložiť' })).toBeDisabled();
+    });
+
+    it('blocks saving and shows an error when checking for an existing order fails', async () => {
+        mockApiFetch.mockImplementation((url: string) => {
+            if (url.includes('/orders/by-date/')) return Promise.reject(new Error('network error'));
+            return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+        });
+
+        render(<AdminOrderEditorModal {...BASE_PROPS} />);
+
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+            /nepodarilo sa overiť, či na tento deň už objednávka existuje/i,
+        );
+        expect(screen.queryByRole('button', { name: 'Uložiť' })).not.toBeInTheDocument();
+    });
+
+    it('does not check for an existing order when already editing one', () => {
+        render(
+            <AdminOrderEditorModal
+                {...BASE_PROPS}
+                existingOrder={{ id: 7, date: '2099-03-01', data: {} }}
+            />,
+        );
+
+        expect(
+            mockApiFetch.mock.calls.some(([url]) => String(url).includes('/orders/by-date/')),
+        ).toBe(false);
     });
 
     it('PATCHes through prevadzka when editing an existing order', async () => {
@@ -278,15 +398,22 @@ describe('AdminOrderEditorModal', () => {
     });
 
     it('shows error toast and does not call onSaved when API fails', async () => {
-        mockApiFetch.mockImplementation((url: string) => {
+        mockApiFetch.mockImplementation((url: string, options?: { method?: string }) => {
+            if (options?.method === 'POST' || options?.method === 'PATCH') {
+                return Promise.reject(new Error('network error'));
+            }
             if (url.includes('/admin/closed-days/')) {
                 return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+            }
+            if (url.includes('/orders/by-date/')) {
+                return Promise.resolve(makeMockResponse({ data: {} }, true));
             }
             return Promise.reject(new Error('network error'));
         });
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Uložiť' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {
@@ -306,16 +433,22 @@ describe('AdminOrderEditorModal', () => {
                 },
                 false,
             );
-        mockApiFetch.mockImplementation((url: string) =>
-            Promise.resolve(
-                url.includes('/admin/closed-days/')
-                    ? makeMockResponse({ is_closed: false }, true)
-                    : errorResponse,
-            ),
-        );
+        mockApiFetch.mockImplementation((url: string, options?: { method?: string }) => {
+            if (options?.method === 'POST' || options?.method === 'PATCH') {
+                return Promise.resolve(errorResponse);
+            }
+            if (url.includes('/admin/closed-days/')) {
+                return Promise.resolve(makeMockResponse({ is_closed: false }, true));
+            }
+            if (url.includes('/orders/by-date/')) {
+                return Promise.resolve(makeMockResponse({ data: {} }, true));
+            }
+            return Promise.resolve(errorResponse);
+        });
 
         render(<AdminOrderEditorModal {...BASE_PROPS} />);
 
+        await waitFor(() => expect(screen.getByRole('button', { name: 'Uložiť' })).toBeEnabled());
         fireEvent.click(screen.getByRole('button', { name: 'Uložiť' }));
 
         await waitFor(() => {

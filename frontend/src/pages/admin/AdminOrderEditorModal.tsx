@@ -174,9 +174,22 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     const { apiFetch } = useAuth();
     const toast = useToast();
 
+    // "Nová objednávka" na dátum, ktorý už objednávku má (PEKNÁ CESTIČKA,
+    // 16.9.2026 — admin otvoril prázdny formulár na deň s existujúcimi dátami
+    // a POST upsert ich ticho zahodil) sa od tohto miesta ďalej správa ako
+    // edit: `loadedOrder` je objednávka nájdená pre `date`/`prevadzkaId`
+    // pri kontrole nižšie, keď `existingOrder` prop nebol daný rovno.
+    const [loadedOrder, setLoadedOrder] = useState<ExistingOrder | null>(null);
+    const [orderLookupState, setOrderLookupState] = useState<'checking' | 'ok' | 'error'>(
+        existingOrder ? 'ok' : 'checking',
+    );
+    // Cieľ uloženia: explicitný `existingOrder` prop (klik na ceruzku v histórii)
+    // má prednosť, inak práve nájdená objednávka z kontroly nižšie.
+    const effectiveExistingOrder = existingOrder ?? loadedOrder;
+
     const categories = useMemo(
-        () => buildCategories(portionTypeNames, existingOrder),
-        [portionTypeNames, existingOrder],
+        () => buildCategories(portionTypeNames, effectiveExistingOrder),
+        [portionTypeNames, effectiveExistingOrder],
     );
     const emptyMeal = useMemo(() => OrderService.createEmptyMealFor(categories), [categories]);
     const [date, setDate] = useState<string>(existingOrder?.date ?? OrderService.toLocalDateString(new Date()));
@@ -242,6 +255,70 @@ const AdminOrderEditorModal: React.FC<Props> = ({
             active = false;
         };
     }, [apiFetch, date]);
+
+    // Prepíše rozpracovaný formulár dátami z `loaded` (nájdenej objednávky) alebo
+    // ho vyprázdni (`loaded === null`) — rovnaké stavebnice ako počiatočný
+    // `useState` vyššie, len spustiteľné aj po mounte, keď kontrola nižšie
+    // dobehne alebo keď admin zmení dátum na deň bez/s objednávkou.
+    const applyOrderSnapshot = (loaded: ExistingOrder | null) => {
+        const cats = buildCategories(portionTypeNames, loaded);
+        const initial = buildInitialOrder(cats, loaded);
+        setOrder(initial);
+        setActiveMeals({
+            breakfast: !OrderService.isMealEmpty(initial.breakfast),
+            lunch: !OrderService.isMealEmpty(initial.lunch),
+            olovrant: !OrderService.isMealEmpty(initial.olovrant),
+        });
+        setFullDayData(
+            firstVisibleMealKey
+                ? OrderService.fastCopy(initial[firstVisibleMealKey])
+                : OrderService.createEmptyMealFor(cats),
+        );
+        setSpecialDietNote(
+            typeof loaded?.data?.special_diet_note === 'string' ? loaded.data.special_diet_note : '',
+        );
+        setFullDayOrder(false);
+    };
+
+    // Len v "Nová objednávka" režime (existujúci `existingOrder` prop = admin
+    // otvoril editor cez ceruzku, dátum sa už nemení) — pri každej zmene dátumu
+    // overíme, či prevádzka na tento deň náhodou nemá objednávku (od klienta,
+    // cronu, alebo iného admin zápisu). Ak áno, formulár sa predvyplní jej
+    // dátami a uloženie ide cez PATCH namiesto POST — inak by POST upsert
+    // (`serializers.py: create()`) potichu prepísal netknuté chody prázdnymi
+    // dátami z formulára (PEKNÁ CESTIČKA, 16.9.2026 — zmizlo objednané Menu C).
+    useEffect(() => {
+        if (existingOrder) return;
+        let active = true;
+        setOrderLookupState('checking');
+
+        const checkExistingOrder = async () => {
+            try {
+                const res = await apiFetch(
+                    `${API_URL}/orders/by-date/${date}/?prevadzka=${encodeURIComponent(String(prevadzkaId))}`,
+                );
+                if (!res.ok) throw new Error('order lookup failed');
+                const payload = await res.json() as { id?: number; data?: ExistingOrder['data'] };
+                if (!active) return;
+                const found: ExistingOrder | null = payload?.id
+                    ? { id: payload.id, date, data: payload.data ?? {} }
+                    : null;
+                applyOrderSnapshot(found);
+                setLoadedOrder(found);
+                setOrderLookupState('ok');
+            } catch {
+                // Pri chybe radšej zablokujeme uloženie (viď render nižšie), než
+                // riskovať POST cez deň, ktorý objednávku možno už má.
+                if (active) setOrderLookupState('error');
+            }
+        };
+
+        void checkExistingOrder();
+        return () => {
+            active = false;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [apiFetch, date, prevadzkaId, existingOrder]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -402,6 +479,13 @@ const AdminOrderEditorModal: React.FC<Props> = ({
     };
 
     const handleSave = async () => {
+        // Uložiť je v "Nová objednávka" režime disabled, kým `orderLookupState`
+        // nie je 'ok' (viď render nižšie) — táto vetva je len poistka pre
+        // programové volanie mimo UI, nikdy by nemala nastať cez klik.
+        if (!existingOrder && orderLookupState !== 'ok') {
+            toast.error('Najprv over, či na tento deň už objednávka existuje.');
+            return;
+        }
         let effectiveClosedState = closedState;
         if (effectiveClosedState === 'checking') {
             try {
@@ -442,8 +526,8 @@ const AdminOrderEditorModal: React.FC<Props> = ({
 
             const query = clientId ? `?user_id=${encodeURIComponent(String(clientId))}` : '';
 
-            if (existingOrder) {
-                const res = await apiFetch(`${API_URL}/orders/${existingOrder.id}/?prevadzka=${encodeURIComponent(String(prevadzkaId))}`, {
+            if (effectiveExistingOrder) {
+                const res = await apiFetch(`${API_URL}/orders/${effectiveExistingOrder.id}/?prevadzka=${encodeURIComponent(String(prevadzkaId))}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ data: payloadData, prevadzka: prevadzkaId, touched_meals: touchedMealsPayload }),
@@ -542,7 +626,19 @@ const AdminOrderEditorModal: React.FC<Props> = ({
                     </div>
                 )}
 
-                {(closedState === 'open' || closedState === 'checking') && <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, pointerEvents: closedState === 'checking' ? 'none' : undefined, opacity: closedState === 'checking' ? 0.55 : 1 }}>
+                {orderLookupState === 'checking' && (
+                    <div role="status" style={{ padding: '24px', color: 'var(--ink-3)' }}>
+                        Overujem, či na tento deň už objednávka neexistuje…
+                    </div>
+                )}
+
+                {orderLookupState === 'error' && (
+                    <div role="alert" style={{ margin: '20px 24px', padding: 16, borderRadius: 12, background: 'rgba(185, 28, 28, 0.08)', color: 'var(--red-700)', fontWeight: 700 }}>
+                        Nepodarilo sa overiť, či na tento deň už objednávka existuje. Úpravy sú zablokované.
+                    </div>
+                )}
+
+                {(closedState === 'open' || closedState === 'checking') && orderLookupState !== 'error' && <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16, pointerEvents: (closedState === 'checking' || orderLookupState === 'checking') ? 'none' : undefined, opacity: (closedState === 'checking' || orderLookupState === 'checking') ? 0.55 : 1 }}>
                     <OrderFormBody
                         categories={categories}
                         visibleMealsList={visibleMealsList}
@@ -661,8 +757,8 @@ const AdminOrderEditorModal: React.FC<Props> = ({
 
                 <div className="zpa-modal-foot">
                     <Button variant="ghost" onClick={onClose}>Zrušiť</Button>
-                    {(closedState === 'open' || closedState === 'checking') && (
-                        <Button onClick={handleSave} disabled={saving}>
+                    {(closedState === 'open' || closedState === 'checking') && orderLookupState !== 'error' && (
+                        <Button onClick={handleSave} disabled={saving || orderLookupState === 'checking'}>
                             {saving ? 'Ukladám…' : 'Uložiť'}
                         </Button>
                     )}
