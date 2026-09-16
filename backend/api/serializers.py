@@ -717,7 +717,11 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 raise PrevadzkaClosureOrderNotAllowedError()
 
     @staticmethod
-    def _enforce_portion_types(prevadzka: Prevadzka, data: Dict[str, Any]) -> None:
+    def _enforce_portion_types(
+        prevadzka: Prevadzka,
+        data: Dict[str, Any],
+        existing_data: Dict[str, Any] | None = None,
+    ) -> None:
         """Odmietni porcie v kategórii, ktorú prevádzka nemá povolenú.
 
         `visible_portion_types` je M2M s rovnakou sémantikou ako inde v appke:
@@ -732,6 +736,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         }
         if not allowed_names:
             return
+        existing_data = existing_data or {}
         for meal_key, meal in data.items():
             if meal_key == DailyOrderSerializer._SPECIAL_DIET_NOTE_KEY:
                 continue
@@ -743,6 +748,17 @@ class DailyOrderSerializer(serializers.ModelSerializer):
                 if cat_name in allowed_names or not isinstance(cat_data, dict):
                     continue
                 menu_counts = cat_data.get("menuCounts")
+                # Po zúžení viditeľných veľkostí môže staršia objednávka stále
+                # obsahovať už skrytú kategóriu. Klient ju nesmie upraviť ani
+                # pridať, ale nezmenená hodnota nesmie zablokovať submit iného
+                # chodu (napr. po uzávierke raňajok).
+                existing_category = (
+                    existing_data.get(meal_key, {}).get(cat_name)
+                    if isinstance(existing_data.get(meal_key), dict)
+                    else None
+                )
+                if cat_data == existing_category:
+                    continue
                 if isinstance(menu_counts, dict) and any(
                     (count or 0) > 0 for count in menu_counts.values()
                 ):
@@ -900,7 +916,14 @@ class DailyOrderSerializer(serializers.ModelSerializer):
         )
         if input_status != "draft":
             order_data = validated_data.get("data", {})
-            self._enforce_portion_types(prevadzka, order_data)
+            existing_data = (
+                DailyOrder.objects.filter(
+                    prevadzka=prevadzka, date=validated_data["date"]
+                )
+                .values_list("data", flat=True)
+                .first()
+            )
+            self._enforce_portion_types(prevadzka, order_data, existing_data)
             self._enforce_menu_day_restrictions(
                 prevadzka, validated_data["date"], order_data
             )
@@ -1089,7 +1112,7 @@ class DailyOrderSerializer(serializers.ModelSerializer):
             )
 
         if input_status != "draft" and instance.prevadzka_id:
-            self._enforce_portion_types(instance.prevadzka, new_data)
+            self._enforce_portion_types(instance.prevadzka, new_data, instance.data)
             self._enforce_menu_day_restrictions(
                 instance.prevadzka, instance.date, new_data
             )
