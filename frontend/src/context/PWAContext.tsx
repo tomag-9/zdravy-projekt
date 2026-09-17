@@ -10,6 +10,16 @@
  *  - swRegistration
  *  - updateAvailable – a new SW version is waiting
  *  - applyUpdate   – activates the waiting SW and reloads
+ *
+ * Update policy: as soon as a new SW version is detected, it is applied
+ * immediately (forced reload) — regardless of standalone/browser mode.
+ * A stale tab left open across a deploy must not keep running old JS: it
+ * previously reproduced a data-loss bug (unrelated form edit silently
+ * zeroed an unrelated hidden field) that had already been fixed and
+ * deployed, because the open tab was still on the pre-fix bundle
+ * (Emjoy, 17.9.2026 — see incident writeup). `updateAvailable` stays
+ * exposed only so `PWAUpdateBanner` can show a brief "updating…" notice
+ * during the short window before the reload happens.
  */
 
 import React, {
@@ -97,6 +107,16 @@ export function PWAProvider({ children }: { children: React.ReactNode }) {
       applyUpdate(registrationRef.current);
     }
   }, []);
+
+  // Force-apply as soon as both pieces are known. Depending on timing, the
+  // "update waiting" callback can fire before swRegistration is stored in
+  // state (waiting SW already present on load) or after (update found mid
+  // session) — re-running on either change covers both orders.
+  useEffect(() => {
+    if (updateAvailable && swRegistration) {
+      applyUpdate(swRegistration);
+    }
+  }, [updateAvailable, swRegistration]);
 
   return (
     <PWAContext.Provider

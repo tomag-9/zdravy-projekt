@@ -1,29 +1,25 @@
 /**
  * PWAUpdateBanner
  *
- * Shown when a new version of the Service Worker is waiting.
- * Clicking "Aktualizovať" triggers skipWaiting and reloads the page.
+ * Purely informational: PWAProvider applies a waiting SW update immediately
+ * on its own (forced reload, no click needed — a stale open tab must never
+ * keep running pre-fix JS after a deploy). This just shows a brief notice
+ * for the short window before that reload happens.
  */
 
 import { usePWA } from '../hooks/usePWA';
 
 export default function PWAUpdateBanner() {
-  const { updateAvailable, applyUpdate, isStandalone } = usePWA();
+  const { updateAvailable, isStandalone } = usePWA();
 
-  // In standalone (installed PWA) mode, AppContent handles updates automatically
+  // Standalone (installed PWA, e.g. kitchen tablet) reloads silently.
   if (!updateAvailable || isStandalone) return null;
 
   return (
-    <div className="fixed top-0 inset-x-0 z-50 bg-blue-600 text-white px-4 py-3 flex items-center justify-between gap-3 shadow-md">
+    <div className="fixed top-0 inset-x-0 z-50 bg-blue-600 text-white px-4 py-3 text-center shadow-md">
       <p className="text-sm font-medium">
-        Dostupná nová verzia aplikácie.
+        Aktualizujem na novú verziu…
       </p>
-      <button
-        onClick={applyUpdate}
-        className="shrink-0 px-3 py-1 bg-white text-blue-700 text-sm font-semibold rounded-lg hover:bg-blue-50 transition-colors"
-      >
-        Aktualizovať
-      </button>
     </div>
   );
 }
