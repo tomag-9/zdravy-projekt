@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.5.1...v5.5.2) (2026-09-17)
+
+
+### Bug Fixes
+
+* **pwa:** vynútiť reload na novú verziu vo všetkých módoch ([17cc28e](https://github.com/tomag-9/zdravy-projekt/commit/17cc28efff4d73ce097abb2ec299e077a0c2f9ec))
+
 ## [5.5.1](https://github.com/tomag-9/zdravy-projekt/compare/v5.5.0...v5.5.1) (2026-09-16)
 
 
