@@ -17,7 +17,6 @@ import ReadOnlyNotice from "./pages/admin/ReadOnlyNotice";
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { ToastProvider } from "./context/ToastContext";
 import { PWAProvider } from "./context/PWAContext";
-import { usePWA } from "./hooks/usePWA";
 import { usePushNotifications } from "./hooks/usePushNotifications";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import NotificationGuard from "./components/NotificationGuard";
@@ -218,13 +217,12 @@ export function ClientInstallPrompt() {
 /**
  * AppContent — shown inside all providers.
  * Displays AppLoadingScreen while auth is initialising.
- * In standalone (PWA) mode, SW updates are applied automatically as a
- * fire-and-forget (page reloads when ready; no risk of blocking the UI).
+ * SW updates are applied automatically by PWAProvider itself (forced
+ * reload, any mode) — nothing to do with updateAvailable/applyUpdate here.
  */
 function AppContent({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const { isLoading, user } = useAuth();
-  const { updateAvailable, applyUpdate, isStandalone } = usePWA();
   const [maintenance, setMaintenance] = useState<MaintenanceSettings | null>(null);
   const [now, setNow] = useState(Date.now);
 
@@ -245,11 +243,6 @@ function AppContent({ children }: { children: React.ReactNode }) {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
-
-  // Fire-and-forget: no state involved, so a stuck loading screen is impossible
-  if (updateAvailable && isStandalone) {
-    applyUpdate();
-  }
 
   if (isLoading) {
     return <AppLoadingScreen status="Načítavam..." />;
