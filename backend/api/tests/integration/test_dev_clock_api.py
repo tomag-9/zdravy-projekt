@@ -52,7 +52,10 @@ class TestDevClockPermissions:
     def test_requires_authentication(self, api_client, settings):
         settings.DEV_CLOCK_ENABLED = True
         res = api_client.get(DEV_CLOCK_URL)
-        assert res.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
+        assert res.status_code in (
+            status.HTTP_401_UNAUTHORIZED,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_plain_admin_forbidden(self, plain_admin_client, settings):
         settings.DEV_CLOCK_ENABLED = True

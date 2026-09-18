@@ -66,7 +66,9 @@ class TestGetSetOverride:
 
     def test_set_none_clears_override(self, settings):
         settings.DEV_CLOCK_ENABLED = True
-        dev_clock.set_dev_clock_override(timezone.make_aware(datetime.datetime(2026, 9, 20, 8, 0)))
+        dev_clock.set_dev_clock_override(
+            timezone.make_aware(datetime.datetime(2026, 9, 20, 8, 0))
+        )
         dev_clock.set_dev_clock_override(None)
         assert dev_clock.get_dev_clock_override() is None
 
