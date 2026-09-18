@@ -169,6 +169,19 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
     // (user 2.9.2026). Aktualizuje sa pri načítaní objednávky zo servera a po
     // úspešnom submite; medzitýmové lokálne úpravy ho nemenia.
     const restrictedMenuCeilingsRef = useRef<Record<string, number>>({});
+    // Presné polia (chod|kategória|pole), ktoré klient v TEJTO session reálne
+    // upravil — na rozdiel od `touchedMeals` (celý chod) umožňuje submitu
+    // poslať pre "touched" chod len skutočne zmenené menu/diéty, zvyšok chodu
+    // zliať z čerstvých serverových dát. `${mealKey}|*` = celý chod nahradený
+    // lokálne (kopírovanie z iného dňa, "Vymazať", vypnutie chodu) — tam sa
+    // zámerne berie celý lokálny obsah, nie len jednotlivé polia (Emjoy/
+    // Šenkvice, 18.9.2026: doobjednanie Menu A na chode s existujúcim Menu
+    // B/C predtým poslalo CELÝ lokálny (v tom momente ešte B/C-prázdny) chod
+    // namiesto zliatia so serverom — viď `mergeMealOntoServer`).
+    const touchedFieldsRef = useRef<Set<string>>(new Set());
+    const markMealFullyTouched = (mealKey: string) => {
+        touchedFieldsRef.current.add(`${mealKey}|*`);
+    };
     // Promise pre aktuálne prebiehajúci (alebo posledný dobehnutý) GET
     // objednávky pre (selectedDate, activePrevadzkaId) — `submitOrder` naň
     // čaká, aby nedotknuté jedlo neposlal so starým localStorage draftom
@@ -268,6 +281,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
         loadedPrevadzkaIdRef.current = activePrevadzkaId;
         setTouchedMeals(new Set());
+        touchedFieldsRef.current = new Set();
         setAutomaticMeals(new Set());
         setExplicitlyOpenedMeals(new Set());
         setActiveMeals(newActive);
@@ -799,6 +813,11 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
+        touchedFieldsRef.current.add(`${mealKey}|${category}|diet:${diet}`);
+        // `updateDiet` v OrderService prepočíta aj menuCounts.A (diéty sú
+        // podmnožina Menu A) — treba ho preto tiež označiť ako touched, inak
+        // by ho zlúčenie so serverom pri submite prepísalo starou hodnotou.
+        touchedFieldsRef.current.add(`${mealKey}|${category}|menu:A`);
         notifyPackSeparatelyAdjustments(
             currentOrder,
             OrderService.updateDiet(currentOrder, mealKey, category, diet, count),
@@ -824,6 +843,10 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
+        // Balenie zvlášť sa mení naraz s druhým poľom (`otherField` clamp v
+        // OrderService), tak sa celá kategória berie ako lokálne autoritatívna
+        // namiesto rozpitvávania na jednotlivé pack polia.
+        touchedFieldsRef.current.add(`${mealKey}|${category}|pack`);
         setCurrentOrder((prev) => ({ ...OrderService.updatePackSeparately(prev, mealKey, category, kind, key, count, target), status: 'draft' }));
     };
 
@@ -838,6 +861,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
+        markMealFullyTouched(mealKey);
         setCurrentOrder((prev) => ({
             ...prev,
             [mealKey]: OrderService.createEmptyMeal(),
@@ -856,6 +880,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.delete(mealKey);
             return next;
         });
+        touchedFieldsRef.current.delete(`${mealKey}|*`);
         setAutomaticMeals(prev => new Set(prev).add(mealKey));
         // Inak by otvorená karta spustila lazy-copy a hneď sa znovu označila
         // ako manuálne upravená.
@@ -887,8 +912,17 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
 
         const mealData = (key: 'breakfast' | 'lunch' | 'olovrant') => {
             if (fullDayOrder) return fullDayData;
-            if (freshOrder && !touchedMeals.has(key)) return freshOrder[key];
-            return currentOrder[key];
+            if (!freshOrder) return currentOrder[key];
+            if (!touchedMeals.has(key)) return freshOrder[key];
+            // Chod je "touched", ale servera sa nezahadzuje — zlúč naň len
+            // konkrétne polia, ktoré klient v tejto session reálne upravil
+            // (viď `OrderService.mergeMealOntoServer`).
+            return OrderService.mergeMealOntoServer(
+                freshOrder[key],
+                currentOrder[key],
+                key,
+                touchedFieldsRef.current,
+            );
         };
 
         const mealKeys = ['breakfast', 'lunch', 'olovrant'] as const;
@@ -1100,6 +1134,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
+        touchedFieldsRef.current.add(`${mealKey}|${category}|menu:${menuType}`);
         notifyPackSeparatelyAdjustments(
             currentOrder,
             OrderService.updateMenuCount(currentOrder, mealKey, category, menuType, clampedCount),
@@ -1138,6 +1173,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
                     }));
                     setActiveMeals(prev => ({ ...prev, breakfast: true }));
                     setTouchedMeals(prev => { const n = new Set(prev); n.add('breakfast'); return n; });
+                    markMealFullyTouched('breakfast');
                     return true;
                 }
             } catch (e) { logger.error(e); }
@@ -1155,6 +1191,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         }));
         setActiveMeals(prev => ({ ...prev, lunch: true }));
         setTouchedMeals(prev => { const n = new Set(prev); n.add('lunch'); return n; });
+        markMealFullyTouched('lunch');
         return true;
     };
 
@@ -1168,6 +1205,7 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
         }));
         setActiveMeals(prev => ({ ...prev, olovrant: true }));
         setTouchedMeals(prev => { const n = new Set(prev); n.add('olovrant'); return n; });
+        markMealFullyTouched('olovrant');
         return true;
     };
 
