@@ -28,6 +28,9 @@ from .delivery_views import (
     DeliveryRouteViewSet,
 )
 
+# Dev-only testovací posun času
+from .dev_clock_views import DevClockView
+
 # Diet views
 from .diet_views import DietViewSet
 
@@ -65,8 +68,6 @@ from .prevadzka_closure_views import (
     AdminPrevadzkaClosureViewSet,
     PrevadzkaClosureListViewSet,
 )
-
-# Push notification views
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
 
 # Report views
@@ -134,4 +135,6 @@ __all__ = [
     "AdminSendPushView",
     # Inbox
     "InboxViewSet",
+    # Dev-only testovací posun času
+    "DevClockView",
 ]

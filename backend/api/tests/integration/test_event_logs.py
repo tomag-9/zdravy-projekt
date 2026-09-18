@@ -72,6 +72,25 @@ def test_event_log_endpoint_rejects_invalid_filters(admin_client):
     response = admin_client.get("/api/admin/event-logs/?actor=invalid")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
+
+@pytest.mark.django_db
+def test_order_event_log_source_filter_can_hide_edupage(admin_client, admin_user):
+    log_event(
+        EventLog.EventType.ORDER_ADMIN_UPDATE,
+        actor_label="EduPage",
+        summary="EduPage upravil objednávku.",
+    )
+    manual = log_event(
+        EventLog.EventType.ORDER_ADMIN_UPDATE,
+        actor=admin_user,
+        summary="Admin upravil objednávku.",
+    )
+
+    response = admin_client.get("/api/admin/event-logs/?source=non_edupage")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert [row["id"] for row in response.json()["results"]] == [manual.pk]
+
     response = admin_client.get("/api/admin/event-logs/?date_from=02-08-2026")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 

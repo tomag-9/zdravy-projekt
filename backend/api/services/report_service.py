@@ -109,6 +109,7 @@ class ReportService:
             prevadzka_id=OuterRef("prevadzka_id"),
             date=OuterRef("date"),
             source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+            merged_at__isnull=True,
         ).values("data")[:1]
         orders = DailyOrder.objects.filter(date=target_date).annotate(
             _external_order_data=Subquery(external_data)

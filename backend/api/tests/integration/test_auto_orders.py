@@ -21,11 +21,13 @@ from api.models import (
     ClosedDay,
     DailyOrder,
     EventLog,
+    ExternalOrderSnapshot,
     Prevadzka,
     ProfileCelokAccess,
     ProfilePrevadzkaAccess,
     UserProfile,
 )
+from api.order_data import OrderData, effective_order_data
 from api.services import (
     _build_auto_data,
     _is_order_empty,
@@ -33,6 +35,7 @@ from api.services import (
     _next_workday,
     apply_auto_orders,
 )
+from api.tasks import apply_auto_orders_task
 
 pytestmark = pytest.mark.integration
 
@@ -944,6 +947,49 @@ class TestAutoOrderTemplateSelection:
         assert all(
             item["predictedTotal"] == 0 for item in response.data if not item["exists"]
         )
+
+
+@pytest.mark.django_db
+def test_lunch_deadline_merges_sa_snapshot_into_final_daily_order(user):
+    """After lunch/olovrant closes, Stromček receives one final order document.
+
+    The original EduPage snapshot remains available for audit but is marked as
+    merged, so report readers cannot add the same six children a second time.
+    """
+    prevadzka = user.profile.dostupne_prevadzky().get()
+    app_data = {"lunch": {"Škôlka": {"menuCounts": {"A": 10}, "diets": {}}}}
+    external_data = {
+        "lunch": {"Predškolák": {"menuCounts": {"A": 6}, "diets": {}}},
+        "olovrant": {"Predškolák": {"menuCounts": {"A": 6}, "diets": {}}},
+    }
+    order = DailyOrder.objects.create(
+        user=user, prevadzka=prevadzka, date=TUESDAY, data=app_data
+    )
+    snapshot = ExternalOrderSnapshot.objects.create(
+        prevadzka=prevadzka,
+        date=TUESDAY,
+        source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+        data=external_data,
+    )
+
+    apply_auto_orders_task.run(
+        date_str=TUESDAY.isoformat(), meal_types=["lunch", "olovrant"]
+    )
+
+    order.refresh_from_db()
+    snapshot.refresh_from_db()
+    assert order.data["lunch"]["Škôlka"]["menuCounts"]["A"] == 10
+    assert order.data["lunch"]["Predškolák"]["menuCounts"]["A"] == 6
+    assert order.data["olovrant"]["Predškolák"]["menuCounts"]["A"] == 6
+    assert snapshot.merged_at is not None
+    assert OrderData(effective_order_data(order)).totals()[0] == 22
+    event = EventLog.objects.get(
+        prevadzka=prevadzka,
+        actor_label="EduPage Libellus sA (uzávierka)",
+    )
+    assert "Predškolák" in event.summary
+    assert event.payload["source"] == "edupage_sa"
+    assert event.payload["meal_counts"] == {"lunch": 6, "olovrant": 6}
 
 
 @pytest.mark.django_db

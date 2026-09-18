@@ -362,6 +362,7 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
         ).strip()
         prevadzka = self.request.query_params.get("prevadzka", "").strip()
         actor = self.request.query_params.get("actor", "").strip()
+        source = self.request.query_params.get("source", "").strip()
         date_from = self.request.query_params.get("date_from", "").strip()
         date_to = self.request.query_params.get("date_to", "").strip()
         ordering = self.request.query_params.get("ordering", "-created_at")
@@ -393,6 +394,15 @@ class AdminEventLogViewSet(viewsets.ReadOnlyModelViewSet):
             except ValueError as exc:
                 raise ValidationError({"actor": "Must be an integer."}) from exc
             queryset = queryset.filter(actor_id=actor_id)
+        if source:
+            if source not in {"edupage", "non_edupage"}:
+                raise ValidationError({"source": "Use edupage or non_edupage."})
+            edupage_events = Q(actor_label__istartswith="EduPage")
+            queryset = (
+                queryset.filter(edupage_events)
+                if source == "edupage"
+                else queryset.exclude(edupage_events)
+            )
         if date_from:
             parsed_from = parse_date(date_from)
             if parsed_from is None:

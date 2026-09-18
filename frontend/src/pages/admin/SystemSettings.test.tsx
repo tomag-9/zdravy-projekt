@@ -295,3 +295,141 @@ describe('SystemSettings - údržba', () => {
         expect(screen.getByText('Nie je nastavená')).toBeInTheDocument();
     });
 });
+
+describe('SystemSettings - Dev clock (testovací posun času)', () => {
+    const baseSettings = {
+        deadline_breakfast: '10:00', deadline_breakfast_is_day_before: false,
+        deadline_lunch: '10:00', deadline_lunch_is_day_before: false,
+        deadline_olovrant: '10:00', deadline_olovrant_is_day_before: false,
+        edupage_auto_scrape_enabled: true, report_email_recipients: [],
+        client_contact_name: '', client_contact_role: '', client_contact_email: '', client_contact_phone: '',
+        maintenance_enabled: false, maintenance_starts_at: null, maintenance_ends_at: null,
+    };
+
+    function mockFetchFor(devClockResponses: {
+        get?: { status: number; body: unknown };
+    }) {
+        mockApiFetch.mockReset();
+        mockApiFetch.mockImplementation((url: string, options?: RequestInit) => {
+            if (url.includes('/admin/dev-clock/')) {
+                const method = options?.method ?? 'GET';
+                if (method === 'GET') {
+                    const resp = devClockResponses.get ?? { status: 404, body: {} };
+                    return Promise.resolve({
+                        ok: resp.status < 300,
+                        status: resp.status,
+                        json: async () => resp.body,
+                    });
+                }
+                // POST/DELETE echo back an "enabled" state — individual tests
+                // override this via a follow-up mockImplementationOnce if needed.
+                return Promise.resolve({
+                    ok: true,
+                    status: 200,
+                    json: async () => ({
+                        enabled: true,
+                        override: method === 'DELETE' ? null : '2026-09-20T08:00:00+00:00',
+                        effective_now: '2026-09-20T08:00:00+00:00',
+                        real_now: '2026-09-18T10:00:00+00:00',
+                    }),
+                });
+            }
+            return Promise.resolve({
+                ok: true,
+                json: async () => (options?.method === 'POST' ? {} : baseSettings),
+            });
+        });
+    }
+
+    it('does not show the "Dev hodiny" tab when the backend endpoint is disabled (404)', async () => {
+        mockFetchFor({ get: { status: 404, body: {} } });
+        render(<SystemSettings />);
+
+        await screen.findByRole('button', { name: 'Časy' });
+        expect(screen.queryByRole('button', { name: 'Dev hodiny' })).not.toBeInTheDocument();
+    });
+
+    it('shows the "Dev hodiny" tab and the real/effective time when enabled', async () => {
+        mockFetchFor({
+            get: {
+                status: 200,
+                body: {
+                    enabled: true,
+                    override: null,
+                    effective_now: '2026-09-18T10:00:00+00:00',
+                    real_now: '2026-09-18T10:00:00+00:00',
+                },
+            },
+        });
+        const user = userEvent.setup();
+        render(<SystemSettings />);
+
+        const tab = await screen.findByRole('button', { name: 'Dev hodiny' });
+        await user.click(tab);
+
+        expect(await screen.findByText(/Reálny čas:/)).toBeInTheDocument();
+        expect(screen.queryByText(/Testovací čas je aktívny/i)).not.toBeInTheDocument();
+    });
+
+    it('sets a test-clock override and shows it as active', async () => {
+        mockFetchFor({
+            get: {
+                status: 200,
+                body: {
+                    enabled: true,
+                    override: null,
+                    effective_now: '2026-09-18T10:00:00+00:00',
+                    real_now: '2026-09-18T10:00:00+00:00',
+                },
+            },
+        });
+        const user = userEvent.setup();
+        render(<SystemSettings />);
+
+        await user.click(await screen.findByRole('button', { name: 'Dev hodiny' }));
+        const input = await screen.findByLabelText(/Nastaviť dátum a čas/i);
+        await user.clear(input);
+        await user.type(input, '2026-09-20T08:00');
+        await user.click(screen.getByRole('button', { name: 'Nastaviť testovací čas' }));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith(
+                expect.stringContaining('/admin/dev-clock/'),
+                expect.objectContaining({
+                    method: 'POST',
+                    body: expect.stringContaining('2026-09-20T08:00'),
+                }),
+            );
+        });
+        expect(await screen.findByText(/Testovací čas je aktívny/i)).toBeInTheDocument();
+    });
+
+    it('clears the override and returns to the real clock', async () => {
+        mockFetchFor({
+            get: {
+                status: 200,
+                body: {
+                    enabled: true,
+                    override: '2026-09-20T08:00:00+00:00',
+                    effective_now: '2026-09-20T08:00:00+00:00',
+                    real_now: '2026-09-18T10:00:00+00:00',
+                },
+            },
+        });
+        const user = userEvent.setup();
+        render(<SystemSettings />);
+
+        await user.click(await screen.findByRole('button', { name: 'Dev hodiny' }));
+        expect(await screen.findByText(/Testovací čas je aktívny/i)).toBeInTheDocument();
+
+        await user.click(screen.getByRole('button', { name: 'Vrátiť na reálny čas' }));
+
+        await waitFor(() => {
+            expect(mockApiFetch).toHaveBeenCalledWith(
+                expect.stringContaining('/admin/dev-clock/'),
+                expect.objectContaining({ method: 'DELETE' }),
+            );
+        });
+        expect(screen.queryByText(/Testovací čas je aktívny/i)).not.toBeInTheDocument();
+    });
+});

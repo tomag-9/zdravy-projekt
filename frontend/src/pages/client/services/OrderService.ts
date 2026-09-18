@@ -259,6 +259,72 @@ class OrderService {
         };
     }
 
+    /**
+     * Zlúči jeden chod pre submit: čerstvé serverové dáta ako základ, na vrch
+     * prelej LEN tie konkrétne polia (menu počet / diéta / balenie zvlášť
+     * jednej kategórie), ktoré klient v tejto session reálne upravil
+     * (`touchedFields`, kľúče `${mealKey}|${category}|menu:<písmeno>` /
+     * `diet:<názov>` / `pack:zvlast` / `pack:gn`). Bez tohto by "touched" chod poslal svoj celý
+     * lokálny stav — a keby bol lokálny stav v momente úpravy ešte
+     * pred-fetchový (prázdny), potichu by vynuloval Menu B/C, ktoré tam
+     * server má, ale klient sa ho v tejto session vôbec nedotkol (Emjoy/
+     * Šenkvice, 18.9.2026: doobjednanie Menu A na obede s existujúcim
+     * B/C zmazalo B/C, lebo lokálny stav pri kliknutí ešte nemal server
+     * dáta stiahnuté).
+     *
+     * `${mealKey}|*` v `touchedFields` znamená "celý chod je lokálne
+     * autoritatívny" (kopírovanie z iného dňa, "Vymazať", vypnutie
+     * neprázdneho chodu) — vtedy sa vôbec nezlieva, ide celý `localMeal`.
+     */
+    static mergeMealOntoServer(
+        serverMeal: MealData | undefined,
+        localMeal: MealData,
+        mealKey: string,
+        touchedFields: ReadonlySet<string>,
+    ): MealData {
+        if (!serverMeal || touchedFields.has(`${mealKey}|*`)) {
+            return localMeal;
+        }
+
+        const categories = new Set([
+            ...Object.keys(serverMeal),
+            ...Object.keys(localMeal || {}),
+        ]);
+        const result: MealData = {};
+
+        categories.forEach((category) => {
+            const serverCat = serverMeal[category] ?? this.createEmptyCategory();
+            const localCat = localMeal?.[category] ?? this.createEmptyCategory();
+            const prefix = `${mealKey}|${category}|`;
+
+            const menuCounts: MenuCounts = { ...serverCat.menuCounts };
+            Object.keys(localCat.menuCounts || {}).forEach((menuType) => {
+                if (touchedFields.has(`${prefix}menu:${menuType}`)) {
+                    menuCounts[menuType] = localCat.menuCounts[menuType];
+                }
+            });
+
+            const diets: DietCounts = { ...serverCat.diets };
+            Object.keys(localCat.diets || {}).forEach((diet) => {
+                if (touchedFields.has(`${prefix}diet:${diet}`)) {
+                    diets[diet] = localCat.diets[diet];
+                }
+            });
+
+            const packSeparatelyTouched = touchedFields.has(`${prefix}pack:zvlast`);
+            const packSeparatelyGnTouched = touchedFields.has(`${prefix}pack:gn`);
+
+            result[category] = {
+                menuCounts,
+                diets,
+                packSeparately: packSeparatelyTouched ? localCat.packSeparately : serverCat.packSeparately,
+                packSeparatelyGn: packSeparatelyGnTouched ? localCat.packSeparatelyGn : serverCat.packSeparatelyGn,
+            };
+        });
+
+        return result;
+    }
+
     static getPackSeparatelyAdjustments(before: CategoryData, after: CategoryData) {
         const adjustments: { kind: 'menus' | 'diets'; key: string; count: number; target: PackTarget }[] = [];
 

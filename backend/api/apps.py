@@ -7,3 +7,6 @@ class ApiConfig(AppConfig):
 
     def ready(self):
         import api.signals  # noqa: F401  registers post_save on GlobalSettings
+        from api.dev_clock import install as install_dev_clock
+
+        install_dev_clock()

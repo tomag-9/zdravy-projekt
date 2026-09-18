@@ -6,7 +6,7 @@ import { logger } from '../../lib/logger';
 import { SECTION, canRead } from '../../lib/sections';
 import { PageHead, Card, CardHead, Button, Field, Input, Modal, Toggle } from './ui';
 
-type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report' | 'maintenance';
+type SettingsTab = 'deadlines' | 'edupage' | 'contact' | 'report' | 'maintenance' | 'dev';
 
 const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'deadlines', label: 'Časy' },
@@ -15,6 +15,15 @@ const TABS: { key: SettingsTab; label: string }[] = [
     { key: 'report', label: 'Denný report' },
     { key: 'maintenance', label: 'Údržba' },
 ];
+
+const DEV_TAB: { key: SettingsTab; label: string } = { key: 'dev', label: 'Dev hodiny' };
+
+interface DevClockState {
+    enabled: boolean;
+    override: string | null;
+    effective_now: string | null;
+    real_now: string | null;
+}
 
 // Priateľský slovenský názov pre needitovateľný prehľad automatických behov
 // nižšie v tabe „Časy" — rovnaký princíp ako `TASK_LABELS_SK` v AdminLogs.tsx
@@ -117,6 +126,9 @@ const SystemSettings: React.FC = () => {
     });
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<SettingsTab>('deadlines');
+    const [devClock, setDevClock] = useState<DevClockState | null>(null);
+    const [devClockOverrideInput, setDevClockOverrideInput] = useState('');
+    const [devClockSaving, setDevClockSaving] = useState(false);
     const [newRecipient, setNewRecipient] = useState('');
     const [scrapeDate, setScrapeDate] = useState(() => {
         const now = new Date();
@@ -288,6 +300,84 @@ const SystemSettings: React.FC = () => {
             error('Chyba pripojenia');
         }
     };
+
+    const fetchDevClock = React.useCallback(async () => {
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/dev-clock/`);
+            if (!res.ok) {
+                // 404 = DEV_CLOCK_ENABLED je vypnuté (prod/staging) — záložka
+                // sa jednoducho nemá zobraziť, nie je to chyba.
+                setDevClock(null);
+                return;
+            }
+            const data = await res.json();
+            setDevClock(data);
+        } catch (e) {
+            logger.error(e);
+            setDevClock(null);
+        }
+    }, [apiFetch]);
+
+    useEffect(() => {
+        fetchDevClock();
+    }, [fetchDevClock]);
+
+    const setDevClockOverride = async () => {
+        if (!devClockOverrideInput) {
+            error('Zadaj dátum a čas.');
+            return;
+        }
+        setDevClockSaving(true);
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/dev-clock/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ datetime: devClockOverrideInput }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setDevClock(data);
+                success('Testovací čas nastavený.');
+            } else {
+                error(data?.detail || 'Nepodarilo sa nastaviť testovací čas.');
+            }
+        } catch (e) {
+            logger.error(e);
+            error('Chyba pripojenia');
+        } finally {
+            setDevClockSaving(false);
+        }
+    };
+
+    const clearDevClockOverride = async () => {
+        setDevClockSaving(true);
+        try {
+            const res = await apiFetch(`${import.meta.env.VITE_API_URL || '/api'}/admin/dev-clock/`, {
+                method: 'DELETE',
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+                setDevClock(data);
+                setDevClockOverrideInput('');
+                success('Vrátené na reálny čas.');
+            } else {
+                error('Nepodarilo sa vrátiť na reálny čas.');
+            }
+        } catch (e) {
+            logger.error(e);
+            error('Chyba pripojenia');
+        } finally {
+            setDevClockSaving(false);
+        }
+    };
+
+    const formatDevClockDate = (iso: string | null) => {
+        if (!iso) return '—';
+        return new Date(iso).toLocaleString('sk-SK', { dateStyle: 'medium', timeStyle: 'medium' });
+    };
+
+    const devClockInputValue = devClockOverrideInput;
+    const devClockActive = Boolean(devClock?.override);
 
     if (loading) return <div className="zpa-empty">Načítavam…</div>;
 
@@ -479,7 +569,7 @@ const SystemSettings: React.FC = () => {
             <PageHead eyebrow="Nastavenia" title="Systémové nastavenia" />
 
             <div className="zpa-tabs" style={{ maxWidth: 'fit-content' }}>
-                {TABS.map((t) => (
+                {(devClock?.enabled ? [...TABS, DEV_TAB] : TABS).map((t) => (
                     <button
                         key={t.key}
                         type="button"
@@ -759,6 +849,43 @@ const SystemSettings: React.FC = () => {
                     <div style={{ paddingTop: 24, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         {maintenanceConfigured ? <Button type="button" variant="danger" onClick={clearMaintenance}>Zmazať údržbu</Button> : <span />}
                         <Button type="button" onClick={saveSettings}>Uložiť údržbu</Button>
+                    </div>
+                </Card>
+                )}
+
+                {activeTab === 'dev' && devClock?.enabled && (
+                <Card pad>
+                    <CardHead title="Testovací posun času" desc="Len na dev prostredí — nastaví zmrazený 'aktuálny' dátum a čas pre celú appku (uzávierky, EduPage plánovanie...), aby sa dala otestovať termínová logika bez čakania na skutočný čas." />
+                    <div style={{ marginTop: 16, padding: '14px 16px', borderRadius: 'var(--radius-md)', background: 'var(--bg-cream-soft)', border: '1px solid var(--line-soft)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                            <strong style={{ fontSize: 14, color: 'var(--green-900)' }}>Stav</strong>
+                            <span className={`zpa-badge zpa-badge--${devClockActive ? 'coral' : 'gray'}`}>
+                                {devClockActive ? 'Testovací čas je aktívny' : 'Beží reálny čas'}
+                            </span>
+                        </div>
+                        <p style={{ margin: '9px 0 0', fontSize: 13, color: 'var(--ink-3)' }}>
+                            Reálny čas: {formatDevClockDate(devClock.real_now)}
+                        </p>
+                        {devClockActive && (
+                            <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--ink-3)' }}>
+                                Nastavený testovací čas: {formatDevClockDate(devClock.override)}
+                            </p>
+                        )}
+                    </div>
+                    <div style={{ marginTop: 20 }}>
+                        <Field label="Nastaviť dátum a čas">
+                            <Input
+                                type="datetime-local"
+                                value={devClockInputValue}
+                                onChange={(e) => setDevClockOverrideInput(e.target.value)}
+                            />
+                        </Field>
+                    </div>
+                    <div style={{ paddingTop: 24, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                        {devClockActive
+                            ? <Button type="button" variant="danger" onClick={clearDevClockOverride} disabled={devClockSaving}>Vrátiť na reálny čas</Button>
+                            : <span />}
+                        <Button type="button" onClick={setDevClockOverride} disabled={devClockSaving}>Nastaviť testovací čas</Button>
                     </div>
                 </Card>
                 )}
