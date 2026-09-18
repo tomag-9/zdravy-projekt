@@ -11,6 +11,7 @@ import {
 
 import { useAuth } from '../../context/auth';
 import { logger } from '../../lib/logger';
+import { fetchAllPages } from '../../lib/pagination';
 import { SECTION, canRead } from '../../lib/sections';
 import { PageHead, Button, Card, Field, Input, Select, SearchBox } from './ui';
 import type { BadgeTone } from './eventLogDisplay';
@@ -133,6 +134,25 @@ interface EventLogsResponse {
     next: string | null;
     previous: string | null;
     results: EventLogEntry[];
+}
+
+interface FilterOption {
+    id: number;
+    label: string;
+}
+
+interface FilterUser {
+    id: number;
+    email: string;
+    first_name?: string;
+    last_name?: string;
+    profile?: { company_name?: string };
+}
+
+interface FilterFacility {
+    id: number;
+    nazov: string;
+    celok_nazov?: string;
 }
 
 interface PushPreview {
@@ -264,6 +284,7 @@ export default function AdminLogs() {
     const [eventCount, setEventCount] = useState(0);
     const [eventType, setEventType] = useState('');
     const [actor, setActor] = useState('');
+    const [actorSearch, setActorSearch] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [eventPage, setEventPage] = useState(1);
@@ -276,6 +297,8 @@ export default function AdminLogs() {
     const [orderCount, setOrderCount] = useState(0);
     const [orderType, setOrderType] = useState('');
     const [orderPrevadzka, setOrderPrevadzka] = useState('');
+    const [orderPrevadzkaSearch, setOrderPrevadzkaSearch] = useState('');
+    const [orderSource, setOrderSource] = useState('');
     const [orderDateFrom, setOrderDateFrom] = useState('');
     const [orderDateTo, setOrderDateTo] = useState('');
     const [orderPage, setOrderPage] = useState(1);
@@ -283,6 +306,34 @@ export default function AdminLogs() {
     const [orderLoading, setOrderLoading] = useState(true);
     const [orderError, setOrderError] = useState<string | null>(null);
     const [expandedOrders, setExpandedOrders] = useState<Set<number>>(() => new Set());
+    const [actorOptions, setActorOptions] = useState<FilterOption[]>([]);
+    const [facilityOptions, setFacilityOptions] = useState<FilterOption[]>([]);
+
+    useEffect(() => {
+        Promise.all([
+            fetchAllPages<FilterUser>(apiFetch, `${API_URL}/admin/users/?page_size=500`),
+            apiFetch(`${API_URL}/admin/facility-prevadzky/`).then(async (res) => {
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return res.json() as Promise<FilterFacility[]>;
+            }),
+        ]).then(([users, facilities]) => {
+            setActorOptions(users.map((item) => ({
+                id: item.id,
+                label: (() => {
+                    const display = [
+                    `${item.first_name ?? ''} ${item.last_name ?? ''}`.trim(),
+                    item.profile?.company_name,
+                    item.email,
+                    ].find(Boolean) ?? item.email;
+                    return display === item.email ? item.email : `${display} — ${item.email}`;
+                })(),
+            })));
+            setFacilityOptions(facilities.map((item) => ({
+                id: item.id,
+                label: item.celok_nazov ? `${item.nazov} — ${item.celok_nazov}` : item.nazov,
+            })));
+        }).catch(() => {});
+    }, [apiFetch]);
 
     const [upcoming, setUpcoming] = useState<UpcomingEventEntry[]>([]);
     const [upcomingLoading, setUpcomingLoading] = useState(true);
@@ -339,6 +390,7 @@ export default function AdminLogs() {
                 event_type: orderType || ORDER_EVENT_TYPES.join(','),
             });
             if (orderPrevadzka.trim()) params.set('prevadzka', orderPrevadzka.trim());
+            if (orderSource) params.set('source', orderSource);
             if (orderDateFrom) params.set('date_from', orderDateFrom);
             if (orderDateTo) params.set('date_to', orderDateTo);
             const res = await apiFetch(`${API_URL}/admin/event-logs/?${params.toString()}`);
@@ -353,7 +405,7 @@ export default function AdminLogs() {
         } finally {
             setOrderLoading(false);
         }
-    }, [apiFetch, orderDateFrom, orderDateTo, orderPage, orderPrevadzka, orderType]);
+    }, [apiFetch, orderDateFrom, orderDateTo, orderPage, orderPrevadzka, orderSource, orderType]);
 
     const fetchSystemLogs = useCallback(async () => {
         setSystemLoading(true);
@@ -475,8 +527,21 @@ export default function AdminLogs() {
                                         {EVENT_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                                     </Select>
                                 </Field>
-                                <Field label="ID aktora">
-                                    <Input type="number" min="1" value={actor} onChange={(e) => setActor(e.target.value)} placeholder="Všetci aktéri" />
+                                <Field label="Aktér">
+                                    <Input
+                                        list="event-actor-options"
+                                        value={actorSearch}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setActorSearch(value);
+                                            setActor(String(actorOptions.find((item) => item.label === value)?.id ?? ''));
+                                            setEventPage(1);
+                                        }}
+                                        placeholder="Začnite písať meno alebo e-mail"
+                                    />
+                                    <datalist id="event-actor-options">
+                                        {actorOptions.map((item) => <option key={item.id} value={item.label} />)}
+                                    </datalist>
                                 </Field>
                                 <div className="zpa-grid-2">
                                     <Field label="Od"><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></Field>
@@ -548,8 +613,28 @@ export default function AdminLogs() {
                                         <option value="order_admin_delete">Zmazanie</option>
                                     </Select>
                                 </Field>
-                                <Field label="ID prevádzky">
-                                    <Input type="number" min="1" value={orderPrevadzka} onChange={(e) => setOrderPrevadzka(e.target.value)} placeholder="Všetky prevádzky" />
+                                <Field label="Prevádzka">
+                                    <Input
+                                        list="order-facility-options"
+                                        value={orderPrevadzkaSearch}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            setOrderPrevadzkaSearch(value);
+                                            setOrderPrevadzka(String(facilityOptions.find((item) => item.label === value)?.id ?? ''));
+                                            setOrderPage(1);
+                                        }}
+                                        placeholder="Začnite písať názov prevádzky"
+                                    />
+                                    <datalist id="order-facility-options">
+                                        {facilityOptions.map((item) => <option key={item.id} value={item.label} />)}
+                                    </datalist>
+                                </Field>
+                                <Field label="Zdroj">
+                                    <Select value={orderSource} onChange={(e) => { setOrderSource(e.target.value); setOrderPage(1); }}>
+                                        <option value="">Všetky zdroje</option>
+                                        <option value="non_edupage">Bez EduPage</option>
+                                        <option value="edupage">Iba EduPage</option>
+                                    </Select>
                                 </Field>
                                 <div className="zpa-grid-2">
                                     <Field label="Od"><Input type="date" value={orderDateFrom} onChange={(e) => setOrderDateFrom(e.target.value)} /></Field>
