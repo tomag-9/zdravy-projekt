@@ -773,5 +773,121 @@ describe('OrderService', () => {
             const merged = OrderService.mergeMealOntoServer(undefined, local, 'lunch', new Set());
             expect(merged).toBe(local);
         });
+
+        it('affects only the touched category, leaving a second untouched category fully server-sourced', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = { ...server['Škôlka'], menuCounts: { ...server['Škôlka'].menuCounts, A: 20 } };
+            server['Dospelý (SŠ)'] = { ...server['Dospelý (SŠ)'], menuCounts: { ...server['Dospelý (SŠ)'].menuCounts, A: 0, B: 1, C: 2 } };
+
+            const local = OrderService.createEmptyMeal();
+            local['Škôlka'] = { ...local['Škôlka'], menuCounts: { ...local['Škôlka'].menuCounts, A: 25 } };
+            // local['Dospelý (SŠ)'] is still the untouched empty default (0/0/0) —
+            // simulates the pre-fetch race where this category was never edited.
+
+            const touched = new Set(['lunch|Škôlka|menu:A']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Škôlka'].menuCounts.A).toBe(25); // client's edit
+            expect(merged['Dospelý (SŠ)'].menuCounts).toMatchObject({ A: 0, B: 1, C: 2 }); // untouched, server wins
+        });
+
+        it('includes a category that only exists locally (server never had it) as-is', () => {
+            const server = OrderService.createEmptyMeal();
+            delete server['Dospelý (SŠ)'];
+
+            const local = OrderService.createEmptyMeal();
+            local['Dospelý (SŠ)'] = { ...local['Dospelý (SŠ)'], menuCounts: { ...local['Dospelý (SŠ)'].menuCounts, A: 4 } };
+
+            const touched = new Set(['lunch|Dospelý (SŠ)|menu:A']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Dospelý (SŠ)'].menuCounts.A).toBe(4);
+        });
+
+        it('keeps a touched menu B but preserves an untouched menu C in the same category', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = { ...server['Škôlka'], menuCounts: { ...server['Škôlka'].menuCounts, A: 10, B: 1, C: 2 } };
+
+            const local = OrderService.createEmptyMeal();
+            local['Škôlka'] = { ...local['Škôlka'], menuCounts: { ...local['Škôlka'].menuCounts, B: 0 } }; // client explicitly cancelled B
+
+            const touched = new Set(['lunch|Škôlka|menu:B']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Škôlka'].menuCounts.B).toBe(0); // client's cancellation wins
+            expect(merged['Škôlka'].menuCounts.C).toBe(2); // untouched C survives from server
+            expect(merged['Škôlka'].menuCounts.A).toBe(10); // untouched A survives from server
+        });
+
+        it('preserves packSeparatelyGn from the server when only packSeparately (zvlast) was touched', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = {
+                ...server['Škôlka'],
+                packSeparately: { menus: {}, diets: {} },
+                packSeparatelyGn: { menus: { A: 3 }, diets: {} },
+            };
+
+            const local = OrderService.createEmptyMeal();
+            local['Škôlka'] = {
+                ...local['Škôlka'],
+                packSeparately: { menus: { A: 2 }, diets: {} },
+                packSeparatelyGn: { menus: {}, diets: {} }, // stale/empty local — must NOT win
+            };
+
+            const touched = new Set(['lunch|Škôlka|pack:zvlast']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Škôlka'].packSeparately).toEqual({ menus: { A: 2 }, diets: {} }); // touched, local wins
+            expect(merged['Škôlka'].packSeparatelyGn).toEqual({ menus: { A: 3 }, diets: {} }); // untouched, server wins
+        });
+
+        it('preserves packSeparately from the server when only packSeparatelyGn was touched (the reverse case)', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = {
+                ...server['Škôlka'],
+                packSeparately: { menus: { A: 3 }, diets: {} },
+                packSeparatelyGn: { menus: {}, diets: {} },
+            };
+
+            const local = OrderService.createEmptyMeal();
+            local['Škôlka'] = {
+                ...local['Škôlka'],
+                packSeparately: { menus: {}, diets: {} }, // stale/empty local — must NOT win
+                packSeparatelyGn: { menus: { A: 1 }, diets: {} },
+            };
+
+            const touched = new Set(['lunch|Škôlka|pack:gn']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Škôlka'].packSeparatelyGn).toEqual({ menus: { A: 1 }, diets: {} }); // touched, local wins
+            expect(merged['Škôlka'].packSeparately).toEqual({ menus: { A: 3 }, diets: {} }); // untouched, server wins
+        });
+
+        it('does not leak a wildcard marker for one meal into a different meal key', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = { ...server['Škôlka'], menuCounts: { ...server['Škôlka'].menuCounts, A: 10, B: 1, C: 2 } };
+
+            const local = OrderService.createEmptyMeal();
+            local['Škôlka'] = { ...local['Škôlka'], menuCounts: { ...local['Škôlka'].menuCounts, A: 99 } };
+
+            // Wildcard is for 'breakfast', we're merging 'lunch' — must NOT apply.
+            const touched = new Set(['breakfast|*']);
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', touched);
+
+            expect(merged['Škôlka'].menuCounts).toMatchObject({ A: 10, B: 1, C: 2 }); // untouched for lunch, server wins
+        });
+
+        it('preserves every server category when the client touched nothing in this meal at all', () => {
+            const server = OrderService.createEmptyMeal();
+            server['Škôlka'] = { ...server['Škôlka'], menuCounts: { ...server['Škôlka'].menuCounts, A: 10, B: 1, C: 2 } };
+            server['Dospelý (SŠ)'] = { ...server['Dospelý (SŠ)'], menuCounts: { ...server['Dospelý (SŠ)'].menuCounts, A: 4, B: 0, C: 1 } };
+
+            const local = OrderService.createEmptyMeal();
+
+            const merged = OrderService.mergeMealOntoServer(server, local, 'lunch', new Set());
+
+            expect(merged['Škôlka'].menuCounts).toMatchObject({ A: 10, B: 1, C: 2 });
+            expect(merged['Dospelý (SŠ)'].menuCounts).toMatchObject({ A: 4, B: 0, C: 1 });
+        });
     });
 });

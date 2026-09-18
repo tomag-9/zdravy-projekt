@@ -264,7 +264,7 @@ class OrderService {
      * prelej LEN tie konkrétne polia (menu počet / diéta / balenie zvlášť
      * jednej kategórie), ktoré klient v tejto session reálne upravil
      * (`touchedFields`, kľúče `${mealKey}|${category}|menu:<písmeno>` /
-     * `diet:<názov>` / `pack`). Bez tohto by "touched" chod poslal svoj celý
+     * `diet:<názov>` / `pack:zvlast` / `pack:gn`). Bez tohto by "touched" chod poslal svoj celý
      * lokálny stav — a keby bol lokálny stav v momente úpravy ešte
      * pred-fetchový (prázdny), potichu by vynuloval Menu B/C, ktoré tam
      * server má, ale klient sa ho v tejto session vôbec nedotkol (Emjoy/
@@ -311,13 +311,14 @@ class OrderService {
                 }
             });
 
-            const packTouched = touchedFields.has(`${prefix}pack`);
+            const packSeparatelyTouched = touchedFields.has(`${prefix}pack:zvlast`);
+            const packSeparatelyGnTouched = touchedFields.has(`${prefix}pack:gn`);
 
             result[category] = {
                 menuCounts,
                 diets,
-                packSeparately: packTouched ? localCat.packSeparately : serverCat.packSeparately,
-                packSeparatelyGn: packTouched ? localCat.packSeparatelyGn : serverCat.packSeparatelyGn,
+                packSeparately: packSeparatelyTouched ? localCat.packSeparately : serverCat.packSeparately,
+                packSeparatelyGn: packSeparatelyGnTouched ? localCat.packSeparatelyGn : serverCat.packSeparatelyGn,
             };
         });
 

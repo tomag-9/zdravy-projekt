@@ -843,10 +843,10 @@ export const useOrder = (activePrevadzkaId?: number, waitForPrevadzkaChoice = fa
             next.add(mealKey);
             return next;
         });
-        // Balenie zvlášť sa mení naraz s druhým poľom (`otherField` clamp v
-        // OrderService), tak sa celá kategória berie ako lokálne autoritatívna
-        // namiesto rozpitvávania na jednotlivé pack polia.
-        touchedFieldsRef.current.add(`${mealKey}|${category}|pack`);
+        // `updatePackSeparately` mení len `packSeparately`/`packSeparatelyGn`
+        // podľa `target` — druhé pole len ČÍTA (kapacitný limit), nemení ho —
+        // touch je preto oprávnene per-target, nie celá kategória.
+        touchedFieldsRef.current.add(`${mealKey}|${category}|pack:${target}`);
         setCurrentOrder((prev) => ({ ...OrderService.updatePackSeparately(prev, mealKey, category, kind, key, count, target), status: 'draft' }));
     };
 

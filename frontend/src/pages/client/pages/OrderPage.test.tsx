@@ -1847,18 +1847,21 @@ describe("OrderPage Logic & Triggers", () => {
     });
   });
 
-  // ── Editácia toho istého chodu PRED dobehnutím GET stále vynuluje B/C
+  // ── Editácia toho istého chodu PRED dobehnutím GET už nevynuluje B/C
   //    (Emjoy/Šenkvice, 18.9.2026 — nahlásené ako "B/C zmizlo po doobjednaní A") ─
   //
-  // Vyššie overený fix chráni len jedlo, ktorého sa klient v session vôbec
-  // nedotkol — pre také `mealData()` v `submitOrder` použije čerstvú
-  // serverovú hodnotu namiesto lokálneho draftu. Ak ale klient stihne
-  // upraviť TEN ISTÝ chod (napr. pridá Menu A na obed) SKÔR, než počiatočný
-  // GET pre daný deň dobehne, `touchedMeals` už obed obsahuje — `mealData()`
-  // tak vezme lokálny (v tom momente ešte prázdny, bez B/C) `currentOrder`,
-  // hoci odpoveď servera s reálnym B/C medzitým dorazí. UI pritom editáciu
-  // nijako neblokuje/nečaká na dokončenie GET (žiadny loading stav).
-  it("still drops the server's B/C when the client touches the SAME meal before the initial GET resolves", async () => {
+  // Starší fix chránil len jedlo, ktorého sa klient v session vôbec nedotkol
+  // — pre také `mealData()` v `submitOrder` použije čerstvú serverovú
+  // hodnotu namiesto lokálneho draftu. Ak ale klient stihne upraviť TEN ISTÝ
+  // chod (napr. pridá Menu A na obed) SKÔR, než počiatočný GET pre daný deň
+  // dobehne, `touchedMeals` už obed obsahuje — a keďže UI editáciu nijako
+  // neblokuje/nečaká na dokončenie GET (žiadny loading stav), lokálny stav
+  // v tom momente ešte nemá žiadne B/C. `touchedFieldsRef` +
+  // `OrderService.mergeMealOntoServer` (18.9.2026) toto rieši: pre touched
+  // chod sa vezme čerstvá serverová hodnota ako základ a prelejú sa naň len
+  // konkrétne polia, ktoré klient reálne upravil (tu: `menu:A`) — B/C, ktorých
+  // sa klient nedotkol, prežijú aj keď je celý chod "touched".
+  it("keeps the server's B/C when the client touches the SAME meal before the initial GET resolves", async () => {
     const date = localDateStr();
 
     // Žiadny localStorage draft — čerstvá session/zariadenie, presne ako
@@ -1927,12 +1930,220 @@ describe("OrderPage Logic & Triggers", () => {
       );
       expect(postCall).toBeDefined();
       const body = JSON.parse(postCall![1].body as string);
-      // Bug: keďže obed je "touched" (klient doňho pridal A ešte pred GET),
-      // submitOrder pre neho použije lokálny (v tom momente B/C-prázdny)
-      // draft namiesto čerstvej serverovej hodnoty — B/C sa potichu vynuluje,
-      // hoci klient sa Dospelý (SŠ) kategórie vôbec nedotkol.
+      // Obed je "touched" (klient doňho pridal A ešte pred GET), ale merge
+      // vzal Dospelý (SŠ) B/C zo servera — klient sa tej kategórie vôbec
+      // nedotkol, `mergeMealOntoServer` ju teda nechá tak, ako je na serveri.
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(5); // klientova reálna úprava prešla
       expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
       expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
+    });
+  });
+
+  // ── Bežná (nie race) cesta: edit AŽ PO dobehnutí GET stále funguje ──────
+  it("keeps the server's B/C when the client touches the SAME meal AFTER the initial GET already resolved", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            id: 1793,
+            status: "submitted",
+            data: {
+              breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+              lunch: {
+                Škôlka: { menuCounts: { A: 0 }, diets: {} },
+                "Dospelý (SŠ)": {
+                  menuCounts: { A: 0, B: 1, C: 2 },
+                  diets: {},
+                },
+              },
+              olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+            },
+          }),
+        );
+      }
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText(
+      "Počet porcií pre menu A",
+    );
+    // GET už dávno dobehol (žiadne visenie) — klient edituje normálne.
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(5);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
+    });
+  });
+
+  // ── "Vymazať" (clearMeal) musí ostať plne lokálny aj keď server má B/C ──
+  //
+  // Wildcard (`${mealKey}|*`) marker nesmie táto oprava obísť — explicitné
+  // vymazanie chodu je zámer klienta, nie náhodný vedľajší efekt editácie
+  // iného menu, takže sa nesmie zliať so serverom.
+  it("still sends a fully empty meal when the client explicitly clears it (Vymazať), even though the server has B/C", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: false }),
+    );
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return Promise.resolve(
+          makeMockResponse({
+            id: 1793,
+            status: "submitted",
+            data: {
+              breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+              lunch: {
+                Škôlka: { menuCounts: { A: 10 }, diets: {} },
+                "Dospelý (SŠ)": {
+                  menuCounts: { A: 0, B: 1, C: 2 },
+                  diets: {},
+                },
+              },
+              olovrant: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+            },
+          }),
+        );
+      }
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    const lunchCard = getMealCard("Obed");
+    await waitFor(() => {
+      // Počkaj, kým sa server dáta reálne premietnu do UI, nech "Vymazať"
+      // naozaj maže neprázdny, načítaný chod (nie prázdny default).
+      expect(
+        within(getCategoryRow(lunchCard, "Škôlka")).getByLabelText(
+          "Počet porcií pre menu A",
+        ),
+      ).toHaveValue("10");
+    });
+    fireEvent.click(within(lunchCard).getByRole("button", { name: /Vymazať/i }));
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(0);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(0);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(0);
+    });
+  });
+
+  // ── Súčasne touched (merge) aj netknuté (fresh) jedlo v jednom submite ──
+  it("merges a touched meal onto the server while an untouched meal still uses the fresh server value outright", async () => {
+    const date = localDateStr();
+    localStorageMock.setItem(
+      `activeMeals_${date}`,
+      JSON.stringify({ breakfast: false, lunch: true, olovrant: true }),
+    );
+
+    let resolveOrderFetch!: (value: unknown) => void;
+    const pendingOrderFetch = new Promise((resolve) => {
+      resolveOrderFetch = resolve;
+    });
+
+    mockApiFetch.mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes("/admin/global-settings/")) {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      if (url.includes("/orders/by-date/")) {
+        return pendingOrderFetch as Promise<Response>;
+      }
+      if (url.includes("/orders/") && init?.method === "POST") {
+        return Promise.resolve(makeMockResponse({}));
+      }
+      return Promise.resolve(makeMockResponse([]));
+    });
+
+    renderPage();
+
+    // Klient upraví LEN obed (olovrant necháva úplne netknutý).
+    const lunchCard = getMealCard("Obed");
+    const skolkaRow = getCategoryRow(lunchCard, "Škôlka");
+    const input = await within(skolkaRow).findByLabelText(
+      "Počet porcií pre menu A",
+    );
+    fireEvent.change(input, { target: { value: "5" } });
+    fireEvent.blur(input);
+
+    fireEvent.click(screen.getByText("Odoslať objednávku"));
+
+    await act(async () => {
+      resolveOrderFetch(
+        makeMockResponse({
+          id: 1793,
+          status: "submitted",
+          data: {
+            breakfast: { Škôlka: { menuCounts: { A: 0 }, diets: {} } },
+            lunch: {
+              Škôlka: { menuCounts: { A: 5 }, diets: {} },
+              "Dospelý (SŠ)": {
+                menuCounts: { A: 0, B: 1, C: 2 },
+                diets: {},
+              },
+            },
+            olovrant: {
+              Škôlka: { menuCounts: { A: 9, B: 3, C: 0 }, diets: {} },
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const postCall = mockApiFetch.mock.calls.find(
+        (call) => call[0]?.includes("/orders/") && call[1]?.method === "POST",
+      );
+      expect(postCall).toBeDefined();
+      const body = JSON.parse(postCall![1].body as string);
+      // Obed: touched → merge (klientovo A, serverovo B/C).
+      expect(body.data.lunch["Škôlka"].menuCounts.A).toBe(5);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.B).toBe(1);
+      expect(body.data.lunch["Dospelý (SŠ)"].menuCounts.C).toBe(2);
+      // Olovrant: úplne netknutý → ide priamo čerstvá serverová hodnota vcelku.
+      expect(body.data.olovrant["Škôlka"].menuCounts.A).toBe(9);
+      expect(body.data.olovrant["Škôlka"].menuCounts.B).toBe(3);
     });
   });
 });
