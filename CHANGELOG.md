@@ -1,5 +1,21 @@
 # Changelog
 
+## [5.6.0](https://github.com/tomag-9/zdravy-projekt/compare/v5.5.2...v5.6.0) (2026-09-18)
+
+
+### Features
+
+* add searchable audit log filters ([be28d23](https://github.com/tomag-9/zdravy-projekt/commit/be28d23e2d4a06605110588505a9a6ea8815eec8))
+* **admin:** dev-only testovací posun timezone.now() ([e422df6](https://github.com/tomag-9/zdravy-projekt/commit/e422df690c500b9fa9697b5b620ab87c7071a273))
+* log Libellus sA finalization ([ac86a3f](https://github.com/tomag-9/zdravy-projekt/commit/ac86a3f4c12a00cab894785a7ca5947e8f4a10d1))
+
+
+### Bug Fixes
+
+* **ci:** opraviť black/isort formátovanie v dev-clock súboroch ([2e8ed7e](https://github.com/tomag-9/zdravy-projekt/commit/2e8ed7e1b1366ca68da1626fa0f7a2a6aca7ad12))
+* finalize Stromcek external orders at deadline ([0b00f38](https://github.com/tomag-9/zdravy-projekt/commit/0b00f38247a45e3c32d10650a998f4a5377550df))
+* **order:** nevynulovať Menu B/C pri úprave toho istého chodu pred GET ([fef259d](https://github.com/tomag-9/zdravy-projekt/commit/fef259dd71bdf667be3448cf61c0125af60e8127))
+
 ## [5.5.2](https://github.com/tomag-9/zdravy-projekt/compare/v5.5.1...v5.5.2) (2026-09-17)
 
 
