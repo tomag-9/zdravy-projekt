@@ -89,8 +89,9 @@ def _merge_external_snapshots_into_final_orders(target_date) -> int:
     """
     from django.db import transaction
 
-    from api.models import DailyOrder, ExternalOrderSnapshot
-    from api.order_data import merge_order_data
+    from api.models import DailyOrder, EventLog, ExternalOrderSnapshot
+    from api.order_data import OrderData, merge_order_data
+    from api.services.event_log_service import log_event
 
     merged = 0
     snapshots = ExternalOrderSnapshot.objects.filter(
@@ -117,10 +118,32 @@ def _merge_external_snapshots_into_final_orders(target_date) -> int:
                     snapshot.prevadzka,
                 )
                 continue
+            _total, meal_counts = OrderData(snapshot.data or {}).totals()
+            meal_counts = {meal: count for meal, count in meal_counts.items() if count}
             order.data = merge_order_data(order.data or {}, snapshot.data or {})
             order.save(update_fields=["data", "updated_at"])
             snapshot.merged_at = timezone.now()
             snapshot.save(update_fields=["merged_at"])
+            meal_summary = ", ".join(
+                f"{meal}: {count}" for meal, count in meal_counts.items()
+            )
+            log_event(
+                EventLog.EventType.ORDER_ADMIN_UPDATE,
+                actor_label="EduPage Libellus sA (uzávierka)",
+                target_user=order.user,
+                prevadzka=order.prevadzka,
+                summary=(
+                    f"EduPage Libellus sA vložil do {order.prevadzka} "
+                    f"Predškolákov ({meal_summary}) na {target_date}."
+                ),
+                payload={
+                    "date": str(target_date),
+                    "source": snapshot.source,
+                    "snapshot_id": snapshot.pk,
+                    "meal_counts": meal_counts,
+                    "merged_into_order_id": order.pk,
+                },
+            )
             merged += 1
     return merged
 

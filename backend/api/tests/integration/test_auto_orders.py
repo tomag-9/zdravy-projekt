@@ -983,6 +983,13 @@ def test_lunch_deadline_merges_sa_snapshot_into_final_daily_order(user):
     assert order.data["olovrant"]["Predškolák"]["menuCounts"]["A"] == 6
     assert snapshot.merged_at is not None
     assert OrderData(effective_order_data(order)).totals()[0] == 22
+    event = EventLog.objects.get(
+        prevadzka=prevadzka,
+        actor_label="EduPage Libellus sA (uzávierka)",
+    )
+    assert "Predškolák" in event.summary
+    assert event.payload["source"] == "edupage_sa"
+    assert event.payload["meal_counts"] == {"lunch": 6, "olovrant": 6}
 
 
 @pytest.mark.django_db
