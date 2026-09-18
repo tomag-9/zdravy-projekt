@@ -206,6 +206,9 @@ class ExternalOrderSnapshot(models.Model):
     source = models.CharField(max_length=32, choices=Source.choices)
     data = models.JSONField(default=dict)
     scraped_at = models.DateTimeField(auto_now=True)
+    # Po uzávierke sa snapshot raz pripočíta do DailyOrder.data. Zdrojové
+    # dáta ponechávame pre audit, ale čítače ich už nesmú pripočítať druhýkrát.
+    merged_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [

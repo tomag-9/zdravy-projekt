@@ -525,6 +525,39 @@ class TestPlannedOrdersEndpoint:
         response = authenticated_client.get(url)
         assert response.data[0]["is_auto"] is True
 
+    def test_planned_orders_predicts_past_relay_only_empty_order(
+        self, authenticated_client, user
+    ):
+        """Libellus sA relay creates an empty row only to carry attention.
+
+        Such a row is not an intentional zero from Stromček and must not hide
+        the automatic-order forecast on the client's home screen.
+        """
+        url = reverse("planned-orders-list")
+        first_date = datetime.date.fromisoformat(
+            authenticated_client.get(url).data[0]["date"]
+        )
+        prevadzka = user.profile.dostupne_prevadzky().get()
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=first_date - datetime.timedelta(days=1),
+            data=NON_EMPTY_DATA,
+        )
+        DailyOrder.objects.create(
+            user=user,
+            prevadzka=prevadzka,
+            date=first_date,
+            data={},
+            scrape_flags={"attention": ["S:sA — patrí Stromčeku"]},
+        )
+
+        response = authenticated_client.get(url)
+
+        first_item = response.data[0]
+        assert first_item["exists"] is False
+        assert first_item["predictedTotal"] == 3
+
     def test_planned_orders_total_portions(self, authenticated_client, user):
         """Planned orders calculate total portions correctly."""
         url = reverse("planned-orders-list")

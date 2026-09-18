@@ -210,6 +210,21 @@ class OrderService:
             .select_related("prevadzka")
             .prefetch_related("prevadzka__visible_portion_types")
         ):
+            # Libellus' shared EduPage feed can create an otherwise empty
+            # Stromček row solely to relay an sA attention flag.  It is not an
+            # order decision: no meal was touched and it carries no data.  If
+            # it entered ``existing``, Home rendered a red "Bez objednávky"
+            # card and hid the forecast, despite the deadline cron correctly
+            # filling this same row later.  An explicit zero always has
+            # ``touched_meals`` and therefore remains an existing order.
+            flags = order.scrape_flags if isinstance(order.scrape_flags, dict) else {}
+            is_relay_only_row = (
+                not (order.data or {})
+                and not order.touched_meals
+                and "attention" in flags
+            )
+            if is_relay_only_row:
+                continue
             existing.setdefault(order.date, []).append(order)
 
         # Najlepšia (posledná neprázdna) šablóna per prevádzka — 1 dotaz, bez N+1.

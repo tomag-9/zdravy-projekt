@@ -1220,7 +1220,11 @@ class TestParse(unittest.TestCase):
         )
         self.assertEqual(
             result.external_order_data_by_prevadzka,
-            {"Stromček": {"lunch": {"Škôlka": {"menuCounts": {"A": 4}, "diets": {}}}}},
+            {
+                "Stromček": {
+                    "lunch": {"Predškolák": {"menuCounts": {"A": 4}, "diets": {}}}
+                }
+            },
         )
         self.assertEqual(
             result.attention,

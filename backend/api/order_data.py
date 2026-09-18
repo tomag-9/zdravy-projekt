@@ -128,6 +128,7 @@ def effective_order_data(
             snapshot.data
             for snapshot in snapshots
             if isinstance(getattr(snapshot, "data", None), Mapping)
+            and getattr(snapshot, "merged_at", None) is None
         ),
     )
 

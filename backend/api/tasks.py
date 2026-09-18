@@ -78,6 +78,53 @@ def _log_cron_failure(task_name: str, exc: BaseException, payload: dict) -> None
     )
 
 
+def _merge_external_snapshots_into_final_orders(target_date) -> int:
+    """Finalize Stromček's external EduPage counts after lunch closes.
+
+    Until the final deadline, an sA snapshot stays separate so a live EduPage
+    refresh cannot overwrite a person's app order. Once lunch/olovrant has
+    closed, the kitchen needs one final DailyOrder document. Marking the
+    snapshot merged preserves its source data for audit and prevents readers
+    from adding it a second time.
+    """
+    from django.db import transaction
+
+    from api.models import DailyOrder, ExternalOrderSnapshot
+    from api.order_data import merge_order_data
+
+    merged = 0
+    snapshots = ExternalOrderSnapshot.objects.filter(
+        date=target_date,
+        source=ExternalOrderSnapshot.Source.EDUPAGE_SA,
+        merged_at__isnull=True,
+    )
+    for snapshot_id in snapshots.values_list("id", flat=True):
+        with transaction.atomic():
+            snapshot = ExternalOrderSnapshot.objects.select_for_update().get(
+                pk=snapshot_id
+            )
+            if snapshot.merged_at is not None:
+                continue
+            order = (
+                DailyOrder.objects.select_for_update()
+                .filter(prevadzka=snapshot.prevadzka, date=target_date)
+                .first()
+            )
+            if order is None:
+                logger.error(
+                    "external snapshot %s for %s has no DailyOrder to finalize",
+                    snapshot.pk,
+                    snapshot.prevadzka,
+                )
+                continue
+            order.data = merge_order_data(order.data or {}, snapshot.data or {})
+            order.save(update_fields=["data", "updated_at"])
+            snapshot.merged_at = timezone.now()
+            snapshot.save(update_fields=["merged_at"])
+            merged += 1
+    return merged
+
+
 def _cron_skip_check(task_name: str, check_date=None) -> str | None:
     """If `check_date` is a weekend or a configured Holiday, log the skip
     (see `_log_cron_skip_event`) and return the reason so the caller can
@@ -453,6 +500,14 @@ def apply_auto_orders_task(
                 return {"skipped": True, "reason": reason}
 
         result = apply_auto_orders(target_date, meal_types=meal_types)
+        # sA is held separately only while EduPage can still change it. The
+        # lunch/olovrant deadline makes the day's order final, so merge it to
+        # the writable Stromček order exactly once.
+        merged_external_count = (
+            _merge_external_snapshots_into_final_orders(result["date"])
+            if meal_types is not None and "lunch" in meal_types
+            else 0
+        )
         # Deadline práve pridal auto-objednávky — gramage dashboard by ich
         # ešte 5 minút neukazoval, keby cache ostala z pred deadline.
         clear_gramage_dashboard_cache(result["date"])
@@ -465,6 +520,7 @@ def apply_auto_orders_task(
                 "skipped_count": result["skipped"],
                 "date": result["date"],
                 "meal_types": meal_types,
+                "merged_external_count": merged_external_count,
             },
         )
         logger.info("%s result: %s", task_label, result)

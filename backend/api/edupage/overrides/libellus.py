@@ -38,6 +38,9 @@ _RULES: dict[str, LetterRule] = {
     "NENONPARNMAK": LetterRule(diet="NO EGG – NO PARADAJKA – NO ORECH – NO MAK"),
     "SA": LetterRule(
         menu="A",
+        # sA is always Stromček's preschool group, irrespective of the
+        # Libellus payer label that EduPage attaches to the shared feed.
+        portion="Predškolák",
         flag=" — patrí Stromčeku, over/rozdeľ appkové objednávky",
         relay_attention_to="Stromček",
         external_order_prevadzka="Stromček",
