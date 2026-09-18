@@ -21,6 +21,7 @@ from .views import (
     DailyOrderViewSet,
     DeliveryBlockViewSet,
     DeliveryRouteViewSet,
+    DevClockView,
     DietComponentMergeViewSet,
     DietViewSet,
     EmailTokenObtainPairView,
@@ -155,5 +156,11 @@ urlpatterns = [
         "admin/push/send/",
         AdminSendPushView.as_view(),
         name="admin_push_send",
+    ),
+    # Dev-only testovací posun `timezone.now()` — mimo DEV_CLOCK_ENABLED 404.
+    path(
+        "admin/dev-clock/",
+        DevClockView.as_view(),
+        name="admin_dev_clock",
     ),
 ]

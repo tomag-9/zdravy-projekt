@@ -415,3 +415,7 @@ SPECTACULAR_SETTINGS = {
         }
     },
 }
+
+# Dev-only testovací posun `timezone.now()` (api/dev_clock.py) — explicitne
+# False tu, zapnuté len v `dev.py`. Nikdy nepridávaj do `prod.py`/`staging.py`.
+DEV_CLOCK_ENABLED = False

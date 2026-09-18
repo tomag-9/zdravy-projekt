@@ -67,6 +67,7 @@ from .prevadzka_closure_views import (
 )
 
 # Push notification views
+from .dev_clock_views import DevClockView
 from .push_views import AdminSendPushView, PushSubscribeView, VapidPublicKeyView
 
 # Report views
@@ -134,4 +135,6 @@ __all__ = [
     "AdminSendPushView",
     # Inbox
     "InboxViewSet",
+    # Dev-only testovací posun času
+    "DevClockView",
 ]

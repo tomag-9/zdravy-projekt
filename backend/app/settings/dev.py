@@ -8,6 +8,10 @@ from .base import *  # noqa: F401, F403
 
 DEBUG = True
 
+# Testovací posun aktuálneho dátumu/času (api/dev_clock.py) — ovládaný cez
+# appkové Admin nastavenia. Len dev, nikdy staging/prod.
+DEV_CLOCK_ENABLED = True
+
 ALLOWED_HOSTS = ["*"]
 
 # CORS settings for development
